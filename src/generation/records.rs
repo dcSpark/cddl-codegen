@@ -3196,6 +3196,10 @@ pub(super) fn codegen_struct(
         || record
             .captured_dynamic_rows()
             .any(|row| row.is_non_empty_array_tail() && row.element().has_value_bounds())
+        || (record.is_non_empty_open_table()
+            && record.typed_row().is_some_and(|row| {
+                row.domain().has_value_bounds() || row.range().has_value_bounds()
+            }))
         || (record.has_forbidden_fields() && record.has_protected_rest_keys(types))
         || (record.has_protected_rest_keys(types)
             && record
@@ -3311,18 +3315,32 @@ pub(super) fn codegen_struct(
                         // (absent / present-null / present-value), so CBOR round-trips are unaffected —
                         // only the wasm read conflates absent with present-null.
                         field_getter_flattens = true;
+                        let flattened = format!(
+                            "self.0.{}{}.flatten()",
+                            field.name,
+                            if field.rust_type.is_copy(types) {
+                                ""
+                            } else {
+                                ".clone()"
+                            }
+                        );
+                        // The direct `flatten()` spelling returns the native carrier. An exact
+                        // byte leaf is stored as `[u8; N]` but crosses the wasm ABI as `Vec<u8>`;
+                        // unlike ordinary optional getters this double-Option branch bypasses
+                        // RustType::to_wasm_boundary_optional, so loosen it explicitly here.
+                        let flattened = if matches!(
+                            field.rust_type.conceptual_type.resolve_alias_shallow(),
+                            ConceptualRustType::Optional(inner)
+                                if inner.exact_byte_array_len_checked().is_some()
+                        ) {
+                            format!("{flattened}.map(|bytes| bytes.to_vec())")
+                        } else {
+                            flattened
+                        };
                         getter
                             .doc("Returns None if the field is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).")
                             .ret(gen_scope.wasm_return_type(types, &field.rust_type, name, "record optional getter return"))
-                            .line(format!(
-                                "self.0.{}{}.flatten()",
-                                field.name,
-                                if field.rust_type.is_copy(types) {
-                                    ""
-                                } else {
-                                    ".clone()"
-                                }
-                            ));
+                            .line(flattened);
                     } else {
                         getter
                             .ret(format!(
@@ -3781,16 +3799,31 @@ pub(super) fn codegen_struct(
         {
             let method_name = format!("insert_{}", rest.field_name);
             let snapshot_getter = format!("`{}()`", rest.field_name);
-            let key = ToWasmBoundaryOperations::format(
-                rest.domain()
-                    .from_wasm_boundary_clone(types, "key", false)
-                    .into_iter(),
-            );
-            let value = ToWasmBoundaryOperations::format(
-                rest.range()
-                    .from_wasm_boundary_clone(types, "value", false)
-                    .into_iter(),
-            );
+            // A collision-protected row delegates to the native record's public insertion door.
+            // Its loose exact-byte parameters are intentionally `Vec<u8>` because that native door
+            // owns the named Vec-to-array conversion. Every other row mutates its carrier directly
+            // below, so it must perform the handover on this wasm face before storage.
+            let direct_storage = !record.has_protected_rest_keys(types);
+            let key = direct_storage
+                .then(|| super::collections::wasm_exact_byte_handover(rest.domain(), "key", cli))
+                .flatten()
+                .unwrap_or_else(|| {
+                    ToWasmBoundaryOperations::format(
+                        rest.domain()
+                            .from_wasm_boundary_clone(types, "key", false)
+                            .into_iter(),
+                    )
+                });
+            let value = direct_storage
+                .then(|| super::collections::wasm_exact_byte_handover(rest.range(), "value", cli))
+                .flatten()
+                .unwrap_or_else(|| {
+                    ToWasmBoundaryOperations::format(
+                        rest.range()
+                            .from_wasm_boundary_clone(types, "value", false)
+                            .into_iter(),
+                    )
+                });
             let mut insert = codegen::Function::new(&method_name);
             insert
                 .arg_mut_self()
@@ -4283,6 +4316,12 @@ pub(super) fn codegen_struct(
                 "{}: {carrier}::new({key_arg}, {value_arg}),",
                 rest.field_name
             ));
+            if let Some(line) = value_bounds_check_line(rest.domain(), &key_arg, true) {
+                native_new.line(&line);
+            }
+            if let Some(line) = value_bounds_check_line(rest.range(), &value_arg, true) {
+                native_new.line(&line);
+            }
         } else if !rest.is_array_tail()
             && (rest.is_restricted()
                 || (record.has_forbidden_fields() && record.has_protected_rest_keys(types)))
@@ -4582,7 +4621,7 @@ pub(super) fn codegen_struct(
                     } else {
                         "_key"
                     },
-                    format!("&{}", rest.domain().for_rust_move(types, cli)),
+                    format!("&{}", rest.domain().for_rust_member(types, false, cli)),
                 )
                 .ret(format!(
                     "Result<(), {}::error::DeserializeError>",
@@ -4694,9 +4733,18 @@ pub(super) fn codegen_struct(
                     "Result<(), {}::error::DeserializeError>",
                     cli.common_import_rust()
                 ))
-                .vis("pub")
-                .line(format!("Self::{validator_name}(&entry_key)?;"));
+                .vis("pub");
+            // Captured-rest insertion is a native direct-storage door. Its public parameters use
+            // the loose constructor spelling (including Vec<u8> for exact bytes), so materialize
+            // exact key/value carriers before the validation/mutation path sees them.
+            if let Some(line) = value_bounds_check_line(rest.domain(), "entry_key", true) {
+                insert.line(&line);
+            }
+            if let Some(line) = value_bounds_check_line(rest.range(), "value", true) {
+                insert.line(&line);
+            }
             // Validation borrows `entry_key`; that borrow ends before the carrier mutation below.
+            insert.line(format!("Self::{validator_name}(&entry_key)?;"));
             if rest.is_restricted() {
                 if rest_member_type(rest).bounded_map_u64_bounds().is_some() {
                     insert.line(format!(

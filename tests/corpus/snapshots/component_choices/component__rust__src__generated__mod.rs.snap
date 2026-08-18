@@ -123,24 +123,24 @@ impl Outcome {
 }
 
 #[derive(Clone, Debug)]
-pub struct Stamp(pub(crate) Vec<u8>);
+pub struct Stamp(pub(crate) [u8; 4]);
 
 impl Stamp {
-    pub fn get(&self) -> &Vec<u8> {
+    pub fn get(&self) -> &[u8; 4] {
         &self.0
     }
 
     pub fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
-        if inner.len() != 4 {
-            return Err(DeserializeError::new(
+        let inner: [u8; 4] = inner.try_into().map_err(|bytes: Vec<u8>| {
+            DeserializeError::new(
                 "Stamp",
                 DeserializeFailure::RangeCheck {
-                    found: inner.len() as i128,
+                    found: bytes.len() as i128,
                     min: Some(4),
                     max: Some(4),
                 },
-            ));
-        }
+            )
+        })?;
         Ok(Self(inner))
     }
 }
@@ -153,7 +153,7 @@ impl TryFrom<Vec<u8>> for Stamp {
     }
 }
 
-impl From<Stamp> for Vec<u8> {
+impl From<Stamp> for [u8; 4] {
     fn from(wrapper: Stamp) -> Self {
         wrapper.0
     }

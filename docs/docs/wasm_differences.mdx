@@ -128,7 +128,10 @@ rather than bare vectors.
 
 Secondarily, the wrapper also covers element types `wasm_bindgen` can't put in a bare `Vec` at all:
 `Vec<bool>` (no `VectorIntoWasmAbi` for bool) and doubly-nested types like `Vec<Vec<T>>` (which
-includes any array of byte strings, since `bytes` is already `Vec<u8>`).
+includes any array of byte strings, since a non-exact `bytes` value is already `Vec<u8>`).
+An exact `bytes .size N` is `[u8; N]` in Rust but still crosses wasm as a `Vec<u8>`: getters copy
+the array into that list, while a direct constructor may keep the loose list door and collection
+`add`/`insert` paths return `JsError` if their stored-carrier handover finds a wrong length.
 
 Text arrays do **not** get a list wrapper: `wasm_bindgen` exposes `Vec<String>` directly (a JS
 string array, in both parameter and return position), and strings are **copied** at the boundary,

@@ -37,17 +37,20 @@ impl Serialize for Hash {
 impl Deserialize for Hash {
     fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
-            let (inner, inner_encoding) = raw
-                .bytes_sz()
-                .map(|(bytes, enc)| (bytes, StringEncoding::from(enc)))?;
-            if inner.len() != 32 {
-                return Err(DeserializeFailure::RangeCheck {
-                    found: inner.len() as i128,
-                    min: Some(32),
-                    max: Some(32),
-                }
-                .into());
-            }
+            let (inner, inner_encoding) =
+                Ok::<_, DeserializeError>(raw.bytes_sz()?).and_then(|(bytes, enc)| {
+                    bytes
+                        .try_into()
+                        .map_err(|bytes: Vec<u8>| {
+                            DeserializeFailure::RangeCheck {
+                                found: bytes.len() as i128,
+                                min: Some(32),
+                                max: Some(32),
+                            }
+                            .into()
+                        })
+                        .map(|bytes: [u8; 32]| (bytes, StringEncoding::from(enc)))
+                })?;
             Ok(Self {
                 inner,
                 encodings: Some(HashEncoding { inner_encoding }),

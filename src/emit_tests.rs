@@ -198,85 +198,9 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
         MintValue::Str { len } => format!("\"a\".repeat({len})"),
         MintValue::StrLit { content } => format!("\"{content}\".to_owned()"),
         MintValue::Bytes { len } => format!("vec![0u8; {len}]"),
-        MintValue::Array {
-            elem: Some(e),
-            count,
-            non_empty,
-            bounded,
-            reject,
-            unique_elems,
-        } => {
-            if *reject {
-                let vec = unique_elems.as_ref().map_or_else(
-                    || format!("vec![{}; {count}]", render_rust(e)),
-                    |elems| format!("vec![{}]", elems.iter().map(render_rust).collect::<Vec<_>>().join(", ")),
-                );
-                let twin = if let Some((min, max)) = bounded {
-                    return format!("BoundedOrderedSet::<_, {min}, {max}>::try_from({vec}).unwrap()");
-                } else if *non_empty {
-                    "NonEmptyOrderedSet"
-                } else {
-                    "OrderedSet"
-                };
-                format!("{twin}::try_from({vec}).unwrap()")
-            } else {
-                let vec = format!("vec![{}; {count}]", render_rust(e));
-                if let Some((min, max)) = bounded {
-                    format!("BoundedVec::<_, {min}, {max}>::try_from({vec}).unwrap()")
-                } else if *non_empty {
-                    // route through the single TryFrom door (same as every other construction path)
-                    format!("NonEmptyVec::try_from({vec}).unwrap()")
-                } else {
-                    vec
-                }
-            }
-        }
-        MintValue::Array {
-            elem: None,
-            reject: true,
-            bounded: Some((min, max)),
-            ..
-        } => format!("BoundedOrderedSet::<_, {min}, {max}>::try_from(vec![]).unwrap()"),
-        MintValue::Array { elem: None, reject: true, .. } => "OrderedSet::try_from(vec![]).unwrap()".to_owned(),
-        MintValue::Array { elem: None, .. } => "vec![]".to_owned(),
-        MintValue::Map {
-            key,
-            key_base,
-            val,
-            count,
-            non_empty,
-            bounded,
-            preserve,
-        } => {
-            let k = map_key_expr(key, *key_base);
-            let v = render_rust(val);
-            if let Some((min, max)) = bounded {
-                let carrier = if *preserve { "BoundedPairMap" } else { "BoundedMap" };
-                // A preserve table's generated valid fixture deliberately reuses its key: this is
-                // the emitted-test coverage that proves the bounded door counts duplicate entries
-                // rather than silently collecting them into a unique-key map.
-                let k = if *preserve { k.replace("__i", "0") } else { k };
-                let index = if *preserve { "_i" } else { "__i" };
-                format!("{carrier}::<_, _, {min}, {max}>::try_from((0u64..{count}).map(|{index}| ({k}, {v})).collect::<Vec<_>>()).unwrap()")
-            } else if *non_empty {
-                // build via `new(first_key, first_value)` + `insert` (flavor-agnostic and
-                // unambiguous). A bare `try_from((..).collect())` can't infer the collect target here:
-                // the reflexive `TryFrom<Self>` blanket competes with `TryFrom<{table_type}>`, so the
-                // `{table_type}` (BTreeMap / OrderedHashMap) is not uniquely determined. `new` never
-                // names the inner map type, so it compiles under every profile. The preserve flavor
-                // routes through `NonEmptyPairMap` (whose `new`/`insert` mirror `NonEmptyMap`'s).
-                let ctor = if *preserve {
-                    "NonEmptyPairMap"
-                } else {
-                    "NonEmptyMap"
-                };
-                format!(
-                    "{{ let mut __m = {{ let __i = 0u64; {ctor}::new({k}, {v}) }}; for __i in 1u64..{count} {{ __m.insert({k}, {v}); }} __m }}"
-                )
-            } else {
-                // `.collect()` infers the target from the field type (PairMap has FromIterator too).
-                format!("(0u64..{count}).map(|__i| ({k}, {v})).collect()")
-            }
+        mv @ MintValue::Array { .. } => render_rust_array(mv, &render_rust),
+        mv @ MintValue::Map { .. } => {
+            render_rust_map(mv, &|key| key, &render_rust)
         }
         MintValue::DefaultMap => "Default::default()".to_owned(),
         MintValue::Record {
@@ -312,6 +236,270 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
         // `widen_float` fidelity class widens; `__AnyCborMint` is the import-glued `AnyCbor` alias
         // `emit_generated_tests` injects at the test module root.
         MintValue::Any => "__AnyCborMint::new_array(vec![__AnyCborMint::new_uint(5), __AnyCborMint::new_float(1.5)])".to_owned(),
+    }
+}
+
+pub(crate) fn render_rust_array(
+    mv: &MintValue,
+    render_elem: &dyn Fn(&MintValue) -> String,
+) -> String {
+    let MintValue::Array {
+        elem,
+        count,
+        non_empty,
+        bounded,
+        reject,
+        unique_elems,
+    } = mv
+    else {
+        unreachable!("render_rust_array called for a non-array mint")
+    };
+    let Some(elem) = elem else {
+        return match (*reject, bounded) {
+            (true, Some((min, max))) => {
+                format!("BoundedOrderedSet::<_, {min}, {max}>::try_from(vec![]).unwrap()")
+            }
+            (true, None) => "OrderedSet::try_from(vec![]).unwrap()".to_owned(),
+            (false, _) => "vec![]".to_owned(),
+        };
+    };
+    if *reject {
+        let vec = unique_elems.as_ref().map_or_else(
+            || format!("vec![{}; {count}]", render_elem(elem)),
+            |elems| {
+                format!(
+                    "vec![{}]",
+                    elems.iter().map(render_elem).collect::<Vec<_>>().join(", ")
+                )
+            },
+        );
+        let twin = if let Some((min, max)) = bounded {
+            return format!("BoundedOrderedSet::<_, {min}, {max}>::try_from({vec}).unwrap()");
+        } else if *non_empty {
+            "NonEmptyOrderedSet"
+        } else {
+            "OrderedSet"
+        };
+        format!("{twin}::try_from({vec}).unwrap()")
+    } else {
+        let vec = format!("vec![{}; {count}]", render_elem(elem));
+        if let Some((min, max)) = bounded {
+            format!("BoundedVec::<_, {min}, {max}>::try_from({vec}).unwrap()")
+        } else if *non_empty {
+            // route through the single TryFrom door (same as every other construction path)
+            format!("NonEmptyVec::try_from({vec}).unwrap()")
+        } else {
+            vec
+        }
+    }
+}
+
+pub(crate) fn render_rust_map(
+    mv: &MintValue,
+    render_key: &dyn Fn(String) -> String,
+    render_val: &dyn Fn(&MintValue) -> String,
+) -> String {
+    let MintValue::Map {
+        key,
+        key_base,
+        val,
+        count,
+        non_empty,
+        bounded,
+        preserve,
+    } = mv
+    else {
+        unreachable!("render_rust_map called for a non-map mint")
+    };
+    let k = render_key(map_key_expr(key, *key_base));
+    let v = render_val(val);
+    if let Some((min, max)) = bounded {
+        let carrier = if *preserve {
+            "BoundedPairMap"
+        } else {
+            "BoundedMap"
+        };
+        // A preserve table's generated valid fixture deliberately reuses its key: this is the
+        // emitted-test coverage that proves the bounded door counts duplicate entries rather than
+        // silently collecting them into a unique-key map.
+        let k = if *preserve { k.replace("__i", "0") } else { k };
+        let index = if *preserve { "_i" } else { "__i" };
+        format!(
+            "{carrier}::<_, _, {min}, {max}>::try_from((0u64..{count}).map(|{index}| ({k}, {v})).collect::<Vec<_>>()).unwrap()"
+        )
+    } else if *non_empty {
+        // build via `new(first_key, first_value)` + `insert` (flavor-agnostic and unambiguous). A
+        // bare `try_from((..).collect())` can't infer the collect target here: the reflexive
+        // `TryFrom<Self>` blanket competes with `TryFrom<{table_type}>`. `new` never names the inner
+        // map type, so it compiles under every profile.
+        let ctor = if *preserve {
+            "NonEmptyPairMap"
+        } else {
+            "NonEmptyMap"
+        };
+        format!(
+            "{{ let mut __m = {{ let __i = 0u64; {ctor}::new({k}, {v}) }}; for __i in 1u64..{count} {{ __m.insert({k}, {v}); }} __m }}"
+        )
+    } else {
+        // `.collect()` infers the target from the field type (PairMap has FromIterator too).
+        format!("(0u64..{count}).map(|__i| ({k}, {v})).collect()")
+    }
+}
+
+/// Render a value that is written straight into a native stored carrier rather than passed through
+/// a generated constructor/insertion door. Exact bytes deliberately render as a loose `Vec<u8>` in
+/// [`render_rust`], because that is the public API shape; direct field/map/tail mutation has no later
+/// door and therefore owes the Vec -> `[u8; N]` handover itself. Recurse through inline/named
+/// collection carriers so `Vec<[u8; N]>` and maps with exact-byte leaves are built tight at every
+/// stored leaf. Public-door call sites must continue using `render_rust`.
+fn render_rust_for_direct_storage(
+    types: &IntermediateTypes,
+    mv: &MintValue,
+    stored_type: &RustType,
+) -> String {
+    let rendered = render_rust(mv);
+    if stored_type.exact_byte_array_len_checked().is_some() {
+        return format!("{rendered}.try_into().unwrap()");
+    }
+    let render_array = |element: &RustType| {
+        render_rust_array(mv, &|value| {
+            render_rust_for_direct_storage(types, value, element)
+        })
+    };
+    let render_map = |key: &RustType, value: &RustType| {
+        render_rust_map(
+            mv,
+            &|expr| {
+                if key.exact_byte_array_len_checked().is_some() {
+                    format!("{expr}.try_into().unwrap()")
+                } else {
+                    expr
+                }
+            },
+            &|mv| render_rust_for_direct_storage(types, mv, value),
+        )
+    };
+    match stored_type.resolve_alias_shallow() {
+        ConceptualRustType::Array(element) if matches!(mv, MintValue::Array { .. }) => {
+            render_array(element)
+        }
+        ConceptualRustType::Map(key, value) if matches!(mv, MintValue::Map { .. }) => {
+            render_map(key, value)
+        }
+        ConceptualRustType::Rust(type_ident) => {
+            match types.rust_struct(type_ident).map(RustStruct::variant) {
+                Some(RustStructType::Array { element_type, .. })
+                    if matches!(mv, MintValue::Array { .. }) =>
+                {
+                    render_array(element_type)
+                }
+                Some(RustStructType::Table { domain, range, .. })
+                    if matches!(mv, MintValue::Map { .. }) =>
+                {
+                    render_map(domain, range)
+                }
+                Some(RustStructType::Record(record)) => {
+                    let MintValue::Record {
+                        ident,
+                        args,
+                        can_fail,
+                    } = mv
+                    else {
+                        return rendered;
+                    };
+                    let arg_types = record_ctor_arg_types(record, types);
+                    if arg_types.len() != args.len() {
+                        return rendered;
+                    }
+                    let args = args
+                        .iter()
+                        .zip(&arg_types)
+                        .map(|(value, ty)| render_rust_for_constructor_arg(types, value, ty))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!(
+                        "{ident}::new({args}){}",
+                        if *can_fail { ".unwrap()" } else { "" }
+                    )
+                }
+                Some(RustStructType::Wrapper { wrapped, .. }) => {
+                    let MintValue::Wrapper {
+                        ident,
+                        inner,
+                        can_fail,
+                    } = mv
+                    else {
+                        return rendered;
+                    };
+                    let inner = render_rust_for_constructor_arg(types, inner, wrapped);
+                    format!(
+                        "{ident}::new({inner}){}",
+                        if *can_fail { ".unwrap()" } else { "" }
+                    )
+                }
+                Some(RustStructType::TypeChoice { variants })
+                | Some(RustStructType::GroupChoice { variants, .. }) => {
+                    let MintValue::Choice {
+                        ident,
+                        variant,
+                        args,
+                        can_fail,
+                    } = mv
+                    else {
+                        return rendered;
+                    };
+                    let Some(selected) = variants
+                        .iter()
+                        .find(|candidate| candidate.name_as_var() == *variant)
+                    else {
+                        return rendered;
+                    };
+                    let group_choice = matches!(
+                        types.rust_struct(type_ident).map(RustStruct::variant),
+                        Some(RustStructType::GroupChoice { .. })
+                    );
+                    let Some(arg_fields) = variant_arg_fields(types, selected, group_choice) else {
+                        return rendered;
+                    };
+                    if arg_fields.len() != args.len() {
+                        return rendered;
+                    }
+                    let args = args
+                        .iter()
+                        .zip(&arg_fields)
+                        .map(|(value, (ty, _))| render_rust_for_constructor_arg(types, value, ty))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    format!(
+                        "{ident}::new_{variant}({args}){}",
+                        if *can_fail { ".unwrap()" } else { "" }
+                    )
+                }
+                _ => rendered,
+            }
+        }
+        _ => rendered,
+    }
+}
+
+/// Render one argument at a generated public constructor. Only an exact byte leaf (including its
+/// nullable spelling) uses the loose Vec door. Every collection or named aggregate parameter is
+/// already its native member type, so recurse through the direct-storage renderer for those.
+fn render_rust_for_constructor_arg(
+    types: &IntermediateTypes,
+    mv: &MintValue,
+    arg_type: &RustType,
+) -> String {
+    if arg_type.exact_byte_array_len_checked().is_some()
+        || matches!(
+            arg_type.conceptual_type.resolve_alias_shallow(),
+            ConceptualRustType::Optional(inner)
+                if inner.exact_byte_array_len_checked().is_some()
+        )
+    {
+        render_rust(mv)
+    } else {
+        render_rust_for_direct_storage(types, mv, arg_type)
     }
 }
 
@@ -401,7 +589,13 @@ pub fn emit_generated_tests(
                 float_min_max,
             } => match float_min_max {
                 Some(window) => wrapper_construct_reject_float(&name, wrapped, window),
-                None => min_max.and_then(|mm| wrapper_construct_reject(types, &name, wrapped, mm)),
+                None => min_max
+                    .or_else(|| {
+                        wrapped
+                            .exact_byte_array_len_checked()
+                            .and(wrapped.config.bounds)
+                    })
+                    .and_then(|mm| wrapper_construct_reject(types, &name, wrapped, mm)),
             },
             _ => None,
         };
@@ -455,6 +649,7 @@ pub fn emit_generated_tests(
                 float_min_max,
             } => wrapper_roundtrip(
                 types,
+                types.can_new_fail(ident),
                 &name,
                 wrapped,
                 *min_max,
@@ -930,6 +1125,10 @@ pub(crate) fn record_ctor_can_fail(record: &RustRecord, types: &IntermediateType
         || record
             .captured_dynamic_rows()
             .any(|row| row.is_non_empty_array_tail() && row.element().has_value_bounds())
+        || (record.is_non_empty_open_table()
+            && record.typed_row().is_some_and(|row| {
+                row.domain().has_value_bounds() || row.range().has_value_bounds()
+            }))
         || (record.has_forbidden_fields() && record.has_protected_rest_keys(types))
         || (record.has_protected_rest_keys(types)
             && record
@@ -1336,11 +1535,22 @@ fn record_roundtrip(
         ordered.sort_by_key(|(source_index, _)| *source_index);
         valid_args = ordered.into_iter().map(|(_, value)| value).collect();
     }
-    let base = render_rust(&MintValue::Record {
-        ident: name.to_owned(),
-        args: valid_args,
-        can_fail: record_ctor_can_fail(record, types),
-    });
+    let ctor_arg_types = record_ctor_arg_types(record, types);
+    debug_assert_eq!(valid_args.len(), ctor_arg_types.len());
+    let rendered_args = valid_args
+        .iter()
+        .zip(&ctor_arg_types)
+        .map(|(value, ty)| render_rust_for_constructor_arg(types, value, ty))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let base = format!(
+        "{name}::new({rendered_args}){}",
+        if record_ctor_can_fail(record, types) {
+            ".unwrap()"
+        } else {
+            ""
+        }
+    );
     let mut cases = vec![(base.clone(), "baseline".to_owned())];
     for f in record.fields.iter().filter(|f| f.optional) {
         // An optional fixed value (any kind, including float) is stored as a `bool` presence field,
@@ -1355,7 +1565,7 @@ fn record_roundtrip(
         }
         match valid_value(types, &f.rust_type) {
             Some(x) => {
-                let x = render_rust(&x);
+                let x = render_rust_for_direct_storage(types, &x, &f.rust_type);
                 // a defaulted optional is stored as a PLAIN field (absent on the wire = default);
                 // only non-defaulted optionals are Option<T> in the struct
                 let assign = if f.rust_type.config.default.is_some() {
@@ -1386,7 +1596,7 @@ fn record_roundtrip(
                 format!(
                     "{{ let mut v = {base}; v.{} = Some({}); v }}",
                     f.name,
-                    render_rust(&x)
+                    render_rust_for_direct_storage(types, &x, inner)
                 ),
                 format!("nullable `{}` present", f.name),
             ));
@@ -1455,8 +1665,8 @@ fn record_roundtrip(
                             format!(
                                 "v.{}.insert({}, {});",
                                 rest.field_name,
-                                render_rust(&k),
-                                render_rust(&v)
+                                render_rust_for_direct_storage(types, &k, domain),
+                                render_rust_for_direct_storage(types, &v, range)
                             )
                         };
                         cases.push((
@@ -1491,7 +1701,7 @@ fn record_roundtrip(
                         format!(
                             "{{ let mut v = {base}; v.{}.push({}); v }}",
                             rest.field_name,
-                            render_rust(&e)
+                            render_rust_for_direct_storage(types, &e, element)
                         ),
                         "rest tail element present".to_owned(),
                     )),
@@ -1556,13 +1766,21 @@ fn choice_roundtrip(
         if !ok {
             continue;
         }
+        let args = args
+            .iter()
+            .zip(&arg_fields)
+            .map(|(value, (ty, _))| render_rust_for_constructor_arg(types, value, ty))
+            .collect::<Vec<_>>()
+            .join(", ");
         cases.push((
-            render_rust(&MintValue::Choice {
-                ident: name.to_owned(),
-                variant: variant.name_as_var(),
-                args,
-                can_fail: arg_fields.iter().any(|(ty, _)| arg_can_fail(types, ty)),
-            }),
+            format!(
+                "{name}::{ctor}({args}){}",
+                if arg_fields.iter().any(|(ty, _)| arg_can_fail(types, ty)) {
+                    ".unwrap()"
+                } else {
+                    ""
+                }
+            ),
             format!("variant {}", variant.name),
         ));
         minted.push(variant_idx);
@@ -1590,6 +1808,7 @@ fn choice_roundtrip(
 #[allow(clippy::too_many_arguments)]
 fn wrapper_roundtrip(
     types: &IntermediateTypes,
+    can_fail: bool,
     name: &str,
     wrapped: &RustType,
     min_max: Option<Bounds>,
@@ -1621,12 +1840,14 @@ fn wrapper_roundtrip(
         );
         return None;
     };
-    // mirrors the wrapper ctor's fallibility rule: `new()` returns Result iff a window check exists
-    let base = render_rust(&MintValue::Wrapper {
-        ident: name.to_owned(),
-        inner: Box::new(inner),
-        can_fail: min_max.is_some() || float_min_max.is_some(),
-    });
+    // Registration owns the complete wrapper constructor-fallibility verdict. Exact-byte wrappers
+    // keep their window on `wrapped` rather than `min_max`, so checking only the legacy window
+    // slots here would leave their standalone emitted-test mint as an unhandled `Result`.
+    let inner = render_rust_for_constructor_arg(types, &inner, wrapped);
+    let base = format!(
+        "{name}::new({inner}){}",
+        if can_fail { ".unwrap()" } else { "" }
+    );
     roundtrip_body(
         name,
         vec![(base, "baseline".to_owned())],
@@ -1649,7 +1870,11 @@ pub(crate) fn arg_can_fail(types: &IntermediateTypes, ty: &RustType) -> bool {
 /// Render the loose-to-tight door for a bounded-array mint, leaving its `Result` observable.
 /// `render_rust` normally unwraps this door because it produces a valid constructor argument; the
 /// boundary probes need to assert on the door itself instead.
-fn render_bounded_array_try_from(mv: &MintValue) -> Option<String> {
+fn render_bounded_array_try_from(
+    types: &IntermediateTypes,
+    mv: &MintValue,
+    array_type: &RustType,
+) -> Option<String> {
     let MintValue::Array {
         elem: Some(elem),
         count,
@@ -1659,6 +1884,18 @@ fn render_bounded_array_try_from(mv: &MintValue) -> Option<String> {
     } = mv
     else {
         return None;
+    };
+    let render_elem = |value: &MintValue| match array_type.resolve_alias_shallow() {
+        ConceptualRustType::Array(element) => render_rust_for_direct_storage(types, value, element),
+        ConceptualRustType::Rust(ident) => {
+            match types.rust_struct(ident).map(RustStruct::variant) {
+                Some(RustStructType::Array { element_type, .. }) => {
+                    render_rust_for_direct_storage(types, value, element_type)
+                }
+                _ => render_rust(value),
+            }
+        }
+        _ => render_rust(value),
     };
     let elems = if *reject {
         match mv {
@@ -1671,12 +1908,12 @@ fn render_bounded_array_try_from(mv: &MintValue) -> Option<String> {
     } else {
         return Some(format!(
             "BoundedVec::<_, {min}, {max}>::try_from(vec![{}; {count}])",
-            render_rust(elem)
+            render_elem(elem)
         ));
     };
     Some(format!(
         "BoundedOrderedSet::<_, {min}, {max}>::try_from(vec![{}])",
-        elems.iter().map(render_rust).collect::<Vec<_>>().join(", ")
+        elems.iter().map(render_elem).collect::<Vec<_>>().join(", ")
     ))
 }
 
@@ -1698,7 +1935,7 @@ fn type_enforced_bounded_array_ctor_probes(
             continue;
         };
         for (mv, accept, label) in bound_cases(types, arg_ty, bounds, true) {
-            let Some(door) = render_bounded_array_try_from(&mv) else {
+            let Some(door) = render_bounded_array_try_from(types, &mv, arg_ty) else {
                 continue;
             };
             if accept {
@@ -1708,7 +1945,7 @@ fn type_enforced_bounded_array_ctor_probes(
                     if i == target {
                         args.push("__bounded_arg".to_owned());
                     } else if let Some(value) = valid_value(types, ty) {
-                        args.push(render_rust(&value));
+                        args.push(render_rust_for_constructor_arg(types, &value, ty));
                     } else {
                         mintable = false;
                         break;
@@ -1738,6 +1975,74 @@ fn type_enforced_bounded_array_ctor_probes(
     blocks
 }
 
+/// Boundary probes for constructor arguments whose exact-byte carrier is stored as `[u8; N]` but
+/// whose public door deliberately accepts `Vec<u8>` (or `Option<Vec<u8>>`). Unlike a bounded
+/// collection, the invalid state cannot be built and then assigned to the native field: the array
+/// representation has already made it unrepresentable. Keep the invalid value loose and observe
+/// the owning constructor's `RangeCheck` instead.
+fn exact_byte_array_ctor_probes(
+    types: &IntermediateTypes,
+    ctor: &str,
+    arg_types: &[&RustType],
+    ctor_can_fail: bool,
+) -> Vec<String> {
+    let mut blocks = Vec::new();
+    for (target, arg_ty) in arg_types.iter().enumerate() {
+        let (exact_ty, optional) = if arg_ty.exact_byte_array_len_checked().is_some() {
+            (*arg_ty, false)
+        } else if let ConceptualRustType::Optional(inner) =
+            arg_ty.conceptual_type.resolve_alias_shallow()
+            && inner.exact_byte_array_len_checked().is_some()
+        {
+            (inner.as_ref(), true)
+        } else {
+            continue;
+        };
+        let Some(bounds) = exact_ty.config.bounds else {
+            continue;
+        };
+        for (mv, accept, label) in bound_cases(types, exact_ty, bounds, true) {
+            let target_expr = render_rust(&mv);
+            let target_expr = if optional {
+                format!("Some({target_expr})")
+            } else {
+                target_expr
+            };
+            let mut args = Vec::new();
+            let mut mintable = true;
+            for (i, ty) in arg_types.iter().enumerate() {
+                if i == target {
+                    args.push(target_expr.clone());
+                } else if let Some(value) = valid_value(types, ty) {
+                    // Other arguments follow their public constructor spelling. In particular a
+                    // second exact-byte leaf stays loose, while a collection carrier is tight.
+                    args.push(render_rust_for_constructor_arg(types, &value, ty));
+                } else {
+                    mintable = false;
+                    break;
+                }
+            }
+            if !mintable {
+                continue;
+            }
+            let call = format!("{ctor}({})", args.join(", "));
+            if accept {
+                let call = if ctor_can_fail {
+                    format!("{call}.expect(\"{ctor} argument {label} must be accepted\")")
+                } else {
+                    call
+                };
+                blocks.push(format!("    let _ = {call};"));
+            } else {
+                blocks.push(format!(
+                    "    assert!(matches!({call}.unwrap_err().failure(), __CddlTestDeserializeFailure::RangeCheck {{ .. }}), \"{ctor} argument {label} must be rejected as RangeCheck\");"
+                ));
+            }
+        }
+    }
+    blocks
+}
+
 /// deser-reject for a struct: for each cheaply-mutatable bounded field, mint a valid baseline,
 /// mutate that one field out of bounds, and assert the wire path rejects it as `RangeCheck`.
 fn record_deser_reject(
@@ -1748,12 +2053,18 @@ fn record_deser_reject(
 ) -> Option<String> {
     let ctor_arg_types = record_ctor_arg_types(record, types);
     let ctor_arg_type_refs: Vec<&RustType> = ctor_arg_types.iter().collect();
-    let mut bounded_array_probes = type_enforced_bounded_array_ctor_probes(
+    let mut ctor_probes = exact_byte_array_ctor_probes(
         types,
         &format!("{name}::new"),
         &ctor_arg_type_refs,
         record_ctor_can_fail(record, types),
     );
+    ctor_probes.extend(type_enforced_bounded_array_ctor_probes(
+        types,
+        &format!("{name}::new"),
+        &ctor_arg_type_refs,
+        record_ctor_can_fail(record, types),
+    ));
 
     // constructor arg list: mandatory, non-fixed, non-default fields (mirrors codegen_struct)
     let ctor_fields: Vec<&RustField> = record
@@ -1788,12 +2099,15 @@ fn record_deser_reject(
                 && measure_kind(&f.rust_type).is_some()
                 && !f.rust_type.is_type_enforced_non_empty()
                 && !f.rust_type.is_type_enforced_bounded_array()
-                && !f.rust_type.is_type_enforced_bounded_map())
+                && !f.rust_type.is_type_enforced_bounded_map()
+                // Exact bytes are stored as `[u8; N]`: an invalid mutation cannot be expressed.
+                // `exact_byte_array_ctor_probes` keeps the loose Vec at the owning `new` door.
+                && f.rust_type.exact_byte_array_len_checked().is_none())
                 || f.rust_type.config.float_bounds.is_some()
         })
         .collect();
     if targets.is_empty() {
-        return (!bounded_array_probes.is_empty()).then(|| bounded_array_probes.join("\n"));
+        return (!ctor_probes.is_empty()).then(|| ctor_probes.join("\n"));
     }
 
     // Valid baseline args for every constructor input (fixed fields plus any checked dynamic map
@@ -1801,12 +2115,12 @@ fn record_deser_reject(
     let mut valid_args: Vec<String> = Vec::new();
     for ty in &ctor_arg_types {
         match valid_value(types, ty) {
-            Some(v) => valid_args.push(render_rust(&v)),
+            Some(v) => valid_args.push(render_rust_for_constructor_arg(types, &v, ty)),
             None => {
                 crate::warn!(
                     "cddl-codegen --emit-tests: skipped {name} (constructor argument not cheaply mintable)"
                 );
-                return (!bounded_array_probes.is_empty()).then(|| bounded_array_probes.join("\n"));
+                return (!ctor_probes.is_empty()).then(|| ctor_probes.join("\n"));
             }
         }
     }
@@ -1875,13 +2189,13 @@ fn record_deser_reject(
         }
     }
     if blocks.is_empty() {
-        return (!bounded_array_probes.is_empty()).then(|| bounded_array_probes.join("\n"));
+        return (!ctor_probes.is_empty()).then(|| ctor_probes.join("\n"));
     }
-    bounded_array_probes.push(format!(
+    ctor_probes.push(format!(
         "    let mk = || {baseline};\n{}",
         blocks.join("\n")
     ));
-    Some(bounded_array_probes.join("\n"))
+    Some(ctor_probes.join("\n"))
 }
 
 /// construct-reject for type/group choice variants whose constructor checks bounds.
@@ -1951,7 +2265,7 @@ fn choice_construct_reject(
                         valid_value(types, ty)
                     };
                     match v {
-                        Some(s) => call_args.push(render_rust(&s)),
+                        Some(s) => call_args.push(render_rust_for_constructor_arg(types, &s, ty)),
                         None => {
                             ok = false;
                             break;
@@ -2007,7 +2321,7 @@ fn wrapper_construct_reject(
     let lines: Vec<String> = cases
         .into_iter()
         .map(|(expr, accept, label)| {
-            let expr = render_rust(&expr);
+            let expr = render_rust_for_constructor_arg(types, &expr, wrapped);
             if accept {
                 format!("    assert!({name}::new({expr}).is_ok(), \"{name}::new {label} value must be accepted\");")
             } else {
@@ -2601,7 +2915,10 @@ pub(crate) fn mint_struct(
             Some(MintValue::Wrapper {
                 ident: name,
                 inner: Box::new(inner),
-                can_fail: min_max.is_some() || float_min_max.is_some(),
+                // Registration owns the complete constructor-fallibility verdict. In particular,
+                // exact-byte wrappers retain their bound on `wrapped` (rather than `min_max`) so
+                // their Vec -> [u8; N] door must still be unwrapped in every emitted mint.
+                can_fail: types.can_new_fail(ident),
             })
         }
         RustStructType::CStyleEnum { variants } => variants.first().map(|v| MintValue::CEnum {

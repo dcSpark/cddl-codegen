@@ -301,7 +301,6 @@ pub struct WitStamp(pub RefCell<cddl_lib::Stamp>);
 
 impl wit_types::GuestStamp for WitStamp {
     fn new(inner: Vec<u8>) -> Result<Self, String> {
-        let inner = inner.into_iter().collect();
         let inner = cddl_lib::Stamp::new(inner).map_err(err)?;
         Ok(WitStamp(RefCell::new(inner)))
     }

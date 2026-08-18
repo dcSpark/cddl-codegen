@@ -292,6 +292,24 @@ const COMPONENT_PARITY_EXEMPT: &[(&str, &str, &str)] = &[
         "ExactZeroOpen::insert_rest",
         "native exact-zero invariant door; the component face exposes constructor validation plus a detached rest snapshot",
     ),
+    // Exact-byte captured rows use the same read-only component posture. Their native insertion
+    // method owns the Vec -> [u8; N] handover, while the component resource exposes checked
+    // construction and a detached row snapshot rather than a parent-mutating list/table handle.
+    (
+        "component-bounds",
+        "FixedByteOpen::insert_rest",
+        "native exact-byte invariant door; the component face exposes checked construction plus a detached rest snapshot",
+    ),
+    (
+        "component-bounds-preserve",
+        "FixedByteOpen::insert_rest",
+        "native exact-byte invariant door; the component face exposes checked construction plus a detached rest snapshot",
+    ),
+    (
+        "component-bounds-canonical",
+        "FixedByteOpen::insert_rest",
+        "native exact-byte invariant door; the component face exposes checked construction plus a detached rest snapshot",
+    ),
     // Protected open-struct rest carriers use the same read-only component posture as exact-zero:
     // construction re-enters the native checked door and the getter returns a detached snapshot,
     // while mutation remains a native-only invariant door. The multifile rows prove that this is

@@ -149,7 +149,6 @@ entries = [
   "matrix.heterogeneous-array.occurrence-bounds",
   "matrix.open-array.optional-adjacency",
   "matrix.heterogeneous-array.atomic-bounds-handover",
-  "matrix.fixed-bytes.static-representation",
   "matrix.fixed-array.static-representation",
   "shared-carrier-delivery-requirements",
   "matrix.inline-group-occurrence-carrier",
@@ -683,29 +682,6 @@ external_predicate_md = '''One published parser release accepts both h'cafe' and
 verification_md = '''Probe h'cafe', b64'yv4=', h'CAFE', and a raw UTF-8 control in the same release, exercise every already-supported fixed-value surface, and update feature/docs/projections/vectors only if lowered bytes agree.
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
-'''
-
-[[record]]
-id = "matrix.fixed-bytes.static-representation"
-title = "Fixed-byte representation optimization"
-
-[record.payload]
-kind = "work"
-body_md = '''### Fixed-byte representation optimization
-
-`bytes .size 32` can map to `[u8; 32]`: the representation itself carries the constraint. The
-`uint .size 1` → `u8` mapping is the shipped precedent, independently of the `TryFrom` door, which
-stays as the ergonomic entry point.
-
-'''
-work_state = "ready"
-work_intent = "optimize"
-work_kind = "optimization"
-risk = "wrong_public_api"
-acceptance_md = '''Map an exact bytes .size N value to [u8; N], retain TryFrom as the ergonomic entry point, and cover Rust, wasm, JSON, component, cross-crate, matrix, fixed-member, and recombination surfaces without changing fixed-array campaign identity.
-'''
-priority_band = "normal"
-priority_rationale_md = '''The exact byte-array representation carries its length invariant statically and has the shipped uint .size 1 to u8 precedent, while remaining an independent optimization.
 '''
 
 [[record]]
@@ -2596,11 +2572,6 @@ kind = "parent_of"
 target = "matrix.multifile.extern-shape-coverage"
 
 [[relation]]
-source = "matrix.fixed-array.static-representation"
-kind = "complements"
-target = "matrix.fixed-bytes.static-representation"
-
-[[relation]]
 source = "matrix.fixed-map-key-kinds"
 kind = "related"
 target = "matrix.float-table-key-domain"
@@ -2609,11 +2580,6 @@ target = "matrix.float-table-key-domain"
 source = "matrix.fixed-map-key-kinds"
 kind = "related"
 target = "matrix.nint-capability"
-
-[[relation]]
-source = "matrix.heterogeneous-array.occurrence-bounds"
-kind = "parent_of"
-target = "matrix.fixed-bytes.static-representation"
 
 [[relation]]
 source = "matrix.heterogeneous-array.occurrence-bounds"

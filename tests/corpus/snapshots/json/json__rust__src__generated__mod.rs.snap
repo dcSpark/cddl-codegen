@@ -12,6 +12,7 @@ expression: content
 )]
 
 extern crate alloc;
+use alloc::borrow::ToOwned;
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::string::ToString;
@@ -138,6 +139,81 @@ impl CustomWrapper {
 impl From<u64> for CustomWrapper {
     fn from(inner: u64) -> Self {
         CustomWrapper::new(inner)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ExactBytesWrapper(pub(crate) [u8; 4]);
+
+impl ExactBytesWrapper {
+    pub fn get(&self) -> &[u8; 4] {
+        &self.0
+    }
+
+    pub fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
+        let inner: [u8; 4] = inner.try_into().map_err(|bytes: Vec<u8>| {
+            DeserializeError::new(
+                "ExactBytesWrapper",
+                DeserializeFailure::RangeCheck {
+                    found: bytes.len() as i128,
+                    min: Some(4),
+                    max: Some(4),
+                },
+            )
+        })?;
+        Ok(Self(inner))
+    }
+}
+
+impl TryFrom<Vec<u8>> for ExactBytesWrapper {
+    type Error = DeserializeError;
+
+    fn try_from(inner: Vec<u8>) -> Result<Self, Self::Error> {
+        ExactBytesWrapper::new(inner)
+    }
+}
+
+impl serde::Serialize for ExactBytesWrapper {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&hex::encode(self.0.clone()))
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for ExactBytesWrapper {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;
+        decode_canonical_hex(&s)
+            .ok()
+            .and_then(|bytes| ExactBytesWrapper::new(bytes).ok())
+            .ok_or_else(|| {
+                serde::de::Error::invalid_value(
+                    serde::de::Unexpected::Str(&s),
+                    &"invalid hex bytes",
+                )
+            })
+    }
+}
+
+impl schemars::JsonSchema for ExactBytesWrapper {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("ExactBytesWrapper")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let mut out = String::json_schema(generator);
+        out.insert("minLength".to_owned(), 8u64.into());
+        out.insert("maxLength".to_owned(), 8u64.into());
+        out
+    }
+
+    fn inline_schema() -> bool {
+        String::inline_schema()
     }
 }
 
@@ -787,6 +863,12 @@ impl schemars::JsonSchema for U8Wrapper {
 
     fn inline_schema() -> bool {
         <u8 as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+impl From<ExactBytesWrapper> for [u8; 4] {
+    fn from(wrapper: ExactBytesWrapper) -> Self {
+        wrapper.0
     }
 }
 

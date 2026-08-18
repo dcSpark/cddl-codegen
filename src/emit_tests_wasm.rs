@@ -142,10 +142,10 @@ pub fn emit_generated_wasm_tests(
                 wasm_record_roundtrip(types, ident, &name, record, &scoped, cli)
             }
             RustStructType::TypeChoice { variants } => {
-                wasm_choice_roundtrip(types, &name, variants, false, &scoped, cli)
+                wasm_choice_roundtrip(types, ident, &name, variants, false, &scoped, cli)
             }
             RustStructType::GroupChoice { variants, .. } => {
-                wasm_choice_roundtrip(types, &name, variants, true, &scoped, cli)
+                wasm_choice_roundtrip(types, ident, &name, variants, true, &scoped, cli)
             }
             RustStructType::Wrapper { .. } => {
                 wasm_wrapper_roundtrip(types, ident, &name, &scoped, cli)
@@ -376,6 +376,202 @@ fn rust_scoped(mv: &MintValue, scoped: &ScopeMap) -> String {
     }
 }
 
+/// Render a native value that is written into an already-typed carrier. The independent rust twin
+/// normally keeps exact bytes loose so a public `[u8; N]` constructor door can check `Vec<u8>`.
+/// Collections and named aggregates are themselves already-native constructor arguments, though,
+/// so their nested exact-byte leaves must be materialized as arrays before the carrier is built.
+/// This is the scope-qualified twin of `emit_tests::render_rust_for_direct_storage`.
+fn rust_scoped_for_direct_storage(
+    types: &IntermediateTypes,
+    mv: &MintValue,
+    stored_type: &RustType,
+    scoped: &ScopeMap,
+) -> String {
+    let rendered = rust_scoped(mv, scoped);
+    if stored_type.exact_byte_array_len_checked().is_some() {
+        return format!("{rendered}.try_into().unwrap()");
+    }
+    let render_array = |element: &RustType| {
+        emit_tests::render_rust_array(mv, &|value| {
+            rust_scoped_for_direct_storage(types, value, element, scoped)
+        })
+    };
+    let render_map = |key: &RustType, value: &RustType| {
+        emit_tests::render_rust_map(
+            mv,
+            &|expr| {
+                if key.exact_byte_array_len_checked().is_some() {
+                    format!("{expr}.try_into().unwrap()")
+                } else {
+                    expr
+                }
+            },
+            &|value_mint| rust_scoped_for_direct_storage(types, value_mint, value, scoped),
+        )
+    };
+    match stored_type.resolve_alias_shallow() {
+        ConceptualRustType::Array(element) if matches!(mv, MintValue::Array { .. }) => {
+            render_array(element)
+        }
+        ConceptualRustType::Map(key, value) if matches!(mv, MintValue::Map { .. }) => {
+            render_map(key, value)
+        }
+        ConceptualRustType::Rust(type_ident) => {
+            rust_scoped_for_named(types, mv, type_ident, scoped)
+        }
+        _ => rendered,
+    }
+}
+
+/// Render one native public-constructor argument. A direct exact-byte leaf stays a loose `Vec<u8>`
+/// so the generated API exercises its checked conversion; every aggregate argument is already its
+/// stored native carrier and recursively tightens exact-byte leaves.
+fn rust_scoped_for_constructor_arg(
+    types: &IntermediateTypes,
+    mv: &MintValue,
+    arg_type: &RustType,
+    scoped: &ScopeMap,
+) -> String {
+    if arg_type.exact_byte_array_len_checked().is_some()
+        || matches!(
+            arg_type.conceptual_type.resolve_alias_shallow(),
+            ConceptualRustType::Optional(inner)
+                if inner.exact_byte_array_len_checked().is_some()
+        )
+    {
+        rust_scoped(mv, scoped)
+    } else {
+        rust_scoped_for_direct_storage(types, mv, arg_type, scoped)
+    }
+}
+
+/// Scope-qualified, type-aware rendering for a named native value. Its constructor arguments are
+/// rendered at their actual native ABI types rather than by inspecting the mint tree alone.
+fn rust_scoped_for_named(
+    types: &IntermediateTypes,
+    mv: &MintValue,
+    type_ident: &RustIdent,
+    scoped: &ScopeMap,
+) -> String {
+    let rendered = rust_scoped(mv, scoped);
+    let scoped_name = |ident: &str| {
+        scoped
+            .get(ident)
+            .cloned()
+            .unwrap_or_else(|| ident.to_owned())
+    };
+    match types
+        .rust_struct(type_ident)
+        .map(|rust_struct| rust_struct.variant())
+    {
+        Some(RustStructType::Array { element_type, .. })
+            if matches!(mv, MintValue::Array { .. }) =>
+        {
+            emit_tests::render_rust_array(mv, &|value| {
+                rust_scoped_for_direct_storage(types, value, element_type, scoped)
+            })
+        }
+        Some(RustStructType::Table { domain, range, .. })
+            if matches!(mv, MintValue::Map { .. }) =>
+        {
+            emit_tests::render_rust_map(
+                mv,
+                &|expr| {
+                    if domain.exact_byte_array_len_checked().is_some() {
+                        format!("{expr}.try_into().unwrap()")
+                    } else {
+                        expr
+                    }
+                },
+                &|value| rust_scoped_for_direct_storage(types, value, range, scoped),
+            )
+        }
+        Some(RustStructType::Record(record)) => {
+            let MintValue::Record {
+                ident,
+                args,
+                can_fail,
+            } = mv
+            else {
+                return rendered;
+            };
+            let arg_types = record_ctor_arg_types(record, types);
+            if arg_types.len() != args.len() {
+                return rendered;
+            }
+            let args = args
+                .iter()
+                .zip(&arg_types)
+                .map(|(value, ty)| rust_scoped_for_constructor_arg(types, value, ty, scoped))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(
+                "{}::new({args}){}",
+                scoped_name(ident),
+                if *can_fail { ".unwrap()" } else { "" }
+            )
+        }
+        Some(RustStructType::Wrapper { wrapped, .. }) => {
+            let MintValue::Wrapper {
+                ident,
+                inner,
+                can_fail,
+            } = mv
+            else {
+                return rendered;
+            };
+            let inner = rust_scoped_for_constructor_arg(types, inner, wrapped, scoped);
+            format!(
+                "{}::new({inner}){}",
+                scoped_name(ident),
+                if *can_fail { ".unwrap()" } else { "" }
+            )
+        }
+        Some(RustStructType::TypeChoice { variants })
+        | Some(RustStructType::GroupChoice { variants, .. }) => {
+            let MintValue::Choice {
+                ident,
+                variant,
+                args,
+                can_fail,
+            } = mv
+            else {
+                return rendered;
+            };
+            let Some(selected) = variants
+                .iter()
+                .find(|candidate| candidate.name_as_var() == *variant)
+            else {
+                return rendered;
+            };
+            let group_choice = matches!(
+                types
+                    .rust_struct(type_ident)
+                    .map(|rust_struct| rust_struct.variant()),
+                Some(RustStructType::GroupChoice { .. })
+            );
+            let Some(arg_fields) = variant_arg_fields(types, selected, group_choice) else {
+                return rendered;
+            };
+            if arg_fields.len() != args.len() {
+                return rendered;
+            }
+            let args = args
+                .iter()
+                .zip(&arg_fields)
+                .map(|(value, (ty, _))| rust_scoped_for_constructor_arg(types, value, ty, scoped))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(
+                "{}::new_{variant}({args}){}",
+                scoped_name(ident),
+                if *can_fail { ".unwrap()" } else { "" }
+            )
+        }
+        _ => rendered,
+    }
+}
+
 /// The wasm wrapper-API value expression for `mv` of resolved type `ty`, or `None` (skip the whole
 /// enclosing type, loudly at the caller) when the shape has no faithful wasm-ctor build.
 fn wasm_value(
@@ -477,9 +673,10 @@ fn wasm_named(
         // the arg's boundary conversion + serialization stay covered by the enclosing byte differential.
         RustStructType::Wrapper { .. }
         | RustStructType::Table { .. }
-        | RustStructType::Array { .. } => {
-            Some(format!("{name}::from({})", rust_scoped(mv, scoped)))
-        }
+        | RustStructType::Array { .. } => Some(format!(
+            "{name}::from({})",
+            rust_scoped_for_named(types, mv, ident, scoped)
+        )),
         // extern / raw-bytes reference user-supplied types with no generated conversion to lean on.
         // Defensive backstop, unreachable at HEAD and unreachable by anything else either — the arm
         // is variant-specific, and the shared minter never produces a `MintValue` for these two
@@ -693,7 +890,10 @@ fn wasm_collection_build(
             // the named-Array ctor-arg path in `wasm_named`). Element exposability is irrelevant: the
             // core value already carries the right twin, and `From` is infallible.
             if *reject {
-                return Some(format!("{wrapper}::from({})", rust_scoped(mv, scoped)));
+                return Some(format!(
+                    "{wrapper}::from({})",
+                    rust_scoped_for_direct_storage(types, mv, field_ty, scoped)
+                ));
             }
             // `add(elem)` takes the element via `for_wasm_param`, so reuse `wasm_arg` for the same
             // by-ref/by-value boundary the wrapper's ctor param uses.
@@ -718,7 +918,10 @@ fn wasm_collection_build(
                         "{wrapper}::try_from(vec![{elem_expr}; {count}]).ok().expect(\"bounded emitted-test mint\")"
                     ));
                 }
-                return Some(format!("{wrapper}::from({})", rust_scoped(mv, scoped)));
+                return Some(format!(
+                    "{wrapper}::from({})",
+                    rust_scoped_for_direct_storage(types, mv, field_ty, scoped)
+                ));
             }
             let mut body = format!("let mut l = {wrapper}::new();");
             if let Some(e) = elem {
@@ -748,7 +951,10 @@ fn wasm_collection_build(
                 // Positive-minimum bounded maps intentionally have no empty wasm constructor.
                 // The shared mint already entered the core through BoundedMap::TryFrom<Vec<_>>;
                 // every wrapper has an infallible From<core> bridge, so this preserves that door.
-                return Some(format!("{wrapper}::from({})", rust_scoped(mv, scoped)));
+                return Some(format!(
+                    "{wrapper}::from({})",
+                    rust_scoped_for_direct_storage(types, mv, field_ty, scoped)
+                ));
             }
             if field_ty.is_type_enforced_non_empty() {
                 // restricted wrapper: `new(first_key, first_value)` seeds the first entry (no empty
@@ -813,7 +1019,7 @@ fn wasm_record_roundtrip(
         );
         return None;
     };
-    let rust_build = rust_scoped(&entry_mv, scoped);
+    let rust_build = rust_scoped_for_named(types, &entry_mv, ident, scoped);
 
     // §3 accessor read-back: primitive/c-enum ctor getters against the emit-time literal.
     let ctor_fields = record_ctor_fields(record);
@@ -851,6 +1057,7 @@ fn wasm_record_roundtrip(
 
 fn wasm_choice_roundtrip(
     types: &IntermediateTypes,
+    ident: &RustIdent,
     name: &str,
     variants: &[EnumVariant],
     group_choice: bool,
@@ -892,7 +1099,7 @@ fn wasm_choice_roundtrip(
             );
             continue;
         };
-        let rust_build = rust_scoped(&choice_mv, scoped);
+        let rust_build = rust_scoped_for_named(types, &choice_mv, ident, scoped);
 
         // §3: kind() pinned to the minted variant; as_<variant>() Some (== literal for a single
         // primitive payload) and a sibling variant's as_() None.
@@ -980,7 +1187,7 @@ fn wasm_wrapper_roundtrip(
     let MintValue::Wrapper { inner, .. } = &entry_mv else {
         return None;
     };
-    let rust_build = rust_scoped(&entry_mv, scoped);
+    let rust_build = rust_scoped_for_named(types, &entry_mv, ident, scoped);
     // The wrapped inner type — drives the inner wasm expression through the wrapper's public `new`.
     let RustStructType::Wrapper { wrapped, .. } = types.rust_struct(ident)?.variant() else {
         return None;

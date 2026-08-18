@@ -929,7 +929,6 @@ fn component_glue_bounded_setters_check_their_window() {
             "set_window",
             "if !(window >= 0.5f64 && window <= 10.5f64) {",
         ),
-        ("set_digest", "if digest.len() != 4 {"),
         ("set_label", "if label.len() < 3 || label.len() > 14 {"),
     ] {
         let body = body(setter);
@@ -946,6 +945,21 @@ fn component_glue_bounded_setters_check_their_window() {
             "`{setter}`'s failure is no longer the rust crate's own error type:\n{body}"
         );
     }
+    let digest = body("set_digest");
+    assert!(
+        digest.contains("let digest: [u8; 4] = match digest.try_into()")
+            && digest.contains("DeserializeFailure::RangeCheck"),
+        "an exact-byte setter must atomically hand its WIT Vec to the static carrier, not retain a \
+         post-handover len guard:\n{digest}"
+    );
+    let nullable_digest = body("set_fixed_byte_optional_scalar");
+    assert!(
+        nullable_digest.contains("let fixed_byte_optional_scalar: Option<[u8; 4]>")
+            && nullable_digest.contains(".map(|bytes| bytes.try_into())")
+            && nullable_digest.contains(".transpose()")
+            && nullable_digest.contains("DeserializeFailure::RangeCheck"),
+        "a nullable exact-byte setter must atomically materialize its optional static carrier:\n{nullable_digest}"
+    );
     // The CONTROLS. A type-enforced invariant is re-imposed by its `TryFrom` door, never by an
     // inline check — the invalid state is unrepresentable rather than rejected.
     for (setter, door) in [
@@ -966,6 +980,38 @@ fn component_glue_bounded_setters_check_their_window() {
         assert!(
             !body.contains("RangeCheck"),
             "`{setter}` emits an inline window check for an invariant its rust type enforces:\n{body}"
+        );
+    }
+}
+
+/// A direct exact-byte constructor deliberately retains its loose `Vec<u8>` door, but recursive
+/// WIT list/map positions collect native `[u8; N]` storage directly.  Their generated conversion
+/// must therefore be fallible and map the Vec-to-array failure through the shared RangeCheck.
+#[test]
+fn component_glue_reenters_exact_byte_carriers_inside_lists_and_maps() {
+    let glue = component_glue("tests/component-bounds/input.cddl", &[]);
+    for (setter, needle) in [
+        (
+            "set_fixed_byte_list",
+            "x.try_into().map_err(|bytes: Vec<u8>|",
+        ),
+        (
+            "set_fixed_byte_map",
+            "x0.try_into().map_err(|bytes: Vec<u8>|",
+        ),
+        ("set_fixed_byte_optional_list", "x.map(|value|"),
+        ("set_fixed_byte_optional_map", "x1.map(|value|"),
+    ] {
+        let section = glue
+            .split(&format!("fn {setter}("))
+            .nth(1)
+            .and_then(|rest| rest.split("\n    }").next())
+            .unwrap_or_else(|| panic!("the component glue carries no {setter}:\n{glue}"));
+        assert!(
+            section.contains(needle)
+                && section.contains("DeserializeFailure::RangeCheck")
+                && section.contains("collect::<Result"),
+            "{setter} must convert every nested exact-byte list before native collection storage:\n{section}"
         );
     }
 }

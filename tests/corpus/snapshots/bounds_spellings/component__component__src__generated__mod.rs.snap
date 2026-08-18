@@ -43,7 +43,6 @@ impl wit_types::GuestBoundsMembers for WitBoundsMembers {
         m_zero_exact: u64,
         m_nint_range: u64,
     ) -> Result<Self, String> {
-        let m_exact_size = m_exact_size.into_iter().collect();
         let m_zero_len = m_zero_len.into_iter().collect();
         let inner = cddl_lib::BoundsMembers::new(
             m_exact_size,
@@ -89,16 +88,18 @@ impl wit_types::GuestBoundsMembers for WitBoundsMembers {
     }
 
     fn set_m_optional_size(&self, m_optional_size: Vec<u8>) -> Result<(), String> {
-        if m_optional_size.len() != 3 {
-            return Err(err(cddl_lib::error::DeserializeError::from(
-                cddl_lib::error::DeserializeFailure::RangeCheck {
-                    found: m_optional_size.len() as i128,
-                    min: Some(3),
-                    max: Some(3),
-                },
-            )));
-        }
-        let m_optional_size = m_optional_size.into_iter().collect();
+        let m_optional_size: [u8; 3] = match m_optional_size.try_into() {
+            Ok(bytes) => bytes,
+            Err(bytes) => {
+                return Err(err(cddl_lib::error::DeserializeError::from(
+                    cddl_lib::error::DeserializeFailure::RangeCheck {
+                        found: bytes.len() as i128,
+                        min: Some(3),
+                        max: Some(3),
+                    },
+                )));
+            }
+        };
         self.0.borrow_mut().m_optional_size = Some(m_optional_size);
         Ok(())
     }
@@ -120,7 +121,6 @@ pub struct WitWExactSize(pub RefCell<cddl_lib::WExactSize>);
 
 impl wit_types::GuestWExactSize for WitWExactSize {
     fn new(inner: Vec<u8>) -> Result<Self, String> {
-        let inner = inner.into_iter().collect();
         let inner = cddl_lib::WExactSize::new(inner).map_err(err)?;
         Ok(WitWExactSize(RefCell::new(inner)))
     }

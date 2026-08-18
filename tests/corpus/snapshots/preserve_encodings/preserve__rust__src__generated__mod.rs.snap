@@ -1637,7 +1637,7 @@ pub enum OverlapBasicEmbed {
         len_encoding: LenEncoding,
     },
     X {
-        hash: Vec<u8>,
+        hash: [u8; 32],
         len_encoding: LenEncoding,
         tag_encoding: Option<cbor_event::Sz>,
         hash_encoding: StringEncoding,
@@ -1653,14 +1653,13 @@ impl OverlapBasicEmbed {
     }
 
     pub fn new_x(hash: Vec<u8>) -> Result<Self, DeserializeError> {
-        if hash.len() != 32 {
-            return Err(DeserializeFailure::RangeCheck {
-                found: hash.len() as i128,
-                min: Some(32),
-                max: Some(32),
-            }
-            .into());
-        }
+        let hash: [u8; 32] =
+            hash.try_into()
+                .map_err(|bytes: Vec<u8>| DeserializeFailure::RangeCheck {
+                    found: bytes.len() as i128,
+                    min: Some(32),
+                    max: Some(32),
+                })?;
         Ok(Self::X {
             hash,
             len_encoding: LenEncoding::default(),

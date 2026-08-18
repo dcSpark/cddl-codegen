@@ -46,7 +46,7 @@ impl BoundsMembers {
     }
 
     pub fn m_exact_size(&self) -> Vec<u8> {
-        self.0.m_exact_size.clone()
+        self.0.m_exact_size.to_vec()
     }
 
     pub fn m_zero_len(&self) -> Vec<u8> {
@@ -66,22 +66,25 @@ impl BoundsMembers {
     }
 
     pub fn set_m_optional_size(&mut self, m_optional_size: Vec<u8>) -> Result<(), JsError> {
-        if m_optional_size.len() != 3 {
-            return Err(cddl_lib::error::DeserializeError::from(
-                cddl_lib::error::DeserializeFailure::RangeCheck {
-                    found: m_optional_size.len() as i128,
-                    min: Some(3),
-                    max: Some(3),
-                },
-            )
-            .into());
-        }
+        let m_optional_size: [u8; 3] = match m_optional_size.try_into() {
+            Ok(bytes) => bytes,
+            Err(bytes) => {
+                return Err(cddl_lib::error::DeserializeError::from(
+                    cddl_lib::error::DeserializeFailure::RangeCheck {
+                        found: bytes.len() as i128,
+                        min: Some(3),
+                        max: Some(3),
+                    },
+                )
+                .into());
+            }
+        };
         self.0.m_optional_size = Some(m_optional_size);
         Ok(())
     }
 
     pub fn m_optional_size(&self) -> Option<Vec<u8>> {
-        self.0.m_optional_size.clone()
+        self.0.m_optional_size.map(|bytes| bytes.to_vec())
     }
 
     pub fn new(
@@ -159,7 +162,7 @@ impl WExactSize {
     }
 
     pub fn get(&self) -> Vec<u8> {
-        self.0.get().clone()
+        self.0.get().to_vec()
     }
 }
 

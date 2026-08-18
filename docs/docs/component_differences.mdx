@@ -64,6 +64,11 @@ There are **no wrapper classes** on this face. An array field is `list<t>`, a ma
 gaps second; the borrow-parameter rule above covers the ownership half, and WIT's type system has
 neither of the gaps (nested lists, lists of handles and nested `option`s are all expressible).
 
+An exact `bytes .size N` remains `list<u8>` in WIT even though native storage is `[u8; N]`.
+Direct constructors retain their loose list door; an optional or nested list/table position converts
+each list at the consuming boundary and returns the native `RangeCheck` through its `result` on a
+wrong length. Getters make the reverse array-to-list projection.
+
 The consequence is that **constraints move from the type to the door**. A `[+ t]` non-empty,
 bounded, or `@duplicates reject` **set** all despecialize to a plain `list<…>`, so the invariant
 is re-checked where the list is *consumed*: the constructor or setter returns

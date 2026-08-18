@@ -3862,11 +3862,28 @@ fn parse_type(
                                 };
                                 let mut ranged_type =
                                     range_to_primitive(min_max.0, min_max.1, primitive);
+                                // An exact byte `.size` becomes a Rust array length.  Validate at
+                                // the parse boundary so generation never truncates an authored
+                                // CDDL integer or emits a target-dependent array const.
+                                if let Some(Err(length)) = ranged_type.exact_byte_array_len() {
+                                    types.record_rejection(exact_byte_array_length_rejection(
+                                        length,
+                                    ));
+                                    return;
+                                }
+                                let exact_byte_array =
+                                    ranged_type.exact_byte_array_len_checked().is_some();
                                 if ranged_type.config.bounds.is_some()
                                     || rule_metadata.newtype.is_some()
                                 {
-                                    // without bounds since passed in other param
-                                    ranged_type.config.bounds = None;
+                                    // Most nominal ranges carry their full window on the wrapper.
+                                    // Exact bytes are different: their member spelling needs the
+                                    // window to select `[u8; N]`, and the wrapper constructor owns
+                                    // the single Vec -> array handover instead of a second len
+                                    // guard.
+                                    if !exact_byte_array {
+                                        ranged_type.config.bounds = None;
+                                    }
                                     // has non-rust-primitive matching bounds
                                     types.register_rust_struct(
                                         parent_visitor,
@@ -3875,7 +3892,7 @@ fn parse_type(
                                             outer_tag,
                                             Some(&rule_metadata),
                                             ranged_type,
-                                            Some(min_max),
+                                            (!exact_byte_array).then_some(min_max),
                                         ),
                                         cli,
                                     );
@@ -5969,7 +5986,7 @@ fn rust_type_from_type1(
         .map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op, None, cli));
     let base_type = rust_type_from_type2(types, parent_visitor, &type1.type2, cli);
     // println!("type1: {:#?}", type1);
-    match control {
+    let result = match control {
         Some(ControlOperator::CBOR(ty)) => {
             // The MEMBER route to the rule-position `.cbor` head check in `parse_type`: RFC 8610
             // restricts `.cbor` to byte strings, and a head that is not one is refused rather than
@@ -6036,7 +6053,19 @@ fn rust_type_from_type1(
             }
         }
         None => base_type,
+    };
+    if let Some(Err(length)) = result.exact_byte_array_len() {
+        types.record_rejection(exact_byte_array_length_rejection(length));
     }
+    result
+}
+
+/// The shared graceful refusal for an exact byte-string length that cannot become a Rust array on
+/// every supported target (notably wasm32). Both rule and member parsing reach this helper.
+fn exact_byte_array_length_rejection(length: i128) -> String {
+    format!(
+        "exact byte-string length `{length}` cannot be represented as a Rust array length on every supported target"
+    )
 }
 
 /// Resolve a type/group name that may carry generic arguments into a `RustType`.

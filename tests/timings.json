@@ -55,14 +55,18 @@
     },
     {
       "gate": "clippy",
-      "warm_ms": 325,
+      "warm_ms": 5000,
       "n": 20,
       "measured": "2026-08-18",
       "machine": "86216c55",
       "history": [
         {
-          "date": "2026-08-17",
-          "warm_ms": 258
+          "date": "2026-08-18",
+          "warm_ms": 4000
+        },
+        {
+          "date": "2026-08-18",
+          "warm_ms": 317
         },
         {
           "date": "2026-08-18",
@@ -70,15 +74,11 @@
         },
         {
           "date": "2026-08-18",
-          "warm_ms": 8000
+          "warm_ms": 10000
         },
         {
           "date": "2026-08-18",
-          "warm_ms": 4000
-        },
-        {
-          "date": "2026-08-18",
-          "warm_ms": 325
+          "warm_ms": 5000
         }
       ]
     },
@@ -392,15 +392,11 @@
     },
     {
       "gate": "gate_cache_closure_audit",
-      "warm_ms": 142000,
-      "n": 15,
-      "measured": "2026-07-28",
+      "warm_ms": 172000,
+      "n": 11,
+      "measured": "2026-08-18",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-07-26",
-          "warm_ms": 937000
-        },
         {
           "date": "2026-07-27",
           "warm_ms": 673000
@@ -416,6 +412,10 @@
         {
           "date": "2026-07-28",
           "warm_ms": 142000
+        },
+        {
+          "date": "2026-08-18",
+          "warm_ms": 172000
         }
       ]
     },
@@ -817,15 +817,11 @@
     },
     {
       "gate": "recombination_crates_execute",
-      "warm_ms": 124000,
-      "n": 10,
+      "warm_ms": 170000,
+      "n": 11,
       "measured": "2026-08-18",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-08-07",
-          "warm_ms": 85000
-        },
         {
           "date": "2026-08-10",
           "warm_ms": 104000
@@ -841,14 +837,18 @@
         {
           "date": "2026-08-18",
           "warm_ms": 124000
+        },
+        {
+          "date": "2026-08-18",
+          "warm_ms": 170000
         }
       ]
     },
     {
       "gate": "recombination_json_crates_execute",
-      "warm_ms": 142000,
-      "n": 10,
-      "measured": "2026-08-10",
+      "warm_ms": 256000,
+      "n": 13,
+      "measured": "2026-08-18",
       "machine": "86216c55",
       "history": [
         {
@@ -862,20 +862,24 @@
         {
           "date": "2026-08-10",
           "warm_ms": 142000
+        },
+        {
+          "date": "2026-08-18",
+          "warm_ms": 213000
+        },
+        {
+          "date": "2026-08-18",
+          "warm_ms": 256000
         }
       ]
     },
     {
       "gate": "recombination_preserve_crates_execute",
-      "warm_ms": 180000,
-      "n": 13,
-      "measured": "2026-08-17",
+      "warm_ms": 226000,
+      "n": 12,
+      "measured": "2026-08-18",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-08-07",
-          "warm_ms": 135000
-        },
         {
           "date": "2026-08-10",
           "warm_ms": 164000
@@ -891,6 +895,10 @@
         {
           "date": "2026-08-17",
           "warm_ms": 180000
+        },
+        {
+          "date": "2026-08-18",
+          "warm_ms": 226000
         }
       ]
     },
@@ -1035,17 +1043,9 @@
       "gate": "self_checks",
       "warm_ms": 2000,
       "n": 20,
-      "measured": "2026-08-14",
+      "measured": "2026-08-18",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-08-07",
-          "warm_ms": 4000
-        },
-        {
-          "date": "2026-08-07",
-          "warm_ms": 1000
-        },
         {
           "date": "2026-08-10",
           "warm_ms": 3000
@@ -1056,6 +1056,14 @@
         },
         {
           "date": "2026-08-14",
+          "warm_ms": 2000
+        },
+        {
+          "date": "2026-08-18",
+          "warm_ms": 5000
+        },
+        {
+          "date": "2026-08-18",
           "warm_ms": 2000
         }
       ]
@@ -1260,15 +1268,11 @@
     },
     {
       "tier": "local",
-      "wall_ms": 752000,
+      "wall_ms": 907000,
       "n": 20,
-      "measured": "2026-08-12",
+      "measured": "2026-08-18",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-08-02",
-          "warm_ms": 300000
-        },
         {
           "date": "2026-08-04",
           "warm_ms": 382000
@@ -1284,6 +1288,10 @@
         {
           "date": "2026-08-12",
           "warm_ms": 752000
+        },
+        {
+          "date": "2026-08-18",
+          "warm_ms": 907000
         }
       ]
     },

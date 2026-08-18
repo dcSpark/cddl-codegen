@@ -744,6 +744,33 @@ fn expect_graceful_rejection(tag: &str, spec: &str, extra: &[&str]) -> String {
         .to_string()
 }
 
+/// Exact byte `.size` becomes a Rust array length, whose portability floor is wasm32's
+/// `isize::MAX`.  Rule and member parsing use different walkers, so pin both graceful refusals
+/// (including a negative equal window that must not cast to a huge usize).
+#[test]
+fn exact_byte_array_lengths_refuse_negative_and_above_wasm32_floor() {
+    let expected = "cannot be represented as a Rust array length on every supported target";
+    for (tag, spec, spelling) in [
+        ("exact_bytes_negative_rule", "x = bytes .size -1\n", "-1"),
+        (
+            "exact_bytes_above_wasm_rule",
+            "x = bytes .size 2147483648\n",
+            "2147483648",
+        ),
+        (
+            "exact_bytes_above_wasm_member",
+            "x = [payload: bytes .size 2147483648]\n",
+            "2147483648",
+        ),
+    ] {
+        let msg = expect_graceful_rejection(tag, spec, &["--wasm=false"]);
+        assert!(
+            msg.contains(expected) && msg.contains(spelling),
+            "{tag} must reject without panic or widening, got: {msg}"
+        );
+    }
+}
+
 /// A count-permitting occurrence of a multi-item plain group repeats the group's sequence FLAT.
 /// It cannot use the ordinary `Vec<Pg>` carrier: `Pg::serialize` writes its own array header, so
 /// that carrier silently changes `[a, b, a, b]` into `[[a, b], [a, b]]`. Until a dedicated flat

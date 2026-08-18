@@ -15,6 +15,22 @@ mod tests {
     }
 
     #[test]
+    fn exact_bytes_wrapper_json_and_schema_are_exact() {
+        let value = ExactBytesWrapper::new(vec![0xBA, 0xAD, 0xF0, 0x0D]).unwrap();
+        assert_eq!(serde_json::to_string(&value).unwrap(), "\"baadf00d\"");
+        assert_json_reject::<ExactBytesWrapper>("\"baadf0\"", "invalid hex bytes");
+        assert_json_reject::<ExactBytesWrapper>("\"baadf00d00\"", "invalid hex bytes");
+
+        let schema = serde_json::to_value(schemars::schema_for!(ExactBytesWrapper)).unwrap();
+        assert_eq!(schema["minLength"], 8, "{schema}");
+        assert_eq!(schema["maxLength"], 8, "{schema}");
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        assert!(validator.is_valid(&serde_json::json!("baadf00d")));
+        assert!(!validator.is_valid(&serde_json::json!("baadf0")));
+        assert!(!validator.is_valid(&serde_json::json!("baadf00d00")));
+    }
+
+    #[test]
     fn str_wrapper() {
         let text = "hello, world";
         let json_str = format!("\"{text}\"");
@@ -273,6 +289,10 @@ mod tests {
             };
         }
         check!(BytesWrapper, BytesWrapper::new(vec![0xBA, 0xAD, 0xF0, 0x0D]));
+        check!(
+            ExactBytesWrapper,
+            ExactBytesWrapper::new(vec![0xBA, 0xAD, 0xF0, 0x0D]).unwrap()
+        );
         check!(StrWrapper, StrWrapper::new("hello, world".to_owned()));
         check!(U8Wrapper, U8Wrapper::new(u8::MAX).unwrap());
         check!(U64Wrapper, U64Wrapper::new(u64::MAX));

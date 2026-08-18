@@ -234,6 +234,59 @@ fn observe(file: &str, source: &str) -> Vec<Observation> {
     walk.out
 }
 
+/// Exact bytes do not emit an `if len()` range guard: the statically typed local is the successful
+/// invariant, and its fallible Vec-to-array handover carries RangeCheck.  Keep this as a syn walk
+/// (rather than a substring pin) so changing a comment or whitespace cannot satisfy the site test.
+fn exact_byte_handover_contexts(source: &str) -> std::collections::BTreeSet<String> {
+    struct Walk {
+        imp: String,
+        fun: String,
+        contexts: std::collections::BTreeSet<String>,
+    }
+    impl<'ast> Visit<'ast> for Walk {
+        fn visit_item_impl(&mut self, item: &'ast syn::ItemImpl) {
+            let old = std::mem::replace(&mut self.imp, compact(&item.self_ty));
+            syn::visit::visit_item_impl(self, item);
+            self.imp = old;
+        }
+        fn visit_impl_item_fn(&mut self, item: &'ast syn::ImplItemFn) {
+            let old = std::mem::replace(&mut self.fun, item.sig.ident.to_string());
+            syn::visit::visit_impl_item_fn(self, item);
+            self.fun = old;
+        }
+        fn visit_expr_method_call(&mut self, call: &'ast syn::ExprMethodCall) {
+            if call.method == "try_into" {
+                self.contexts.insert(format!("{}::{}", self.imp, self.fun));
+            }
+            syn::visit::visit_expr_method_call(self, call);
+        }
+        fn visit_expr_call(&mut self, call: &'ast syn::ExprCall) {
+            // Direct-storage exact bytes spell their target array explicitly as
+            // `<[u8; N]>::try_from(vec)`: this is required for generic map lookup contexts where
+            // `vec.try_into()` has no target-type inference. Count that equivalent conversion
+            // alongside the legacy method-call spelling.
+            if let syn::Expr::Path(path) = call.func.as_ref()
+                && path
+                    .path
+                    .segments
+                    .last()
+                    .is_some_and(|segment| segment.ident == "try_from")
+            {
+                self.contexts.insert(format!("{}::{}", self.imp, self.fun));
+            }
+            syn::visit::visit_expr_call(self, call);
+        }
+    }
+    let parsed = syn::parse_file(source).unwrap();
+    let mut walk = Walk {
+        imp: String::new(),
+        fun: String::new(),
+        contexts: Default::default(),
+    };
+    walk.visit_file(&parsed);
+    walk.contexts
+}
+
 fn exactly<'a>(
     all: &'a [Observation],
     kind: SiteKind,
@@ -280,7 +333,6 @@ fn canonical(site: &Observation) -> (String, String, bool, String, String) {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum DeliberateDifference {
-    WrapperErrorLocation,
     ReturnVsExpression,
     SignedWireVsStoredMagnitude,
 }
@@ -411,41 +463,95 @@ fn emitted_bounds_site_differential_and_wart_scan() {
     all.extend(observe(rust_ser, bounded.get(rust_ser).unwrap()));
     all.extend(observe(wasm_mod, bounded.get(wasm_mod).unwrap()));
 
-    let ctor = exactly(
-        &all,
-        SiteKind::MemberCtor,
-        rust_mod,
+    let exact_contexts = [
+        (rust_mod, bounded.get(rust_mod).unwrap()),
+        (rust_ser, bounded.get(rust_ser).unwrap()),
+        (wasm_mod, bounded.get(wasm_mod).unwrap()),
+    ]
+    .into_iter()
+    .flat_map(|(_, source)| exact_byte_handover_contexts(source))
+    .collect::<std::collections::BTreeSet<_>>();
+    for context in [
         "BoundsMembers::new",
-        "m_exact_size.len()!=3",
-    );
-    let setter = exactly(
-        &all,
-        SiteKind::MemberSetter,
-        wasm_mod,
         "BoundsMembers::set_m_optional_size",
-        "m_optional_size.len()!=3",
-    );
-    let wrapper_new = exactly(
-        &all,
-        SiteKind::WrapperNew,
-        rust_mod,
         "WExactSize::new",
-        "inner.len()!=3",
-    );
-    let wrapper_deserialize = exactly(
-        &all,
-        SiteKind::WrapperDeserialize,
-        rust_ser,
         "WExactSize::deserialize",
-        "inner.len()!=3",
+    ] {
+        assert!(
+            exact_contexts.contains(context),
+            "exact-byte Vec -> array handover missing at `{context}`: {exact_contexts:#?}"
+        );
+    }
+    let wrapper_new = bounded
+        .get(rust_mod)
+        .unwrap()
+        .split("impl WExactSize {")
+        .nth(1)
+        .and_then(|rest| rest.split("impl TryFrom<Vec<u8>> for WExactSize").next())
+        .expect("WExactSize native constructor must be emitted");
+    let wrapper_new_flat: String = wrapper_new.chars().filter(|c| !c.is_whitespace()).collect();
+    assert!(
+        wrapper_new_flat
+            .contains("DeserializeError::new(\"WExactSize\",DeserializeFailure::RangeCheck")
+            && wrapper_new_flat.contains("found:bytes.len()asi128")
+            && wrapper_new_flat.contains("min:Some(3),max:Some(3)"),
+        "a named exact-byte wrapper constructor must retain both its RangeCheck payload and named error location:\n{wrapper_new}"
     );
-    let exact_collection = exactly(
-        &all,
-        SiteKind::CollectionLength,
-        rust_ser,
-        "BoundsMembers::deserialize::m_exact_size",
-        "bytes.len()!=3",
+    let json_bounded = crate::api::generated_strings(&cli_for(
+        std::path::Path::new("tests/corpus/bounds_spellings.cddl"),
+        &[
+            "--wasm=false",
+            "--json-serde-derives=true",
+            "--json-schema-export=true",
+        ],
+    ))
+    .expect("json exact-byte fixture must generate");
+    let json_wrapper = json_bounded
+        .get(rust_mod)
+        .expect("json rust module must be emitted");
+    assert!(
+        json_wrapper.contains("out.insert(\"minLength\".to_owned(), 6u64.into());")
+            && json_wrapper.contains("out.insert(\"maxLength\".to_owned(), 6u64.into());"),
+        "an exact 3-byte wrapper's canonical hex schema must be fixed at six characters:\n{json_wrapper}"
     );
+    let emitted_tests = crate::api::generated_strings(&cli_for(
+        std::path::Path::new("tests/corpus/bounds_spellings.cddl"),
+        &["--wasm=false", "--emit-tests=true"],
+    ))
+    .expect("exact-byte emitted-test fixture must generate");
+    let emitted_tests = emitted_tests
+        .get(rust_mod)
+        .expect("exact-byte emitted tests must land in the rust module");
+    for expected in [
+        "BoundsMembers::new(vec![0u8; 2]",
+        "BoundsMembers::new(vec![0u8; 4]",
+        "v.m_optional_size = Some(vec![0u8; 3].try_into().unwrap());",
+        "WExactSize::new(vec![0u8; 2]).unwrap_err()",
+        "WExactSize::new(vec![0u8; 4]).unwrap_err()",
+    ] {
+        assert!(
+            emitted_tests.contains(expected),
+            "exact-byte emitted tests lost the checked constructor/direct-storage probe `{expected}`:\n{emitted_tests}"
+        );
+    }
+    assert!(
+        !emitted_tests.contains("v.m_exact_size = vec!"),
+        "an invalid fixed-array state is unrepresentable; exact-byte rejection must stay at the loose constructor door:\n{emitted_tests}"
+    );
+    for source in [
+        bounded.get(rust_mod).unwrap(),
+        bounded.get(rust_ser).unwrap(),
+        bounded.get(wasm_mod).unwrap(),
+    ] {
+        assert!(
+            source.contains("DeserializeFailure::RangeCheck")
+                && !source.contains("m_exact_size.len() != 3")
+                && !source.contains("m_optional_size.len() != 3")
+                && !source.contains("inner.len() != 3")
+                && !source.contains("bytes.len() != 3"),
+            "exact bytes must use the static carrier handover, not stack a post-handover len guard"
+        );
+    }
     let int_ctor = exactly(
         &all,
         SiteKind::MemberCtor,
@@ -496,50 +602,35 @@ fn emitted_bounds_site_differential_and_wart_scan() {
         "m_nint_range>99",
     );
 
-    // These six coordinates are deliberately disjoint even where a site happens to be both a
+    // These coordinates are deliberately disjoint even where a site happens to be both a
     // collection check and one of the constructor/wrapper families.
     let kinds: std::collections::BTreeSet<_> = [
-        ctor.kind,
-        setter.kind,
-        wrapper_new.kind,
-        wrapper_deserialize.kind,
         uint_primitive.kind,
-        exact_collection.kind,
+        zero_upper_collection.kind,
+        int_ctor.kind,
+        int_wrapper_new.kind,
+        int_wrapper_deserialize.kind,
     ]
     .into_iter()
     .collect();
     assert_eq!(
         kinds.len(),
-        6,
+        5,
         "one range-check observation satisfied multiple coordinates"
     );
 
     for site in [
-        ctor,
-        setter,
-        wrapper_new,
-        wrapper_deserialize,
         uint_primitive,
-        exact_collection,
+        zero_upper_collection,
+        int_ctor,
+        int_wrapper_new,
+        int_wrapper_deserialize,
     ] {
         assert!(
             !site.payload.found.is_empty()
                 && !site.payload.min.is_empty()
                 && !site.payload.max.is_empty(),
             "incomplete RangeCheck payload: {site:#?}"
-        );
-    }
-    for site in [
-        ctor,
-        setter,
-        wrapper_new,
-        wrapper_deserialize,
-        exact_collection,
-    ] {
-        assert_eq!(
-            canonical(site),
-            canonical(ctor),
-            "exact-size sites drifted: {site:#?}"
         );
     }
     for site in [
@@ -567,11 +658,6 @@ fn emitted_bounds_site_differential_and_wart_scan() {
 
     let ledger = [
         DifferenceLedgerEntry {
-            difference: DeliberateDifference::WrapperErrorLocation,
-            left: wrapper_new,
-            right: wrapper_deserialize,
-        },
-        DifferenceLedgerEntry {
             difference: DeliberateDifference::ReturnVsExpression,
             left: int_ctor,
             right: uint_primitive,
@@ -584,13 +670,9 @@ fn emitted_bounds_site_differential_and_wart_scan() {
     ];
     let ledger_kinds: std::collections::BTreeSet<_> =
         ledger.iter().map(|entry| entry.difference).collect();
-    assert_eq!(ledger_kinds.len(), 3, "difference ledger is incomplete");
+    assert_eq!(ledger_kinds.len(), 2, "difference ledger is incomplete");
     for entry in ledger {
         match entry.difference {
-            DeliberateDifference::WrapperErrorLocation => {
-                assert_eq!(canonical(entry.left), canonical(entry.right));
-                assert!(entry.left.wrapper_location && !entry.right.wrapper_location);
-            }
             DeliberateDifference::ReturnVsExpression => {
                 assert_eq!(canonical(entry.left), canonical(entry.right));
                 assert!(entry.left.returns_error && !entry.right.returns_error);
@@ -643,6 +725,166 @@ fn emitted_bounds_site_differential_and_wart_scan() {
             }
         }
     }
+}
+
+/// Every wasm method that puts an exact byte value directly in a collection carrier must perform
+/// the fallible Vec-to-array handover itself. Constructors that delegate to a native named type are
+/// deliberately absent: their native `new` owns the same conversion and its named diagnostic.
+#[test]
+fn wasm_exact_byte_direct_storage_doors_are_fallible() {
+    let files = crate::api::generated_strings(&cli_for(
+        std::path::Path::new("tests/component-bounds/input.cddl"),
+        &[],
+    ))
+    .expect("component-bounds fixture must generate");
+    let wasm = files
+        .get("wasm/src/generated/mod.rs")
+        .expect("wasm module must be emitted");
+    let rust = files
+        .get("rust/src/generated/mod.rs")
+        .expect("rust module must be emitted");
+    let rust_contexts = exact_byte_handover_contexts(rust);
+    assert!(
+        rust_contexts.contains("FixedByteOpen::insert_rest"),
+        "the protected captured-rest door must convert its loose exact key/value before validation: {rust_contexts:#?}"
+    );
+    let contexts = exact_byte_handover_contexts(wasm);
+    for context in [
+        "FixedByteNonEmptyList::new",
+        "FixedByteNonEmptyList::add",
+        "FixedByteBoundedList::add",
+        "FixedByteSet::add",
+        "FixedByteSet::insert",
+        "FixedByteSet::contains",
+        "FixedByteNonEmptySet::new",
+        "FixedByteNonEmptySet::add",
+        "FixedByteNonEmptySet::insert",
+        "FixedByteNonEmptySet::contains",
+        "FixedByteNonEmptyMap::new",
+        "FixedByteNonEmptyMap::insert",
+        "FixedByteBoundedMap::insert",
+        "FixedByteMap::get",
+        "FixedByteOptionalList::add",
+        "FixedByteOptionalMap::insert",
+        "FixedByteOptionalMap::get",
+        "FixedByteOptionalMap::has",
+        "FixedByteValueOpen::insert_rest",
+    ] {
+        assert!(
+            contexts.contains(context),
+            "direct exact-byte storage handover missing at `{context}`: {contexts:#?}"
+        );
+    }
+    for method in [
+        "pub fn insert(&mut self, elem: Vec<u8>) -> Result<bool, JsError>",
+        "pub fn contains(&self, elem: Vec<u8>) -> Result<bool, JsError>",
+    ] {
+        assert!(
+            wasm.contains(method),
+            "an exact-byte set lookup/mutation must advertise its fallibility:\n{wasm}"
+        );
+    }
+    assert!(
+        wasm.contains(".map(|bytes|") && wasm.contains(".transpose()?"),
+        "nullable exact-byte collection values must re-enter the leaf handover before storage:\n{wasm}"
+    );
+    let native_open = rust
+        .split("impl FixedByteNonEmptyOpen")
+        .nth(1)
+        .and_then(|rest| rest.split("\n}\n").next())
+        .expect("the exact-byte non-empty open table must have a native impl");
+    let native_open_flat: String = native_open
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect();
+    assert!(
+        native_open_flat.contains(
+            "pubfnnew(first_key:Vec<u8>,first_value:Vec<u8>)->Result<Self,DeserializeError>"
+        ) && native_open_flat.contains("letfirst_key:[u8;4]")
+            && native_open_flat.contains("letfirst_value:[u8;4]"),
+        "a non-empty open table's first exact key/value must make its native constructor fallible:\n{native_open}"
+    );
+    let wasm_open = wasm
+        .split("impl FixedByteNonEmptyOpen")
+        .nth(1)
+        .and_then(|rest| rest.split("\n}\n").next())
+        .expect("the exact-byte non-empty open table must have a wasm impl");
+    let wasm_open_flat: String = wasm_open.chars().filter(|ch| !ch.is_whitespace()).collect();
+    assert!(
+        wasm_open_flat.contains(
+            "pubfnnew(first_key:Vec<u8>,first_value:Vec<u8>)->Result<FixedByteNonEmptyOpen,JsError>"
+        ) && wasm_open_flat.contains("FixedByteNonEmptyOpen::new(first_key,first_value)"),
+        "the wasm constructor must forward the loose values into that fallible native door:\n{wasm_open}"
+    );
+}
+
+/// The rust emitted-test renderer follows the same loose-door/tight-storage split as production.
+/// A generated public constructor or protected insertion method must receive `Vec<u8>` so it
+/// exercises the checked handover; a test that mutates a field/map carrier directly must materialize
+/// `[u8; N]` itself. Keep nested list and direct map residents here because the scalar bounds corpus
+/// alone cannot expose `Vec<Vec<u8>>` being assigned to `Vec<[u8; N]>`.
+#[test]
+fn rust_emitted_tests_tighten_exact_byte_direct_storage_only() {
+    let files = crate::api::generated_strings(&cli_for(
+        std::path::Path::new("tests/component-bounds/input.cddl"),
+        &["--wasm=false", "--emit-tests=true"],
+    ))
+    .expect("component-bounds emitted-test fixture must generate");
+    let rust = files
+        .get("rust/src/generated/mod.rs")
+        .expect("rust emitted-test module must be emitted");
+    let flat: String = rust.split_whitespace().collect();
+    for direct_storage in [
+        "v.fixed_byte_list=Some(vec![vec![0u8;4].try_into().unwrap();1]);",
+        "v.rest.insert(\"a\".repeat(1),vec![0u8;4].try_into().unwrap());",
+        "v.entries.insert(vec![0u8;4].try_into().unwrap(),vec![0u8;4].try_into().unwrap(),);",
+    ] {
+        assert!(
+            flat.contains(direct_storage),
+            "rust emitted tests lost the exact-byte direct-storage handover `{direct_storage}`:\n{rust}"
+        );
+    }
+    assert!(
+        flat.contains("v.insert_rest(vec![0u8;4],vec![0u8;4]).unwrap();"),
+        "a protected insertion door must retain loose exact-byte values so the generated API performs the checked handover:\n{rust}"
+    );
+    assert!(
+        flat.contains("letv=FixedByteCollectionHolder::new(")
+            && flat.contains(".map(|__i|(__i.to_string(),vec![0u8;4].try_into().unwrap()))"),
+        "mandatory collection constructor arguments must materialize their nested exact-byte storage before calling the record door:\n{rust}"
+    );
+    assert!(
+        !flat.contains("v.fixed_byte_list=Some(vec![vec![0u8;4];1]);"),
+        "rust emitted tests must never assign Vec<Vec<u8>> to a Vec<[u8; N]> carrier:\n{rust}"
+    );
+}
+
+/// The wasm emitted-test module builds an independent native twin for its byte differential. That
+/// second renderer must follow the same ABI split as the rust emitter: direct exact-byte constructor
+/// leaves stay loose, while exact-byte leaves nested inside native collection arguments are tight.
+#[test]
+fn wasm_emitted_test_rust_twin_tightens_nested_exact_bytes() {
+    let files = crate::api::generated_strings(&cli_for(
+        std::path::Path::new("tests/component-bounds/input.cddl"),
+        &["--wasm=true", "--emit-tests=true"],
+    ))
+    .expect("component-bounds wasm emitted-test fixture must generate");
+    let wasm = files
+        .get("wasm/src/generated/mod.rs")
+        .expect("wasm emitted-test module must be emitted");
+    let flat: String = wasm.split_whitespace().collect();
+    assert!(
+        flat.contains(
+            "letrust_v=cddl_lib::FixedByteCollectionHolder::new(vec![vec![0u8;4].try_into().unwrap();1],"
+        ) && flat.contains(
+            ".map(|__i|(__i.to_string(),vec![0u8;4].try_into().unwrap())).collect(),);"
+        ),
+        "the wasm emitted-test rust twin must materialize nested exact-byte collection storage:\n{wasm}"
+    );
+    assert!(
+        flat.contains("letrust_v=cddl_lib::FixedByteChoice::new_bytes(vec![0u8;4]).unwrap();"),
+        "a direct exact-byte variant argument must stay loose so its native constructor checks the handover:\n{wasm}"
+    );
 }
 
 /// Near-constant generated files skipped by the per-feature corpus (they don't vary by construct).

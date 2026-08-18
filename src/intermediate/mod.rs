@@ -3244,6 +3244,12 @@ impl<'a> IntermediateTypes<'a> {
             } => {
                 self.mark_new_can_fail(rust_struct.ident.clone());
             }
+            RustStructType::Wrapper { wrapped, .. }
+                if wrapped.exact_byte_array_len_checked().is_some()
+                    || matches!(wrapped.conceptual_type.resolve_alias_shallow(), ConceptualRustType::Optional(inner) if inner.exact_byte_array_len_checked().is_some()) =>
+            {
+                self.mark_new_can_fail(rust_struct.ident.clone());
+            }
             _ => (),
         }
         self.rust_structs

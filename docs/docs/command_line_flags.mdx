@@ -210,7 +210,7 @@ cddl-codegen --input=example --output=export --binary-wrappers true
 :::info `--no-synthesized-rust-collection-aliases`
 Suppresses emission of Rust `pub type` aliases for generator-**synthesized** collection wrappers — currently a table rule's auto-named keys-list, e.g. `pub type FooList = Vec<Foo>;` minted for `tbl = { * foo => uint }`. Off by default.
 
-Rule-declared aliases are never suppressed, even when structurally transparent: an explicitly authored `foo_list = [* foo]` or `signature = bytes .size 32` is a human-written name and always stays. The suppression is emission-only — generated code references collections structurally (`Vec<Foo>`), never through the alias, so no field type or serialization changes, and the crate still compiles. Wasm-side wrappers and aliases are untouched.
+Rule-declared aliases are never suppressed, even when structurally transparent: an explicitly authored `foo_list = [* foo]` or `payload = bytes` is a human-written name and always stays. The suppression is emission-only — generated code references collections structurally (`Vec<Foo>`), never through the alias, so no field type or serialization changes, and the crate still compiles. Wasm-side wrappers and aliases are untouched. An exact byte rule such as `signature = bytes .size 32` is not this case: it is a checked wrapper whose native inner carrier is `[u8; 32]`.
 
 This is a flag rather than a default change because it removes public API (the crate's own synthesized aliases, not just extern-element ones) that existing consumers may depend on.
 

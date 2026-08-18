@@ -516,7 +516,14 @@ impl GenerationScope {
             new_func.line("Self(Vec::new())");
             wrapper.s_impl.push_fn(new_func);
             // TODO: range check stuff? where do we want to put this? or do we want to get rid of this like before?
-            push_list_accessors(self, &mut wrapper, types, array_type_ident, &element_type);
+            push_list_accessors(
+                self,
+                &mut wrapper,
+                types,
+                array_type_ident,
+                &element_type,
+                cli,
+            );
             wrapper.add_conversion_methods(&inner_type, cli);
             wrapper.push(self, types);
         }
@@ -610,21 +617,24 @@ impl GenerationScope {
              in the core type."
         ));
         wrapper.push_inner_field(&inner_type);
-        // new(first) — always valid (length 1)
+        // new(first) — always valid (length 1), except that an exact byte element still has to
+        // cross its Vec-to-array storage handover before it reaches NonEmptyVec.
         let mut new_func = codegen::Function::new("new");
-        new_func
-            .vis("pub")
-            .ret("Self")
-            .arg(
-                "first",
-                self.wasm_param_type(
-                    types,
-                    &element_type,
-                    wrapper_ident,
-                    "non-empty list constructor parameter",
-                ),
-            )
-            .line(format!(
+        new_func.vis("pub").arg(
+            "first",
+            self.wasm_param_type(
+                types,
+                &element_type,
+                wrapper_ident,
+                "non-empty list constructor parameter",
+            ),
+        );
+        if let Some(handover) = wasm_exact_byte_handover(&element_type, "first", cli) {
+            new_func
+                .ret("Result<Self, JsError>")
+                .line(format!("Ok(Self(NonEmptyVec::new({handover})))"));
+        } else {
+            new_func.ret("Self").line(format!(
                 "Self(NonEmptyVec::new({}))",
                 ToWasmBoundaryOperations::format(
                     element_type
@@ -632,9 +642,10 @@ impl GenerationScope {
                         .into_iter()
                 )
             ));
+        }
         wrapper.s_impl.push_fn(new_func);
         // add stays infallible: a push can never violate the >= 1 lower bound
-        push_list_accessors(self, &mut wrapper, types, wrapper_ident, &element_type);
+        push_list_accessors(self, &mut wrapper, types, wrapper_ident, &element_type, cli);
         // try_from: the single checked door from the loose form to the restricted wrapper. It
         // BORROWS (and clones) so the source loose list/Vec remains valid on the JS side, and the
         // throw happens here — right at the conversion, not inside a parent constructor.
@@ -829,11 +840,13 @@ impl GenerationScope {
             )
             .line(format!(
                 "self.0.push({}).map_err(|e| JsError::new(&e.to_string()))",
-                ToWasmBoundaryOperations::format(
-                    element_type
-                        .from_wasm_boundary_clone(types, "elem", false)
-                        .into_iter()
-                )
+                wasm_exact_byte_handover(&element_type, "elem", cli).unwrap_or_else(|| {
+                    ToWasmBoundaryOperations::format(
+                        element_type
+                            .from_wasm_boundary_clone(types, "elem", false)
+                            .into_iter(),
+                    )
+                })
             ));
         if element_type.vec_of_self_directly_wasm_exposable(types) {
             wrapper
@@ -1025,21 +1038,24 @@ impl GenerationScope {
                 .ret("Self")
                 .line(format!("Self({twin}::new())"));
         } else if non_empty {
-            // new(first) — always valid (length 1, trivially unique)
+            // new(first) — length 1 is trivially unique, but exact bytes still need their
+            // fallible Vec-to-array handover before direct ordered-set storage.
             let mut new_func = codegen::Function::new("new");
-            new_func
-                .vis("pub")
-                .ret("Self")
-                .arg(
-                    "first",
-                    self.wasm_param_type(
-                        types,
-                        &element_type,
-                        wrapper_ident,
-                        "ordered-set constructor parameter",
-                    ),
-                )
-                .line(format!(
+            new_func.vis("pub").arg(
+                "first",
+                self.wasm_param_type(
+                    types,
+                    &element_type,
+                    wrapper_ident,
+                    "ordered-set constructor parameter",
+                ),
+            );
+            if let Some(handover) = wasm_exact_byte_handover(&element_type, "first", cli) {
+                new_func
+                    .ret("Result<Self, JsError>")
+                    .line(format!("Ok(Self({twin}::new({handover})))"));
+            } else {
+                new_func.ret("Self").line(format!(
                     "Self({twin}::new({}))",
                     ToWasmBoundaryOperations::format(
                         element_type
@@ -1047,6 +1063,7 @@ impl GenerationScope {
                             .into_iter()
                     )
                 ));
+            }
             wrapper.s_impl.push_fn(new_func);
         } else if bounds.is_none() {
             let mut new_func = codegen::Function::new("new");
@@ -1094,31 +1111,33 @@ impl GenerationScope {
             )
             .line(format!(
                 "self.0.push({}).map_err(|e| JsError::new(&e.to_string()))",
-                ToWasmBoundaryOperations::format(
-                    element_type
-                        .from_wasm_boundary_clone(types, "elem", false)
-                        .into_iter()
-                )
+                wasm_exact_byte_handover(&element_type, "elem", cli).unwrap_or_else(|| {
+                    ToWasmBoundaryOperations::format(
+                        element_type
+                            .from_wasm_boundary_clone(types, "elem", false)
+                            .into_iter(),
+                    )
+                })
             ));
         // Only loose/non-empty twins expose the standard normalizing insert. Bounded set mutation
         // must stay checked for both duplicate and maximum overflow.
         if bounds.is_none() {
-            wrapper
-                .s_impl
-                .new_fn("insert")
-                .vis("pub")
-                .ret("bool")
-                .arg_mut_self()
-                .arg(
-                    "elem",
-                    self.wasm_param_type(
-                        types,
-                        &element_type,
-                        wrapper_ident,
-                        "ordered-set insert parameter",
-                    ),
-                )
-                .line(format!(
+            let mut insert = codegen::Function::new("insert");
+            insert.vis("pub").arg_mut_self().arg(
+                "elem",
+                self.wasm_param_type(
+                    types,
+                    &element_type,
+                    wrapper_ident,
+                    "ordered-set insert parameter",
+                ),
+            );
+            if let Some(handover) = wasm_exact_byte_handover(&element_type, "elem", cli) {
+                insert
+                    .ret("Result<bool, JsError>")
+                    .line(format!("Ok(self.0.insert({handover}))"));
+            } else {
+                insert.ret("bool").line(format!(
                     "self.0.insert({})",
                     ToWasmBoundaryOperations::format(
                         element_type
@@ -1126,24 +1145,26 @@ impl GenerationScope {
                             .into_iter()
                     )
                 ));
+            }
+            wrapper.s_impl.push_fn(insert);
         }
         // Membership is a read door and applies to every ordered-set flavor.
-        wrapper
-            .s_impl
-            .new_fn("contains")
-            .vis("pub")
-            .ret("bool")
-            .arg_ref_self()
-            .arg(
-                "elem",
-                self.wasm_param_type(
-                    types,
-                    &element_type,
-                    wrapper_ident,
-                    "ordered-set contains parameter",
-                ),
-            )
-            .line(format!(
+        let mut contains = codegen::Function::new("contains");
+        contains.vis("pub").arg_ref_self().arg(
+            "elem",
+            self.wasm_param_type(
+                types,
+                &element_type,
+                wrapper_ident,
+                "ordered-set contains parameter",
+            ),
+        );
+        if let Some(handover) = wasm_exact_byte_handover(&element_type, "elem", cli) {
+            contains
+                .ret("Result<bool, JsError>")
+                .line(format!("Ok(self.0.contains(&{handover}))"));
+        } else {
+            contains.ret("bool").line(format!(
                 "self.0.contains(&{})",
                 ToWasmBoundaryOperations::format(
                     element_type
@@ -1151,6 +1172,8 @@ impl GenerationScope {
                         .into_iter()
                 )
             ));
+        }
+        wrapper.s_impl.push_fn(contains);
         // try_from: the single checked door from the loose form to the restricted wrapper.
         if element_type.vec_of_self_directly_wasm_exposable(types) {
             wrapper
@@ -1534,11 +1557,11 @@ impl GenerationScope {
              `insert` can never violate the bound; removal is checked in the core type."
         ));
         wrapper.push_inner_field(&inner_type);
-        // new(first_key, first_value) — always valid (length 1)
+        // new(first_key, first_value) — length 1 is valid, but each exact byte key/value must
+        // cross its fallible Vec-to-array handover before direct map storage.
         let mut new_func = codegen::Function::new("new");
         new_func
             .vis("pub")
-            .ret("Self")
             .arg(
                 "first_key",
                 self.wasm_param_type(
@@ -1556,20 +1579,33 @@ impl GenerationScope {
                     wrapper_ident,
                     "non-empty map constructor value parameter",
                 ),
+            );
+        let key = wasm_exact_byte_handover(&key_type, "first_key", cli).unwrap_or_else(|| {
+            ToWasmBoundaryOperations::format(
+                key_type
+                    .from_wasm_boundary_clone(types, "first_key", false)
+                    .into_iter(),
             )
-            .line(format!(
-                "Self({core_ctor}::new({}, {}))",
-                ToWasmBoundaryOperations::format(
-                    key_type
-                        .from_wasm_boundary_clone(types, "first_key", false)
-                        .into_iter()
-                ),
+        });
+        let value =
+            wasm_exact_byte_handover(&value_type, "first_value", cli).unwrap_or_else(|| {
                 ToWasmBoundaryOperations::format(
                     value_type
                         .from_wasm_boundary_clone(types, "first_value", false)
-                        .into_iter()
+                        .into_iter(),
                 )
-            ));
+            });
+        if wasm_exact_byte_handover(&key_type, "first_key", cli).is_some()
+            || wasm_exact_byte_handover(&value_type, "first_value", cli).is_some()
+        {
+            new_func
+                .ret("Result<Self, JsError>")
+                .line(format!("Ok(Self({core_ctor}::new({key}, {value})))"));
+        } else {
+            new_func
+                .ret("Self")
+                .line(format!("Self({core_ctor}::new({key}, {value}))"));
+        }
         wrapper.s_impl.push_fn(new_func);
         // len
         wrapper
@@ -1807,6 +1843,7 @@ fn push_list_accessors(
     types: &IntermediateTypes,
     owner: &RustIdent,
     element_type: &RustType,
+    cli: &Cli,
 ) {
     wrapper
         .s_impl
@@ -1823,16 +1860,19 @@ fn push_list_accessors(
         .arg_ref_self()
         .arg("index", "usize")
         .line(element_type.to_wasm_boundary(types, "self.0[index]", false));
-    wrapper
-        .s_impl
-        .new_fn("add")
-        .vis("pub")
-        .arg_mut_self()
-        .arg(
-            "elem",
-            gen_scope.wasm_param_type(types, element_type, owner, "list add parameter"),
-        )
-        .line(format!(
+    let mut add = codegen::Function::new("add");
+    add.vis("pub").arg_mut_self().arg(
+        "elem",
+        gen_scope.wasm_param_type(types, element_type, owner, "list add parameter"),
+    );
+    if let Some(handover) = wasm_exact_byte_handover(element_type, "elem", cli) {
+        // Unlike a direct record/wrapper constructor, this writes straight into `Vec<[u8; N]>`.
+        // The projected Vec has no later native constructor seam, so this is its one RangeCheck.
+        add.ret("Result<(), JsError>")
+            .line(format!("self.0.push({handover});"))
+            .line("Ok(())");
+    } else {
+        add.line(format!(
             "self.0.push({});",
             ToWasmBoundaryOperations::format(
                 element_type
@@ -1840,6 +1880,41 @@ fn push_list_accessors(
                     .into_iter()
             )
         ));
+    }
+    wrapper.s_impl.push_fn(add);
+}
+
+/// Convert the projected wasm byte list at a position that stores the value directly (collection
+/// element/key/value) rather than forwarding it to a native loose constructor.  Keep the shared
+/// RangeCheck payload used by every other exact-byte handover; a raw Vec->array error has no public
+/// meaning at this boundary.
+pub(super) fn wasm_exact_byte_handover(ty: &RustType, expr: &str, cli: &Cli) -> Option<String> {
+    if let Some(len) = ty.exact_byte_array_len_checked() {
+        return Some(format!("{}?", wasm_exact_byte_conversion(len, expr, cli)));
+    }
+    // A nullable byte value remains a direct-storage boundary: wasm-bindgen supplies
+    // `Option<Vec<u8>>`, but the collection carrier stores `Option<[u8; N]>`. Re-enter the same
+    // leaf RangeCheck for each present value before the enclosing collection mutates. `transpose`
+    // preserves None and keeps a bad Some atomic, while the `?` makes the caller's Result surface
+    // truthful just like a non-null exact byte handover.
+    match ty.conceptual_type.resolve_alias_shallow() {
+        ConceptualRustType::Optional(inner) => inner.exact_byte_array_len_checked().map(|len| {
+            format!(
+                "{expr}.map(|bytes| {}).transpose()?",
+                wasm_exact_byte_conversion(len, "bytes", cli)
+            )
+        }),
+        _ => None,
+    }
+}
+
+/// The fallible leaf conversion without a terminal `?`. Optional handovers map this Result through
+/// their `Option` and then transpose it, whereas direct storage consumes it immediately.
+fn wasm_exact_byte_conversion(len: usize, expr: &str, cli: &Cli) -> String {
+    let runtime = cli.common_import_wasm();
+    format!(
+        "<[u8; {len}]>::try_from({expr}).map_err(|bytes: Vec<u8>| JsError::from({runtime}::error::DeserializeError::from({runtime}::error::DeserializeFailure::RangeCheck {{ found: bytes.len() as i128, min: Some({len}), max: Some({len}) }})))"
+    )
 }
 
 /// Emit the shared wasm table-wrapper accessor surface — `insert`, `get`, the conditional `has`, and
@@ -1896,12 +1971,15 @@ pub(super) fn push_table_accessors(
     // `From<Option<Inner>>` impl (wasm E0277/E0308).
     let value_nullable_inner_exposable = match value_type.conceptual_type.resolve_alias_shallow() {
         ConceptualRustType::Optional(inner) => {
-            inner.conceptual_type.directly_wasm_exposable_ct(types)
+            inner.exact_byte_array_len_checked().is_none()
+                && inner.conceptual_type.directly_wasm_exposable_ct(types)
         }
         _ => false,
     };
     // insert
     let mut insert_func = codegen::Function::new("insert");
+    let handover_can_fail = wasm_exact_byte_handover(key_type, "key", cli).is_some()
+        || wasm_exact_byte_handover(value_type, "value", cli).is_some();
     insert_func
         .vis("pub")
         .arg_mut_self()
@@ -1913,7 +1991,7 @@ pub(super) fn push_table_accessors(
             "value",
             gen_scope.wasm_param_type(types, value_type, owner, "table insert value parameter"),
         )
-        .ret(if checked_insert {
+        .ret(if checked_insert || handover_can_fail {
             format!("Result<{}, JsError>", map_value_ret())
         } else {
             map_value_ret()
@@ -1929,8 +2007,17 @@ pub(super) fn push_table_accessors(
     // resource wrapper. Keep the nullable flatten at the same inner layer.
     let insert_return_conversion = if checked_insert {
         match (value_nullable, value_type.directly_wasm_exposable(types)) {
+            (true, true) if wasm_exact_byte_handover(value_type, "value", cli).is_some() => {
+                ".map(|value| value.flatten().map(|bytes| bytes.to_vec()))".to_owned()
+            }
             (true, true) => ".map(|value| value.flatten())".to_owned(),
             (true, false) => ".map(|value| value.flatten().map(Into::into))".to_owned(),
+            // Exact bytes are directly wasm-exposable only after the carrier array is loosened
+            // back to Vec<u8>; the checked map result still contains the stored array, so convert
+            // its displaced value inside the Result payload.
+            (false, true) if value_type.exact_byte_array_len_checked().is_some() => {
+                ".map(|value| value.map(|bytes| bytes.to_vec()))".to_owned()
+            }
             (false, true) => String::new(),
             (false, false) => ".map(|value| value.map(Into::into))".to_owned(),
         }
@@ -1941,36 +2028,46 @@ pub(super) fn push_table_accessors(
             // displaced value is `Option<InnerRust>` after flatten; convert its inner to wasm.
             format!("{value_flatten}.map(Into::into)")
         }
+    } else if value_type.exact_byte_array_len_checked().is_some() {
+        ".map(|bytes| bytes.to_vec())".to_owned()
     } else if value_type.directly_wasm_exposable(types) {
         String::new()
     } else {
         ".map(Into::into)".to_owned()
     };
-    let insert_expr = format!(
-        "{receiver}.insert({}, {}){}",
+    let key_expr = wasm_exact_byte_handover(key_type, "key", cli).unwrap_or_else(|| {
         ToWasmBoundaryOperations::format(
             key_type
                 .from_wasm_boundary_clone(types, "key", false)
-                .into_iter()
-        ),
+                .into_iter(),
+        )
+    });
+    let value_expr = wasm_exact_byte_handover(value_type, "value", cli).unwrap_or_else(|| {
         ToWasmBoundaryOperations::format(
             value_type
                 .from_wasm_boundary_clone(types, "value", false)
-                .into_iter()
-        ),
-        insert_return_conversion
+                .into_iter(),
+        )
+    });
+    let insert_expr = format!(
+        "{receiver}.insert({}, {}){}",
+        key_expr, value_expr, insert_return_conversion
     );
     if checked_insert {
         insert_func.line(format!(
             "{insert_expr}.map_err(|e| JsError::new(&e.to_string()))"
         ));
+    } else if handover_can_fail {
+        insert_func.line(format!("Ok({insert_expr})"));
     } else {
         insert_func.line(insert_expr);
     }
     // ^ TODO: support failable types everywhere or just force it to be only a detail in the wrapper?
     wrapper.s_impl.push_fn(insert_func);
     // get
-    let get_ret_modifier = if value_type.is_copy(types) {
+    let get_ret_modifier = if value_type.exact_byte_array_len_checked().is_some() {
+        ".map(|bytes| bytes.to_vec())"
+    } else if value_type.is_copy(types) {
         ""
     } else if value_nullable {
         // stored value is `Option<InnerRust>`; convert the inner across the boundary (when it is
@@ -1987,13 +2084,18 @@ pub(super) fn push_table_accessors(
         ".map(|v| v.clone().into())"
     };
     let mut getter = codegen::Function::new("get");
+    let key_handover_can_fail = wasm_exact_byte_handover(key_type, "key", cli).is_some();
     getter
         .arg_ref_self()
         .arg(
             "key",
             gen_scope.wasm_param_type(types, key_type, owner, "table get key parameter"),
         )
-        .ret(map_value_ret())
+        .ret(if key_handover_can_fail {
+            format!("Result<{}, JsError>", map_value_ret())
+        } else {
+            map_value_ret()
+        })
         .vis("pub");
     if value_nullable {
         getter.doc("Returns None if the key is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).");
@@ -2015,7 +2117,13 @@ pub(super) fn push_table_accessors(
             modifier.to_owned()
         }
     };
-    if key_type.directly_wasm_exposable(types) {
+    if let Some(key) = wasm_exact_byte_handover(key_type, "key", cli) {
+        getter.line(format!(
+            "Ok({receiver}.get(&{key}){}{})",
+            copied_or(get_ret_modifier),
+            value_flatten
+        ));
+    } else if key_type.directly_wasm_exposable(types) {
         getter.line(format!(
             "{receiver}.get({}){}{}",
             key_type.from_wasm_boundary_ref(types, "key"),
@@ -2049,10 +2157,16 @@ pub(super) fn push_table_accessors(
                 "key",
                 gen_scope.wasm_param_type(types, key_type, owner, "table has key parameter"),
             )
-            .ret("bool")
+            .ret(if key_handover_can_fail {
+                "Result<bool, JsError>"
+            } else {
+                "bool"
+            })
             .vis("pub")
             .doc("Returns whether the key is present, distinguishing an absent key from a present-but-null value (both of which `get` reports as None).");
-        if key_type.directly_wasm_exposable(types) {
+        if let Some(key) = wasm_exact_byte_handover(key_type, "key", cli) {
+            has_func.line(format!("Ok({receiver}.get(&{key}).is_some())"));
+        } else if key_type.directly_wasm_exposable(types) {
             has_func.line(format!(
                 "{receiver}.get({}).is_some()",
                 key_type.from_wasm_boundary_ref(types, "key")

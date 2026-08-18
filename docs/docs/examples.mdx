@@ -269,7 +269,7 @@ pub struct Limitations {
     pub u_64: u64,
     pub i_8: i8,
     pub i_64: i64,
-    pub hash32: Vec<u8>,
+    pub hash32: [u8; 32],
     pub bounded: String,
 }
 
@@ -283,8 +283,24 @@ impl Limitations {
         i_64: i64,
         hash32: Vec<u8>,
         bounded: String,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, DeserializeError> {
+        let hash32: [u8; 32] =
+            hash32
+                .try_into()
+                .map_err(|bytes: Vec<u8>| DeserializeFailure::RangeCheck {
+                    found: bytes.len() as i128,
+                    min: Some(32),
+                    max: Some(32),
+                })?;
+        if bounded.len() < 10 || bounded.len() > 20 {
+            return Err(DeserializeFailure::RangeCheck {
+                found: bounded.len() as i128,
+                min: Some(10),
+                max: Some(20),
+            }
+            .into());
+        }
+        Ok(Self {
             u_8,
             u_16,
             u_32,
@@ -293,7 +309,7 @@ impl Limitations {
             i_64,
             hash32,
             bounded,
-        }
+        })
     }
 }
 ```
@@ -1138,7 +1154,6 @@ impl TypeChoice {
 ```
 
 </details>
-
 
 
 

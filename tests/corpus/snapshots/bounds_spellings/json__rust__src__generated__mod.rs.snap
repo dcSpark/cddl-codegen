@@ -12,6 +12,7 @@ expression: content
 )]
 
 extern crate alloc;
+use alloc::borrow::ToOwned;
 use alloc::string::String;
 use alloc::vec::Vec;
 pub mod error;
@@ -25,12 +26,12 @@ use crate::generated::serialization::decode_canonical_hex;
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct BoundsMembers {
-    pub m_exact_size: Vec<u8>,
+    pub m_exact_size: [u8; 3],
     pub m_zero_len: Vec<u8>,
     pub m_int_range: u64,
     pub m_zero_exact: u64,
     pub m_nint_range: u64,
-    pub m_optional_size: Option<Vec<u8>>,
+    pub m_optional_size: Option<[u8; 3]>,
 }
 
 impl BoundsMembers {
@@ -41,14 +42,14 @@ impl BoundsMembers {
         m_zero_exact: u64,
         m_nint_range: u64,
     ) -> Result<Self, DeserializeError> {
-        if m_exact_size.len() != 3 {
-            return Err(DeserializeFailure::RangeCheck {
-                found: m_exact_size.len() as i128,
-                min: Some(3),
-                max: Some(3),
-            }
-            .into());
-        }
+        let m_exact_size: [u8; 3] =
+            m_exact_size
+                .try_into()
+                .map_err(|bytes: Vec<u8>| DeserializeFailure::RangeCheck {
+                    found: bytes.len() as i128,
+                    min: Some(3),
+                    max: Some(3),
+                })?;
         if m_zero_len.len() > 32 {
             return Err(DeserializeFailure::RangeCheck {
                 found: m_zero_len.len() as i128,
@@ -93,24 +94,24 @@ impl BoundsMembers {
 }
 
 #[derive(Clone, Debug)]
-pub struct WExactSize(pub(crate) Vec<u8>);
+pub struct WExactSize(pub(crate) [u8; 3]);
 
 impl WExactSize {
-    pub fn get(&self) -> &Vec<u8> {
+    pub fn get(&self) -> &[u8; 3] {
         &self.0
     }
 
     pub fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
-        if inner.len() != 3 {
-            return Err(DeserializeError::new(
+        let inner: [u8; 3] = inner.try_into().map_err(|bytes: Vec<u8>| {
+            DeserializeError::new(
                 "WExactSize",
                 DeserializeFailure::RangeCheck {
-                    found: inner.len() as i128,
+                    found: bytes.len() as i128,
                     min: Some(3),
                     max: Some(3),
                 },
-            ));
-        }
+            )
+        })?;
         Ok(Self(inner))
     }
 }
@@ -120,12 +121,6 @@ impl TryFrom<Vec<u8>> for WExactSize {
 
     fn try_from(inner: Vec<u8>) -> Result<Self, Self::Error> {
         WExactSize::new(inner)
-    }
-}
-
-impl From<WExactSize> for Vec<u8> {
-    fn from(wrapper: WExactSize) -> Self {
-        wrapper.0
     }
 }
 
@@ -162,11 +157,14 @@ impl schemars::JsonSchema for WExactSize {
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        <String as schemars::JsonSchema>::json_schema(generator)
+        let mut out = String::json_schema(generator);
+        out.insert("minLength".to_owned(), 6u64.into());
+        out.insert("maxLength".to_owned(), 6u64.into());
+        out
     }
 
     fn inline_schema() -> bool {
-        <String as schemars::JsonSchema>::inline_schema()
+        String::inline_schema()
     }
 }
 
@@ -452,6 +450,12 @@ impl schemars::JsonSchema for WZeroLen {
 
     fn inline_schema() -> bool {
         <String as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+impl From<WExactSize> for [u8; 3] {
+    fn from(wrapper: WExactSize) -> Self {
+        wrapper.0
     }
 }
 

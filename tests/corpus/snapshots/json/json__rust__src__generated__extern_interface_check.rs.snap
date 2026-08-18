@@ -41,6 +41,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::CustomHolder>();
     _assert_serialize::<crate::generated::CustomWrapper>();
     _assert_deserialize::<crate::generated::CustomWrapper>();
+    _assert_serialize::<crate::generated::ExactBytesWrapper>();
+    _assert_deserialize::<crate::generated::ExactBytesWrapper>();
     _assert_serialize::<crate::generated::I16Wrapper>();
     _assert_deserialize::<crate::generated::I16Wrapper>();
     _assert_serialize::<crate::generated::I64Wrapper>();

@@ -7647,20 +7647,19 @@ impl Deserialize for OverlapBasicEmbed {
                     Ok(Some(tag_encoding))
                 })()
                 .map_err(|e| e.annotate("tag"))?;
-                let (hash, hash_encoding) = raw
-                    .bytes_sz()
-                    .map_err(Into::<DeserializeError>::into)
+                let (hash, hash_encoding) = Ok::<_, DeserializeError>(raw.bytes_sz()?)
                     .and_then(|(bytes, enc)| {
-                        if bytes.len() != 32 {
-                            Err(DeserializeFailure::RangeCheck {
-                                found: bytes.len() as i128,
-                                min: Some(32),
-                                max: Some(32),
-                            }
-                            .into())
-                        } else {
-                            Ok((bytes, StringEncoding::from(enc)))
-                        }
+                        bytes
+                            .try_into()
+                            .map_err(|bytes: Vec<u8>| {
+                                DeserializeFailure::RangeCheck {
+                                    found: bytes.len() as i128,
+                                    min: Some(32),
+                                    max: Some(32),
+                                }
+                                .into()
+                            })
+                            .map(|bytes: [u8; 32]| (bytes, StringEncoding::from(enc)))
                     })
                     .map_err(|e: DeserializeError| e.annotate("hash"))?;
                 match len {

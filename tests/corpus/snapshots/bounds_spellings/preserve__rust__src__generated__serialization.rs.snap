@@ -5,9 +5,11 @@ expression: content
 // This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
 
+extern crate alloc;
 use super::cbor_encodings::*;
 use super::*;
 use crate::generated::error::*;
+use alloc::vec::Vec;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
 
@@ -99,20 +101,19 @@ impl Deserialize for BoundsMembers {
             let len_encoding: LenEncoding = len.into();
             let mut read_len = CBORReadLen::new(len);
             read_len.read_elems(5)?;
-            let (m_exact_size, m_exact_size_encoding) = raw
-                .bytes_sz()
-                .map_err(Into::<DeserializeError>::into)
+            let (m_exact_size, m_exact_size_encoding) = Ok::<_, DeserializeError>(raw.bytes_sz()?)
                 .and_then(|(bytes, enc)| {
-                    if bytes.len() != 3 {
-                        Err(DeserializeFailure::RangeCheck {
-                            found: bytes.len() as i128,
-                            min: Some(3),
-                            max: Some(3),
-                        }
-                        .into())
-                    } else {
-                        Ok((bytes, StringEncoding::from(enc)))
-                    }
+                    bytes
+                        .try_into()
+                        .map_err(|bytes: Vec<u8>| {
+                            DeserializeFailure::RangeCheck {
+                                found: bytes.len() as i128,
+                                min: Some(3),
+                                max: Some(3),
+                            }
+                            .into()
+                        })
+                        .map(|bytes: [u8; 3]| (bytes, StringEncoding::from(enc)))
                 })
                 .map_err(|e: DeserializeError| e.annotate("m_exact_size"))?;
             let (m_zero_len, m_zero_len_encoding) = raw
@@ -186,20 +187,19 @@ impl Deserialize for BoundsMembers {
             {
                 (|| -> Result<_, DeserializeError> {
                     read_len.read_elems(1)?;
-                    raw.bytes_sz()
-                        .map_err(Into::<DeserializeError>::into)
-                        .and_then(|(bytes, enc)| {
-                            if bytes.len() != 3 {
-                                Err(DeserializeFailure::RangeCheck {
+                    Ok::<_, DeserializeError>(raw.bytes_sz()?).and_then(|(bytes, enc)| {
+                        bytes
+                            .try_into()
+                            .map_err(|bytes: Vec<u8>| {
+                                DeserializeFailure::RangeCheck {
                                     found: bytes.len() as i128,
                                     min: Some(3),
                                     max: Some(3),
                                 }
-                                .into())
-                            } else {
-                                Ok((bytes, StringEncoding::from(enc)))
-                            }
-                        })
+                                .into()
+                            })
+                            .map(|bytes: [u8; 3]| (bytes, StringEncoding::from(enc)))
+                    })
                 })()
                 .map_err(|e| e.annotate("m_optional_size"))
                 .map(|(m_optional_size, m_optional_size_encoding)| {
@@ -256,17 +256,20 @@ impl cbor_event::se::Serialize for WExactSize {
 impl Deserialize for WExactSize {
     fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
-            let (inner, inner_encoding) = raw
-                .bytes_sz()
-                .map(|(bytes, enc)| (bytes, StringEncoding::from(enc)))?;
-            if inner.len() != 3 {
-                return Err(DeserializeFailure::RangeCheck {
-                    found: inner.len() as i128,
-                    min: Some(3),
-                    max: Some(3),
-                }
-                .into());
-            }
+            let (inner, inner_encoding) =
+                Ok::<_, DeserializeError>(raw.bytes_sz()?).and_then(|(bytes, enc)| {
+                    bytes
+                        .try_into()
+                        .map_err(|bytes: Vec<u8>| {
+                            DeserializeFailure::RangeCheck {
+                                found: bytes.len() as i128,
+                                min: Some(3),
+                                max: Some(3),
+                            }
+                            .into()
+                        })
+                        .map(|bytes: [u8; 3]| (bytes, StringEncoding::from(enc)))
+                })?;
             Ok(Self {
                 inner,
                 encodings: Some(WExactSizeEncoding { inner_encoding }),

@@ -17,6 +17,7 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     reg.add::<cddl_lib::BytesWrapper>();
     reg.add::<cddl_lib::CustomHolder>();
     reg.add::<cddl_lib::CustomWrapper>();
+    reg.add::<cddl_lib::ExactBytesWrapper>();
     reg.add::<cddl_lib::I16Wrapper>();
     reg.add::<cddl_lib::I64Wrapper>();
     reg.add::<cddl_lib::Int>();

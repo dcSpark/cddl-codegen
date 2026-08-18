@@ -5,8 +5,10 @@ expression: content
 // This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
 
+extern crate alloc;
 use super::*;
 use crate::generated::error::*;
+use alloc::vec::Vec;
 use cbor_event::de::Deserializer;
 use cbor_event::se::{Serialize, Serializer};
 
@@ -42,22 +44,19 @@ impl Deserialize for BoundsMembers {
             let len = raw.array()?;
             let mut read_len = CBORReadLen::from(len);
             read_len.read_elems(5)?;
-            let m_exact_size = Ok(raw
-                .bytes()
-                .map_err(Into::<DeserializeError>::into)
+            let m_exact_size = Ok::<_, DeserializeError>(raw.bytes()?)
                 .and_then(|bytes| {
-                    if bytes.len() != 3 {
-                        Err(DeserializeFailure::RangeCheck {
+                    bytes.try_into().map_err(|bytes: Vec<u8>| {
+                        DeserializeFailure::RangeCheck {
                             found: bytes.len() as i128,
                             min: Some(3),
                             max: Some(3),
                         }
-                        .into())
-                    } else {
-                        Ok(bytes)
-                    }
-                })?)
-            .map_err(|e: DeserializeError| e.annotate("m_exact_size"))?;
+                        .into()
+                    })
+                })
+                .map(|bytes: [u8; 3]| bytes)
+                .map_err(|e: DeserializeError| e.annotate("m_exact_size"))?;
             let m_zero_len = Ok(raw
                 .bytes()
                 .map_err(Into::<DeserializeError>::into)
@@ -129,21 +128,18 @@ impl Deserialize for BoundsMembers {
             {
                 (|| -> Result<_, DeserializeError> {
                     read_len.read_elems(1)?;
-                    Ok(raw
-                        .bytes()
-                        .map_err(Into::<DeserializeError>::into)
+                    Ok::<_, DeserializeError>(raw.bytes()?)
                         .and_then(|bytes| {
-                            if bytes.len() != 3 {
-                                Err(DeserializeFailure::RangeCheck {
+                            bytes.try_into().map_err(|bytes: Vec<u8>| {
+                                DeserializeFailure::RangeCheck {
                                     found: bytes.len() as i128,
                                     min: Some(3),
                                     max: Some(3),
                                 }
-                                .into())
-                            } else {
-                                Ok(bytes)
-                            }
-                        })?)
+                                .into()
+                            })
+                        })
+                        .map(|bytes: [u8; 3]| bytes)
                 })()
                 .map_err(|e| e.annotate("m_optional_size"))
                 .map(Some)
@@ -182,15 +178,18 @@ impl cbor_event::se::Serialize for WExactSize {
 impl Deserialize for WExactSize {
     fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
-            let inner = raw.bytes()?;
-            if inner.len() != 3 {
-                return Err(DeserializeFailure::RangeCheck {
-                    found: inner.len() as i128,
-                    min: Some(3),
-                    max: Some(3),
-                }
-                .into());
-            }
+            let inner = Ok::<_, DeserializeError>(raw.bytes()?)
+                .and_then(|bytes| {
+                    bytes.try_into().map_err(|bytes: Vec<u8>| {
+                        DeserializeFailure::RangeCheck {
+                            found: bytes.len() as i128,
+                            min: Some(3),
+                            max: Some(3),
+                        }
+                        .into()
+                    })
+                })
+                .map(|bytes: [u8; 3]| bytes)?;
             Ok(Self(inner))
         })()
         .map_err(|e| e.annotate("WExactSize"))

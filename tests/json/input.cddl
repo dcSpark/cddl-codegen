@@ -1,4 +1,5 @@
 bytes_wrapper = bytes ; @newtype
+exact_bytes_wrapper = bytes .size 4 ; @newtype
 str_wrapper = text ; @newtype
 u8_wrapper = uint .lt 256 ; @newtype
 u64_wrapper = uint ; @newtype

@@ -361,22 +361,22 @@ expression: ir
                 encodings: [],
                 config: RustTypeSerializeConfig {
                     default: None,
-                    bounds: None,
+                    bounds: Some(
+                        (
+                            Some(
+                                3,
+                            ),
+                            Some(
+                                3,
+                            ),
+                        ),
+                    ),
                     duplicates: None,
                     float_bounds: None,
                     basic_override: false,
                 },
             },
-            min_max: Some(
-                (
-                    Some(
-                        3,
-                    ),
-                    Some(
-                        3,
-                    ),
-                ),
-            ),
+            min_max: None,
             float_min_max: None,
         },
     },

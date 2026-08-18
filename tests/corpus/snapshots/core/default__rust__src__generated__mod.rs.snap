@@ -1588,7 +1588,7 @@ impl Outer {
 #[derive(Clone, Debug)]
 pub enum OverlapBasicEmbed {
     Identity,
-    X(Vec<u8>),
+    X([u8; 32]),
 }
 
 impl OverlapBasicEmbed {
@@ -1597,14 +1597,13 @@ impl OverlapBasicEmbed {
     }
 
     pub fn new_x(hash: Vec<u8>) -> Result<Self, DeserializeError> {
-        if hash.len() != 32 {
-            return Err(DeserializeFailure::RangeCheck {
-                found: hash.len() as i128,
-                min: Some(32),
-                max: Some(32),
-            }
-            .into());
-        }
+        let hash: [u8; 32] =
+            hash.try_into()
+                .map_err(|bytes: Vec<u8>| DeserializeFailure::RangeCheck {
+                    found: bytes.len() as i128,
+                    min: Some(32),
+                    max: Some(32),
+                })?;
         Ok(Self::X(hash))
     }
 }

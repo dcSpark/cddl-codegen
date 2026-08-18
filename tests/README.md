@@ -46,7 +46,7 @@ It's a dependency-free Bun script built around a gate **registry** — one entry
 | Tier | Command | What it runs | Wall time (warm) |
 |------|---------|--------------|------------------|
 | `fast` | `bun run check.ts fast` | what CI runs: fmt + clippy + snapshot tests + the drift gates | <!-- gen:sh:tests-tier-fast -->~43s<!-- /gen:sh:tests-tier-fast --> |
-| `local` (default) | `bun run check.ts` | `fast` + workspace build + the full `cargo test` suite | <!-- gen:sh:tests-tier-local -->~13 min<!-- /gen:sh:tests-tier-local --> |
+| `local` (default) | `bun run check.ts` | `fast` + workspace build + the full `cargo test` suite | <!-- gen:sh:tests-tier-local -->~15 min<!-- /gen:sh:tests-tier-local --> |
 | `full` | `bun run check.ts full` | `local` + every manual-only gate | <!-- gen:sh:tests-tier-full -->~66 min<!-- /gen:sh:tests-tier-full --> |
 
 Those three are **sliding-window medians (up to 20 runs) on the dev machine**, projected off
@@ -1631,8 +1631,11 @@ back via `--extern-import` in place of a hand-stub tree (user docs:
   caught pin==derived emitting `use dep::Foo as Foo;`). Plus the strict-seam vectors (missing
   header / unknown version / unknown `@`-annotation / flag-vs-physical double declaration / empty
   path / malformed value all hard-error; an export whose `; unexported:` records mention DSL tags
-  still parses cleanly), the wrapped staleness diagnostic, and single-file-consumer ROOT_SCOPE
-  preservation.
+  still parses cleanly), the wrapped staleness diagnostic, single-file-consumer ROOT_SCOPE
+  preservation, and `extern_import_roundtrips_exact_bytes_without_consuming_fixed_arrays` (exact
+  byte lengths 0 and 64 remain `[u8; N]` in the dependency, their constraints survive the
+  transparent-group export/import into the consumer's dependency-owned names, and the adjacent
+  exact homogeneous CDDL array remains `BoundedVec`).
 - **Writer vocabulary** (same file, `EXTERN_INTERFACE_WRITER_VOCABULARY` +
   `extern_interface_writer_vocabulary_matches_the_writers`): every `@…` annotation
   `generation/extern_interface.rs`'s rule-line assembly can WRITE into an export, paired with the

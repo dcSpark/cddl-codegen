@@ -244,6 +244,26 @@ pub(super) fn bounds_check_if_block_float(
 /// bounded named Rust wrapper checks at its own construction). Reproduces the integer path
 /// byte-for-byte (same `nint_bounds_to_u64` swap) so existing snapshots are unchanged.
 pub(super) fn value_bounds_check_line(ty: &RustType, e: &str, return_err: bool) -> Option<String> {
+    if let Some(len) = ty.exact_byte_array_len_checked() {
+        debug_assert!(
+            return_err,
+            "exact-byte conversion is only emitted at fallible doors"
+        );
+        return Some(format!(
+            "let {e}: [u8; {len}] = {e}.try_into().map_err(|bytes: Vec<u8>| DeserializeFailure::RangeCheck{{ found: bytes.len() as i128, min: Some({len}), max: Some({len}) }} )?;"
+        ));
+    }
+    if let ConceptualRustType::Optional(inner) = ty.conceptual_type.resolve_alias_shallow()
+        && let Some(len) = inner.exact_byte_array_len_checked()
+    {
+        debug_assert!(
+            return_err,
+            "optional exact-byte conversion is only emitted at fallible doors"
+        );
+        return Some(format!(
+            "let {e}: Option<[u8; {len}]> = {e}.map(|bytes| bytes.try_into().map_err(|bytes: Vec<u8>| DeserializeFailure::RangeCheck{{ found: bytes.len() as i128, min: Some({len}), max: Some({len}) }} )).transpose()?;"
+        ));
+    }
     // The `[+ T]` shape enforces its `>= 1` bound at the type level (NonEmptyVec's single TryFrom
     // door), so no inline length check is emitted at ctor/setter/deser sites — the invalid state is
     // unrepresentable. Ordinary/preserve bounded arrays likewise use BoundedVec and skip this path;
@@ -323,6 +343,24 @@ fn externally_wrapped_bounds_check_line(
     e: &str,
     wrap: impl Fn(String) -> String,
 ) -> Option<String> {
+    if let Some(len) = ty.exact_byte_array_len_checked() {
+        return Some(format!(
+            "let {e}: [u8; {len}] = match {e}.try_into() {{ Ok(bytes) => bytes, Err(bytes) => {{ {} }} }};",
+            wrap(format!(
+                "RangeCheck{{ found: bytes.len() as i128, min: Some({len}), max: Some({len}) }}"
+            ))
+        ));
+    }
+    if let ConceptualRustType::Optional(inner) = ty.conceptual_type.resolve_alias_shallow()
+        && let Some(len) = inner.exact_byte_array_len_checked()
+    {
+        return Some(format!(
+            "let {e}: Option<[u8; {len}]> = match {e}.map(|bytes| bytes.try_into()) .transpose() {{ Ok(bytes) => bytes, Err(bytes) => {{ {} }} }};",
+            wrap(format!(
+                "RangeCheck{{ found: bytes.len() as i128, min: Some({len}), max: Some({len}) }}"
+            ))
+        ));
+    }
     if ty.is_type_enforced_non_empty()
         || ty.is_type_enforced_bounded_array()
         || ty.is_type_enforced_bounded_map()

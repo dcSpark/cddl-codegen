@@ -186,6 +186,36 @@ impl Deserialize for CustomWrapper {
     }
 }
 
+impl cbor_event::se::Serialize for ExactBytesWrapper {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_bytes(&self.0)
+    }
+}
+
+impl Deserialize for ExactBytesWrapper {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let inner = Ok::<_, DeserializeError>(raw.bytes()?)
+                .and_then(|bytes| {
+                    bytes.try_into().map_err(|bytes: Vec<u8>| {
+                        DeserializeFailure::RangeCheck {
+                            found: bytes.len() as i128,
+                            min: Some(4),
+                            max: Some(4),
+                        }
+                        .into()
+                    })
+                })
+                .map(|bytes: [u8; 4]| bytes)?;
+            Ok(Self(inner))
+        })()
+        .map_err(|e| e.annotate("ExactBytesWrapper"))
+    }
+}
+
 impl cbor_event::se::Serialize for I16Wrapper {
     fn serialize<'se>(
         &self,

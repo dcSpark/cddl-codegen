@@ -1397,9 +1397,9 @@ fn generate_enum(
                     let can_fail = field.rust_type.needs_bounds_check_if_inlined(types);
                     // a bounded named Rust wrapper checks at its own ctor (no inline check line, but
                     // still fallible via `?`); a primitive int/float field emits its check here.
+                    let embedded = field.to_embedded_rust_type();
                     if can_fail
-                        && let Some(line) =
-                            value_bounds_check_line(&field.rust_type, &field.name, true)
+                        && let Some(line) = value_bounds_check_line(&embedded, &field.name, true)
                     {
                         new_func.line(&line);
                     }

@@ -19,6 +19,34 @@ non_empty = [+ uint]
 ; plain `list<u64>` and its uniqueness is re-imposed by `OrderedSet`'s `TryFrom`.
 unique = [* uint] ; @duplicates reject
 
+; Exact bytes cross WIT as list<u8>, but the nested collection carriers below are Vec<[u8; 4]>
+; and BTreeMap<[u8; 4], [u8; 4]>.  Their add/insert paths therefore own the checked handover;
+; direct exact-byte constructors retain their loose Vec<u8> door.
+fixed_byte_list = [* bytes .size 4]
+fixed_byte_map = { * bytes .size 4 => bytes .size 4 }
+fixed_byte_non_empty_list = [+ bytes .size 4]
+fixed_byte_bounded_list = [1*3 bytes .size 4]
+fixed_byte_set = [* bytes .size 4] ; @duplicates reject
+fixed_byte_non_empty_set = [+ bytes .size 4] ; @duplicates reject
+fixed_byte_non_empty_map = {+ bytes .size 4 => bytes .size 4}
+fixed_byte_bounded_map = {1*3 bytes .size 4 => bytes .size 4}
+fixed_byte_optional_list = [* bytes .size 4 / null]
+fixed_byte_optional_map = { * bytes .size 4 => bytes .size 4 / null }
+
+; Mandatory aggregate constructor arguments are already native collection carriers: only a direct
+; exact-byte leaf has a loose Vec door. This resident keeps emitted native/component constructors
+; from confusing Vec<Vec<u8>> with Vec<[u8; 4]> (and the corresponding map value carrier).
+fixed_byte_collection_holder = [
+  list: [* bytes .size 4],
+  values: { * tstr => bytes .size 4 }
+]
+
+; Choice construction delegates its loose Vec to the native variant constructor. This resident
+; protects the default/final-expression route independently of collection direct-storage doors.
+fixed_byte_choice = bytes .size 4 / uint
+fixed_byte_group_choice = [ 0, ? digest: bytes .size 4 // 1 ]
+fixed_byte_tagged = #6.1(bytes .size 4 / null)
+
 ; The bounded-reject sibling proves that the component restores BOTH invariants through the
 ; compound carrier rather than selecting BoundedVec for cardinality or OrderedSet for uniqueness.
 bounded_unique = [2*3 uint] ; @duplicates reject
@@ -41,6 +69,7 @@ bounded = {
   ? lim: uint .le 5,
   ? window: 0.5 .. 10.5,
   ? digest: bytes .size 4,
+  ? fixed_byte_optional_scalar: bytes .size 4 / null,
   ? label: text .size (3..14),
   ? span: sized_list,
   ; a bounded MAP, spelled INLINE because that is where the window reaches the field's own rust
@@ -59,6 +88,12 @@ bounded = {
   ? bounded_unique: bounded_unique,
   ? pairs: bounded_pairs,
   ? nested_pairs: nested_bounded_pairs,
+  ; Inline so the component member is a list/list-of-tuples rather than a separate resource
+  ; handle: these setters exercise the direct native collection-storage handover.
+  ? fixed_byte_list: [* bytes .size 4],
+  ? fixed_byte_map: { * bytes .size 4 => bytes .size 4 },
+  ? fixed_byte_optional_list: [* bytes .size 4 / null],
+  ? fixed_byte_optional_map: { * bytes .size 4 => bytes .size 4 / null },
 }
 
 ; A direct table's WIT spelling is `list<tuple<K, V>>`; its bounded VALUE must still re-enter
@@ -81,3 +116,18 @@ dynamic_open_table_catch_all = { * uint => tstr, 2*3 tstr => uint }
 ; An exact-zero fixed key is absent from the resource members; unlike an ordinary loose rest row,
 ; its complete list crosses the fallible native construction door so the key cannot be inserted.
 exact_zero_open = { required: uint, 0*0 forbidden: uint, * tstr => uint }
+
+; Captured rows expose a record-owned `insert_<rest>` because their map-wrapper getter is a
+; snapshot. Both direct storage sides are exact bytes, so this is the record-level handover resident.
+fixed_byte_open = { 1: uint, * bytes .size 4 => bytes .size 4 }
+
+; A major-disjoint text catch-all does not need protected-key validation. Its exact byte VALUE is
+; therefore stored directly by the wasm owner-level insertion door.
+fixed_byte_value_open = { 1: uint, * tstr => bytes .size 4 }
+
+; The min-one typed row's native record constructor takes its first entry directly. Exact bytes
+; make that constructor fallible even though the NonEmptyMap cardinality itself is type-enforced.
+fixed_byte_non_empty_open = {
+  + bytes .size 4 => bytes .size 4,
+  * tstr => uint
+}

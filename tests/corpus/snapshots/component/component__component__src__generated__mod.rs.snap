@@ -87,7 +87,6 @@ pub struct WitHash(pub RefCell<cddl_lib::Hash>);
 
 impl wit_types::GuestHash for WitHash {
     fn new(inner: Vec<u8>) -> Result<Self, String> {
-        let inner = inner.into_iter().collect();
         let inner = cddl_lib::Hash::new(inner).map_err(err)?;
         Ok(WitHash(RefCell::new(inner)))
     }

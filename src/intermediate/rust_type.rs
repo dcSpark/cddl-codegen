@@ -196,6 +196,31 @@ impl FixedValue {
 }
 
 impl RustType {
+    /// The one semantic recognition of an exact CDDL byte-string length.  `.size N` is parsed as
+    /// an equal bounds window, except that the non-negative zero lower endpoint is normalized
+    /// away by `with_bounds`.  A plain upper bound (`bytes .le N`) is deliberately not exact.
+    ///
+    /// Rust array lengths are emitted as `usize` literals.  CDDL's source integer is wider, so a
+    /// non-representable value is left for the parser's graceful-rejection owner rather than being
+    /// truncated here.
+    pub fn exact_byte_array_len(&self) -> Option<Result<usize, i128>> {
+        if !matches!(
+            self.resolve_alias_shallow(),
+            ConceptualRustType::Primitive(Primitive::Bytes)
+        ) {
+            return None;
+        }
+        exact_byte_array_len_from_bounds(self.config.bounds)
+    }
+
+    /// The checked, already parser-validated exact byte length used by generated type spelling.
+    /// A failed conversion is an input rejection, never an invitation to silently widen to Vec.
+    pub fn exact_byte_array_len_checked(&self) -> Option<usize> {
+        self.exact_byte_array_len().map(|result| {
+            result.expect("exact byte array length must be validated before generation")
+        })
+    }
+
     /// A total, identifier-safe spelling of the configuration that changes this type's semantic
     /// identity.  Synthesized nominals append this to an otherwise historic structural spelling:
     /// the empty configuration remains empty, so existing unconstrained names stay stable.
@@ -349,6 +374,68 @@ impl RustType {
         let mut out = self.for_variant().to_string();
         append_config_identity(self, "", &mut out);
         out
+    }
+}
+
+/// Bounds-only half of [`RustType::exact_byte_array_len`].  Primitive decode owns only a copied
+/// config window, so keep the tuple interpretation here instead of duplicating it there.
+pub fn exact_byte_array_len_from_bounds(
+    bounds: Option<(Option<i128>, Option<i128>)>,
+) -> Option<Result<usize, i128>> {
+    let (min, max) = bounds?;
+    let exact = match (min, max) {
+        (Some(min), Some(max)) if min == max => min,
+        (None, Some(0)) => 0,
+        _ => return None,
+    };
+    // Generated crates are checked for wasm32 as well as the generator host. Rust requires an
+    // array layout/object size to fit target `isize`, so use the shared 32-bit `isize::MAX` floor
+    // rather than accepting host-only or layout-invalid consts.
+    // A negative window is never a byte-string size, even though it can fit in an `i32`.
+    // Check the semantic lower bound before the representation conversion: casting `-1_i32`
+    // to `usize` would otherwise produce a host-sized, silently enormous array length.
+    Some(
+        (0..=i128::from(i32::MAX))
+            .contains(&exact)
+            .then_some(exact as usize)
+            .ok_or(exact),
+    )
+}
+
+#[cfg(test)]
+mod exact_byte_array_len_tests {
+    use super::*;
+
+    #[test]
+    fn recognizes_only_size_windows_including_normalized_zero_and_wasm_limit() {
+        let exact = |bounds| {
+            RustType::new(ConceptualRustType::Primitive(Primitive::Bytes)).with_bounds(bounds)
+        };
+        assert_eq!(
+            exact((Some(4), Some(4))).exact_byte_array_len(),
+            Some(Ok(4))
+        );
+        assert_eq!(
+            exact((Some(0), Some(0))).exact_byte_array_len(),
+            Some(Ok(0))
+        );
+        assert_eq!(exact((None, Some(4))).exact_byte_array_len(), None);
+        assert_eq!(
+            exact((Some(-1), Some(-1))).exact_byte_array_len(),
+            Some(Err(-1))
+        );
+        assert_eq!(
+            exact((Some(33), Some(33))).exact_byte_array_len(),
+            Some(Ok(33))
+        );
+        assert_eq!(
+            exact((
+                Some(i128::from(i32::MAX) + 1),
+                Some(i128::from(i32::MAX) + 1)
+            ))
+            .exact_byte_array_len(),
+            Some(Err(i128::from(i32::MAX) + 1))
+        );
     }
 }
 
@@ -1280,7 +1367,9 @@ impl RustType {
         {
             return false;
         }
-        self.config.bounds.is_some() || self.config.float_bounds.is_some()
+        self.config.bounds.is_some()
+            || self.config.float_bounds.is_some()
+            || matches!(self.conceptual_type.resolve_alias_shallow(), ConceptualRustType::Optional(inner) if inner.exact_byte_array_len_checked().is_some())
     }
 
     pub fn needs_bounds_check_if_inlined(&self, types: &IntermediateTypes) -> bool {
@@ -1480,6 +1569,9 @@ impl RustType {
 
     /// Type when stored inside a rust struct (member/alias/param). Bounds-aware over `for_rust_member_ct`.
     pub fn for_rust_member(&self, types: &IntermediateTypes, from_wasm: bool, cli: &Cli) -> String {
+        if let Some(len) = self.exact_byte_array_len_checked() {
+            return format!("[u8; {len}]");
+        }
         match &self.conceptual_type {
             ConceptualRustType::Array(inner) => {
                 let element = inner.for_rust_member(types, from_wasm, cli);
@@ -1556,6 +1648,20 @@ impl RustType {
 
     /// Function parameter TYPE that will be moved in. Bounds-aware over `for_rust_move_ct`.
     pub fn for_rust_move(&self, types: &IntermediateTypes, cli: &Cli) -> String {
+        // Construction deliberately accepts the loose boundary form.  The generated constructor
+        // atomically re-enters `[u8; N]::try_from` and reports the established RangeCheck instead
+        // of exposing TryFromSliceError.  Stored/member spelling above remains the static carrier.
+        if self.exact_byte_array_len_checked().is_some() {
+            return "Vec<u8>".to_owned();
+        }
+        // Constructors accept the loose form recursively through a nullable position:
+        // wasm/component callers own `Option<Vec<u8>>`, while storage remains
+        // `Option<[u8; N]>`. The constructor's shared bounds handover materializes the array.
+        if let ConceptualRustType::Optional(inner) = self.conceptual_type.resolve_alias_shallow()
+            && inner.exact_byte_array_len_checked().is_some()
+        {
+            return format!("Option<{}>", inner.for_rust_move(types, cli));
+        }
         self.for_rust_member(types, false, cli)
     }
 
@@ -1818,6 +1924,14 @@ impl RustType {
     /// set but NOT a non-empty array, so it needs its own arm here (the sibling type-name methods
     /// `for_wasm_member`/`for_wasm_param`/`directly_wasm_exposable` already treat both the same way).
     pub fn to_wasm_boundary(&self, types: &IntermediateTypes, expr: &str, is_ref: bool) -> String {
+        if self.exact_byte_array_len_checked().is_some() {
+            return format!("{expr}.to_vec()");
+        }
+        if let ConceptualRustType::Optional(inner) = self.conceptual_type.resolve_alias_shallow()
+            && inner.exact_byte_array_len_checked().is_some()
+        {
+            return format!("{expr}.clone().map(|bytes| bytes.to_vec())");
+        }
         if self.is_non_empty_array()
             || self.is_bounded_array()
             || self.is_reject_ordered_set()
@@ -1834,6 +1948,14 @@ impl RustType {
         expr: &str,
         is_ref: bool,
     ) -> String {
+        if self.exact_byte_array_len_checked().is_some() {
+            return format!("{expr}.map(|bytes| bytes.to_vec())");
+        }
+        if let ConceptualRustType::Optional(inner) = self.conceptual_type.resolve_alias_shallow()
+            && inner.exact_byte_array_len_checked().is_some()
+        {
+            return format!("{expr}.clone().flatten().map(|bytes| bytes.to_vec())");
+        }
         if self.is_non_empty_array()
             || self.is_bounded_array()
             || self.is_reject_ordered_set()

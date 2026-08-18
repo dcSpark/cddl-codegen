@@ -1163,6 +1163,49 @@ impl GenerationScope {
                     } else {
                         ""
                     };
+                    // Exact byte strings have a static native carrier but CBOR always hands the
+                    // decoder a Vec.  Make that one checked handover here, rather than first
+                    // emitting the ordinary `.len()` guard and then converting.  This is shared
+                    // by every member/element/choice decode route and preserves byte-string
+                    // framing (including the `_sz` metadata read).
+                    if matches!(p, Primitive::Bytes)
+                        && let Some(len) =
+                            crate::intermediate::exact_byte_array_len_from_bounds(type_cfg.bounds)
+                                .map(|result| {
+                                    result.expect(
+                                "exact byte array length must be validated before generation",
+                            )
+                                })
+                    {
+                        let range_error = format!(
+                            "DeserializeFailure::RangeCheck{{ found: bytes.len() as i128, min: Some({len}), max: Some({len}) }}.into()"
+                        );
+                        if cli.preserve_encodings {
+                            let mut final_exprs = config.final_exprs;
+                            final_exprs.push("StringEncoding::from(enc)".to_owned());
+                            let output = final_expr(final_exprs, Some("bytes".to_owned()));
+                            deser_code.content.line(&format!(
+                                "{}Ok::<_, DeserializeError>({}.bytes_sz()?).and_then(|(bytes, enc)| bytes.try_into().map_err(|bytes: Vec<u8>| {}).map(|bytes: [u8; {len}]| {})){}",
+                                before_after.before_str(true),
+                                deserializer_name,
+                                range_error,
+                                output,
+                                before_after.after_str(true)
+                            ));
+                        } else {
+                            let output = final_expr(config.final_exprs, Some("bytes".to_owned()));
+                            deser_code.content.line(&format!(
+                                "{}Ok::<_, DeserializeError>({}.bytes()?).and_then(|bytes| bytes.try_into().map_err(|bytes: Vec<u8>| {})).map(|bytes: [u8; {len}]| {}){}",
+                                before_after.before_str(true),
+                                deserializer_name,
+                                range_error,
+                                output,
+                                before_after.after_str(true)
+                            ));
+                        }
+                        deser_code.throws = true;
+                        return deser_code;
+                    }
                     // `width`: the optional (wmin, wmax) window for a width guard on the value
                     // read — Some only for the narrowing-cast unsigned primitives (u8/u16/u32),
                     // None for every width-safe caller (bytes/text/u64/n64).

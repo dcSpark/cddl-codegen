@@ -5192,7 +5192,7 @@ impl OverlapBasicEmbed {
 
     pub fn as_x(&self) -> Option<Vec<u8>> {
         match &self.0 {
-            cddl_lib::OverlapBasicEmbed::X(hash) => Some(hash.clone()),
+            cddl_lib::OverlapBasicEmbed::X(hash) => Some(hash.to_vec()),
             _ => None,
         }
     }

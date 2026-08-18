@@ -484,10 +484,29 @@ impl Emitter<'_, '_> {
         expr: &str,
         iface: &str,
     ) -> Conv {
+        // A top-level fixed byte parameter is a loose construction door: native named-wrapper and
+        // record constructors accept its Vec and own the one Vec -> array handover.  Recursive
+        // collection positions do NOT have such a constructor, so their enclosing arm below
+        // converts each element/column before it is collected into native storage.
+        if matches!(wit_type, WitType::List(inner) if matches!(&**inner, WitType::U8))
+            && rust_type.exact_byte_array_len_checked().is_some()
+        {
+            return Conv::plain(expr);
+        }
+        // The same loose-constructor seam applies to a TOP-LEVEL nullable exact byte value:
+        // native constructors accept `Option<Vec<u8>>` and materialize `Option<[u8; N]>` atomically.
+        // Recursive array/map callers take the dedicated helper below instead.
+        if matches!(wit_type, WitType::Option(inner) if matches!(&**inner, WitType::List(bytes) if matches!(&**bytes, WitType::U8)))
+            && matches!(rust_type.conceptual_type.resolve_alias_shallow(), ConceptualRustType::Optional(inner) if inner.exact_byte_array_len_checked().is_some())
+        {
+            return Conv::plain(expr);
+        }
         let resolved = rust_type.clone().resolve_aliases();
         match (wit_type, &resolved.conceptual_type) {
             (WitType::List(wit_inner), ConceptualRustType::Array(rust_inner)) => {
-                let element = self.wit_to_rust_typed(wit_inner, rust_inner, "x", iface);
+                let element = self
+                    .exact_byte_from_wit_typed("x", rust_inner)
+                    .unwrap_or_else(|| self.wit_to_rust_typed(wit_inner, rust_inner, "x", iface));
                 let values = if element.expr == "x" {
                     Conv::plain(format!("{expr}.into_iter().collect::<Vec<_>>()"))
                 } else if element.fallible {
@@ -527,7 +546,9 @@ impl Emitter<'_, '_> {
                 }
             }
             (WitType::Option(wit_inner), ConceptualRustType::Optional(rust_inner)) => {
-                let inner = self.wit_to_rust_typed(wit_inner, rust_inner, "v", iface);
+                let inner = self
+                    .exact_byte_from_wit_typed("v", rust_inner)
+                    .unwrap_or_else(|| self.wit_to_rust_typed(wit_inner, rust_inner, "v", iface));
                 if inner.expr == "v" {
                     Conv::plain(expr)
                 } else if inner.fallible {
@@ -546,8 +567,12 @@ impl Emitter<'_, '_> {
                 let [wit_key, wit_value] = wit_columns.as_slice() else {
                     return self.wit_to_rust(wit_type, expr, iface);
                 };
-                let key = self.wit_to_rust_typed(wit_key, rust_key, "x0", iface);
-                let value = self.wit_to_rust_typed(wit_value, rust_value, "x1", iface);
+                let key = self
+                    .exact_byte_from_wit_typed("x0", rust_key)
+                    .unwrap_or_else(|| self.wit_to_rust_typed(wit_key, rust_key, "x0", iface));
+                let value = self
+                    .exact_byte_from_wit_typed("x1", rust_value)
+                    .unwrap_or_else(|| self.wit_to_rust_typed(wit_value, rust_value, "x1", iface));
                 // A `{+ K => V}` is despecialized to the same WIT list as a loose table. Restore
                 // the OUTER NonEmptyMap/NonEmptyPairMap door after recursively restoring either
                 // column; otherwise inference tries to collect rows straight into the restricted
@@ -608,6 +633,36 @@ impl Emitter<'_, '_> {
                 }
             }
             _ => self.wit_to_rust(wit_type, expr, iface),
+        }
+    }
+
+    /// Re-enter the exact-byte carrier at a recursive WIT boundary.  These positions collect or
+    /// assign native storage directly, so unlike a loose top-level constructor there is no later
+    /// `new(Vec<u8>)` door to perform the conversion.
+    fn exact_byte_from_wit(&self, expr: &str, len: usize) -> Conv {
+        let runtime = self.runtime();
+        Conv {
+            expr: format!(
+                "{expr}.try_into().map_err(|bytes: Vec<u8>| err({runtime}::error::DeserializeError::from({runtime}::error::DeserializeFailure::RangeCheck {{ found: bytes.len() as i128, min: Some({len}), max: Some({len}) }})))"
+            ),
+            fallible: true,
+        }
+    }
+
+    /// Recursive exact-byte conversion for a collection column/element. Top-level constructor
+    /// parameters intentionally bypass this helper; they remain loose for their native `new`.
+    fn exact_byte_from_wit_typed(&self, expr: &str, ty: &RustType) -> Option<Conv> {
+        if let Some(len) = ty.exact_byte_array_len_checked() {
+            return Some(self.exact_byte_from_wit(expr, len));
+        }
+        match ty.conceptual_type.resolve_alias_shallow() {
+            ConceptualRustType::Optional(inner) => self
+                .exact_byte_from_wit_typed("value", inner)
+                .map(|inner| Conv {
+                    expr: format!("{expr}.map(|value| {}).transpose()", inner.expr),
+                    fallible: true,
+                }),
+            _ => None,
         }
     }
 

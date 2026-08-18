@@ -79,6 +79,72 @@ fn generate(input: &std::path::Path, extra: &[&str]) -> Result<BTreeMap<String, 
     crate::api::generated_strings(&cli).map_err(|e| e.to_string())
 }
 
+/// Exact byte-string bounds are representation-bearing even when they cross the generated
+/// extern-interface channel inside a transparent plain group.  Pin the whole round trip rather
+/// than only the renderer text: the consumer must parse the committed export back into the same
+/// static carriers.  The exact-zero normalization and a width above serde's historical 32-element
+/// array limit exercise the two non-obvious endpoints.  The exact homogeneous CDDL ARRAY beside
+/// them is the negative identity control for the still-open fixed-array campaign: this fixed-byte
+/// delivery must leave its `BoundedVec` carrier alone.
+#[test]
+fn extern_import_roundtrips_exact_bytes_without_consuming_fixed_arrays() {
+    let dep_spec = "exacts = (zero: bytes .size 0, wide: bytes .size 64)\n\
+                    fixed_values = [3*3 uint]\n\
+                    dep_holder = [exacts, values: fixed_values]\n";
+    let dep_root = scratch("exact_bytes_dep");
+    write(&dep_root, "lib.cddl", dep_spec);
+    let dep = generate(&dep_root.join("lib.cddl"), &["--lib-name", "dep"])
+        .expect("the dependency must generate with static exact-byte carriers");
+    let dep_rust = &dep["rust/src/generated/mod.rs"];
+    let _ = std::fs::remove_dir_all(&dep_root);
+    assert!(
+        dep_rust.contains("pub zero: [u8; 0]") && dep_rust.contains("pub wide: [u8; 64]"),
+        "the dependency widened an exact byte carrier back to Vec:\n{dep_rust}"
+    );
+    assert!(
+        dep_rust.contains("pub type FixedValues = BoundedVec<u64, 3, 3>;")
+            && !dep_rust.contains("pub type FixedValues = [u64; 3];"),
+        "the fixed-byte delivery changed the still-separate fixed-array representation:\n{dep_rust}"
+    );
+
+    let export = mint_export(dep_spec, "dep", "exact_bytes");
+    let exported = export.values().cloned().collect::<Vec<_>>().join("\n");
+    assert!(
+        exported.contains("zero: bytes .size (0..0)")
+            && exported.contains("wide: bytes .size 64")
+            && exported.contains("fixed_values = [3*3 uint]"),
+        "the transparent extern-interface projection must retain all three authored constraints:\n{exported}"
+    );
+
+    let consumer_root = scratch("exact_bytes_consumer");
+    write(
+        &consumer_root,
+        "lib.cddl",
+        "consumer = [exacts, values: fixed_values]\n",
+    );
+    let export_root = scratch("exact_bytes_export");
+    for (path, content) in &export {
+        write(&export_root, path, content);
+    }
+    let import_arg = format!("dep={}", export_root.join("extern-interface/dep").display());
+    let consumer = generate(
+        &consumer_root.join("lib.cddl"),
+        &["--extern-import", &import_arg],
+    )
+    .expect("the consumer must parse the dependency's exact-byte export");
+    let rust = &consumer["rust/src/generated/mod.rs"];
+
+    let _ = std::fs::remove_dir_all(&consumer_root);
+    let _ = std::fs::remove_dir_all(&export_root);
+
+    assert!(
+        rust.contains("use dep::{Exacts, FixedValues};")
+            && rust.contains("pub exacts: Exacts")
+            && rust.contains("pub values: FixedValues"),
+        "the consumer did not rebuild the dependency-owned transparent names from the exact export:\n{rust}"
+    );
+}
+
 /// Seam-identity half of the acceptance criterion. Consume the dep's minted export two ways — a
 /// physical stub that is the export minus the version header (pins INCLUDED) and `--extern-import`
 /// at the export tree — and require the consumer's generated rust output byte-identical. This

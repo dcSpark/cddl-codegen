@@ -40,24 +40,24 @@ pub enum Color {
 pub type Counts = NonEmptyMap<String, u64>;
 
 #[derive(Clone, Debug)]
-pub struct Hash(pub(crate) Vec<u8>);
+pub struct Hash(pub(crate) [u8; 32]);
 
 impl Hash {
-    pub fn get(&self) -> &Vec<u8> {
+    pub fn get(&self) -> &[u8; 32] {
         &self.0
     }
 
     pub fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
-        if inner.len() != 32 {
-            return Err(DeserializeError::new(
+        let inner: [u8; 32] = inner.try_into().map_err(|bytes: Vec<u8>| {
+            DeserializeError::new(
                 "Hash",
                 DeserializeFailure::RangeCheck {
-                    found: inner.len() as i128,
+                    found: bytes.len() as i128,
                     min: Some(32),
                     max: Some(32),
                 },
-            ));
-        }
+            )
+        })?;
         Ok(Self(inner))
     }
 }
@@ -67,12 +67,6 @@ impl TryFrom<Vec<u8>> for Hash {
 
     fn try_from(inner: Vec<u8>) -> Result<Self, Self::Error> {
         Hash::new(inner)
-    }
-}
-
-impl From<Hash> for Vec<u8> {
-    fn from(wrapper: Hash) -> Self {
-        wrapper.0
     }
 }
 
@@ -199,5 +193,11 @@ impl Record {
             metas,
             note: None,
         })
+    }
+}
+
+impl From<Hash> for [u8; 32] {
+    fn from(wrapper: Hash) -> Self {
+        wrapper.0
     }
 }

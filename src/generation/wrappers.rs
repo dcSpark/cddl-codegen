@@ -156,6 +156,10 @@ pub(super) fn generate_wrapper_struct(
                 .line(element_type.to_wasm_boundary(types, "self.0[index]", false));
             // This is the sole mutable wasm door for a bounded set: both duplicate and overflow
             // are errors, so it must not normalize an attempted insertion into a no-op.
+            let elem_handover = |name: &str| {
+                super::collections::wasm_exact_byte_handover(&element_type, name, cli)
+                    .unwrap_or_else(|| from_elem(name))
+            };
             wrapper
                 .s_impl
                 .new_fn("add")
@@ -173,42 +177,54 @@ pub(super) fn generate_wrapper_struct(
                 )
                 .line(format!(
                     "self.0.push({}).map_err(|e| JsError::new(&e.to_string()))",
-                    from_elem("elem")
+                    elem_handover("elem")
                 ));
             if !bounded_reject {
-                wrapper
-                    .s_impl
-                    .new_fn("insert")
-                    .vis("pub")
-                    .ret("bool")
-                    .arg_mut_self()
-                    .arg(
-                        "elem",
-                        gen_scope.wasm_param_type(
-                            types,
-                            &element_type,
-                            type_name,
-                            "set-nominal insert parameter",
-                        ),
-                    )
-                    .line(format!("self.0.insert({})", from_elem("elem")));
-            }
-            wrapper
-                .s_impl
-                .new_fn("contains")
-                .vis("pub")
-                .ret("bool")
-                .arg_ref_self()
-                .arg(
+                let mut insert = codegen::Function::new("insert");
+                insert.vis("pub").arg_mut_self().arg(
                     "elem",
                     gen_scope.wasm_param_type(
                         types,
                         &element_type,
                         type_name,
-                        "set-nominal contains parameter",
+                        "set-nominal insert parameter",
                     ),
-                )
-                .line(format!("self.0.contains(&{})", from_elem("elem")));
+                );
+                if let Some(handover) =
+                    super::collections::wasm_exact_byte_handover(&element_type, "elem", cli)
+                {
+                    insert
+                        .ret("Result<bool, JsError>")
+                        .line(format!("Ok(self.0.insert({handover}))"));
+                } else {
+                    insert
+                        .ret("bool")
+                        .line(format!("self.0.insert({})", from_elem("elem")));
+                }
+                wrapper.s_impl.push_fn(insert);
+            }
+            let mut contains = codegen::Function::new("contains");
+            contains.vis("pub").arg_ref_self().arg(
+                "elem",
+                gen_scope.wasm_param_type(
+                    types,
+                    &element_type,
+                    type_name,
+                    "set-nominal contains parameter",
+                ),
+            );
+            if let Some(handover) =
+                super::collections::wasm_exact_byte_handover(&element_type, "elem", cli)
+            {
+                contains
+                    .ret("Result<bool, JsError>")
+                    .line(format!("Ok(self.0.contains(&{handover}))"));
+            } else {
+                contains
+                    .ret("bool")
+                    .line(format!("self.0.contains(&{})", from_elem("elem")));
+            }
+            wrapper.s_impl.push_fn(contains);
             // A list-taking construction door + the empty-means-absent `try_opt_from` (the wasm
             // mirror of the rust nominal's inherent constructor — its landing removes the matching
             // `PARITY_EXEMPT` entries). Both delegate to the rust nominal's `TryFrom<Vec<Elem>>` /
@@ -526,6 +542,24 @@ pub(super) fn generate_wrapper_struct(
                     "{any_cbor_mod}::natural_any_cbor_schema(generator)"
                 ));
                 inline_schema.line("false");
+            } else if let Some(len) = field_type.exact_byte_array_len_checked() {
+                // Byte wrappers serialize as canonical hexadecimal strings.  The native carrier
+                // makes the byte count exact, so the JSON string has exactly twice that many
+                // characters; delegating to `String` alone would silently advertise every length.
+                let hex_len = len * 2;
+                json_schema_fn
+                    // `out` is already in GENERATED_LOCAL_PROBED_SAFE (including the JSON
+                    // profiles). Reuse that swept local instead of minting an unverdicted
+                    // `schema` binding at this emitter seam.
+                    .line("let mut out = String::json_schema(generator);")
+                    .line(format!(
+                        "out.insert(\"minLength\".to_owned(), {hex_len}u64.into());"
+                    ))
+                    .line(format!(
+                        "out.insert(\"maxLength\".to_owned(), {hex_len}u64.into());"
+                    ))
+                    .line("out");
+                inline_schema.line("String::inline_schema()");
             } else {
                 // qualified-path form: `json_schema_type` is a type-position spelling, so a generic
                 // backing type (map/array @newtype) needs `<T as Trait>::method`, not `T::method`
@@ -692,6 +726,11 @@ pub(super) fn generate_wrapper_struct(
     new_func
         .arg("inner", field_type.for_rust_move(types, cli))
         .vis("pub");
+    let exact_byte_array_len = field_type.exact_byte_array_len_checked();
+    let optional_exact_byte_array_len = match field_type.conceptual_type.resolve_alias_shallow() {
+        ConceptualRustType::Optional(inner) => inner.exact_byte_array_len_checked(),
+        _ => None,
+    };
     let var_names_str = if cli.preserve_encodings {
         encoding_var_names_str(types, "inner", field_type, cli)
     } else {
@@ -719,7 +758,11 @@ pub(super) fn generate_wrapper_struct(
     // to before. `new()` and the `TryFrom`/`From` paths NEVER go through this closure, so any error
     // they emit must keep the name-carrying form (see `build_check`'s `annotated=false` arm).
     let mut deser_body = BlocksOrLines::default();
-    let from_impl = if min_max.is_some() || float_min_max.is_some() {
+    let from_impl = if min_max.is_some()
+        || float_min_max.is_some()
+        || exact_byte_array_len.is_some()
+        || optional_exact_byte_array_len.is_some()
+    {
         let (before, after) = if var_names_str.is_empty() {
             ("".to_owned(), "")
         } else {
@@ -798,10 +841,21 @@ pub(super) fn generate_wrapper_struct(
                 )
             }
         };
-        deser_body.line(&render_check(cli.annotate_fields));
-        new_func
-            .ret("Result<Self, DeserializeError>")
-            .line(render_check(false));
+        if let Some(len) = exact_byte_array_len {
+            new_func.line(format!(
+                "let inner: [u8; {len}] = inner.try_into().map_err(|bytes: Vec<u8>| DeserializeError::new(\"{type_name}\", DeserializeFailure::RangeCheck{{ found: bytes.len() as i128, min: Some({len}), max: Some({len}) }} ))?;"
+            ));
+        } else if let Some(len) = optional_exact_byte_array_len {
+            new_func.line(format!(
+                "let inner: Option<[u8; {len}]> = inner.map(|bytes| bytes.try_into().map_err(|bytes: Vec<u8>| DeserializeError::new(\"{type_name}\", DeserializeFailure::RangeCheck{{ found: bytes.len() as i128, min: Some({len}), max: Some({len}) }} ))).transpose()?;"
+            ));
+        } else {
+            deser_body.line(&render_check(cli.annotate_fields));
+        }
+        new_func.ret("Result<Self, DeserializeError>");
+        if exact_byte_array_len.is_none() && optional_exact_byte_array_len.is_none() {
+            new_func.line(render_check(false));
+        }
         if let Some(enc_fields) = &enc_fields {
             let mut deser_ctor = Block::new("Ok(Self");
             deser_ctor.line("inner,");
@@ -830,18 +884,17 @@ pub(super) fn generate_wrapper_struct(
         let mut try_from = codegen::Impl::new(type_name.to_string());
         try_from
             .associate_type("Error", "DeserializeError")
-            .impl_trait(format!(
-                "TryFrom<{}>",
-                field_type.for_rust_member(types, false, cli)
-            ))
+            .impl_trait(format!("TryFrom<{}>", field_type.for_rust_move(types, cli)))
             .new_fn("try_from")
-            .arg("inner", field_type.for_rust_member(types, false, cli))
+            .arg("inner", field_type.for_rust_move(types, cli))
             .ret("Result<Self, Self::Error>")
-            // `inner` is by-value and already exactly `new()`'s param type
-            // (`for_rust_member(false)` == `for_rust_move`), so pass it straight through — routing
-            // it via `from_wasm_boundary_clone` would emit an identity `.clone().into()`
+            // `inner` is by-value and already `new()`'s loose input type. For exact bytes it is
+            // intentionally `Vec<u8>` while `new()` materializes `[u8; N]`; for every other
+            // wrapper it is the same type as `for_rust_member(false)`. Pass it straight through —
+            // routing it via `from_wasm_boundary_clone` would emit an identity `.clone().into()`
             // (clippy::useless_conversion + a redundant clone of the owned last-use param). `new()`
-            // returns the `Result` here (the bounded/float branch), so TryFrom keeps its semantics.
+            // returns the `Result` here (the bounded/float/exact-byte branch), so TryFrom keeps its
+            // semantics.
             .line(format!("{type_name}::new(inner)"));
         try_from
     } else {
