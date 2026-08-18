@@ -736,9 +736,17 @@ impl RustStruct {
     /// structural fingerprint elsewhere (`api::ir_structs_debug`). `ident` is deliberately excluded —
     /// it is the very thing that differs — and it does not appear in any of the compared fields.
     pub fn structurally_equivalent(&self, other: &RustStruct) -> bool {
-        let fingerprint =
-            |s: &RustStruct| format!("{:?}", (&s.tag, s.tag_optional, &s.config, &s.variant));
-        fingerprint(self) == fingerprint(other)
+        self.structural_fingerprint() == other.structural_fingerprint()
+    }
+
+    /// The deterministic structural/wire identity used by the nominal-name mint registry.  Keep
+    /// this exactly aligned with [`Self::structurally_equivalent`]: the registry is an earlier
+    /// observation point for the global registration guard, not a second ownership policy.
+    pub fn structural_fingerprint(&self) -> String {
+        format!(
+            "{:?}",
+            (&self.tag, self.tag_optional, &self.config, &self.variant)
+        )
     }
 
     // The following methods are used internally to generate serialize/deserialize code

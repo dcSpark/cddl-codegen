@@ -1,7 +1,7 @@
 use crate::cli::Cli;
 use cddl::ast::parent::ParentVisitor;
 use cddl::{ast::*, token};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use crate::comment_ast::{DuplicatesPolicy, RuleMetadata, merge_metadata, metadata_from_comments};
 use crate::intermediate::{
@@ -1243,45 +1243,18 @@ fn reject_group_choice_arm_ident_collision(
 /// arm's explicit name before the loop, so the authored name wins from either source position.
 fn settle_arm_variant_name(
     types: &mut IntermediateTypes,
-    enum_name: &RustIdent,
-    used: &mut BTreeSet<String>,
-    explicit_seen: &mut BTreeMap<String, String>,
+    context: &str,
+    arm_ordinal: usize,
     base: String,
     arm_source_name: &str,
     explicit: bool,
 ) -> String {
     if explicit {
-        // Already reserved by the caller's pre-pass, so `used` says nothing here — a second
-        // claimant is detected by the source name recorded against the generated one. Two
-        // DIFFERENT spellings can camel-case to one variant (`my_arm` / `myArm`), so the message
-        // names both arms as the author wrote them.
-        if let Some(first) = explicit_seen.get(&base) {
-            reject_group_choice_arm_variant_name_collision(
-                types,
-                enum_name,
-                first,
-                arm_source_name,
-                &base,
-            );
-        } else {
-            explicit_seen.insert(base.clone(), arm_source_name.to_owned());
-        }
+        // The shared IR registry pre-reserved this authored spelling before the arm walk. Its
+        // collision diagnostic was emitted there, so this is deliberately verbatim.
         return base;
     }
-    if used.insert(base.clone()) {
-        return base;
-    }
-    // Search for the first free suffix rather than appending a single counter: the pool holds the
-    // arms' EXPLICIT names too, so a one-shot `Name2` could land straight onto an arm the author
-    // spelled `; @name name2` — turning one duplicate into another.
-    let mut n = 2u32;
-    loop {
-        let candidate = format!("{base}{n}");
-        if used.insert(candidate.clone()) {
-            return candidate;
-        }
-        n += 1;
-    }
+    types.settle_derived_variant_mint(context, arm_ordinal, arm_source_name.to_owned(), base)
 }
 
 /// Two arms of ONE group choice, each explicitly `@name`d onto the same generated variant. Rejected
@@ -1345,17 +1318,12 @@ fn reject_type_choice_arm_variant_name_collision(
 /// Explicit names are pre-reserved before the arm walk, so this must search for the first free
 /// numeric suffix rather than assume `Base2` remains available: an author may explicitly own it.
 /// The same globally-used set also preserves ordinary derived-only suffixing.
-fn settle_derived_type_choice_variant_name(used: &mut BTreeSet<String>, base: String) -> String {
-    if used.insert(base.clone()) {
-        return base;
-    }
-    let mut n = 2u32;
-    loop {
-        let candidate = format!("{base}{n}");
-        if used.insert(candidate.clone()) {
-            return candidate;
-        }
-        n += 1;
+fn choice_variant_context(owner: Option<&RustIdent>, type_choices: &[TypeChoice]) -> String {
+    match owner {
+        Some(owner) => format!("type choice for rule {owner}"),
+        // The AST address is in-process provenance only (never emitted); unlike the human-facing
+        // diagnostic it distinguishes two independent inline enum namespaces in one rule.
+        None => format!("inline type choice at {:p}", type_choices.as_ptr()),
     }
 }
 
@@ -1939,6 +1907,16 @@ fn register_fixed_singleton(
         return RustType::new(ConceptualRustType::Rust(owner));
     }
 
+    // This minter has an intentional early owner lookup below. Claim its COMPLETE fixed-value wire
+    // shape before that lookup, otherwise a later tagged/bare claimant can be discarded with no
+    // trace left for finalized IR validation to inspect.
+    let singleton =
+        RustStruct::new_fixed_singleton(owner.clone(), tag, rule_metadata, fixed_type.clone());
+    types.claim_nominal_mint(
+        &singleton,
+        format!("fixed singleton for {}", fixed.cddl_source_desc()),
+    );
+
     if let Some(existing) = types.rust_struct(&owner) {
         let same_singleton = matches!(existing.variant(), RustStructType::TypeChoice { variants }
             if variants.len() == 1
@@ -1956,11 +1934,7 @@ fn register_fixed_singleton(
         return RustType::new(ConceptualRustType::Rust(owner));
     }
 
-    types.register_rust_struct(
-        parent_visitor,
-        RustStruct::new_fixed_singleton(owner.clone(), tag, rule_metadata, fixed_type),
-        cli,
-    );
+    types.register_rust_struct(parent_visitor, singleton, cli);
     RustType::new(ConceptualRustType::Rust(owner))
 }
 
@@ -4719,7 +4693,7 @@ pub fn create_variants_from_type_choices(
         Some(name) => format!("rule `{}`", source_rule_name_of(types, name)),
         None => "an inline type choice".to_owned(),
     };
-    let mut variant_names_used = BTreeSet::<String>::new();
+    let choice_context = choice_variant_context(owner, type_choices);
     // Reserve every explicit emitted name BEFORE walking arms. An explicit `@name` is public API,
     // so it must keep that spelling even if a colliding generator-derived arm appears first; the
     // derived arm is the one that takes `2`. This is the type-choice equivalent of the group-choice
@@ -4729,7 +4703,6 @@ pub fn create_variants_from_type_choices(
     // variant (`my_arm` / `myArm`) in either a named or inline choice. The latter has no source rule
     // or enum name to cite, but it still has arms and a generated variant, so it receives the
     // role-generic diagnostic rather than keeping an invalid repeated variant.
-    let mut explicit_seen = BTreeMap::<String, (usize, String)>::new();
     for (arm_idx, choice) in type_choices.iter().enumerate() {
         let metadata = merge_metadata(
             &RuleMetadata::from(choice.type1.comments_after_type.as_ref()),
@@ -4737,19 +4710,21 @@ pub fn create_variants_from_type_choices(
         );
         if let Some(source_name) = metadata.name {
             let emitted_name = convert_to_camel_case(&source_name);
-            if let Some((first_ordinal, first_source_name)) = explicit_seen.get(&emitted_name) {
+            if let Some(first) = types.reserve_explicit_variant_mint(
+                &choice_context,
+                arm_idx + 1,
+                source_name.clone(),
+                emitted_name.clone(),
+            ) {
                 reject_type_choice_arm_variant_name_collision(
                     types,
                     owner,
-                    *first_ordinal,
-                    first_source_name,
+                    first.arm_ordinal,
+                    &first.source_name,
                     arm_idx + 1,
                     &source_name,
                     &emitted_name,
                 );
-            } else {
-                explicit_seen.insert(emitted_name.clone(), (arm_idx + 1, source_name));
-                variant_names_used.insert(emitted_name);
             }
         }
     }
@@ -4864,7 +4839,16 @@ pub fn create_variants_from_type_choices(
         let variant_name = if rule_metadata.name.is_some() {
             base_name
         } else {
-            settle_derived_type_choice_variant_name(&mut variant_names_used, base_name)
+            // `Type2`'s Display is not total for every parser-owned literal spelling (notably
+            // byte syntax), while this provenance is diagnostic-only. The already-minted base is
+            // total and identifies the derived arm without re-entering that foreign formatter.
+            let derived_source = base_name.clone();
+            types.settle_derived_variant_mint(
+                &choice_context,
+                arm_idx + 1,
+                derived_source,
+                base_name,
+            )
         };
         variants.push(EnumVariant::new(
             VariantIdent::new_custom(variant_name),
@@ -9056,13 +9040,26 @@ pub fn parse_group(
         // The arms' explicit names are reserved BEFORE the loop so that which side of a colliding
         // explicit/derived pair keeps the plain name never depends on the order the author happened
         // to write the arms in: the authored name wins from either position.
-        let mut explicit_variant_names = BTreeMap::<String, String>::new();
-        let mut variant_names_used = BTreeSet::<String>::new();
-        for group_choice in group.group_choices.iter() {
+        let choice_context = format!("group choice for rule {name}");
+        for (arm_idx, group_choice) in group.group_choices.iter().enumerate() {
             if let Some(explicit) =
                 RuleMetadata::from(group_choice.comments_before_grpchoice.as_ref()).name
             {
-                variant_names_used.insert(convert_to_camel_case(&explicit));
+                let emitted = convert_to_camel_case(&explicit);
+                if let Some(first) = types.reserve_explicit_variant_mint(
+                    &choice_context,
+                    arm_idx + 1,
+                    explicit.clone(),
+                    emitted.clone(),
+                ) {
+                    reject_group_choice_arm_variant_name_collision(
+                        types,
+                        name,
+                        &first.source_name,
+                        &explicit,
+                        &emitted,
+                    );
+                }
             }
         }
         let variants: Vec<EnumVariant> = group
@@ -9153,9 +9150,8 @@ pub fn parse_group(
                     };
                     let variant_ident = VariantIdent::new_custom(settle_arm_variant_name(
                         types,
-                        name,
-                        &mut variant_names_used,
-                        &mut explicit_variant_names,
+                        &choice_context,
+                        i + 1,
                         convert_to_camel_case(&ident_name),
                         &ident_name,
                         explicit_name,
@@ -9320,9 +9316,8 @@ pub fn parse_group(
                     // declare two variants.
                     let variant_name = settle_arm_variant_name(
                         types,
-                        name,
-                        &mut variant_names_used,
-                        &mut explicit_variant_names,
+                        &choice_context,
+                        i + 1,
                         arm_ident.to_string(),
                         &ident_name,
                         explicit_name,

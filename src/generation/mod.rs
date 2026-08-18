@@ -14,7 +14,9 @@ use crate::intermediate::{
     RustStructType, RustType, RustTypeSerializeConfig, ToWasmBoundaryOperations, VariantIdent,
     escape_rust_str,
 };
-use crate::utils::{cbor_type_code_str, convert_to_camel_case, convert_to_snake_case};
+use crate::utils::{
+    cbor_type_code_str, convert_to_camel_case, convert_to_snake_case, is_valid_rust_ident,
+};
 
 /// Doc-comment marker emitted on the rust `pub type` alias of a generator-SYNTHESIZED anonymous
 /// generic-collection/table instance (`gcoll<foo>` → `GcollFoo`, `gcoll<uint>` → `GcollU64`,
@@ -386,7 +388,34 @@ impl WasmCollectionWrapperRegistry {
     /// Require every actual emitted collection-wrapper reference to have an honest provider before
     /// a source map reaches either output producer.  Dependency-owned extern references are the one
     /// intentionally provider-less class: their source belongs to the dependency, not this crate.
+    ///
+    /// This is also the generation-side spelling floor for structural wrappers. They are minted
+    /// after final IR validation from fixed affixes plus `wasm_boundary_identity_fragment`; that
+    /// fragment can recurse through a fixed value, so it must not rely solely on the IR's nominal
+    /// name set for lexical safety. Check the actual registry vocabulary before a malformed class
+    /// or alias reaches rustfmt.
     pub(crate) fn closure_check(&self) -> std::io::Result<()> {
+        let spellings = self
+            .local_classes
+            .keys()
+            .chain(self.local_aliases.keys())
+            .chain(self.deferred.keys())
+            .chain(self.dependency_classes.keys())
+            .chain(self.dependency_aliases.keys())
+            .chain(self.references.iter().map(|reference| &reference.wrapper))
+            .collect::<BTreeSet<_>>();
+        let mut errors = spellings
+            .into_iter()
+            .filter(|ident| {
+                !is_valid_rust_ident(ident.as_ref())
+                    || crate::parsing::RUST_KEYWORDS.contains(&ident.as_ref())
+            })
+            .map(|ident| {
+                format!(
+                    "wasm collection wrapper `{ident}` is not a spellable Rust identifier. Rename the originating CDDL rule or use `@name <new_name>` where the wrapper follows that rule."
+                )
+            })
+            .collect::<BTreeSet<_>>();
         let missing = self
             .references
             .iter()
@@ -415,11 +444,14 @@ impl WasmCollectionWrapperRegistry {
                     reference.wrapper, reference.owner, reference.door
                 )
             })
-            .collect::<Vec<_>>();
-        if missing.is_empty() {
+            .collect::<BTreeSet<_>>();
+        errors.extend(missing);
+        if errors.is_empty() {
             Ok(())
         } else {
-            Err(std::io::Error::other(missing.join("\n")))
+            Err(std::io::Error::other(
+                errors.into_iter().collect::<Vec<_>>().join("\n"),
+            ))
         }
     }
 }

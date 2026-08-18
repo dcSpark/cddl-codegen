@@ -20,6 +20,23 @@ plan-internal and is not tracked in the repository at all: it lives in the gitig
 directory, and no committed file records it and no gate reads it. Roadmap entries record only
 durable facts about the work itself.
 
+## IR name-mint floors
+
+The intermediate-IR registration residents cover both surviving emitted names and claims that a
+local minter may discard before registration: tests inject invalid nominal/variant/field/dynamic-row
+state, duplicate namespaces, and reversed fixed-singleton wire identities. A real CDDL pipeline
+resident proves `finalize()` invokes the floor and returns provenance plus a rename/`@name` remedy.
+The generated fixed-singleton integration fixture then checks bare and tagged `true` bytes in both
+semantic claimant orders; source-shape assertions alone cannot establish that codec contract.
+
+Structural WASM collection-wrapper spellings are deliberately outside that finalized-IR surface:
+they are minted during generation from fixed affixes plus recursive boundary fragments. The wrapper
+registry is their emission-side spelling floor as well as their Cycle 22 provider/reference-closure
+registry. Its resident injection proves a post-IR malformed spelling fails gracefully before
+rustfmt; current parser rules reject bare fixed count-permitting collection elements before wrapper
+minting, so they are not misrepresented as an end-to-end vector. Future wrapper minters must enter
+that registry rather than rely on the IR check indirectly.
+
 ## Running everything
 
 `check.ts` at the repo root is the single entry point for "run everything that verifies this repo".

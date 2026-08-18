@@ -5812,6 +5812,28 @@ fn lexeme_derived_arm_variant_name_rejects_gracefully_at_both_naming_sites() {
     }
 }
 
+/// The finalized emitted-name floor is wired into the real parse → finalize pipeline, rather than
+/// only being an IR resident callable by a unit test. An authored `@name self` becomes `Self`: it
+/// is lexically identifier-shaped but cannot be emitted as a Rust enum variant.
+#[test]
+fn finalized_emitted_name_floor_rejects_explicit_keyword_variant_in_pipeline() {
+    let error = expect_graceful_rejection(
+        "finalized_emitted_keyword_variant",
+        "foo = 0 ; @name self\n / 1\n",
+        &[],
+    );
+    assert!(
+        error.contains("emitted enum variant `Self` is not a spellable Rust identifier"),
+        "the real pipeline must surface final enum-name validation, got: {error}"
+    );
+    assert!(
+        error.contains("type choice for rule Foo, arm 1 (`self`; explicit @name)")
+            && error.contains("Rename it to an ASCII Rust identifier")
+            && error.contains("`@name <new_name>`"),
+        "the rejection must retain actionable provenance and a rename remedy, got: {error}"
+    );
+}
+
 /// The `.within` / `.and` control operators are unsupported — rejected BY DESIGN via a GRACEFUL
 /// `Err`, never `todo!()`. Follows the `.size`-on-`int` sibling in `parse_control_operator`
 /// (`record_rejection` + an inert full-range placeholder, drained by `finalize`), including its

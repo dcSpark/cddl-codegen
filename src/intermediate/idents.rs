@@ -103,6 +103,17 @@ impl RustIdent {
                 .join(", ")
         ))
     }
+
+    /// A generic-extern `Base<Args>` is a type expression used as a reference, never a nominal
+    /// declaration identifier.  The finalized emitted-name validator must not mistake it for one.
+    pub fn is_type_expression(&self) -> bool {
+        self.0.contains('<')
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_unchecked_for_emitted_name_test(name: impl Into<String>) -> Self {
+        Self(name.into())
+    }
 }
 
 impl std::fmt::Display for RustIdent {

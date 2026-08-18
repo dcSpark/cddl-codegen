@@ -10774,6 +10774,8 @@ fn fixed_singletons_execute_across_default_preserve_and_canonical_profiles() {
                         composition = [a: answer, vs: [* answer], ms: {* uint => answer}]\n\
                         undefined_composition = [a: undefined_value, vs: [* undefined_value], ms: {* uint => undefined_value}]\n\
                         tagged_enabled = #6.7(true)\n\
+                        bare_then_tagged = [bare: true / null, tagged: #6.7(true) / null]\n\
+                        tagged_then_bare = [tagged: #6.7(true) / null, bare: true / null]\n\
                         tagged_undefined = #6.7(undefined)\n\
                         cbor_answer = bytes .cbor 42\n\
                         cbor_undefined = bytes .cbor undefined\n\
@@ -10802,6 +10804,18 @@ fn direct_fixed_values_compose_and_reject_for_the_right_reason() {
     assert_eq!(bytes(&Enabled::new_value_bool_true()), [0xf5]);
     assert_eq!(bytes(&Absent::new_value_null()), [0xf6]);
     assert_eq!(bytes(&UndefinedValue::new_value_undefined()), [0xf7]);
+
+    // These are deliberately the two semantic claimant orders. The singleton minter must retain
+    // both bare and tagged identities before its early dedup lookup: compilation/source shape is
+    // insufficient because the historical defect selected one owner's codec for both fields.
+    assert_eq!(
+        bytes(&BareThenTagged::from_cbor_bytes(&[0x82, 0xf5, 0xc7, 0xf5]).unwrap()),
+        [0x82, 0xf5, 0xc7, 0xf5]
+    );
+    assert_eq!(
+        bytes(&TaggedThenBare::from_cbor_bytes(&[0x82, 0xc7, 0xf5, 0xf5]).unwrap()),
+        [0x82, 0xc7, 0xf5, 0xf5]
+    );
 
     // A nominal fixed rule composes in a record, Vec and table. Decode rather than construct this
     // value so the same vector covers the default BTreeMap and preserve OrderedHashMap surfaces.

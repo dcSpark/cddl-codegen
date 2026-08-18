@@ -44,6 +44,12 @@ foo = 0 ; @name mainnet
     / 1 ; @name testnet
 ```
 
+An explicit `@name` must itself become a spellable ASCII Rust identifier after the relevant field,
+type, or variant name conversion, and it cannot be a Rust keyword. For example, `; @name self` on a
+choice arm would emit the reserved variant name `Self`, so generation rejects it with the arm and
+rename remedy instead of passing an invalid token to rustfmt. Choose another `@name`; the directive
+changes only the generated API name, not the CBOR wire value or key.
+
 Every explicitly named arm of one **type choice** must have a distinct generated Rust variant
 name. The comparison is after Rust-name conversion, so `my_arm` and `myArm` collide; generation
 rejects both the exact duplicate and that camel-case convergence with a diagnostic naming the choice

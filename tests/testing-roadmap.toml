@@ -90,7 +90,6 @@ entries = [
   "testing.generated-local-collision-class-refused-mangled-refusal-s",
   "testing.generated-local-collision.general-mangling-remedy",
   "testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns",
-  "testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim",
   "testing.verify-ts-elapsed-time-covers-startup-activity",
 ]
 
@@ -320,18 +319,6 @@ claim_md = '''The preserved owner detail records a shipped or reproducible false
 '''
 evidence_ids = ["testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one-proof", "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two-proof"]
 incident_ids = ["testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.one", "testing.incident-observation.gate-demands-premise-probed-against-gate-evidence-about.two"]
-
-[[record]]
-id = "testing.admission-path.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"
-title = "Admission for testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim."
-
-[record.payload]
-kind = "testing_system_admission"
-admission_kind = "independent_recurrence"
-claim_md = '''The preserved owner detail records a shipped or reproducible false-green/silent-corruption class that the proposed system would detect.
-'''
-evidence_ids = ["testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one-proof", "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two-proof"]
-incident_ids = ["testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one", "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two"]
 
 [[record]]
 id = "testing.admission-path.scoped-symbol-provenance-grid"
@@ -3949,72 +3936,6 @@ surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:next-priority
 tiers = ["local"]
 
 [[record]]
-id = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one"
-title = "Independent admitted incident one for testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim."
-
-[record.payload]
-kind = "testing_incident"
-incident_posture = "attributed"
-signature_md = '''Fixed float/nint choice arms and the anonymous nested choice minted unspellable numeric-derived identifiers.
-'''
-evidence_ids = ["testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one-proof"]
-attribution_md = '''The preserved owner detail identifies this as one of two distinct instances of the admitted class; adjacency alone is not being counted as recurrence.
-'''
-operating_rule_reference_id = "testing-roadmap-next-work-n31"
-
-[[record]]
-id = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one-proof"
-title = "Incident evidence for testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim."
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "incident"
-claim_md = '''Fixed float/nint choice arms and the anonymous nested choice minted unspellable numeric-derived identifiers.
-'''
-freshness = "as_of"
-reference_ids = ["testing-minted-identifier-spellability-floor-identifier", "testing-roadmap-next-work-n32"]
-at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
-observed_at = "2026-08-12"
-unprobed_remainder_md = '''The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
-'''
-
-[record.payload.scope]
-surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:next-priority"]
-
-[[record]]
-id = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two"
-title = "Independent admitted incident two for testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim."
-
-[record.payload]
-kind = "testing_incident"
-incident_posture = "attributed"
-signature_md = '''A fixed-text arm camel-cased self into the Rust keyword Self.
-'''
-evidence_ids = ["testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two-proof"]
-attribution_md = '''The preserved owner detail identifies this as one of two distinct instances of the admitted class; adjacency alone is not being counted as recurrence.
-'''
-operating_rule_reference_id = "testing-roadmap-next-work-n33"
-
-[[record]]
-id = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two-proof"
-title = "Incident evidence for testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim."
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "incident"
-claim_md = '''A fixed-text arm camel-cased self into the Rust keyword Self.
-'''
-freshness = "as_of"
-reference_ids = ["testing-minted-identifier-spellability-floor-identifier-n2", "testing-roadmap-next-work-n34"]
-at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
-observed_at = "2026-08-12"
-unprobed_remainder_md = '''The evidence proves this admitted class only; it does not establish a closed denominator or the absence of adjacent classes.
-'''
-
-[record.payload.scope]
-surfaces = ["owner-recorded-failure-class", "testing-roadmap-owner:next-priority"]
-
-[[record]]
 id = "testing.incident-observation.scoped-symbol-provenance-grid.authored-group"
 title = "Authored-group claimant independently reproduced the scoped-symbol provenance failure."
 
@@ -4487,87 +4408,6 @@ action_on_fire_md = '''Set testing.message-s-level-classification-review-owned-t
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.message-s-level-classification-review-owned-two-ways's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 '''
-
-[[record]]
-id = "testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"
-title = "A minted-identifier spellability floor: every identifier the generator emits verbatim must satisfy `is_spellable_variant_name`'s two string properties, asserted at the emission side rather than per-minter."
-legacy_aliases = ["Next work 14"]
-
-[record.payload]
-kind = "work"
-body_md = '''14. **A minted-identifier spellability floor: every identifier the generator emits verbatim must
-    satisfy `is_spellable_variant_name`'s two string properties, asserted at the emission side
-    rather than per-minter.** The class this closes: a name-minting path whose output is not a
-    spellable Rust identifier ships the bad token to rustfmt, which dies with an error naming its
-    own confusion instead of the construct — loud, zero files, and misattributed. Three instances
-    on 2026-08-06 alone, each found by hand probing rather than by any gate: fixed float/nint
-    choice arms minted `F1.5`/`U-1` (variant idents), the anonymous nested choice minted the RULE
-    ident `F1.5OrText` from the same lexemes, and a fixed-text arm camel-cased `"self"` into the
-    keyword `Self` — identifier-shaped, still unspellable. The delivered repair guards the two
-    arm-naming SEAMS (`reject_unnameable_arm_variant_name`, predicate on the minted string), which
-    covers every minter those seams consume — but other emit-verbatim name families (rule idents
-    from `combined_name`, field names, wasm wrapper names) have no floor, and absence of a fourth
-    instance is currently established by nothing. What to build: a check over the finalized IR's
-    emitted-name surface (idents, variant names, field names) that fails naming the MINT SITE when
-    a name is unspellable, so the next bad minter is a diagnosed refusal rather than a rustfmt
-    autopsy. Enumerate the name families from the IR types (`RustIdent`, `VariantIdent`, field
-    name storage) rather than grepping for minters — a negative claim ("no other minter emits bad
-    names") needs the registry, not a keyword search. That enumeration remains shared surface with
-    the pre-registration mint-claim and variant-provenance predicates below. The once-adjacent
-    synthesized-name referenced-but-never-minted (E0425) predicate is delivered for wasm collection
-    wrappers by `WasmCollectionWrapperRegistry`: the real rendering doors record references and
-    scope-exact providers, then `generated_files` checks closure. It deliberately is not the
-    finalized-IR name enumeration proposed here, because emitted aliases, declared deferrals,
-    dependency ownership, and requested-wrapper emission scope are generation facts the finalized
-    IR name set cannot express. The global `RustStruct` registration seam now
-    retains the first owner and rejects a structurally incompatible later owner, but it begins
-    only after a claim reaches that seam: it does not recover a semantic claim discarded before
-    registration, prove
-    an emitted name spellable, or retain variant provenance. Collection-wrapper reference closure
-    is the separate delivered generation registry above.
-    **Activated by B3-024A (2026-08-09):** its synthesized
-    fixed-singleton owner is the third minting site and initially deduplicated `true` with
-    `#6.7(true)` by `FixedValue` alone, making parse order choose the wrong wire codec. The local
-    owner check now keys the complete `RustType` wire shape and rejects authored collisions in both
-    source orders. **The finalized-IR registry proposed above would NOT by itself have caught this
-    semantic collision:** the faulty dedup discarded the second claim before finalization, leaving
-    one unique, spellable `RustIdent`; every reference compiled, but one use got the wrong wire.
-    Add a pre-registration mint-claim predicate to the shared registry: every minter records
-    `(RustIdent, canonical structural/wire identity, mint site)` before lookup/dedup/insert;
-    byte-identical repeat claims are allowed, while two identities claiming one ident fail naming
-    both sites. Its acceptance vectors must reverse claimant order and assert emitted wire bytes,
-    not merely a duplicate-name diagnostic. Keep the finalized-IR spellability/uniqueness checks as
-    separate predicates: they catch bad surviving state, while the claim ledger catches a lossy
-    registration seam that erased the evidence.
-
-    **B5-101 authored-variant-claim extension (2026-08-14).** Three review catches show the
-    distinction this registry still has to retain. A derived type-choice arm before an explicit
-    `@name text` silently made the authored arm `Text2`; an inline/member type choice silently
-    suffixed two explicit `@name mainnet` arms; and a count-only reservation let a derived `Name`
-    take explicitly reserved `Name2`, leaving a repeated final variant. A finalized-IR uniqueness
-    predicate would have caught only the third: both earlier failures finish with distinct,
-    spellable names after silently breaking the author's claim. `dsl_position_tests` likewise
-    cannot catch any of them — it probes directive placement/effect one cell at a time, not
-    cross-arm namespace arbitration or the explicit-versus-derived ordering axis. Extend the
-    pre-registration ledger with type-choice variant claims before suffix allocation:
-    `(choice context, arm ordinal, source @name, emitted VariantIdent, explicitness)`. Assert that
-    every explicit claim either survives under its exact Rust-converted spelling or is rejected
-    against another explicit claimant; derived claims alone may choose the first globally free
-    suffix, never one reserved by an explicit claim. Exercise named-rule and inline/member choices,
-    both explicit/derived orders, camel-case convergence, and an explicit `Name2` reservation. This
-    is a provenance predicate over the existing shared registry, not a second directive-position
-    sweep or a new name-minter enumeration.
-
-'''
-work_state = "ready"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "compile_failure"
-acceptance_md = '''Complete exactly the operative work, validation, and bounded exclusions stated in testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim's payload prose; do not widen adjacent future work.
-'''
-priority_rationale_md = '''The source owner places this item in Next priority order.
-'''
-admission_ids = ["testing.admission-path.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"]
 
 [[record]]
 id = "testing.msrv-declaration-os-matrix-generated-code"
@@ -7240,16 +7080,6 @@ kind = "parent_of"
 target = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.two-proof"
 
 [[relation]]
-source = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one"
-kind = "parent_of"
-target = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one-proof"
-
-[[relation]]
-source = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two"
-kind = "parent_of"
-target = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two-proof"
-
-[[relation]]
 source = "testing.lint-doc-citations-accepts-docs-heading-durable-citation"
 kind = "parent_of"
 target = "testing.guard.lint-doc-citations-accepts-docs-heading-durable-citation"
@@ -7278,31 +7108,6 @@ target = "testing.guard.mechanical-layers-two-review-owned-design-rules-tests"
 source = "testing.message-s-level-classification-review-owned-two-ways"
 kind = "parent_of"
 target = "testing.guard.message-s-level-classification-review-owned-two-ways"
-
-[[relation]]
-source = "testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"
-kind = "parent_of"
-target = "testing.admission-path.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"
-
-[[relation]]
-source = "testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"
-kind = "parent_of"
-target = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one"
-
-[[relation]]
-source = "testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"
-kind = "parent_of"
-target = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one-proof"
-
-[[relation]]
-source = "testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"
-kind = "parent_of"
-target = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two"
-
-[[relation]]
-source = "testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"
-kind = "parent_of"
-target = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two-proof"
 
 [[relation]]
 source = "testing.msrv-declaration-os-matrix-generated-code"
@@ -7936,46 +7741,6 @@ source = "testing.incident-observation.grammar-fuzzer-embed-site-alias-roots.two
 kind = "file_heading"
 path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
-
-[[reference]]
-id = "testing-roadmap-next-work-n31"
-source = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
-id = "testing-roadmap-next-work-n32"
-source = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one-proof"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
-id = "testing-minted-identifier-spellability-floor-identifier"
-source = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.one-proof"
-kind = "roadmap"
-target_id = "testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"
-
-[[reference]]
-id = "testing-roadmap-next-work-n33"
-source = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
-id = "testing-roadmap-next-work-n34"
-source = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two-proof"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
-id = "testing-minted-identifier-spellability-floor-identifier-n2"
-source = "testing.incident-observation.minted-identifier-spellability-floor-identifier-generator-emits-verbatim.two-proof"
-kind = "roadmap"
-target_id = "testing.minted-identifier-spellability-floor-identifier-generator-emits-verbatim"
 
 [[reference]]
 id = "testing-current-capacities-types-scoped-provenance"

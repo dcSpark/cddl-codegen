@@ -281,6 +281,28 @@ fn synthesized_name_registry_provider_kinds_and_missing_rows_are_deterministic()
     );
 }
 
+/// Structural collection spellings are generated after finalized-IR validation. The registry is
+/// therefore the emission-side floor: it rejects a malformed class/alias before rustfmt turns it
+/// into an unrelated parser error.
+#[test]
+fn synthesized_name_registry_rejects_unspellable_wrapper_spelling() {
+    let mut registry = WasmCollectionWrapperRegistry::default();
+    registry.record_local_class(
+        ident("Bad.Name"),
+        (*ROOT_SCOPE).clone(),
+        "[* uint]".to_owned(),
+        true,
+    );
+    let error = registry
+        .closure_check()
+        .expect_err("an unspellable structural wrapper must stop generation")
+        .to_string();
+    assert_eq!(
+        error,
+        "wasm collection wrapper `Bad.Name` is not a spellable Rust identifier. Rename the originating CDDL rule or use `@name <new_name>` where the wrapper follows that rule."
+    );
+}
+
 /// A synthesized spelling is not an ordinary dependency import merely because an unrelated
 /// dependency collection owns the same Rust ident. This was the production hole a pure registry
 /// collision could not expose: `types.scope(FooList)` points at the dependency even though the

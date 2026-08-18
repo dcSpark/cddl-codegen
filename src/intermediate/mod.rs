@@ -7,7 +7,7 @@ use crate::comment_ast::{DemandSet, RuleMetadata};
 use crate::parsing::EXTERN_MARKER;
 use crate::utils::{
     cddl_prelude, convert_to_camel_case, convert_to_snake_case, is_identifier_reserved,
-    is_identifier_user_defined,
+    is_identifier_user_defined, is_valid_rust_ident,
 };
 
 use std::sync::LazyLock;
@@ -385,6 +385,13 @@ pub struct IntermediateTypes<'a> {
     // all scope-marked up front (`api::with_types`, before the parse loop), and two arms claiming one
     // name reject symmetrically whichever is parsed first.
     group_choice_arm_claims: BTreeMap<RustIdent, String>,
+    // Semantic nominal claims are retained before local minters can deduplicate or discard them.
+    // The normal registration seam records the common case; exceptional pre-lookup minters call
+    // the same ledger explicitly.
+    nominal_mint_claims: BTreeMap<RustIdent, NominalMintClaim>,
+    // Every choice's explicit reservations and settled derived names, keyed by its emitted-enum
+    // context. This makes name allocation independent of arm order without a parser-local policy.
+    variant_mint_claims: BTreeMap<String, Vec<VariantMintClaim>>,
     // Deferred rejections: constructs the parse walk (which returns `()` and so can't surface an
     // `Err`) recognizes as unsupported-by-design but must reject GRACEFULLY rather than `panic!`.
     // Each entry is a human-actionable message; `finalize` drains them into a single `Err` before
@@ -427,7 +434,34 @@ pub struct ScopeReferences {
     pub wasm_boundary_idents: BTreeSet<RustIdent>,
 }
 
+#[derive(Clone, Debug)]
+struct NominalMintClaim {
+    identity: String,
+    site: String,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct VariantMintClaim {
+    pub(crate) arm_ordinal: usize,
+    pub(crate) source_name: String,
+    emitted_name: String,
+    explicit: bool,
+    // A derived claim can settle as `Name2`, so `emitted_name` alone cannot distinguish an exact
+    // AST revisit from a re-entry whose base derivation drifted.
+    requested_base: Option<String>,
+}
+
 impl<'a> IntermediateTypes<'a> {
+    // Inline choices need an address-qualified key so two independent anonymous namespaces do not
+    // share reservations. An address is process-local, however, and must never reach a rejection:
+    // diagnostics remain deterministic for identical CDDL input.
+    fn variant_mint_context_for_diagnostic(context: &str) -> &str {
+        context
+            .strip_prefix("inline type choice at ")
+            .map(|_| "an inline type choice")
+            .unwrap_or(context)
+    }
+
     pub fn new() -> Self {
         let mut rust_structs = BTreeMap::new();
         rust_structs.insert(
@@ -461,6 +495,8 @@ impl<'a> IntermediateTypes<'a> {
             scopes: BTreeMap::new(),
             rule_source_names: BTreeMap::new(),
             group_choice_arm_claims: BTreeMap::new(),
+            nominal_mint_claims: BTreeMap::new(),
+            variant_mint_claims: BTreeMap::new(),
             rejections: Vec::new(),
             rejection_observations: 0,
             diagnostic_node_claims: BTreeSet::new(),
@@ -2897,6 +2933,167 @@ impl<'a> IntermediateTypes<'a> {
         }
     }
 
+    /// Register a semantic nominal mint before its caller can lookup, deduplicate, or insert an
+    /// owner.  It intentionally shares [`RustStruct::structural_fingerprint`] with the global
+    /// registration guard, so equal claims retain the first owner and unequal ones are rejected
+    /// rather than creating a competing ownership vocabulary.
+    pub fn claim_nominal_mint(&mut self, rust_struct: &RustStruct, site: impl Into<String>) {
+        self.claim_nominal_mint_inner(rust_struct, site.into(), true);
+    }
+
+    fn registration_mint_site(ident: &RustIdent) -> String {
+        format!("RustStruct registration for `{ident}`")
+    }
+
+    fn claim_nominal_mint_inner(
+        &mut self,
+        rust_struct: &RustStruct,
+        site: String,
+        report_registration_duplicate: bool,
+    ) {
+        let ident = rust_struct.ident().clone();
+        if ident.is_type_expression() {
+            return;
+        }
+        let claim = NominalMintClaim {
+            identity: rust_struct.structural_fingerprint(),
+            site,
+        };
+        if let Some(first) = self.nominal_mint_claims.get(&ident) {
+            if first.identity != claim.identity {
+                // Ordinary registrations retain the legacy global guard's one diagnostic. The
+                // mint ledger speaks only when a semantic pre-registration claimant is involved.
+                if report_registration_duplicate
+                    || !first.site.starts_with("RustStruct registration for `")
+                {
+                    self.record_rejection(format!(
+                        "generated Rust type `{ident}` has incompatible mint claims: `{}` first claimed; \
+                         `{}` later claimed a different structural/wire identity. Keep one wire shape \
+                         per generated Rust name.",
+                        first.site, claim.site,
+                    ));
+                }
+            }
+            return;
+        }
+        self.nominal_mint_claims.insert(ident, claim);
+    }
+
+    /// Reserve an explicit variant spelling before any derived sibling receives a suffix. Returns
+    /// the first explicit claimant in this enum context, if any, so the parser can retain its
+    /// established kind-specific diagnostic wording.
+    pub(crate) fn reserve_explicit_variant_mint(
+        &mut self,
+        context: &str,
+        arm_ordinal: usize,
+        source_name: String,
+        emitted_name: String,
+    ) -> Option<VariantMintClaim> {
+        if let Some(first) = self
+            .variant_mint_claims
+            .get(context)
+            .and_then(|claims| claims.iter().find(|claim| claim.arm_ordinal == arm_ordinal))
+            .cloned()
+        {
+            if first.explicit
+                && first.source_name == source_name
+                && first.emitted_name == emitted_name
+            {
+                // The AST walker can revisit a node during classification/construction. Replaying
+                // the SAME semantic claim is not a second arm and must not turn into a false
+                // explicit collision.
+                return None;
+            }
+            let context = Self::variant_mint_context_for_diagnostic(context);
+            self.record_rejection(format!(
+                "variant mint claim drift in {context}: arm {arm_ordinal} first claimed source `{}` as `{}` ({}) but later claimed source `{source_name}` as `{emitted_name}` (explicit @name). One enum arm must retain one stable mint claim.",
+                first.source_name,
+                first.emitted_name,
+                if first.explicit { "explicit @name" } else { "derived" },
+            ));
+            return None;
+        }
+        let claims = self
+            .variant_mint_claims
+            .entry(context.to_owned())
+            .or_default();
+        let first = claims
+            .iter()
+            .find(|claim| claim.explicit && claim.emitted_name == emitted_name)
+            .cloned();
+        claims.push(VariantMintClaim {
+            arm_ordinal,
+            source_name,
+            emitted_name,
+            explicit: true,
+            requested_base: None,
+        });
+        first
+    }
+
+    /// Settle and retain a derived variant spelling against both explicit reservations and earlier
+    /// derived settlements in this enum's actual namespace.
+    pub(crate) fn settle_derived_variant_mint(
+        &mut self,
+        context: &str,
+        arm_ordinal: usize,
+        source_name: String,
+        base: String,
+    ) -> String {
+        if let Some(first) = self
+            .variant_mint_claims
+            .get(context)
+            .and_then(|claims| claims.iter().find(|claim| claim.arm_ordinal == arm_ordinal))
+            .cloned()
+        {
+            if !first.explicit
+                && first.source_name == source_name
+                && first.requested_base.as_deref() == Some(base.as_str())
+            {
+                // Same revisit rule as the explicit path. Returning the settled spelling is
+                // important: allocating again would manufacture a suffix merely because
+                // construction re-entered.
+                return first.emitted_name;
+            }
+            let context = Self::variant_mint_context_for_diagnostic(context);
+            self.record_rejection(format!(
+                "variant mint claim drift in {context}: arm {arm_ordinal} first claimed source `{}` as `{}` ({}) but later claimed source `{source_name}` from derived base `{base}`. One enum arm must retain one stable mint claim.",
+                first.source_name,
+                first.emitted_name,
+                if first.explicit { "explicit @name" } else { "derived" },
+            ));
+            return first.emitted_name;
+        }
+        let claims = self
+            .variant_mint_claims
+            .entry(context.to_owned())
+            .or_default();
+        let used = |candidate: &str, claims: &[VariantMintClaim]| {
+            claims.iter().any(|claim| claim.emitted_name == candidate)
+        };
+        let requested_base = base.clone();
+        let emitted_name = if !used(&base, claims) {
+            base
+        } else {
+            let mut n = 2u32;
+            loop {
+                let candidate = format!("{base}{n}");
+                if !used(&candidate, claims) {
+                    break candidate;
+                }
+                n += 1;
+            }
+        };
+        claims.push(VariantMintClaim {
+            arm_ordinal,
+            source_name,
+            emitted_name: emitted_name.clone(),
+            explicit: false,
+            requested_base: Some(requested_base),
+        });
+        emitted_name
+    }
+
     // this is called by register_table_type / register_array_type automatically
     pub fn register_rust_struct(
         &mut self,
@@ -2932,6 +3129,11 @@ impl<'a> IntermediateTypes<'a> {
         {
             *wrapped = wrapped.clone().with_duplicates_policy(Some(policy));
         }
+        self.claim_nominal_mint_inner(
+            &rust_struct,
+            Self::registration_mint_site(rust_struct.ident()),
+            false,
+        );
         // Every generated nominal shares this namespace. Decide ownership only after the incoming
         // claim's local configuration is complete, but before it can create an alias, synthesize a
         // table keys-list, or mutate any other IR map: last-registration-wins would silently
@@ -5242,6 +5444,13 @@ impl<'a> IntermediateTypes<'a> {
                 self.record_rejection(msg);
             }
         }
+        // The final post-construction floor is deliberately last: generic resolution, deferred
+        // wrappers and inline-set nominalization all mutate the IR name surface. It validates the
+        // names that actually survive those passes; `nominal_mint_claims` above separately retains
+        // claims discarded before they could survive.
+        for message in self.validate_emitted_name_surface() {
+            self.record_rejection(message);
+        }
         // Surface any rejection recorded DURING finalize (e.g. the float-key check above, which can
         // only run post-generic-resolution). Without this the entry-point check at the top of
         // finalize would silently swallow anything recorded here.
@@ -5249,6 +5458,127 @@ impl<'a> IntermediateTypes<'a> {
             return Err(self.rejections_error());
         }
         Ok(())
+    }
+
+    fn validate_emitted_name_surface(&self) -> Vec<String> {
+        fn spellable(name: &str) -> bool {
+            is_valid_rust_ident(name) && !crate::parsing::RUST_KEYWORDS.contains(&name)
+        }
+        fn check_name(messages: &mut BTreeSet<String>, name: &str, family: &str, provenance: &str) {
+            if !spellable(name) {
+                messages.insert(format!(
+                    "emitted {family} `{name}` is not a spellable Rust identifier (mint site: {provenance}). Rename it to an ASCII Rust identifier; where this spelling comes from a supported directive, use `@name <new_name>`."
+                ));
+            }
+        }
+        fn check_record(messages: &mut BTreeSet<String>, record: &RustRecord, provenance: &str) {
+            let mut names = BTreeSet::new();
+            for field in &record.fields {
+                check_name(messages, &field.name, "record field", provenance);
+                if !names.insert(field.name.clone()) {
+                    messages.insert(format!(
+                        "emitted record field `{}` is duplicated in its record namespace (mint site: {provenance})",
+                        field.name
+                    ));
+                }
+            }
+            for row in record.captured_dynamic_rows() {
+                check_name(messages, &row.field_name, "dynamic-row field", provenance);
+                if !names.insert(row.field_name.clone()) {
+                    messages.insert(format!(
+                        "emitted dynamic-row field `{}` duplicates a field in its record namespace (mint site: {provenance})",
+                        row.field_name
+                    ));
+                }
+            }
+        }
+
+        let mut messages = BTreeSet::new();
+        for (ident, rust_struct) in &self.rust_structs {
+            if !ident.is_type_expression() {
+                let provenance = self
+                    .nominal_mint_claims
+                    .get(ident)
+                    .map(|claim| claim.site.as_str())
+                    .or_else(|| self.source_rule_name(ident))
+                    .unwrap_or("IR nominal registration");
+                check_name(
+                    &mut messages,
+                    ident.as_ref(),
+                    "nominal Rust type",
+                    provenance,
+                );
+            }
+            let enum_provenance = format!("enum `{ident}`");
+            let variants = match rust_struct.variant() {
+                RustStructType::TypeChoice { variants }
+                | RustStructType::GroupChoice { variants, .. }
+                | RustStructType::CStyleEnum { variants } => Some(variants),
+                RustStructType::Record(record) => {
+                    check_record(&mut messages, record, &format!("record `{ident}`"));
+                    None
+                }
+                _ => None,
+            };
+            if let Some(variants) = variants {
+                let mut names = BTreeSet::new();
+                for variant in variants {
+                    let name = variant.name.to_string();
+                    let variant_provenance = [
+                        format!("type choice for rule {ident}"),
+                        format!("group choice for rule {ident}"),
+                    ]
+                    .into_iter()
+                    .find_map(|context| {
+                        self.variant_mint_claims.get(&context).and_then(|claims| {
+                            claims
+                                .iter()
+                                .find(|claim| claim.emitted_name == name)
+                                .map(|claim| {
+                                    format!(
+                                        "{context}, arm {} (`{}`; {})",
+                                        claim.arm_ordinal,
+                                        claim.source_name,
+                                        if claim.explicit {
+                                            "explicit @name"
+                                        } else {
+                                            "derived"
+                                        },
+                                    )
+                                })
+                        })
+                    })
+                    .unwrap_or_else(|| enum_provenance.clone());
+                    check_name(&mut messages, &name, "enum variant", &variant_provenance);
+                    if !names.insert(name.clone()) {
+                        messages.insert(format!(
+                            "emitted enum variant `{ident}::{name}` is duplicated in its enum namespace (mint site: {variant_provenance})"
+                        ));
+                    }
+                    if let EnumVariantData::Inlined(record) = &variant.data {
+                        check_record(
+                            &mut messages,
+                            record,
+                            &format!("inlined variant `{ident}::{name}`"),
+                        );
+                    }
+                }
+            }
+        }
+        for (alias, info) in &self.type_aliases {
+            if let AliasIdent::Rust(ident) = alias
+                && (info.emits_rust_alias() || info.emits_wasm_alias())
+                && !ident.is_type_expression()
+            {
+                check_name(
+                    &mut messages,
+                    ident.as_ref(),
+                    "type alias",
+                    self.source_rule_name(ident).unwrap_or("alias registration"),
+                );
+            }
+        }
+        messages.into_iter().collect()
     }
 
     /// Detect wasm-class name conflicts the finite/zero-minimum `BoundedVec` emission would
@@ -6945,7 +7275,20 @@ impl<'a> IntermediateTypes<'a> {
         self.plain_groups.remove(ident);
         self.scopes.remove(ident);
         self.rule_source_names.remove(ident);
-        self.rust_structs.remove(ident)
+        let removed = self.rust_structs.remove(ident);
+        // Group-choice parsing uses this only for temporary arm records that are inlined or
+        // structurally shared. Their registrations never become nominal declarations, so retract
+        // only the matching ordinary-registration claim; a semantic pre-registration claim (for
+        // example a fixed singleton) remains evidence even if another owner is removed.
+        if removed.is_some()
+            && self
+                .nominal_mint_claims
+                .get(ident)
+                .is_some_and(|claim| claim.site == Self::registration_mint_site(ident))
+        {
+            self.nominal_mint_claims.remove(ident);
+        }
+        removed
     }
 
     pub fn used_as_key(&self, name: &RustIdent) -> bool {
@@ -7453,6 +7796,17 @@ mod registration_tests {
     use super::*;
     use clap::Parser;
 
+    fn cli() -> Cli {
+        Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            "registration_test_input",
+            "--output",
+            "registration_test_output",
+            "--wasm=false",
+        ])
+    }
+
     #[test]
     fn register_rust_struct_keeps_first_incompatible_owner_in_both_orders() {
         for first_is_extern in [true, false] {
@@ -7527,6 +7881,255 @@ mod registration_tests {
             types.rust_struct(&ident).unwrap().variant(),
             RustStructType::Extern
         ));
+    }
+
+    #[test]
+    fn nominal_mint_claims_reject_pre_registration_loss_in_both_orders() {
+        for bare_first in [true, false] {
+            let cddl = cddl::parser::cddl_from_str("anchor = uint\n", true).unwrap();
+            let parent_visitor = ParentVisitor::new(&cddl).unwrap();
+            let ident = RustIdent::new(CDDLIdent::new("fixed_bool_true"));
+            let bare = RustStruct::new_fixed_singleton(
+                ident.clone(),
+                None,
+                None,
+                RustType::new(ConceptualRustType::Fixed(FixedValue::Bool(true))),
+            );
+            let tagged = RustStruct::new_fixed_singleton(
+                ident,
+                Some(7),
+                None,
+                RustType::new(ConceptualRustType::Fixed(FixedValue::Bool(true))),
+            );
+            let mut types = IntermediateTypes::new();
+            let (first, first_site, second, second_site) = if bare_first {
+                (
+                    &bare,
+                    "bare fixed singleton",
+                    &tagged,
+                    "tagged fixed singleton",
+                )
+            } else {
+                (
+                    &tagged,
+                    "tagged fixed singleton",
+                    &bare,
+                    "bare fixed singleton",
+                )
+            };
+            types.claim_nominal_mint(first, first_site);
+            // Model the fixed-singleton minter's early `rust_struct` return: no registration of
+            // the second semantic claimant is needed for the ledger to retain and reject it.
+            types.claim_nominal_mint(second, second_site);
+            let err = types
+                .finalize(&parent_visitor, &cli())
+                .expect_err("different wire identities sharing a pre-registration name must reject")
+                .to_string();
+            assert!(
+                err.contains("incompatible mint claims")
+                    && err.contains("bare fixed singleton")
+                    && err.contains("tagged fixed singleton"),
+                "both mint sites must survive either claimant order: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn finalized_emitted_name_floor_reports_bad_names_and_duplicate_namespaces() {
+        let mut types = IntermediateTypes::new();
+        let bad_nominal = RustIdent::new_unchecked_for_emitted_name_test("Bad.Name");
+        types
+            .rust_structs
+            .insert(bad_nominal.clone(), RustStruct::new_extern(bad_nominal));
+
+        let enum_ident = RustIdent::new(CDDLIdent::new("choices"));
+        let primitive = RustType::new(ConceptualRustType::Primitive(Primitive::U64));
+        types.reserve_explicit_variant_mint(
+            "type choice for rule Choices",
+            1,
+            "self".to_owned(),
+            "Self".to_owned(),
+        );
+        types.rust_structs.insert(
+            enum_ident.clone(),
+            RustStruct::new_type_choice(
+                enum_ident,
+                None,
+                None,
+                vec![
+                    EnumVariant::new(
+                        VariantIdent::new_custom("Self"),
+                        primitive.clone(),
+                        false,
+                        None,
+                    ),
+                    EnumVariant::new(
+                        VariantIdent::new_custom("Self"),
+                        primitive.clone(),
+                        false,
+                        None,
+                    ),
+                ],
+                &cli(),
+            ),
+        );
+
+        let record_ident = RustIdent::new(CDDLIdent::new("record"));
+        let record = RustRecord {
+            rep: Representation::Array,
+            fields: vec![
+                RustField::new(
+                    "bad.name".to_owned(),
+                    primitive.clone(),
+                    false,
+                    None,
+                    RuleMetadata::default(),
+                ),
+                RustField::new(
+                    "bad.name".to_owned(),
+                    primitive.clone(),
+                    false,
+                    None,
+                    RuleMetadata::default(),
+                ),
+            ],
+            forbidden_fields: vec![],
+            rest: Some(Box::new(RestRow {
+                kind: RestKind::ArrayTail {
+                    element: primitive,
+                    source_index: 2,
+                },
+                semantics: RestSemantics::Capture,
+                field_name: "bad.name".to_owned(),
+                dispatch_major: None,
+                occurrence: None,
+            })),
+            typed_row: None,
+        };
+        types.rust_structs.insert(
+            record_ident.clone(),
+            RustStruct::new_record(record_ident, None, None, record),
+        );
+
+        let messages = types.validate_emitted_name_surface().join("\n");
+        for needle in [
+            "nominal Rust type `Bad.Name`",
+            "mint site:",
+            "enum variant `Choices::Self`",
+            "arm 1 (`self`; explicit @name)",
+            "duplicated in its enum namespace",
+            "record field `bad.name`",
+            "dynamic-row field `bad.name`",
+            "duplicates a field in its record namespace",
+        ] {
+            assert!(
+                messages.contains(needle),
+                "missing `{needle}` in:\n{messages}"
+            );
+        }
+    }
+
+    #[test]
+    fn variant_mint_claims_are_idempotent_per_arm_and_retain_provenance() {
+        let mut types = IntermediateTypes::new();
+        let context = "type choice for rule Choice";
+        assert!(types
+            .reserve_explicit_variant_mint(
+                context,
+                2,
+                "chosen".to_owned(),
+                "Chosen".to_owned(),
+            )
+            .is_none());
+        assert!(types
+            .reserve_explicit_variant_mint(
+                context,
+                2,
+                "chosen".to_owned(),
+                "Chosen".to_owned(),
+            )
+            .is_none(), "a revisited explicit arm is not a second claimant");
+        assert_eq!(
+            types.settle_derived_variant_mint(context, 1, "tstr".to_owned(), "Text".to_owned()),
+            "Text"
+        );
+        assert_eq!(
+            types.settle_derived_variant_mint(context, 1, "tstr".to_owned(), "Text".to_owned()),
+            "Text",
+            "a revisited derived arm must retain its original spelling rather than suffix"
+        );
+        let claims = types.variant_mint_claims.get(context).unwrap();
+        assert_eq!(claims.len(), 2);
+        assert!(claims.iter().any(|claim| {
+            claim.arm_ordinal == 2
+                && claim.source_name == "chosen"
+                && claim.emitted_name == "Chosen"
+                && claim.explicit
+        }));
+    }
+
+    #[test]
+    fn variant_mint_claim_drift_for_one_arm_is_rejected() {
+        let cddl = cddl::parser::cddl_from_str("anchor = uint\n", true).unwrap();
+        let parent_visitor = ParentVisitor::new(&cddl).unwrap();
+        let mut types = IntermediateTypes::new();
+        let context = "type choice for rule Choice";
+        assert_eq!(
+            types.settle_derived_variant_mint(context, 1, "uint".to_owned(), "Uint".to_owned()),
+            "Uint"
+        );
+        // Same ordinal is one semantic enum arm. A different source/base is not an AST revisit:
+        // retaining the first claim and rejecting the second makes the drift deterministic.
+        assert_eq!(
+            types.settle_derived_variant_mint(context, 1, "tstr".to_owned(), "Text".to_owned()),
+            "Uint"
+        );
+        let error = types
+            .finalize(&parent_visitor, &cli())
+            .expect_err("a changed claim for one arm must reject")
+            .to_string();
+        assert!(
+            error.contains("variant mint claim drift in type choice for rule Choice")
+                && error.contains("arm 1")
+                && error.contains("source `uint` as `Uint`")
+                && error.contains("source `tstr`")
+                && error.contains("derived base `Text`"),
+            "the drift error must retain both claims: {error}"
+        );
+    }
+
+    #[test]
+    fn explicit_variant_claim_drift_rejects_without_leaking_inline_key_identity() {
+        let cddl = cddl::parser::cddl_from_str("anchor = uint\n", true).unwrap();
+        let parent_visitor = ParentVisitor::new(&cddl).unwrap();
+        let mut types = IntermediateTypes::new();
+        // The pointer suffix is a private registry discriminator only. A drift error must not
+        // make an otherwise deterministic rejection vary across processes.
+        let context = "inline type choice at 0xDEADBEEF";
+        assert!(
+            types
+                .reserve_explicit_variant_mint(context, 1, "first".to_owned(), "First".to_owned(),)
+                .is_none()
+        );
+        assert!(types
+            .reserve_explicit_variant_mint(
+                context,
+                1,
+                "second".to_owned(),
+                "Second".to_owned(),
+            )
+            .is_none());
+        let error = types
+            .finalize(&parent_visitor, &cli())
+            .expect_err("an explicit re-entry with changed source/name must reject")
+            .to_string();
+        assert!(
+            error.contains("variant mint claim drift in an inline type choice")
+                && error.contains("source `first` as `First`")
+                && error.contains("source `second` as `Second`")
+                && !error.contains("0xDEADBEEF"),
+            "the explicit drift must retain both claims but hide process-local key state: {error}"
+        );
     }
 }
 
