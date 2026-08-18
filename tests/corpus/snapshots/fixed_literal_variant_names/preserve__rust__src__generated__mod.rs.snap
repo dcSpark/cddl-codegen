@@ -1,0 +1,196 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+extern crate alloc;
+use alloc::string::String;
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+pub mod cbor_encodings;
+mod extern_interface_check;
+pub mod serialization;
+
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use cbor_encodings::NestedEncoding;
+
+#[derive(Copy, Eq, PartialEq, Ord, PartialOrd, Clone, Debug)]
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
+pub enum CStyle {
+    Float3FF8000000000000,
+    Float4004000000000000,
+}
+
+#[derive(Clone, Debug)]
+pub enum ExplicitWins {
+    Float3FF80000000000002 {
+        float3_ff80000000000002_encoding: Option<cbor_event::Sz>,
+    },
+    Float3FF8000000000000 {
+        float3_ff8000000000000_encoding: StringEncoding,
+    },
+}
+
+impl ExplicitWins {
+    pub fn new_float3_ff80000000000002() -> Self {
+        Self::Float3FF80000000000002 {
+            float3_ff80000000000002_encoding: None,
+        }
+    }
+
+    pub fn new_float3_ff8000000000000() -> Self {
+        Self::Float3FF8000000000000 {
+            float3_ff8000000000000_encoding: StringEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum Float3FF8000000000000OrText {
+    Float3FF8000000000000 {
+        float3_ff8000000000000_encoding: Option<cbor_event::Sz>,
+    },
+    Text {
+        text: String,
+        text_encoding: StringEncoding,
+    },
+}
+
+impl Float3FF8000000000000OrText {
+    pub fn new_float3_ff8000000000000() -> Self {
+        Self::Float3FF8000000000000 {
+            float3_ff8000000000000_encoding: None,
+        }
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text {
+            text,
+            text_encoding: StringEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum Group {
+    True {
+        len_encoding: LenEncoding,
+    },
+    Float3FF8000000000000 {
+        float3_ff8000000000000_encoding: Option<cbor_event::Sz>,
+        len_encoding: LenEncoding,
+    },
+    Text73656C66 {
+        text73656_c66_encoding: StringEncoding,
+        len_encoding: LenEncoding,
+    },
+}
+
+impl Group {
+    pub fn new_true() -> Self {
+        Self::True {
+            len_encoding: LenEncoding::default(),
+        }
+    }
+
+    pub fn new_float3_ff8000000000000() -> Self {
+        Self::Float3FF8000000000000 {
+            float3_ff8000000000000_encoding: None,
+            len_encoding: LenEncoding::default(),
+        }
+    }
+
+    pub fn new_text73656_c66() -> Self {
+        Self::Text73656C66 {
+            text73656_c66_encoding: StringEncoding::default(),
+            len_encoding: LenEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum Mixed {
+    Nint1 {
+        nint1_encoding: Option<cbor_event::Sz>,
+    },
+    Float3FF8000000000000 {
+        float3_ff8000000000000_encoding: Option<cbor_event::Sz>,
+    },
+    Text73656C66 {
+        text73656_c66_encoding: StringEncoding,
+    },
+    I5 {
+        i5_encoding: Option<cbor_event::Sz>,
+    },
+    True,
+    X {
+        x_encoding: StringEncoding,
+    },
+    BytesCAFE {
+        bytes_cafe_encoding: StringEncoding,
+    },
+}
+
+impl Mixed {
+    pub fn new_nint1() -> Self {
+        Self::Nint1 {
+            nint1_encoding: None,
+        }
+    }
+
+    pub fn new_float3_ff8000000000000() -> Self {
+        Self::Float3FF8000000000000 {
+            float3_ff8000000000000_encoding: None,
+        }
+    }
+
+    pub fn new_text73656_c66() -> Self {
+        Self::Text73656C66 {
+            text73656_c66_encoding: StringEncoding::default(),
+        }
+    }
+
+    pub fn new_i5() -> Self {
+        Self::I5 { i5_encoding: None }
+    }
+
+    pub fn new_true() -> Self {
+        Self::True
+    }
+
+    pub fn new_x() -> Self {
+        Self::X {
+            x_encoding: StringEncoding::default(),
+        }
+    }
+
+    pub fn new_bytes_cafe() -> Self {
+        Self::BytesCAFE {
+            bytes_cafe_encoding: StringEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Nested {
+    pub index_0: Float3FF8000000000000OrText,
+    pub encodings: Option<NestedEncoding>,
+}
+
+impl Nested {
+    pub fn new(index_0: Float3FF8000000000000OrText) -> Self {
+        Self {
+            index_0,
+            encodings: None,
+        }
+    }
+}

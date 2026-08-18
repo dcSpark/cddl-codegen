@@ -10,10 +10,8 @@ title = "Testing roadmap preamble"
 body_md = '''# Testing roadmap — what to do next
 
 A curated, opinionated plan for the *next* testing push, so a future effort has a solid starting
-point. This is the short list (what we'd actually do, in order), distilled from an independent
-multi-agent review (`draft/testing-recommendations/RECOMMENDATIONS.md` — the exhaustive menu) plus
-findings from building the current suite. See `tests/README.md` for how the current setup works and
-what's already covered.
+point. It is the short list of remaining work, grouped by what unblocks it. See `tests/README.md`
+for the current setup and coverage.
 
 **CI policy — fast tier only.** CI runs exactly `bun run check.ts fast` (the absolute-minimum
 commit gate; cost policy — see `AGENTS.md`), enforced by check.ts's `self_checks`. No item below
@@ -263,15 +261,6 @@ entries = [
   "testing.wrapper-name-user-set-name-synthesized-collection-wrapper",
   "testing.checking-runtime-flavor-s-safety-condition-rather-stating",
 ]
-
-[[section]]
-section_id = "sources"
-title = "Sources"
-body_md = '''## Sources
-- Full exhaustive menu (24 ranked items + blind spots): `draft/testing-recommendations/RECOMMENDATIONS.md`
-- Per-dimension expert write-ups: `draft/testing-recommendations/*.md`
-'''
-entries = []
 
 [[record]]
 id = "testing.add-profile-wrapper-participation-grid-participation-differs-across"
@@ -2825,8 +2814,11 @@ title = "Real-world corpus differential"
 
 [record.payload]
 kind = "work"
-body_md = '''   - **Real-world corpus differential** (see `draft/testing-recommendations/RECOMMENDATIONS.md`):
-     synthetic breadth vs real-world depth — recombination does not replace it.
+body_md = '''   - **Real-world corpus differential.** Curate a committed corpus of independently
+     authored real-world CDDL and differentially generate and compile each supported subset.
+     Shape recombination gives grammar-product breadth, but it cannot represent the naming
+     conventions, scale, or long-range interactions of real specifications; this corpus supplies
+     that complementary evidence.
 
 '''
 work_state = "deferred"

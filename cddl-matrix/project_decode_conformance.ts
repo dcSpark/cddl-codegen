@@ -423,6 +423,8 @@ const EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
   "contain.choice-member.prelude.null.fixed-kind": ["3", "7", "int"],
   "contain.choice-member.prelude.true.fixed-kind": ["3", "7"],
   "contain.choice-member.prelude.undefined.fixed-kind": ["3", "7"],
+  "contain.choice-member.type2.value.float.fixed-kind": ["3", "7"],
+  "contain.choice-member.type2.value.nint.fixed-kind": ["3", "7", "int"],
   // The same-major-type (brute-force) fixed-arm row: `true` and `null` BOTH resolve to major 7, so
   // the two-class floor {3, 7} is satisfied by a single major-7 accept and cannot, by construction,
   // demand one per fixed arm. That is the arm floor's known blind spot on this shape rather than a
@@ -749,6 +751,13 @@ for (const a of supportedAnnotations) {
 // the matrix § 7 EXPECTED_FLOOR_SCOPE pattern): a resolver change that silently widens/narrows the
 // in-scope set fails got/want. Classes are majors-0/1-merged ("int"). Pinned from the mint's actuals.
 const CORPUS_EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
+  // Fixed-literal naming fixture: the c-style float enum is one special-major class; the explicit
+  // name leaves the float/text wire choice unchanged; and the broad mixed choice spans bytes, text,
+  // special, and integer classes. The mixed row's fixed-byte class is the pinned rust-cddl validator
+  // gap ledgered in CORPUS_DECODE_FLOOR_ARM_EXEMPT; its other classes still take real vectors.
+  "fixed_literal_variant_names.c_style": ["7"],
+  "fixed_literal_variant_names.explicit_wins": ["3", "7"],
+  "fixed_literal_variant_names.mixed": ["2", "3", "7", "int"],
   "fixed_singletons.mixed_text_bytes_choice": ["2", "3"],
   // Declared-spelling fixture: `delta_coin = int` is the one type choice among its rules (an alias of
   // a nominal, there so the member's deserialize CALL TARGET is exercised) — the uint/nint arm merges

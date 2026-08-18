@@ -645,9 +645,10 @@ export const DECODE_FLOOR_ARM_EXEMPT: Record<string, string> = {
 // entry in the matrix ledger can never appear in the MATRIX guard's uncovered set (its keys are matrix
 // row ids), so it would always read stale there and falsely fail the gate. Shared by the corpus mint
 // (verify.ts `mintCorpusRow` — won't exit 1 / won't waste draws for a ledgered class) and the corpus
-// drift-gate half (project_decode_conformance.ts — coverage floor + its own stale guard). Currently
-// The fixed-byte validator gap below is the only resident corpus arm exemption at HEAD.
+// drift-gate half (project_decode_conformance.ts — coverage floor + its own stale guard). The two
+// fixed-byte entries below are the only resident corpus arm exemptions at HEAD.
 export const CORPUS_DECODE_FLOOR_ARM_EXEMPT: Record<string, string> = {
+  "fixed_literal_variant_names.mixed/2": "pinned rust-cddl ac1b98e validator panic at src/validator/cbor.rs:4840 on spec-valid fixed-byte CBOR; Ruby accepts; remove when upstream validator repair permits a two-oracle vector",
   "fixed_singletons.mixed_text_bytes_choice/2": "pinned rust-cddl ac1b98e validator panic at src/validator/cbor.rs:4840 on spec-valid fixed-byte CBOR; Ruby accepts; remove when upstream validator repair permits a two-oracle vector",
 };
 

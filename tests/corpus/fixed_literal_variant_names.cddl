@@ -1,0 +1,9 @@
+; Fixed-literal choice variants keep their spellable legacy names and use the exact canonical
+; fallback only when that legacy spelling is unspellable. This corpus fixture is deliberately the
+; compile-breadth witness: it carries mixed, c-style, anonymous, and bare-group consumers through
+; native, wasm, JSON, preserve, and component corpus profiles.
+mixed = -1 / 1.5 / "self" / 5 / true / "x" / h'CAFE'
+c_style = 1.5 / 2.5
+nested = [1.5 / tstr]
+group = [ true // 1.5 // "self" ]
+explicit_wins = 1.5 / "self" ; @name Float3FF8000000000000

@@ -678,13 +678,23 @@ function readAllTracked(root: string, revision: RepositoryRevision): readonly Tr
   const entries = trackedEntries(root, revision)
     .filter((entry) => entry.path !== "draft" && !entry.path.startsWith("draft/"));
   if (revision.kind === "worktree") {
-    return entries.map((entry) => {
+    return entries.flatMap((entry) => {
       const absolute = confinedPath(root, entry.path, "repository");
       try {
+        // `git ls-files --stage` is the tracked-path authority, but an unstaged deletion remains in
+        // that index. A WORKTREE view describes resident tracked files, so the absent leaf is not a
+        // fact input; the immutable commit view below still reads it from its blob. Probe only the
+        // leaf here before the symlink walk so a missing parent/leaf can be distinguished from a
+        // resident path whose parent or leaf is a symlink (which must keep failing closed).
+        let stat: ReturnType<typeof lstatSync>;
+        try { stat = lstatSync(absolute); }
+        catch (error) {
+          if (nodeErrorCode(error) === "ENOENT") return [];
+          throw error;
+        }
         rejectSymlinkComponents(root, entry.path, true, "source");
-        const stat = lstatSync(absolute);
         if (!stat.isFile()) throw Object.assign(new Error("tracked worktree path is not regular"), { code: "ENOENT" });
-        return { source: entry.path, bytes: new Uint8Array(readFileSync(absolute)) };
+        return [{ source: entry.path, bytes: new Uint8Array(readFileSync(absolute)) }];
       } catch (error) {
         throw classifyRoadmapIoError(error, { role: "source", path: entry.path, operation: "tracked-worktree-read" });
       }

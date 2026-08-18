@@ -592,7 +592,7 @@ function caseFixtureEnumerationRejectsEscape(context: SelfTestContext): readonly
 }
 
 function caseScratchGitLifecycle(context: SelfTestContext): readonly string[] | undefined {
-  const subcases = ["success_cleanup", "assertion_failure_cleanup", "foreign_handle_rejected", "double_cleanup_rejected", "seed_path_escape_rejected"];
+  const subcases = ["success_cleanup", "assertion_failure_cleanup", "foreign_handle_rejected", "double_cleanup_rejected", "seed_path_escape_rejected", "worktree_deletion_uses_resident_authority"];
   const success = context.ports.fixtures.createScratchRepository([]);
   assert(context.ports.fixtures.scratchRepositoryPresent(success), "scratch create did not mint a live root");
   context.ports.fixtures.removeScratchRepository(success);
@@ -624,6 +624,7 @@ function caseScratchGitLifecycle(context: SelfTestContext): readonly string[] | 
     { path: "link-dir-target.txt" as RepoPath, bytes: encoder.encode("blocked") },
     { path: "link-file-target.txt" as RepoPath, bytes: encoder.encode(sourcePath) },
     { path: "notes.txt" as RepoPath, bytes: encoder.encode("## Durable text heading\n") },
+    { path: "obsolete.md" as RepoPath, bytes: encoder.encode("# Commit-only obsolete heading\n") },
     { path: "src/main.rs" as RepoPath, bytes: encoder.encode("#[cfg(test)]\nmod tests;\n") },
     { path: "src/tests/mod.rs" as RepoPath, bytes: new Uint8Array() },
   ]);
@@ -635,6 +636,7 @@ function caseScratchGitLifecycle(context: SelfTestContext): readonly string[] | 
     const headResult = git.runScratchGit(integration, ["rev-parse", "HEAD"]);
     const head = UTF8.decode(headResult.stdout).trim();
     assert(headResult.exit_code === 0 && /^[0-9a-f]{40}$/u.test(head), "scratch integration did not produce a full SHA-1 commit ID");
+    context.ports.fixtures.removeScratchFile(integration, "obsolete.md" as RepoPath);
 
     const ports = context.ports.fixtures.openScratchRoadmapPorts(integration);
     assert(ports.repositoryObjectFormat() === "sha1", "production scratch ports reported the wrong object format");
@@ -642,9 +644,17 @@ function caseScratchGitLifecycle(context: SelfTestContext): readonly string[] | 
     assert(commit === head, "production scratch ports changed the exact commit ID");
     assert(UTF8.decode(ports.readDeclared(sourcePath)) === "base\n", "worktree declared read changed committed bytes");
     assert(UTF8.decode(ports.readDeclaredAtCommit(commit, sourcePath)) === "base\n", "commit declared read changed committed bytes");
-    assert(ports.registryView({ kind: "worktree" }).revision.kind === "worktree", "worktree registry revision was not preserved");
+    const worktreeView = ports.registryView({ kind: "worktree" });
+    assert(worktreeView.revision.kind === "worktree", "worktree registry revision was not preserved");
     const commitView = ports.registryView({ kind: "commit", commit });
     assert(commitView.revision.kind === "commit" && commitView.revision.commit === commit, "commit registry revision was not preserved");
+    assert(
+      !worktreeView.tracked_headings.some((fact) => fact.path === "obsolete.md") &&
+        commitView.tracked_headings.some((fact) =>
+          fact.path === "obsolete.md" && fact.heading === "Commit-only obsolete heading"
+        ),
+      "an unstaged deletion remained worktree authority or disappeared from immutable commit authority",
+    );
     const expectedDurableHeadings = [{
       path: "docs/guide.mdx",
       heading: "MDX durable heading",
@@ -656,7 +666,7 @@ function caseScratchGitLifecycle(context: SelfTestContext): readonly string[] | 
       span: { start_byte: 3, end_byte: 23 },
       section_text: "## Durable text heading\n",
     }];
-    for (const view of [ports.registryView({ kind: "worktree" }), commitView]) {
+    for (const view of [worktreeView, commitView]) {
       const durableHeadings = view.tracked_headings.filter((fact) =>
         fact.path === "docs/guide.mdx" || fact.path === "notes.txt"
       );

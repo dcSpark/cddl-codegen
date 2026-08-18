@@ -24,11 +24,11 @@ choice_array_any_arm       ok
 choice_cbor_ref_arm        ok
 choice_fixed_null_collapse ok
 choice_fixed_null_collapse_member ok
-choice_float_arm_variant_name error (graceful)
+choice_float_arm_variant_name ok
 choice_group_array_arm     ok
-choice_keyword_arm_variant_name error (graceful)
+choice_keyword_arm_variant_name ok
 choice_last_any_arm        ok
-choice_nint_arm_variant_name error (graceful)
+choice_nint_arm_variant_name ok
 collection_rule_cycle_entry ok
 ctl_cbor_non_bytes_head    error (graceful)
 ctl_cbor_non_bytes_head_member error (graceful)

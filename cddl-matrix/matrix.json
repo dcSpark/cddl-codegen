@@ -2242,14 +2242,34 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.choice-member.type2.value.float.fixed-kind",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 4 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.choice-member.type2.value.nint.fixed-kind",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "emission": {
@@ -4033,7 +4053,7 @@
       "example": "t = 1.5 / tstr",
       "feature": "type2.value",
       "id": "contain.choice-member.type2.value.float.fixed-kind",
-      "note": "Canonical FLOAT representative for the source-derived FixedValue-kind closure: `1.5 / tstr` is spec-legal and gracefully refused because its derived variant name `F1.5` is not a Rust identifier; `; @name` is the supported remedy. One representative only. RFC8610 §2.2.2, §2.2.4.",
+      "note": "Canonical FLOAT representative for the source-derived FixedValue-kind closure: `1.5 / tstr` is spec-legal and generates with the canonical fallback variant `Float3FF8000000000000`, its exact IEEE-754 identity, because the legacy display-derived `F1.5` is unspellable. Spellable legacy fixed-value names remain unchanged; `@name` is optional and still wins when authored. One representative only. RFC8610 §2.2.2, §2.2.4.",
       "role": "role.choice-member",
       "spec": "allowed"
     },
@@ -4041,7 +4061,7 @@
       "example": "t = -1 / null / tstr",
       "feature": "type2.value",
       "id": "contain.choice-member.type2.value.nint.fixed-kind",
-      "note": "Canonical NINT representative for the source-derived FixedValue-kind closure: `-1 / null / tstr` is spec-legal and gracefully refused because its derived variant name `U-1` is not a Rust identifier; the third arm avoids the two-arm `/ null` collapse. One representative only. RFC8610 §2.2.2, §2.2.4.",
+      "note": "Canonical NINT representative for the source-derived FixedValue-kind closure: `-1 / null / tstr` is spec-legal and generates with the canonical fallback variant `Nint1`, because the legacy display-derived `U-1` is unspellable; the third arm avoids the two-arm `/ null` collapse. Spellable legacy fixed-value names remain unchanged. One representative only. RFC8610 §2.2.2, §2.2.4.",
       "role": "role.choice-member",
       "spec": "allowed"
     },
@@ -4057,7 +4077,7 @@
       "example": "t = \"x\" / uint",
       "feature": "type2.value",
       "id": "contain.choice-member.type2.value.text.fixed-kind",
-      "note": "Canonical TEXT representative for the source-derived FixedValue-kind closure: `\"x\" / uint` mints the spellable derived variant `X` and round-trips. This explicitly does not generalize to keyword-minting text such as `\"self\"`, whose separate graceful refusal remains live. RFC8610 §2.2.2, §2.2.4.",
+      "note": "Canonical TEXT representative for the source-derived FixedValue-kind closure: `\"x\" / uint` keeps the spellable legacy variant `X` and round-trips. Unspellable text-derived names use the canonical UTF-8 fallback instead: `\"self\"` is `Text73656C66`, while empty, punctuation-only, and digit-led text follow the same kind-prefixed scheme. RFC8610 §2.2.2, §2.2.4.",
       "role": "role.choice-member",
       "spec": "allowed"
     },

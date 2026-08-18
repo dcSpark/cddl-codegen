@@ -423,7 +423,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `type2.tag` | · | ✅ | ✅ | ✅ | ➖ | ✅ | ✅ | · | ✅ |  |
 | `type2.typename` | · | · | · | · | · | · |  | · | · | · |
 | `type2.unwrap` | ➖ | ➖ | ➖ |  |  |  |  |  |  |  |
-| `type2.value` | · | ✅ | ✅ | · | · | ◐ | ✅ | ◐ | · | · |
+| `type2.value` | · | ✅ | ✅ | · | · | ✅ | ✅ | ◐ | · | · |
 | `value.bytes` | · | ✅ | ✅ |  | · | · |  | · | · |  |
 | `value.number` | · | ✅ | ✅ | · | · | · |  | · | · | · |
 | `value.text` | · | ✅ | ✅ | · |  | · |  | · |  |  |
@@ -447,7 +447,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 
 - Features: **123** — ✅ 80 covered · ➕ 31 supported-untested · ⚠️ 1 partial · ➖ 11 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
-- Corpus fixtures: 105
+- Corpus fixtures: 106
 
 **Per-cell coverage (role × feature).** Where a construct's support *differs by role*,
 coverage is keyed on the (role × feature) cell, derived from a real `cddl`-crate AST walk

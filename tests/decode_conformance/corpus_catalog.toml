@@ -4546,6 +4546,146 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "fixed_literal_variant_names.c_style"
+axis = "corpus"
+example = "c_style = 1.5 / 2.5"
+fixture = "fixed_literal_variant_names"
+rule = "c_style"
+spec = "__probe_holder = [0, c_style]\nc_style = 1.5 / 2.5"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200f93e00"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f94100"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "fixed_literal_variant_names.explicit_wins"
+axis = "corpus"
+example = "explicit_wins = 1.5 / \"self\" ; @name Float3FF8000000000000"
+fixture = "fixed_literal_variant_names"
+rule = "explicit_wins"
+spec = "__probe_holder = [0, explicit_wins]\nexplicit_wins = 1.5 / \"self\" ; @name Float3FF8000000000000"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82006473656c66"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f93e00"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "fixed_literal_variant_names.group"
+axis = "corpus"
+example = "group = [ true // 1.5 // \"self\" ]"
+fixture = "fixed_literal_variant_names"
+rule = "group"
+spec = "__probe_holder = [0, group]\ngroup = [ true // 1.5 // \"self\" ]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200816473656c66"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081f5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081f93e00"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "fixed_literal_variant_names.mixed"
+axis = "corpus"
+example = "mixed = -1 / 1.5 / \"self\" / 5 / true / \"x\" / h'CAFE'"
+fixture = "fixed_literal_variant_names"
+rule = "mixed"
+spec = "__probe_holder = [0, mixed]\nmixed = -1 / 1.5 / \"self\" / 5 / true / \"x\" / h'CAFE'"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820005"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820020"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82006473656c66"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200f93e00"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "fixed_literal_variant_names.nested"
+axis = "corpus"
+example = "nested = [1.5 / tstr]"
+fixture = "fixed_literal_variant_names"
+rule = "nested"
+spec = "__probe_holder = [0, nested]\nnested = [1.5 / tstr]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820081696d656e746f72696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200816972656379636c696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200816a636f6d706163746f7273"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200816a666f726572756e6e6572"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200816b4d7573636f766974652773"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200816c696e7465726c696e6b696e67"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081f93e00"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "fixed_singletons.answer"
 axis = "corpus"
 example = "answer = 42"

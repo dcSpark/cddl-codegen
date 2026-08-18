@@ -6,7 +6,7 @@
 //! Full inversion is a bigger job (the `from_wasm` flag threads through type naming), so these stay
 //! as the boundary's documented leaks rather than being "fixed" here.
 use super::*;
-use crate::generation::table_type;
+use crate::{generation::table_type, parsing::RUST_KEYWORDS, utils::is_valid_rust_ident};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Representation {
@@ -73,8 +73,13 @@ impl FixedValue {
         }
     }
 
+    /// The choice-arm spelling keeps each established, spellable public name.  A fixed literal
+    /// whose old display-derived spelling cannot be emitted as a Rust variant uses the canonical
+    /// fixed-value identity instead: it is total, kind-prefixed, and value-exact for floats/text.
+    /// This is deliberately here, at the one fixed-value minter shared by type and group choices,
+    /// rather than a parser-side repair at either consumer.
     fn for_variant(&self) -> VariantIdent {
-        match self {
+        let legacy = match self {
             FixedValue::Null => VariantIdent::new_custom("Null"),
             FixedValue::Undefined => VariantIdent::new_custom("Undefined"),
             FixedValue::Bool(b) => VariantIdent::new_custom(match b {
@@ -95,6 +100,12 @@ impl FixedValue {
                     .map(|byte| format!("{byte:02X}"))
                     .collect::<String>()
             )),
+        }
+        .to_string();
+        if is_valid_rust_ident(&legacy) && !RUST_KEYWORDS.contains(&legacy.as_str()) {
+            VariantIdent::new_custom(legacy)
+        } else {
+            VariantIdent::new_custom(self.singleton_name_fragment())
         }
     }
 
@@ -2899,6 +2910,7 @@ mod tests {
     use super::{ConceptualRustType, FixedValue, Primitive, RustType};
     use crate::comment_ast::DuplicatesPolicy;
     use crate::intermediate::IntermediateTypes;
+    use crate::{parsing::RUST_KEYWORDS, utils::is_valid_rust_ident};
     use cbor_event::Sz;
 
     /// `FixedValue::to_bytes` for negative literals must produce canonical CBOR nint bytes across
@@ -2957,6 +2969,39 @@ mod tests {
         assert_eq!(Sz::canonical(0x1_0000), Sz::Four);
         assert_eq!(Sz::canonical(0xffff_ffff), Sz::Four);
         assert_eq!(Sz::canonical(0x1_0000_0000), Sz::Eight);
+    }
+
+    /// Fixed choice arms retain their long-standing spellable labels, while every legacy spelling
+    /// that would be invalid Rust falls back to the canonical singleton identity.  The text cases
+    /// deliberately cross the empty, punctuation-only, and digit-led boundary rather than treating
+    /// `self` as a one-off keyword patch.
+    #[test]
+    fn fixed_value_variant_names_fall_back_to_total_canonical_identity() {
+        let cases = [
+            (FixedValue::Null, "Null"),
+            (FixedValue::Undefined, "Undefined"),
+            (FixedValue::Bool(true), "True"),
+            (FixedValue::Uint(5), "I5"),
+            (FixedValue::Text("x".to_owned()), "X"),
+            (FixedValue::Bytes(vec![0xca, 0xfe]), "BytesCAFE"),
+            (FixedValue::Nint(-1), "Nint1"),
+            (FixedValue::Float(1.5), "Float3FF8000000000000"),
+            (FixedValue::Text("self".to_owned()), "Text73656C66"),
+            (FixedValue::Text(String::new()), "TextEmpty"),
+            (FixedValue::Text("!".to_owned()), "Text21"),
+            (FixedValue::Text("1foo".to_owned()), "Text31666F6F"),
+        ];
+        for (value, expected) in cases {
+            let minted = value.for_variant().to_string();
+            assert_eq!(
+                minted, expected,
+                "{value:?} minted the wrong choice variant"
+            );
+            assert!(
+                is_valid_rust_ident(&minted) && !RUST_KEYWORDS.contains(&minted.as_str()),
+                "{value:?} must always mint a spellable Rust variant, got {minted}"
+            );
+        }
     }
 
     /// A WASM wrapper identifier is not a rendered Rust type. In particular, an optional bounded

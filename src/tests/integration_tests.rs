@@ -27015,6 +27015,11 @@ fn corpus_decode_replay() {
             "a composite (array) map key is not json-serializable — serde_json requires string keys \
              (cddl-matrix/README.md § Gotchas)",
         ),
+        (
+            "array_of_wrapped_group.wrapped_group_map_key",
+            "a composite (array) map key is not json-serializable — serde_json requires string keys \
+             (cddl-matrix/README.md § Gotchas)",
+        ),
         // The open-table corpus fixture's three rules all carry a bare-`bstr` TYPED row, whose serde
         // image is a JSON array — the open table's hand-written to_json errors loudly on every typed
         // entry (OpenTableKeyImageError, the documented member-name contract). Same finding, reached

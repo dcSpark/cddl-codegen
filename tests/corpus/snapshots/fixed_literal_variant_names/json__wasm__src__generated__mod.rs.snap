@@ -1,0 +1,231 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+pub use cddl_lib::{CStyle, ExplicitWins, Mixed};
+use wasm_bindgen::prelude::{JsError, JsValue, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Float3FF8000000000000OrText(pub(crate) cddl_lib::Float3FF8000000000000OrText);
+
+#[wasm_bindgen]
+impl Float3FF8000000000000OrText {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Float3FF8000000000000OrText, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<Float3FF8000000000000OrText, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new_float3_ff8000000000000() -> Self {
+        Self(cddl_lib::Float3FF8000000000000OrText::new_float3_ff8000000000000())
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self(cddl_lib::Float3FF8000000000000OrText::new_text(text))
+    }
+
+    pub fn kind(&self) -> Float3FF8000000000000OrTextKind {
+        match &self.0 {
+            cddl_lib::Float3FF8000000000000OrText::Float3FF8000000000000 => {
+                Float3FF8000000000000OrTextKind::Float3FF8000000000000
+            }
+            cddl_lib::Float3FF8000000000000OrText::Text(_) => Float3FF8000000000000OrTextKind::Text,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::Float3FF8000000000000OrText::Text(text) => Some(text.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::Float3FF8000000000000OrText> for Float3FF8000000000000OrText {
+    fn from(native: cddl_lib::Float3FF8000000000000OrText) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Float3FF8000000000000OrText> for cddl_lib::Float3FF8000000000000OrText {
+    fn from(wasm: Float3FF8000000000000OrText) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Float3FF8000000000000OrText> for Float3FF8000000000000OrText {
+    fn as_ref(&self) -> &cddl_lib::Float3FF8000000000000OrText {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum Float3FF8000000000000OrTextKind {
+    Float3FF8000000000000,
+    Text,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Group(pub(crate) cddl_lib::Group);
+
+#[wasm_bindgen]
+impl Group {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Group, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<Group, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn new_true() -> Self {
+        Self(cddl_lib::Group::new_true())
+    }
+
+    pub fn new_float3_ff8000000000000() -> Self {
+        Self(cddl_lib::Group::new_float3_ff8000000000000())
+    }
+
+    pub fn new_text73656_c66() -> Self {
+        Self(cddl_lib::Group::new_text73656_c66())
+    }
+
+    pub fn kind(&self) -> GroupKind {
+        match &self.0 {
+            cddl_lib::Group::True => GroupKind::True,
+            cddl_lib::Group::Float3FF8000000000000 => GroupKind::Float3FF8000000000000,
+            cddl_lib::Group::Text73656C66 => GroupKind::Text73656C66,
+        }
+    }
+}
+
+impl From<cddl_lib::Group> for Group {
+    fn from(native: cddl_lib::Group) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Group> for cddl_lib::Group {
+    fn from(wasm: Group) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Group> for Group {
+    fn as_ref(&self) -> &cddl_lib::Group {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum GroupKind {
+    True,
+    Float3FF8000000000000,
+    Text73656C66,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Nested(pub(crate) cddl_lib::Nested);
+
+#[wasm_bindgen]
+impl Nested {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Nested, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<Nested, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn index_0(&self) -> Float3FF8000000000000OrText {
+        self.0.index_0.clone().into()
+    }
+
+    pub fn new(index_0: &Float3FF8000000000000OrText) -> Self {
+        Self(cddl_lib::Nested::new(index_0.clone().into()))
+    }
+}
+
+impl From<cddl_lib::Nested> for Nested {
+    fn from(native: cddl_lib::Nested) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Nested> for cddl_lib::Nested {
+    fn from(wasm: Nested) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Nested> for Nested {
+    fn as_ref(&self) -> &cddl_lib::Nested {
+        &self.0
+    }
+}

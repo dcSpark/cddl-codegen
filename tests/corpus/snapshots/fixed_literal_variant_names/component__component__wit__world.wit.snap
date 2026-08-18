@@ -1,0 +1,63 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  enum c-style {
+    float3-ff8000000000000,
+    float4004000000000000,
+  }
+  enum explicit-wins {
+    float3-ff80000000000002,
+    float3-ff8000000000000,
+  }
+  resource float3-ff8000000000000-or-text {
+    new-float3-ff8000000000000: static func() -> float3-ff8000000000000-or-text;
+    new-text: static func(text: string) -> float3-ff8000000000000-or-text;
+    as-text: func() -> option<string>;
+    kind: func() -> float3-ff8000000000000-or-text-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<float3-ff8000000000000-or-text, string>;
+  }
+  enum float3-ff8000000000000-or-text-kind {
+    float3-ff8000000000000,
+    text,
+  }
+  resource group {
+    new-true: static func() -> group;
+    new-float3-ff8000000000000: static func() -> group;
+    new-text73656-c66: static func() -> group;
+    kind: func() -> group-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<group, string>;
+  }
+  enum group-kind {
+    true,
+    float3-ff8000000000000,
+    text73656-c66,
+  }
+  enum mixed {
+    nint1,
+    float3-ff8000000000000,
+    text73656-c66,
+    i5,
+    true,
+    x,
+    bytes-cafe,
+  }
+  resource nested {
+    constructor(index0: borrow<float3-ff8000000000000-or-text>);
+    index0: func() -> float3-ff8000000000000-or-text;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<nested, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}

@@ -508,6 +508,7 @@ function vacuityProblems(rs: Directional[]): string[] {
     "contain.array-element.value.number.nint", "contain.array-element.value.text",
     "contain.choice-member.prelude.null", "contain.choice-member.prelude.null.fixed-kind",
     "contain.choice-member.prelude.true.fixed-kind", "contain.choice-member.prelude.true.same_major_brute",
+    "contain.choice-member.type2.value.float.fixed-kind", "contain.choice-member.type2.value.nint.fixed-kind",
     "contain.choice-member.type2.value.text.fixed-kind", "contain.choice-member.type2.value.uint.fixed-kind",
     "contain.choice-member.type2.value.fixed_null",
     "contain.group-choice-arm.memberkey.bareword.map",

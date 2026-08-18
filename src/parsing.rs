@@ -13,7 +13,7 @@ use crate::intermediate::{
 };
 use crate::utils::{
     append_number_if_duplicate, convert_to_camel_case, convert_to_snake_case,
-    is_identifier_user_defined, is_valid_rust_ident,
+    is_identifier_user_defined,
 };
 
 #[derive(Clone, Debug)]
@@ -1325,72 +1325,6 @@ fn choice_variant_context(owner: Option<&RustIdent>, type_choices: &[TypeChoice]
         // diagnostic it distinguishes two independent inline enum namespaces in one rule.
         None => format!("inline type choice at {:p}", type_choices.as_ptr()),
     }
-}
-
-/// Whether a MINTED variant name can be emitted verbatim as a Rust variant identifier.
-///
-/// Two conditions, both read off the STRING: it must be lexically an identifier
-/// (`is_valid_rust_ident`), and it must not be a Rust KEYWORD — which is what Rust's own grammar
-/// means by `IDENTIFIER` (`IDENTIFIER_OR_KEYWORD` minus the keywords). The keyword half is not a
-/// special case for `Self`: the emitter writes minted names verbatim and never raw-escapes them
-/// (`r#..`), so EVERY keyword lexeme is unspellable in the position, and checking the list keeps
-/// this guard a predicate on the string exactly like its lexical half. Only `Self` is reachable
-/// from today's minters — `convert_to_camel_case` upper-cases the first character and `Self` is
-/// the one capitalized keyword — but a minter that ever emitted a lower-cased name is covered
-/// without a second repair.
-fn is_spellable_variant_name(name: &str) -> bool {
-    is_valid_rust_ident(name) && !RUST_KEYWORDS.contains(&name)
-}
-
-/// An arm whose variant name was DERIVED from the arm's own type and came out unspellable as Rust.
-///
-/// The derivation that produces these is `FixedValue::for_variant`, which mints from the value's
-/// LEXEME: `1.5` → `F1.5` and `-1` → `U-1` are not identifier-shaped at all, and a fixed TEXT arm
-/// camel-cases straight through, so `"self"` → `Self` is identifier-SHAPED but a keyword. Both are
-/// caught by `is_spellable_variant_name`, a predicate on the minted STRING rather than on the
-/// value's kind, so any future lexeme-derived name is covered by the same seam instead of shipping
-/// invalid Rust to rustfmt — which is what these used to do, dying with an error that named
-/// rustfmt's confusion rather than the arm the author wrote.
-///
-/// Rejected rather than auto-sanitized (`F1_5`): a variant name is public API of the generated
-/// crate, so the sanitization scheme would be a naming decision the author never made. `@name` is
-/// the supported route, exactly as for the two collision rejections above.
-///
-/// Shared by both arm-naming consumers — `create_variants_from_type_choices` (type choices, bare
-/// and nested-anonymous) and the group-choice arm loop's bare-member fallback — so the two cannot
-/// drift in what they refuse or in how they spell the remedy.
-///
-/// `naming_slot` is the one thing the two consumers do NOT share: a type-choice arm's naming slot
-/// is its own trailing comment, a group-choice arm's is the one that follows the `//` opening it —
-/// and a group-choice arm has a SECOND, adjacent slot (the entry's own line) that names nothing,
-/// which is exactly where an author reading a bare `; @name <new_name>` remedy lands. So the slot
-/// is named, not implied.
-fn unnameable_arm_variant_name_rejection(
-    owner_desc: &str,
-    arm_source: &str,
-    minted_name: &str,
-    naming_slot: &str,
-) -> String {
-    format!(
-        "{owner_desc}: its arm `{arm_source}` generates the variant name `{minted_name}`, which is \
-         not a valid Rust identifier. Name the arm with `; @name <new_name>` to choose the variant \
-         name yourself — {naming_slot}."
-    )
-}
-
-fn reject_unnameable_arm_variant_name(
-    types: &mut IntermediateTypes,
-    owner_desc: &str,
-    arm_source: &str,
-    minted_name: &str,
-    naming_slot: &str,
-) {
-    types.record_rejection(unnameable_arm_variant_name_rejection(
-        owner_desc,
-        arm_source,
-        minted_name,
-        naming_slot,
-    ));
 }
 
 /// An occurrence marker on the single entry of a single-entry group-choice arm is REFUSED — unless
@@ -4686,9 +4620,8 @@ pub fn create_variants_from_type_choices(
         Some(name) => format!("rule `{name}`"),
         None => "an inline type choice".to_owned(),
     };
-    // `owner_desc` with the rule named as the AUTHOR spelled it, which is what a REJECTION quotes
-    // back (the warnings above print the rust ident instead, and the unnameable-variant rejection
-    // below re-derives this same string for the same reason).
+    // `source_owner_desc` keeps the rule name as the AUTHOR spelled it for the remaining
+    // plain-group arm REJECTION; the warnings above print the Rust ident instead.
     let source_owner_desc = match owner {
         Some(name) => format!("rule `{}`", source_rule_name_of(types, name)),
         None => "an inline type choice".to_owned(),
@@ -4796,27 +4729,7 @@ pub fn create_variants_from_type_choices(
             RuleMetadata {
                 name: Some(name), ..
             } => convert_to_camel_case(name),
-            // Only the DERIVED spelling is checked for identifier validity: an explicit `@name` is
-            // the author's own, and is the remedy the rejection points at.
-            _ => {
-                let minted = rust_type.for_variant().to_string();
-                if !is_spellable_variant_name(&minted) {
-                    // The rejection names the rule as the AUTHOR spelled it (`owner_desc` above
-                    // carries the rust ident, which the arm-dedup warnings already print).
-                    types.record_rejection_once_at(
-                        choice,
-                        "unnameable-type-choice-arm",
-                        unnameable_arm_variant_name_rejection(
-                            &source_owner_desc,
-                            &choice.type1.type2.to_string(),
-                            &minted,
-                            "a type-choice arm's naming slot is its own trailing \
-                             comment (`<arm> ; @name <new_name>`)",
-                        ),
-                    );
-                }
-                minted
-            }
+            _ => rust_type.for_variant().to_string(),
         };
         if let Some(dup_ordinal) = dup_of {
             let arm_ordinal = arm_idx + 1;
@@ -9125,27 +9038,9 @@ pub fn parse_group(
                         Some(explicit) => (explicit, true),
                         None => match group_entry_to_raw_field_name(group_entry) {
                             Some(field_name) => (field_name, false),
-                            // A BARE member (`[ true // 1.5 ]`) has no key to name the variant
-                            // after, so the name is minted from the member's TYPE — the same
-                            // lexeme-derived spelling the type-choice seam guards, reached through
-                            // a second consumer. Refuse it here too rather than emitting `F1.5`.
-                            None => {
-                                let minted = ty.for_variant().to_string();
-                                if !is_spellable_variant_name(&minted) {
-                                    let owner_desc =
-                                        format!("rule `{}`", source_rule_name_of(types, name));
-                                    reject_unnameable_arm_variant_name(
-                                        types,
-                                        &owner_desc,
-                                        &group_entry.to_string(),
-                                        &minted,
-                                        "a group-choice arm's naming slot is the one that \
-                                         FOLLOWS the `//` opening it \
-                                         (`// ; @name <new_name>`), not the entry's own line",
-                                    );
-                                }
-                                (minted, false)
-                            }
+                            // A BARE member has no key to name the variant after, so the shared
+                            // fixed-value minter supplies its legacy spelling or canonical fallback.
+                            None => (ty.for_variant().to_string(), false),
                         },
                     };
                     let variant_ident = VariantIdent::new_custom(settle_arm_variant_name(

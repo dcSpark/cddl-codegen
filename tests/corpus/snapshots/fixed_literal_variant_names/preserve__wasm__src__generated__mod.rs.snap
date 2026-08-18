@@ -1,0 +1,334 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+pub use cddl_lib::CStyle;
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ExplicitWins(pub(crate) cddl_lib::ExplicitWins);
+
+#[wasm_bindgen]
+impl ExplicitWins {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ExplicitWins, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_float3_ff80000000000002() -> Self {
+        Self(cddl_lib::ExplicitWins::new_float3_ff80000000000002())
+    }
+
+    pub fn new_float3_ff8000000000000() -> Self {
+        Self(cddl_lib::ExplicitWins::new_float3_ff8000000000000())
+    }
+
+    pub fn kind(&self) -> ExplicitWinsKind {
+        match &self.0 {
+            cddl_lib::ExplicitWins::Float3FF80000000000002 { .. } => {
+                ExplicitWinsKind::Float3FF80000000000002
+            }
+            cddl_lib::ExplicitWins::Float3FF8000000000000 { .. } => {
+                ExplicitWinsKind::Float3FF8000000000000
+            }
+        }
+    }
+}
+
+impl From<cddl_lib::ExplicitWins> for ExplicitWins {
+    fn from(native: cddl_lib::ExplicitWins) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ExplicitWins> for cddl_lib::ExplicitWins {
+    fn from(wasm: ExplicitWins) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ExplicitWins> for ExplicitWins {
+    fn as_ref(&self) -> &cddl_lib::ExplicitWins {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum ExplicitWinsKind {
+    Float3FF80000000000002,
+    Float3FF8000000000000,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Float3FF8000000000000OrText(pub(crate) cddl_lib::Float3FF8000000000000OrText);
+
+#[wasm_bindgen]
+impl Float3FF8000000000000OrText {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Float3FF8000000000000OrText, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_float3_ff8000000000000() -> Self {
+        Self(cddl_lib::Float3FF8000000000000OrText::new_float3_ff8000000000000())
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self(cddl_lib::Float3FF8000000000000OrText::new_text(text))
+    }
+
+    pub fn kind(&self) -> Float3FF8000000000000OrTextKind {
+        match &self.0 {
+            cddl_lib::Float3FF8000000000000OrText::Float3FF8000000000000 { .. } => {
+                Float3FF8000000000000OrTextKind::Float3FF8000000000000
+            }
+            cddl_lib::Float3FF8000000000000OrText::Text { .. } => {
+                Float3FF8000000000000OrTextKind::Text
+            }
+        }
+    }
+
+    pub fn as_text(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::Float3FF8000000000000OrText::Text { text, .. } => Some(text.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::Float3FF8000000000000OrText> for Float3FF8000000000000OrText {
+    fn from(native: cddl_lib::Float3FF8000000000000OrText) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Float3FF8000000000000OrText> for cddl_lib::Float3FF8000000000000OrText {
+    fn from(wasm: Float3FF8000000000000OrText) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Float3FF8000000000000OrText> for Float3FF8000000000000OrText {
+    fn as_ref(&self) -> &cddl_lib::Float3FF8000000000000OrText {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum Float3FF8000000000000OrTextKind {
+    Float3FF8000000000000,
+    Text,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Group(pub(crate) cddl_lib::Group);
+
+#[wasm_bindgen]
+impl Group {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Group, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_true() -> Self {
+        Self(cddl_lib::Group::new_true())
+    }
+
+    pub fn new_float3_ff8000000000000() -> Self {
+        Self(cddl_lib::Group::new_float3_ff8000000000000())
+    }
+
+    pub fn new_text73656_c66() -> Self {
+        Self(cddl_lib::Group::new_text73656_c66())
+    }
+
+    pub fn kind(&self) -> GroupKind {
+        match &self.0 {
+            cddl_lib::Group::True { .. } => GroupKind::True,
+            cddl_lib::Group::Float3FF8000000000000 { .. } => GroupKind::Float3FF8000000000000,
+            cddl_lib::Group::Text73656C66 { .. } => GroupKind::Text73656C66,
+        }
+    }
+}
+
+impl From<cddl_lib::Group> for Group {
+    fn from(native: cddl_lib::Group) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Group> for cddl_lib::Group {
+    fn from(wasm: Group) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Group> for Group {
+    fn as_ref(&self) -> &cddl_lib::Group {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum GroupKind {
+    True,
+    Float3FF8000000000000,
+    Text73656C66,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Mixed(pub(crate) cddl_lib::Mixed);
+
+#[wasm_bindgen]
+impl Mixed {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Mixed, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_nint1() -> Self {
+        Self(cddl_lib::Mixed::new_nint1())
+    }
+
+    pub fn new_float3_ff8000000000000() -> Self {
+        Self(cddl_lib::Mixed::new_float3_ff8000000000000())
+    }
+
+    pub fn new_text73656_c66() -> Self {
+        Self(cddl_lib::Mixed::new_text73656_c66())
+    }
+
+    pub fn new_i5() -> Self {
+        Self(cddl_lib::Mixed::new_i5())
+    }
+
+    pub fn new_true() -> Self {
+        Self(cddl_lib::Mixed::new_true())
+    }
+
+    pub fn new_x() -> Self {
+        Self(cddl_lib::Mixed::new_x())
+    }
+
+    pub fn new_bytes_cafe() -> Self {
+        Self(cddl_lib::Mixed::new_bytes_cafe())
+    }
+
+    pub fn kind(&self) -> MixedKind {
+        match &self.0 {
+            cddl_lib::Mixed::Nint1 { .. } => MixedKind::Nint1,
+            cddl_lib::Mixed::Float3FF8000000000000 { .. } => MixedKind::Float3FF8000000000000,
+            cddl_lib::Mixed::Text73656C66 { .. } => MixedKind::Text73656C66,
+            cddl_lib::Mixed::I5 { .. } => MixedKind::I5,
+            cddl_lib::Mixed::True => MixedKind::True,
+            cddl_lib::Mixed::X { .. } => MixedKind::X,
+            cddl_lib::Mixed::BytesCAFE { .. } => MixedKind::BytesCAFE,
+        }
+    }
+}
+
+impl From<cddl_lib::Mixed> for Mixed {
+    fn from(native: cddl_lib::Mixed) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Mixed> for cddl_lib::Mixed {
+    fn from(wasm: Mixed) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Mixed> for Mixed {
+    fn as_ref(&self) -> &cddl_lib::Mixed {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum MixedKind {
+    Nint1,
+    Float3FF8000000000000,
+    Text73656C66,
+    I5,
+    True,
+    X,
+    BytesCAFE,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct Nested(pub(crate) cddl_lib::Nested);
+
+#[wasm_bindgen]
+impl Nested {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<Nested, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn index_0(&self) -> Float3FF8000000000000OrText {
+        self.0.index_0.clone().into()
+    }
+
+    pub fn new(index_0: &Float3FF8000000000000OrText) -> Self {
+        Self(cddl_lib::Nested::new(index_0.clone().into()))
+    }
+}
+
+impl From<cddl_lib::Nested> for Nested {
+    fn from(native: cddl_lib::Nested) -> Self {
+        Self(native)
+    }
+}
+
+impl From<Nested> for cddl_lib::Nested {
+    fn from(wasm: Nested) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::Nested> for Nested {
+    fn as_ref(&self) -> &cddl_lib::Nested {
+        &self.0
+    }
+}

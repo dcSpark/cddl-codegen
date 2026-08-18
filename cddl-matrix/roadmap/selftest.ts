@@ -268,7 +268,7 @@ export const FROZEN_SELFTEST_SUBCASES: ReadonlyMap<string, readonly string[]> = 
   ["test_symbol_fact_macro_template_excluded", ["brace", "bracket", "parenthesis"]],
   ["test_symbol_fact_comments_and_strings_excluded", ["block_comment", "character", "line_comment", "raw_string", "string"]],
   ["decoder_domain_dispatch_once", ["matrix", "testing"]],
-  ["scratch_git_lifecycle", ["success_cleanup", "assertion_failure_cleanup", "foreign_handle_rejected", "double_cleanup_rejected", "seed_path_escape_rejected"]],
+  ["scratch_git_lifecycle", ["success_cleanup", "assertion_failure_cleanup", "foreign_handle_rejected", "double_cleanup_rejected", "seed_path_escape_rejected", "worktree_deletion_uses_resident_authority"]],
   ["fixture_read_rejects_escape", ["absolute", "dotdot", "foreign_root", "symlink", "non_regular"]],
   ["fixture_read_permission_exit_two", ["eacces", "eperm"]],
   ["cli_check_each_roadmap", ["matrix", "testing", "all"]],

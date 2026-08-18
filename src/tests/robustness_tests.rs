@@ -301,11 +301,6 @@ fn revisited_rejection_nodes_report_once_without_collapsing_distinct_nodes() {
             "Anonymous groups not allowed: a heterogeneous inline map",
         ),
         (
-            "single_element_type_choice",
-            "x = [1.5 / tstr]\n",
-            "generates the variant name `F1.5`",
-        ),
-        (
             "unwrap",
             "h = [uint]\na = [~h]\n",
             "an unwrap (`~name`) used as a member or element type",
@@ -5679,21 +5674,12 @@ fn fixed_inner_null_collapse_generates_nominal_presence_at_both_sites() {
     );
 }
 
-/// A choice arm whose variant name is DERIVED from a fixed value's LEXEME (`1.5` → `F1.5`, `-1` →
-/// `U-1`) is unspellable as a Rust identifier. Rejected BY DESIGN via a GRACEFUL `Err` naming the
-/// rule, the arm and the `@name` remedy — previously the invalid name went out to rustfmt, which
-/// failed with an error about its own confusion (`expected item, found 5`) and named neither the
-/// arm nor a way out.
-///
-/// Swept across BOTH naming consumers, because they are different code paths onto the same minter:
-/// the type-choice one (`create_variants_from_type_choices`, reached by a bare rule-level choice,
-/// an all-fixed c-style enum and a nested ANONYMOUS choice) and the group-choice arm loop's
-/// BARE-member fallback (`[ true // 1.5 ]`, where no member key exists to name the variant after).
-/// The positive controls pin that the predicate is on the minted STRING, not on the value's kind:
-/// fixed uint/text arms and any `@name`d arm keep generating.
+/// Fixed literals retain every spellable legacy variant name. The shared fixed-value minter falls
+/// back to its canonical exact identity only for unspellable names, across both consumers that use
+/// it: bare/c-style/nested type choices and bare-member group-choice arms.
 #[test]
-fn lexeme_derived_arm_variant_name_rejects_gracefully_at_both_naming_sites() {
-    fn run(spec: &str, tag: &str) -> Result<(), String> {
+fn fixed_value_variant_name_fallback_generates_at_both_naming_sites() {
+    fn run(spec: &str, tag: &str) -> String {
         let path = std::env::temp_dir().join(format!(
             "cddl_codegen_armname_{}_{}.cddl",
             tag,
@@ -5710,106 +5696,56 @@ fn lexeme_derived_arm_variant_name_rejects_gracefully_at_both_naming_sites() {
         ]);
         let result = crate::api::generated_strings(&cli);
         std::fs::remove_file(&path).ok();
-        result.map(|_| ()).map_err(|e| e.to_string())
+        result
+            .unwrap_or_else(|error| panic!("{tag} must generate: {error}"))
+            .into_values()
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
-    // Type-choice consumer: rule-level bare choice, naming the rule by its SOURCE spelling (`t`,
-    // not the camel-cased `T`), the arm as written, the minted name and the `@name` remedy.
-    let float_arm = run("t = 1.5 / tstr\n", "float").expect_err(
-        "a fixed float arm minting an invalid variant name must be a graceful Err, not a rustfmt failure",
-    );
-    assert!(
-        float_arm.contains("rule `t`: its arm `1.5` generates the variant name `F1.5`"),
-        "rejection should name the rule, the arm and the minted name, got: {float_arm}"
-    );
-    assert!(
-        float_arm.contains("is not a valid Rust identifier"),
-        "rejection should say why the minted name is refused, got: {float_arm}"
-    );
-    assert!(
-        float_arm.contains("Name the arm with `; @name <new_name>`"),
-        "rejection should name the `@name` remedy, got: {float_arm}"
-    );
-
-    // The nint kind mints from the same lexeme path (`U-1` — the `U`-for-nint prefix is existing
-    // naming behaviour, not part of what this rejects).
-    let nint_arm = run("t = -1 / null / tstr\n", "nint")
-        .expect_err("a fixed nint arm must reject gracefully too");
-    assert!(
-        nint_arm.contains("rule `t`: its arm `-1` generates the variant name `U-1`")
-            && nint_arm.contains("`; @name <new_name>`"),
-        "the nint rejection should share the shape of the float one, got: {nint_arm}"
-    );
-
-    // The all-fixed c-style-enum spelling consumes the same minted variants, so it refuses at the
-    // same seam — once per offending arm.
-    let c_enum =
-        run("t = 1.5 / 2.5\n", "cenum").expect_err("an all-fixed float c-style enum must reject");
-    assert!(
-        c_enum.contains("its arm `1.5` generates the variant name `F1.5`")
-            && c_enum.contains("its arm `2.5` generates the variant name `F2.5`"),
-        "the c-style-enum rejection should name every offending arm, got: {c_enum}"
-    );
-
-    // The KEYWORD half of the predicate: a fixed TEXT arm camel-cases straight through, so `"self"`
-    // mints `Self` — lexically an identifier, but a Rust keyword, and the emitter never raw-escapes
-    // (`r#Self`). It died at the same rustfmt seam ("expected identifier, found keyword `Self`") and
-    // must refuse with the same message. Both the mixed and the group-choice spellings.
-    let keyword_arm = run("t = \"self\" / \"x\" / uint\n", "keyword")
-        .expect_err("a fixed text arm minting a Rust keyword must reject gracefully");
-    assert!(
-        keyword_arm.contains("rule `t`: its arm `\"self\"` generates the variant name `Self`")
-            && keyword_arm.contains("is not a valid Rust identifier")
-            && keyword_arm.contains("`; @name <new_name>`"),
-        "the keyword rejection should share the lexeme rejections' shape, got: {keyword_arm}"
-    );
-    let keyword_group_arm = run("t = [ true // \"self\" ]\n", "keyword_grparm")
-        .expect_err("a bare keyword-minting group-choice member must reject gracefully");
-    assert!(
-        keyword_group_arm.contains("generates the variant name `Self`"),
-        "the group-choice consumer should refuse the keyword too, got: {keyword_group_arm}"
-    );
-
-    // Nested ANONYMOUS choice: no rule owns the arms, so the wording is role-generic. This spelling
-    // also mints the enclosing RULE ident from the same lexeme (`F1.5OrText`), which is why the
-    // rejection has to land before generation rather than at the variant alone.
-    let nested = run("x = [1.5 / tstr]\n", "nested")
-        .expect_err("a nested anonymous choice with a fixed float arm must reject");
-    assert!(
-        nested.contains("an inline type choice: its arm `1.5` generates the variant name `F1.5`"),
-        "the nested-anonymous rejection should use role-generic wording, got: {nested}"
-    );
-
-    // Group-choice consumer: a BARE member has no key to name the variant after, so the name comes
-    // from the member's TYPE through the same minter.
-    let bare_group_arm = run("t = [ true // 1.5 ]\n", "grparm")
-        .expect_err("a bare fixed-float group-choice member must reject gracefully");
-    assert!(
-        bare_group_arm.contains("rule `t`: its arm `1.5` generates the variant name `F1.5`")
-            && bare_group_arm.contains("`; @name <new_name>`"),
-        "the group-choice rejection should share the type-choice wording, got: {bare_group_arm}"
-    );
-
-    // Positive controls. Every kind whose minted name IS an identifier still generates, the
-    // documented `@name` route still overrides the derived name, and the NAMED-member group-choice
-    // spelling (whose variant comes from the member key, not the lexeme) is untouched.
-    for (supported, tag) in [
-        ("t = 5 / null / tstr\n", "uint_ok"),
-        ("t = \"x\" / null / tstr\n", "text_ok"),
-        // A text arm whose camel-cased lexeme is merely CAPITALIZED, not reserved.
-        ("t = \"type\" / null / tstr\n", "text_nonkeyword_ok"),
-        ("t = \"self\" ; @name mine\n  / uint\n", "named_keyword_ok"),
-        ("t = 1.5 ; @name half\n  / tstr\n", "named_float_ok"),
-        ("t = -1 ; @name neg_one\n  / null / tstr\n", "named_nint_ok"),
-        ("t = [ true // v: 1.5 ]\n", "named_group_member_ok"),
+    let mixed = run("t = -1 / 1.5 / \"self\" / uint\n", "mixed");
+    for name in [
+        "Nint1,",
+        "Float3FF8000000000000,",
+        "Text73656C66,",
+        "U64(u64)",
     ] {
         assert!(
-            run(supported, tag).is_ok(),
-            "`{}` must still generate, got: {:?}",
-            supported.trim(),
-            run(supported, tag).err()
+            mixed.contains(name),
+            "mixed type choice must emit variant {name}, got:\n{mixed}"
         );
     }
+
+    let c_style = run("t = 1.5 / 2.5\n", "c_style");
+    for name in ["Float3FF8000000000000", "Float4004000000000000"] {
+        assert!(
+            c_style.contains("pub enum T") && c_style.contains(&format!("{name},")),
+            "all-fixed c-style choice must emit fieldless {name}, got:\n{c_style}"
+        );
+    }
+
+    let nested = run("x = [1.5 / tstr]\n", "nested");
+    assert!(
+        nested.contains("pub enum Float3FF8000000000000OrText")
+            && nested.contains("Float3FF8000000000000,")
+            && nested.contains("Text(String)"),
+        "nested anonymous choice must retain a compilation-relevant payload enum, got:\n{nested}"
+    );
+
+    let group = run("t = [ true // 1.5 ]\n", "group");
+    assert!(
+        group.contains("True,") && group.contains("Float3FF8000000000000,"),
+        "bare-member group choice must use the same fixed fallback, got:\n{group}"
+    );
+
+    let explicit = run(
+        "t = 1.5 / \"self\" ; @name Float3FF8000000000000\n",
+        "explicit",
+    );
+    assert!(
+        explicit.contains("Float3FF80000000000002,") && explicit.contains("Float3FF8000000000000,"),
+        "explicit @name must reserve the plain spelling before its derived sibling settles, got:\n{explicit}"
+    );
 }
 
 /// The finalized emitted-name floor is wired into the real parse → finalize pipeline, rather than
@@ -9652,8 +9588,8 @@ fn field_directives_on_single_entry_group_choice_arm_reject_gracefully() {
     // CONTROLS the delivery must not have broken.
     //
     // 1. The ARM's own metadata slot (`comments_before_grpchoice`) is a DIFFERENT slot and keeps
-    //    honoring `@name` and `@doc` — `@name` there is the documented remedy of the
-    //    unnameable-variant refusal, so refusing it would break that remedy.
+    //    honoring `@name` and `@doc` — `@name` there is the supported authored API for naming an
+    //    arm, so refusing it would silently discard that API.
     let armname = expect_custom_codec_source(
         "arm_slot_name_control",
         "t = [ a: uint\n// ; @name Alt\nf: bytes ]\n",
@@ -9965,9 +9901,8 @@ fn name_on_a_single_entry_arm_entry_slot_is_honored_or_refused_never_silent() {
         "a multi-entry arm's entry slot must keep renaming the field, got:\n{multi}"
     );
 
-    // CONTROL 4 — the bare-member arm whose variant name the lexeme minter cannot spell gets TWO
-    // distinct messages, and the second is now slot-precise: the ledger's evidence was an author
-    // told to "name the arm with `; @name <new_name>`" who had just done that in the slot next door.
+    // CONTROL 4 — the bare-member arm's fixed literal now has a canonical fallback name. Its
+    // entry-slot `@name` remains unconsumed and is the ONLY rejection: the literal itself is valid.
     let lexeme = expect_graceful_rejection(
         "armname_lexeme_slot_precision",
         "t = [ true\n// 1.5 ; @name half\n]\n",
@@ -9978,19 +9913,19 @@ fn name_on_a_single_entry_arm_entry_slot_is_honored_or_refused_never_silent() {
         "the unconsumed entry-slot name must be refused on a bare member too, got:\n{lexeme}"
     );
     assert!(
-        lexeme.contains("generates the variant name `F1.5`")
-            && lexeme.contains(
-                "a group-choice arm's naming slot is the one that FOLLOWS the `//` opening it"
-            ),
-        "the lexeme refusal must name the group-choice arm's own slot, got:\n{lexeme}"
+        !lexeme.contains("generates the variant name")
+            && !lexeme.contains("Float3FF8000000000000")
+            && lexeme.matches("@name `half`").count() == 1,
+        "the valid literal must add no second rejection beside the unconsumed entry-slot name, got:\n{lexeme}"
     );
-    // The TYPE-choice consumer of the same minter names ITS slot, which is a different one.
-    let type_choice =
-        expect_graceful_rejection("armname_lexeme_type_choice", "t = 1.5 / tstr\n", &[]);
+    // The plain type-choice sibling has no misplaced directive and generates through the same
+    // fallback minter instead of being rejected for its literal-derived spelling.
+    let type_choice = run_spec("t = 1.5 / tstr\n", "armname_lexeme_type_choice")
+        .unwrap_or_else(|error| panic!("a fixed-float type choice must generate: {error}"));
+    let type_choice_src = type_choice.into_values().collect::<Vec<_>>().join("\n");
     assert!(
-        type_choice.contains("a type-choice arm's naming slot is its own trailing comment")
-            && !type_choice.contains("FOLLOWS the `//`"),
-        "the type-choice consumer must name its own slot, not the group-choice one, got:\n{type_choice}"
+        type_choice_src.contains("Float3FF8000000000000,"),
+        "the type-choice consumer must use the canonical fallback, got:\n{type_choice_src}"
     );
 }
 

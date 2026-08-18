@@ -1,22 +1,13 @@
-; A fixed FLOAT arm in a choice has no member key to name its enum variant after, so the variant
-; name is minted from the value's LEXEME (`1.5` -> `F1.5`) — which is not a Rust identifier. That
-; name used to be emitted verbatim and die at rustfmt with an error about rustfmt's own confusion
-; (`expected item, found 5`), naming neither the arm nor a way out, so these must reject GRACEFULLY
-; at parse instead. Sanitized auto-naming (`F1_5`) is deliberately NOT what this does: a variant
-; name is public API of the generated crate, so the author picks it via `; @name`.
-; Every arm-naming path onto that minter is pinned here:
-;   - `a`  bare rule-level type choice (create_variants_from_type_choices).
-;   - `b`  all-fixed c-style enum — same minted variants, one rejection per offending arm.
-;   - `c`  nested ANONYMOUS choice: no rule owns the arms (role-generic wording), and the enclosing
-;          rule ident is minted from the same lexeme (`F1.5OrText`), so the refusal has to land
-;          before generation rather than at the variant alone.
-;   - `d`  bare-member GROUP choice — a different consumer (the group-choice arm loop's fallback),
-;          reached only when the member has no key.
-; Green neighbours, kept here so a future refactor that over-widens the predicate shows up as a
-; catalog flip rather than silently: `e` names the arm explicitly (the supported route), and `f`
-; is the NAMED-member group-choice spelling, whose variant comes from the member key `v`, not the
-; lexeme. The predicate is on the minted STRING, not on the value's kind, so a fixed uint or text
-; arm (`5`, `"x"`) is untouched — see choice_nint_arm_variant_name.cddl for the nint kind.
+; Fixed FLOAT choice arms now use the fixed-value minter's canonical fallback only when the old
+; derived spelling cannot be a Rust identifier: `1.5` -> `Float3FF8000000000000` and
+; `2.5` -> `Float4004000000000000`, exact IEEE-754 identities. The supported paths here are:
+;   - `a` bare rule-level type choice,
+;   - `b` all-fixed c-style enum,
+;   - `c` nested anonymous choice, and
+;   - `d` bare-member group choice, the separate consumer that has no member key to use.
+; `e` confirms explicit @name remains a public reservation and wins over a derived sibling; `f`
+; confirms a named group member still gets its name from its member key. The kind's spellable
+; legacy names are deliberately unchanged; this is a fallback, never a global rename.
 a = 1.5 / tstr
 b = 1.5 / 2.5
 c = [1.5 / tstr]

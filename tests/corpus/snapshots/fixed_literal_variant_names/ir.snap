@@ -1,0 +1,620 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: ir
+---
+{
+    RustIdent(
+        "CStyle",
+    ): RustStruct {
+        ident: RustIdent(
+            "CStyle",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: CStyleEnum {
+            variants: [
+                EnumVariant {
+                    name: Custom(
+                        "Float3FF8000000000000",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Float(
+                                    1.5,
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+                EnumVariant {
+                    name: Custom(
+                        "Float4004000000000000",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Float(
+                                    2.5,
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+            ],
+        },
+    },
+    RustIdent(
+        "ExplicitWins",
+    ): RustStruct {
+        ident: RustIdent(
+            "ExplicitWins",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: CStyleEnum {
+            variants: [
+                EnumVariant {
+                    name: Custom(
+                        "Float3FF80000000000002",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Float(
+                                    1.5,
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+                EnumVariant {
+                    name: Custom(
+                        "Float3FF8000000000000",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Text(
+                                    "self",
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+            ],
+        },
+    },
+    RustIdent(
+        "Float3FF8000000000000OrText",
+    ): RustStruct {
+        ident: RustIdent(
+            "Float3FF8000000000000OrText",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: TypeChoice {
+            variants: [
+                EnumVariant {
+                    name: Custom(
+                        "Float3FF8000000000000",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Float(
+                                    1.5,
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+                EnumVariant {
+                    name: Custom(
+                        "Text",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Primitive(
+                                Str,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+            ],
+        },
+    },
+    RustIdent(
+        "Group",
+    ): RustStruct {
+        ident: RustIdent(
+            "Group",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: GroupChoice {
+            variants: [
+                EnumVariant {
+                    name: Custom(
+                        "True",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Bool(
+                                    true,
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+                EnumVariant {
+                    name: Custom(
+                        "Float3FF8000000000000",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Float(
+                                    1.5,
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+                EnumVariant {
+                    name: Custom(
+                        "Text73656C66",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Text(
+                                    "self",
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+            ],
+            rep: Array,
+        },
+    },
+    RustIdent(
+        "Int",
+    ): RustStruct {
+        ident: RustIdent(
+            "Int",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Extern,
+    },
+    RustIdent(
+        "Mixed",
+    ): RustStruct {
+        ident: RustIdent(
+            "Mixed",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: CStyleEnum {
+            variants: [
+                EnumVariant {
+                    name: Custom(
+                        "Nint1",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Nint(
+                                    -1,
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+                EnumVariant {
+                    name: Custom(
+                        "Float3FF8000000000000",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Float(
+                                    1.5,
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+                EnumVariant {
+                    name: Custom(
+                        "Text73656C66",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Text(
+                                    "self",
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+                EnumVariant {
+                    name: Custom(
+                        "I5",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Uint(
+                                    5,
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+                EnumVariant {
+                    name: Custom(
+                        "True",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Bool(
+                                    true,
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+                EnumVariant {
+                    name: Custom(
+                        "X",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Text(
+                                    "x",
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+                EnumVariant {
+                    name: Custom(
+                        "BytesCAFE",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Bytes(
+                                    [
+                                        202,
+                                        254,
+                                    ],
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+            ],
+        },
+    },
+    RustIdent(
+        "Nested",
+    ): RustStruct {
+        ident: RustIdent(
+            "Nested",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "index_0",
+                        source_index: 0,
+                        rust_type: RustType {
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "Float3FF8000000000000OrText",
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            custom_encodings: None,
+                            custom_wire_major: None,
+                            extern_companions: None,
+                            comment: None,
+                        },
+                    },
+                ],
+                forbidden_fields: [],
+                rest: None,
+                typed_row: None,
+            },
+        ),
+    },
+}

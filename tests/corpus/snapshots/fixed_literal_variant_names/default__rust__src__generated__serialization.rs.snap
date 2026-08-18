@@ -1,0 +1,200 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use super::*;
+use crate::generated::error::*;
+use alloc::string::String;
+use alloc::vec::Vec;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for Float3FF8000000000000OrText {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            Float3FF8000000000000OrText::Float3FF8000000000000 => write_float(serializer, 1.5),
+            Float3FF8000000000000OrText::Text(text) => serializer.write_text(text),
+        }
+    }
+}
+
+impl Deserialize for Float3FF8000000000000OrText {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::Special => {
+                    let float3_ff8000000000000_value = raw.float()?;
+                    if float3_ff8000000000000_value != 1.5 {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Float(float3_ff8000000000000_value),
+                            expected: Key::Float(1.5),
+                        }
+                        .into());
+                    }
+                    Ok(Float3FF8000000000000OrText::Float3FF8000000000000)
+                }
+                cbor_event::Type::Text => Ok(Float3FF8000000000000OrText::Text(raw.text()?)),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("Float3FF8000000000000OrText"))
+    }
+}
+
+impl cbor_event::se::Serialize for Group {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            Group::True => {
+                serializer.write_array(cbor_event::Len::Len(1))?;
+                serializer.write_special(cbor_event::Special::Bool(true))
+            }
+            Group::Float3FF8000000000000 => {
+                serializer.write_array(cbor_event::Len::Len(1))?;
+                write_float(serializer, 1.5)
+            }
+            Group::Text73656C66 => {
+                serializer.write_array(cbor_event::Len::Len(1))?;
+                serializer.write_text("self")
+            }
+        }
+    }
+}
+
+impl Deserialize for Group {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let initial_position = raw.position();
+            let mut errs = Vec::new();
+            let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::from(len);
+                read_len.read_elems(1)?;
+                read_len.finish()?;
+                let true_value = raw.bool()?;
+                if !true_value {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Bool(true_value),
+                        expected: Key::Bool(true),
+                    }
+                    .into());
+                }
+                match len {
+                    cbor_event::Len::Len(_) => (),
+                    cbor_event::Len::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                Ok(())
+            })(raw);
+            match deser_variant {
+                Ok(()) => return Ok(Group::True),
+                Err(e) => {
+                    errs.push(e.annotate("True"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::from(len);
+                read_len.read_elems(1)?;
+                read_len.finish()?;
+                let float3_ff8000000000000_value = raw.float()?;
+                if float3_ff8000000000000_value != 1.5 {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Float(float3_ff8000000000000_value),
+                        expected: Key::Float(1.5),
+                    }
+                    .into());
+                }
+                match len {
+                    cbor_event::Len::Len(_) => (),
+                    cbor_event::Len::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                Ok(())
+            })(raw);
+            match deser_variant {
+                Ok(()) => return Ok(Group::Float3FF8000000000000),
+                Err(e) => {
+                    errs.push(e.annotate("Float3FF8000000000000"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::from(len);
+                read_len.read_elems(1)?;
+                read_len.finish()?;
+                let text73656_c66_value = raw.text()?;
+                if text73656_c66_value != "self" {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Str(text73656_c66_value),
+                        expected: Key::Str(String::from("self")),
+                    }
+                    .into());
+                }
+                match len {
+                    cbor_event::Len::Len(_) => (),
+                    cbor_event::Len::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                Ok(())
+            })(raw);
+            match deser_variant {
+                Ok(()) => return Ok(Group::Text73656C66),
+                Err(e) => {
+                    errs.push(e.annotate("Text73656C66"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
+        })()
+        .map_err(|e| e.annotate("Group"))
+    }
+}
+
+impl cbor_event::se::Serialize for Nested {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(1))?;
+        self.index_0.serialize(serializer)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Nested {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let index_0 = Float3FF8000000000000OrText::deserialize(raw)
+                .map_err(|e: DeserializeError| e.annotate("index_0"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(Nested { index_0 })
+        })()
+        .map_err(|e| e.annotate("Nested"))
+    }
+}

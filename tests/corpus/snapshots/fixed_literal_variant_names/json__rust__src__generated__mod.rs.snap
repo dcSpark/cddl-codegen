@@ -1,0 +1,127 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+extern crate alloc;
+use alloc::string::String;
+pub mod error;
+mod extern_interface_check;
+pub mod json_schema_gen;
+pub mod json_value_ser;
+pub mod serialization;
+
+#[derive(
+    Copy,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    serde::Deserialize,
+    serde::Serialize,
+    schemars::JsonSchema,
+)]
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
+pub enum CStyle {
+    Float3FF8000000000000,
+    Float4004000000000000,
+}
+
+#[derive(
+    Copy,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    serde::Deserialize,
+    serde::Serialize,
+    schemars::JsonSchema,
+)]
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
+pub enum ExplicitWins {
+    Float3FF80000000000002,
+    Float3FF8000000000000,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub enum Float3FF8000000000000OrText {
+    Float3FF8000000000000,
+    Text(String),
+}
+
+impl Float3FF8000000000000OrText {
+    pub fn new_float3_ff8000000000000() -> Self {
+        Self::Float3FF8000000000000
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text(text)
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub enum Group {
+    True,
+    Float3FF8000000000000,
+    Text73656C66,
+}
+
+impl Group {
+    pub fn new_true() -> Self {
+        Self::True
+    }
+
+    pub fn new_float3_ff8000000000000() -> Self {
+        Self::Float3FF8000000000000
+    }
+
+    pub fn new_text73656_c66() -> Self {
+        Self::Text73656C66
+    }
+}
+
+#[derive(
+    Copy,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    serde::Deserialize,
+    serde::Serialize,
+    schemars::JsonSchema,
+)]
+#[cfg_attr(feature = "wasm", wasm_bindgen::prelude::wasm_bindgen)]
+pub enum Mixed {
+    Nint1,
+    Float3FF8000000000000,
+    Text73656C66,
+    I5,
+    True,
+    X,
+    BytesCAFE,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct Nested {
+    pub index_0: Float3FF8000000000000OrText,
+}
+
+impl Nested {
+    pub fn new(index_0: Float3FF8000000000000OrText) -> Self {
+        Self { index_0 }
+    }
+}

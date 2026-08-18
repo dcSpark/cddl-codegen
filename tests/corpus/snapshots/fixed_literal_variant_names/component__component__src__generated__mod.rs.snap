@@ -1,0 +1,208 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type Float3Ff8000000000000OrText = WitFloat3FF8000000000000OrText;
+    type Group = WitGroup;
+    type Nested = WitNested;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+fn c_style_to_wit(v: &cddl_lib::CStyle) -> wit_types::CStyle {
+    match v {
+        cddl_lib::CStyle::Float3FF8000000000000 => wit_types::CStyle::Float3Ff8000000000000,
+        cddl_lib::CStyle::Float4004000000000000 => wit_types::CStyle::Float4004000000000000,
+    }
+}
+
+fn c_style_from_wit(v: wit_types::CStyle) -> cddl_lib::CStyle {
+    match v {
+        wit_types::CStyle::Float3Ff8000000000000 => cddl_lib::CStyle::Float3FF8000000000000,
+        wit_types::CStyle::Float4004000000000000 => cddl_lib::CStyle::Float4004000000000000,
+    }
+}
+
+fn explicit_wins_to_wit(v: &cddl_lib::ExplicitWins) -> wit_types::ExplicitWins {
+    match v {
+        cddl_lib::ExplicitWins::Float3FF80000000000002 => {
+            wit_types::ExplicitWins::Float3Ff80000000000002
+        }
+        cddl_lib::ExplicitWins::Float3FF8000000000000 => {
+            wit_types::ExplicitWins::Float3Ff8000000000000
+        }
+    }
+}
+
+fn explicit_wins_from_wit(v: wit_types::ExplicitWins) -> cddl_lib::ExplicitWins {
+    match v {
+        wit_types::ExplicitWins::Float3Ff80000000000002 => {
+            cddl_lib::ExplicitWins::Float3FF80000000000002
+        }
+        wit_types::ExplicitWins::Float3Ff8000000000000 => {
+            cddl_lib::ExplicitWins::Float3FF8000000000000
+        }
+    }
+}
+
+fn mixed_to_wit(v: &cddl_lib::Mixed) -> wit_types::Mixed {
+    match v {
+        cddl_lib::Mixed::Nint1 => wit_types::Mixed::Nint1,
+        cddl_lib::Mixed::Float3FF8000000000000 => wit_types::Mixed::Float3Ff8000000000000,
+        cddl_lib::Mixed::Text73656C66 => wit_types::Mixed::Text73656C66,
+        cddl_lib::Mixed::I5 => wit_types::Mixed::I5,
+        cddl_lib::Mixed::True => wit_types::Mixed::True,
+        cddl_lib::Mixed::X => wit_types::Mixed::X,
+        cddl_lib::Mixed::BytesCAFE => wit_types::Mixed::BytesCafe,
+    }
+}
+
+fn mixed_from_wit(v: wit_types::Mixed) -> cddl_lib::Mixed {
+    match v {
+        wit_types::Mixed::Nint1 => cddl_lib::Mixed::Nint1,
+        wit_types::Mixed::Float3Ff8000000000000 => cddl_lib::Mixed::Float3FF8000000000000,
+        wit_types::Mixed::Text73656C66 => cddl_lib::Mixed::Text73656C66,
+        wit_types::Mixed::I5 => cddl_lib::Mixed::I5,
+        wit_types::Mixed::True => cddl_lib::Mixed::True,
+        wit_types::Mixed::X => cddl_lib::Mixed::X,
+        wit_types::Mixed::BytesCafe => cddl_lib::Mixed::BytesCAFE,
+    }
+}
+
+pub struct WitFloat3FF8000000000000OrText(pub RefCell<cddl_lib::Float3FF8000000000000OrText>);
+
+impl wit_types::GuestFloat3Ff8000000000000OrText for WitFloat3FF8000000000000OrText {
+    fn new_float3_ff8000000000000() -> wit_types::Float3Ff8000000000000OrText {
+        let inner = cddl_lib::Float3FF8000000000000OrText::new_float3_ff8000000000000();
+        wit_types::Float3Ff8000000000000OrText::new(WitFloat3FF8000000000000OrText(RefCell::new(
+            inner,
+        )))
+    }
+
+    fn new_text(text: String) -> wit_types::Float3Ff8000000000000OrText {
+        let inner = cddl_lib::Float3FF8000000000000OrText::new_text(text);
+        wit_types::Float3Ff8000000000000OrText::new(WitFloat3FF8000000000000OrText(RefCell::new(
+            inner,
+        )))
+    }
+
+    fn as_text(&self) -> Option<String> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Float3FF8000000000000OrText::Text(text) => Some(text.clone()),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::Float3Ff8000000000000OrTextKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Float3FF8000000000000OrText::Float3FF8000000000000 => {
+                wit_types::Float3Ff8000000000000OrTextKind::Float3Ff8000000000000
+            }
+            cddl_lib::Float3FF8000000000000OrText::Text(_) => {
+                wit_types::Float3Ff8000000000000OrTextKind::Text
+            }
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Float3FF8000000000000OrText as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Float3Ff8000000000000OrText, String> {
+        <cddl_lib::Float3FF8000000000000OrText as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Float3Ff8000000000000OrText::new(WitFloat3FF8000000000000OrText(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitGroup(pub RefCell<cddl_lib::Group>);
+
+impl wit_types::GuestGroup for WitGroup {
+    fn new_true() -> wit_types::Group {
+        let inner = cddl_lib::Group::new_true();
+        wit_types::Group::new(WitGroup(RefCell::new(inner)))
+    }
+
+    fn new_float3_ff8000000000000() -> wit_types::Group {
+        let inner = cddl_lib::Group::new_float3_ff8000000000000();
+        wit_types::Group::new(WitGroup(RefCell::new(inner)))
+    }
+
+    fn new_text73656_c66() -> wit_types::Group {
+        let inner = cddl_lib::Group::new_text73656_c66();
+        wit_types::Group::new(WitGroup(RefCell::new(inner)))
+    }
+
+    fn kind(&self) -> wit_types::GroupKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::Group::True => wit_types::GroupKind::True,
+            cddl_lib::Group::Float3FF8000000000000 => wit_types::GroupKind::Float3Ff8000000000000,
+            cddl_lib::Group::Text73656C66 => wit_types::GroupKind::Text73656C66,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Group as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Group, String> {
+        <cddl_lib::Group as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Group::new(WitGroup(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitNested(pub RefCell<cddl_lib::Nested>);
+
+impl wit_types::GuestNested for WitNested {
+    fn new(index0: wit_types::Float3Ff8000000000000OrTextBorrow<'_>) -> Self {
+        let index0 = index0
+            .get::<WitFloat3FF8000000000000OrText>()
+            .0
+            .borrow()
+            .clone();
+        let inner = cddl_lib::Nested::new(index0);
+        WitNested(RefCell::new(inner))
+    }
+
+    fn index0(&self) -> wit_types::Float3Ff8000000000000OrText {
+        let me = self.0.borrow();
+        wit_types::Float3Ff8000000000000OrText::new(WitFloat3FF8000000000000OrText(RefCell::new(
+            me.index_0.clone(),
+        )))
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::Nested as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::Nested, String> {
+        <cddl_lib::Nested as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::Nested::new(WitNested(RefCell::new(v))))
+            .map_err(err)
+    }
+}

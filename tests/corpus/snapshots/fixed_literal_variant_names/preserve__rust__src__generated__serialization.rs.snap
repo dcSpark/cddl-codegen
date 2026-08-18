@@ -1,0 +1,509 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use super::cbor_encodings::*;
+use super::*;
+use crate::generated::error::*;
+use alloc::string::String;
+use alloc::vec::Vec;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for ExplicitWins {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            ExplicitWins::Float3FF80000000000002 {
+                float3_ff80000000000002_encoding,
+            } => write_float(serializer, 1.5, *float3_ff80000000000002_encoding),
+            ExplicitWins::Float3FF8000000000000 {
+                float3_ff8000000000000_encoding,
+            } => serializer.write_text_sz(
+                "self",
+                float3_ff8000000000000_encoding.to_str_len_sz("self".len() as u64),
+            ),
+        }
+    }
+}
+
+impl Deserialize for ExplicitWins {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::Special => {
+                    let (float3_ff80000000000002_value, float3_ff80000000000002_encoding) =
+                        raw.float_sz()?;
+                    if float3_ff80000000000002_value != 1.5 {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Float(float3_ff80000000000002_value),
+                            expected: Key::Float(1.5),
+                        }
+                        .into());
+                    }
+                    let float3_ff80000000000002_encoding = Some(float3_ff80000000000002_encoding);
+                    Ok(Self::Float3FF80000000000002 {
+                        float3_ff80000000000002_encoding,
+                    })
+                }
+                cbor_event::Type::Text => {
+                    let (float3_ff8000000000000_value, float3_ff8000000000000_encoding) =
+                        raw.text_sz()?;
+                    if float3_ff8000000000000_value != "self" {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Str(float3_ff8000000000000_value),
+                            expected: Key::Str(String::from("self")),
+                        }
+                        .into());
+                    }
+                    let float3_ff8000000000000_encoding =
+                        StringEncoding::from(float3_ff8000000000000_encoding);
+                    Ok(Self::Float3FF8000000000000 {
+                        float3_ff8000000000000_encoding,
+                    })
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("ExplicitWins"))
+    }
+}
+
+impl cbor_event::se::Serialize for Float3FF8000000000000OrText {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            Float3FF8000000000000OrText::Float3FF8000000000000 {
+                float3_ff8000000000000_encoding,
+            } => write_float(serializer, 1.5, *float3_ff8000000000000_encoding),
+            Float3FF8000000000000OrText::Text {
+                text,
+                text_encoding,
+            } => serializer.write_text_sz(text, text_encoding.to_str_len_sz(text.len() as u64)),
+        }
+    }
+}
+
+impl Deserialize for Float3FF8000000000000OrText {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::Special => {
+                    let (float3_ff8000000000000_value, float3_ff8000000000000_encoding) =
+                        raw.float_sz()?;
+                    if float3_ff8000000000000_value != 1.5 {
+                        return Err(DeserializeFailure::FixedValueMismatch {
+                            found: Key::Float(float3_ff8000000000000_value),
+                            expected: Key::Float(1.5),
+                        }
+                        .into());
+                    }
+                    let float3_ff8000000000000_encoding = Some(float3_ff8000000000000_encoding);
+                    Ok(Self::Float3FF8000000000000 {
+                        float3_ff8000000000000_encoding,
+                    })
+                }
+                cbor_event::Type::Text => {
+                    let (text, text_encoding) = raw
+                        .text_sz()
+                        .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
+                    Ok(Self::Text {
+                        text,
+                        text_encoding,
+                    })
+                }
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("Float3FF8000000000000OrText"))
+    }
+}
+
+impl cbor_event::se::Serialize for Group {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            Group::True { len_encoding } => {
+                serializer.write_array_sz(len_encoding.to_len_sz(1))?;
+                serializer.write_special(cbor_event::Special::Bool(true))?;
+                len_encoding.end(serializer)?;
+                Ok(serializer)
+            }
+            Group::Float3FF8000000000000 {
+                float3_ff8000000000000_encoding,
+                len_encoding,
+            } => {
+                serializer.write_array_sz(len_encoding.to_len_sz(1))?;
+                write_float(serializer, 1.5, *float3_ff8000000000000_encoding)?;
+                len_encoding.end(serializer)?;
+                Ok(serializer)
+            }
+            Group::Text73656C66 {
+                text73656_c66_encoding,
+                len_encoding,
+            } => {
+                serializer.write_array_sz(len_encoding.to_len_sz(1))?;
+                serializer.write_text_sz(
+                    "self",
+                    text73656_c66_encoding.to_str_len_sz("self".len() as u64),
+                )?;
+                len_encoding.end(serializer)?;
+                Ok(serializer)
+            }
+        }
+    }
+}
+
+impl Deserialize for Group {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let initial_position = raw.position();
+            let mut errs = Vec::new();
+            let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::new(len);
+                read_len.read_elems(1)?;
+                read_len.finish()?;
+                let true_value = raw.bool()?;
+                if !true_value {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Bool(true_value),
+                        expected: Key::Bool(true),
+                    }
+                    .into());
+                }
+                let ret = Ok(());
+                match len {
+                    cbor_event::LenSz::Len(_, _) => (),
+                    cbor_event::LenSz::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                ret
+            })(raw);
+            match deser_variant {
+                Ok(()) => return Ok(Self::True { len_encoding }),
+                Err(e) => {
+                    errs.push(e.annotate("True"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::new(len);
+                read_len.read_elems(1)?;
+                read_len.finish()?;
+                let (float3_ff8000000000000_value, float3_ff8000000000000_encoding) =
+                    raw.float_sz()?;
+                if float3_ff8000000000000_value != 1.5 {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Float(float3_ff8000000000000_value),
+                        expected: Key::Float(1.5),
+                    }
+                    .into());
+                }
+                let ret = Ok(Some(float3_ff8000000000000_encoding));
+                match len {
+                    cbor_event::LenSz::Len(_, _) => (),
+                    cbor_event::LenSz::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                ret
+            })(raw);
+            match deser_variant {
+                Ok(float3_ff8000000000000_encoding) => {
+                    return Ok(Self::Float3FF8000000000000 {
+                        float3_ff8000000000000_encoding,
+                        len_encoding,
+                    });
+                }
+                Err(e) => {
+                    errs.push(e.annotate("Float3FF8000000000000"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let mut read_len = CBORReadLen::new(len);
+                read_len.read_elems(1)?;
+                read_len.finish()?;
+                let (text73656_c66_value, text73656_c66_encoding) = raw.text_sz()?;
+                if text73656_c66_value != "self" {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Str(text73656_c66_value),
+                        expected: Key::Str(String::from("self")),
+                    }
+                    .into());
+                }
+                let ret = Ok(StringEncoding::from(text73656_c66_encoding));
+                match len {
+                    cbor_event::LenSz::Len(_, _) => (),
+                    cbor_event::LenSz::Indefinite => match raw.special()? {
+                        cbor_event::Special::Break => (),
+                        _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                    },
+                }
+                ret
+            })(raw);
+            match deser_variant {
+                Ok(text73656_c66_encoding) => {
+                    return Ok(Self::Text73656C66 {
+                        text73656_c66_encoding,
+                        len_encoding,
+                    });
+                }
+                Err(e) => {
+                    errs.push(e.annotate("Text73656C66"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
+        })()
+        .map_err(|e| e.annotate("Group"))
+    }
+}
+
+impl cbor_event::se::Serialize for Mixed {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            Mixed::Nint1 { nint1_encoding } => serializer.write_negative_integer_sz(
+                -1,
+                fit_sz((-1i128 + 1).unsigned_abs() as u64, *nint1_encoding),
+            ),
+            Mixed::Float3FF8000000000000 {
+                float3_ff8000000000000_encoding,
+            } => write_float(serializer, 1.5, *float3_ff8000000000000_encoding),
+            Mixed::Text73656C66 {
+                text73656_c66_encoding,
+            } => serializer.write_text_sz(
+                "self",
+                text73656_c66_encoding.to_str_len_sz("self".len() as u64),
+            ),
+            Mixed::I5 { i5_encoding } => {
+                serializer.write_unsigned_integer_sz(5u64, fit_sz(5u64, *i5_encoding))
+            }
+            Mixed::True => serializer.write_special(cbor_event::Special::Bool(true)),
+            Mixed::X { x_encoding } => {
+                serializer.write_text_sz("x", x_encoding.to_str_len_sz("x".len() as u64))
+            }
+            Mixed::BytesCAFE {
+                bytes_cafe_encoding,
+            } => serializer.write_bytes_sz(
+                &Vec::<u8>::from([202, 254]),
+                bytes_cafe_encoding.to_str_len_sz(Vec::<u8>::from([202, 254]).len() as u64),
+            ),
+        }
+    }
+}
+
+impl Deserialize for Mixed {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let initial_position = raw.position();
+            let mut errs = Vec::new();
+            let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let (nint1_value, nint1_encoding) = raw.negative_integer_sz()?;
+                if nint1_value != -1 {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Nint(nint1_value),
+                        expected: Key::Nint(-1),
+                    }
+                    .into());
+                }
+                Ok(Some(nint1_encoding))
+            })(raw);
+            match deser_variant {
+                Ok(nint1_encoding) => return Ok(Self::Nint1 { nint1_encoding }),
+                Err(e) => {
+                    errs.push(e.annotate("Nint1"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let (float3_ff8000000000000_value, float3_ff8000000000000_encoding) =
+                    raw.float_sz()?;
+                if float3_ff8000000000000_value != 1.5 {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Float(float3_ff8000000000000_value),
+                        expected: Key::Float(1.5),
+                    }
+                    .into());
+                }
+                Ok(Some(float3_ff8000000000000_encoding))
+            })(raw);
+            match deser_variant {
+                Ok(float3_ff8000000000000_encoding) => {
+                    return Ok(Self::Float3FF8000000000000 {
+                        float3_ff8000000000000_encoding,
+                    });
+                }
+                Err(e) => {
+                    errs.push(e.annotate("Float3FF8000000000000"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let (text73656_c66_value, text73656_c66_encoding) = raw.text_sz()?;
+                if text73656_c66_value != "self" {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Str(text73656_c66_value),
+                        expected: Key::Str(String::from("self")),
+                    }
+                    .into());
+                }
+                Ok(StringEncoding::from(text73656_c66_encoding))
+            })(raw);
+            match deser_variant {
+                Ok(text73656_c66_encoding) => {
+                    return Ok(Self::Text73656C66 {
+                        text73656_c66_encoding,
+                    });
+                }
+                Err(e) => {
+                    errs.push(e.annotate("Text73656C66"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let (i5_value, i5_encoding) = raw.unsigned_integer_sz()?;
+                if i5_value != 5 {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Uint(i5_value),
+                        expected: Key::Uint(5),
+                    }
+                    .into());
+                }
+                Ok(Some(i5_encoding))
+            })(raw);
+            match deser_variant {
+                Ok(i5_encoding) => return Ok(Self::I5 { i5_encoding }),
+                Err(e) => {
+                    errs.push(e.annotate("I5"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let true_value = raw.bool()?;
+                if !true_value {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Bool(true_value),
+                        expected: Key::Bool(true),
+                    }
+                    .into());
+                }
+                Ok(())
+            })(raw);
+            match deser_variant {
+                Ok(()) => return Ok(Mixed::True),
+                Err(e) => {
+                    errs.push(e.annotate("True"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let (x_value, x_encoding) = raw.text_sz()?;
+                if x_value != "x" {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Str(x_value),
+                        expected: Key::Str(String::from("x")),
+                    }
+                    .into());
+                }
+                Ok(StringEncoding::from(x_encoding))
+            })(raw);
+            match deser_variant {
+                Ok(x_encoding) => return Ok(Self::X { x_encoding }),
+                Err(e) => {
+                    errs.push(e.annotate("X"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                let (bytes_cafe_value, bytes_cafe_encoding) = raw.bytes_sz()?;
+                if bytes_cafe_value != Vec::<u8>::from([202, 254]) {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Bytes(bytes_cafe_value),
+                        expected: Key::Bytes(Vec::<u8>::from([202, 254])),
+                    }
+                    .into());
+                }
+                Ok(StringEncoding::from(bytes_cafe_encoding))
+            })(raw);
+            match deser_variant {
+                Ok(bytes_cafe_encoding) => {
+                    return Ok(Self::BytesCAFE {
+                        bytes_cafe_encoding,
+                    });
+                }
+                Err(e) => {
+                    errs.push(e.annotate("BytesCAFE"));
+                    raw.set_position(initial_position).unwrap();
+                }
+            };
+            Err(DeserializeFailure::NoVariantMatchedWithCauses(errs).into())
+        })()
+        .map_err(|e| e.annotate("Mixed"))
+    }
+}
+
+impl cbor_event::se::Serialize for Nested {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(1),
+        )?;
+        self.index_0.serialize(serializer)?;
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for Nested {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let index_0 = Float3FF8000000000000OrText::deserialize(raw)
+                .map_err(|e: DeserializeError| e.annotate("index_0"))?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => (),
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(Nested {
+                index_0,
+                encodings: Some(NestedEncoding { len_encoding }),
+            })
+        })()
+        .map_err(|e| e.annotate("Nested"))
+    }
+}

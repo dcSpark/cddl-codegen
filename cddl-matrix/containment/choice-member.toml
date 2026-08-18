@@ -104,8 +104,9 @@ example = "t = true / null / tstr"
 
 # Closed representative-by-kind slice. These rows enumerate one deliberately reviewed canonical
 # literal for every `FixedValue` IR variant reachable as a bare rule-level type-choice arm. They do
-# NOT claim every literal of a kind behaves alike: for example, the canonical text representative
-# `"x"` is supported while the separately pinned keyword-minting text `"self"` is gracefully refused.
+# NOT claim every literal of a kind behaves alike: the canonical text representative `"x"` keeps
+# its legacy `X` variant, while keyword-minting text such as `"self"` takes the canonical fallback
+# `Text73656C66` instead.
 
 [[contain]]
 id = "contain.choice-member.prelude.true.fixed-kind"
@@ -128,7 +129,7 @@ id = "contain.choice-member.type2.value.float.fixed-kind"
 role = "role.choice-member"
 feature = "type2.value"
 spec = "allowed"
-note = "Canonical FLOAT representative for the source-derived FixedValue-kind closure: `1.5 / tstr` is spec-legal and gracefully refused because its derived variant name `F1.5` is not a Rust identifier; `; @name` is the supported remedy. One representative only. RFC8610 §2.2.2, §2.2.4."
+note = "Canonical FLOAT representative for the source-derived FixedValue-kind closure: `1.5 / tstr` is spec-legal and generates with the canonical fallback variant `Float3FF8000000000000`, its exact IEEE-754 identity, because the legacy display-derived `F1.5` is unspellable. Spellable legacy fixed-value names remain unchanged; `@name` is optional and still wins when authored. One representative only. RFC8610 §2.2.2, §2.2.4."
 example = "t = 1.5 / tstr"
 
 [[contain]]
@@ -136,7 +137,7 @@ id = "contain.choice-member.type2.value.nint.fixed-kind"
 role = "role.choice-member"
 feature = "type2.value"
 spec = "allowed"
-note = "Canonical NINT representative for the source-derived FixedValue-kind closure: `-1 / null / tstr` is spec-legal and gracefully refused because its derived variant name `U-1` is not a Rust identifier; the third arm avoids the two-arm `/ null` collapse. One representative only. RFC8610 §2.2.2, §2.2.4."
+note = "Canonical NINT representative for the source-derived FixedValue-kind closure: `-1 / null / tstr` is spec-legal and generates with the canonical fallback variant `Nint1`, because the legacy display-derived `U-1` is unspellable; the third arm avoids the two-arm `/ null` collapse. Spellable legacy fixed-value names remain unchanged. One representative only. RFC8610 §2.2.2, §2.2.4."
 example = "t = -1 / null / tstr"
 
 [[contain]]
@@ -152,7 +153,7 @@ id = "contain.choice-member.type2.value.text.fixed-kind"
 role = "role.choice-member"
 feature = "type2.value"
 spec = "allowed"
-note = "Canonical TEXT representative for the source-derived FixedValue-kind closure: `\"x\" / uint` mints the spellable derived variant `X` and round-trips. This explicitly does not generalize to keyword-minting text such as `\"self\"`, whose separate graceful refusal remains live. RFC8610 §2.2.2, §2.2.4."
+note = "Canonical TEXT representative for the source-derived FixedValue-kind closure: `\"x\" / uint` keeps the spellable legacy variant `X` and round-trips. Unspellable text-derived names use the canonical UTF-8 fallback instead: `\"self\"` is `Text73656C66`, while empty, punctuation-only, and digit-led text follow the same kind-prefixed scheme. RFC8610 §2.2.2, §2.2.4."
 example = "t = \"x\" / uint"
 
 [[contain]]

@@ -1,14 +1,7 @@
-; The nint kind of the lexeme-derived variant-name refusal pinned in
-; choice_float_arm_variant_name.cddl: a fixed NINT arm mints its variant name from the value's
-; lexeme (`-1` -> `U-1`, the `U`-for-nint prefix being existing naming behaviour), and the `-` is
-; not spellable in a Rust identifier — so the arm rejects gracefully at parse rather than emitting
-; a name that dies at rustfmt. Enumerated separately from the float kind because the two take
-; different `FixedValue::for_variant` arms, and a kind proven on one certifies nothing about the
-; other.
-;   - `a`  bare rule-level type choice.
-;   - `b`  bare-member GROUP choice — the second naming consumer.
-; Green neighbours: `c` takes the supported `@name` route, and `d` is a fixed UINT arm, whose
-; minted name (`I1`) IS an identifier — the refusal keys on the minted string, not on numeric-ness.
+; A fixed NINT arm's old display-derived spelling (`-1` -> `U-1`) is not an identifier, so it
+; takes the fixed-value minter's canonical magnitude identity `Nint1`. Both the rule-level and
+; bare-member group-choice consumers share that minter. `c` retains the explicit @name route as a
+; public reservation, while `d` is the spellable UINT legacy-name control (`I1`).
 a = -1 / null / tstr
 b = [ true // -1 ]
 c = -1 ; @name neg_one

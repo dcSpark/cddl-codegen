@@ -61,6 +61,14 @@ This is a deliberate breaking behavior change: a pre-existing duplicate no longe
 numeric suffixes when they collide, and an explicit name always keeps its spelling even if its
 derived sibling comes first.
 
+For a fixed literal arm, `@name` is optional even when the literal's old display-derived name is
+not spellable Rust. Spellable legacy names remain stable (`5` → `I5`, `true` → `True`, `"x"` →
+`X`, `h'CAFE'` → `BytesCAFE`); only an unspellable one falls back to a canonical fixed-value
+identity (`-1` → `Nint1`, `1.5` → `Float3FF8000000000000`, `"self"` → `Text73656C66`). The
+fallback is exact for floats (IEEE-754 bits) and text (UTF-8 bytes), including empty,
+punctuation-only, and digit-led text. An explicit name still wins over a colliding derived name,
+so use `@name` only when an authored public spelling is preferred.
+
 and also for group choices:
 ```cddl
 script = [
