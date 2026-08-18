@@ -5705,8 +5705,9 @@ fn a_config_generated_workspace_builds_with_wasm_on() {
 /// dependency's names are already shipped in the dependency's own package, so the consumer's is the
 /// one whose owner can rename it. Mutating the consumer's spec to publish a name the dependency
 /// already registered must therefore fail the consumer's own `cargo run`, naming the consumer's
-/// type — not the dependency's. Until this leg existed that was reasoning from the single-crate
-/// mechanism (`integration_tests::json_schema_name_stolen_fails`) rather than a measurement.
+/// type — not the dependency's. Until this leg existed that was reasoning from a single-crate
+/// name-conflict fixture (`integration_tests::json_schema_name_stolen_fails`) rather than a
+/// cross-crate measurement.
 #[test]
 fn a_derived_thread_links_and_a_collision_blames_the_consumer() {
     let dir = std::env::temp_dir().join(format!(

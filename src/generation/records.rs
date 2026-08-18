@@ -3907,53 +3907,12 @@ pub(super) fn codegen_struct(
             // `[* any]` array member (`Seq`), and a `{* K => any}` table member with a stringifiable
             // (non-`any`) key — `Map` (non-preserve `BTreeMap`) / `OrderedMap` (preserve
             // `OrderedHashMap`) — plus the optional (`? N: …` → `Option<…>`) counterpart of each.
-            if !config.custom_json {
-                use super::NaturalAnyPosition as P;
-                let resolves_any = |ty: &crate::intermediate::RustType| {
-                    matches!(
-                        ty.conceptual_type.resolve_alias_shallow(),
-                        ConceptualRustType::Any
-                    )
-                };
-                let opt = field.optional;
-                let position = match field.rust_type.conceptual_type.resolve_alias_shallow() {
-                    ConceptualRustType::Any => Some(if opt { P::Optional } else { P::Direct }),
-                    ConceptualRustType::Array(inner) if resolves_any(inner) => {
-                        // Alias-aware: a named `[2*3 any]` field resolves shallowly to Array but
-                        // its checked bounds live on the RustType configuration. The bounded
-                        // adapter keeps natural JSON's fallible AnyCbor walk AND re-enters the
-                        // BoundedVec TryFrom door instead of pretending this is Vec<AnyCbor>.
-                        field
-                            .rust_type
-                            .type_enforced_bounded_array_u64_bounds()
-                            .map_or_else(
-                                || Some(if opt { P::OptSeq } else { P::Seq }),
-                                |(min, max)| {
-                                    Some(match (field.rust_type.duplicates_reject(), opt) {
-                                        (true, false) => P::BoundedUniqueSeq(min, max),
-                                        (true, true) => P::OptBoundedUniqueSeq(min, max),
-                                        (false, false) => P::BoundedSeq(min, max),
-                                        (false, true) => P::OptBoundedSeq(min, max),
-                                    })
-                                },
-                            )
-                    }
-                    // An `any`-keyed table stays tagged (its key already errors at runtime per
-                    // RFC 8949 §6.1), so require a non-`any` key. Preserve → `OrderedHashMap`, else `BTreeMap`.
-                    ConceptualRustType::Map(k, v) if resolves_any(v) && !resolves_any(k) => {
-                        Some(match (cli.preserve_encodings, opt) {
-                            (false, false) => P::Map,
-                            (false, true) => P::OptMap,
-                            (true, false) => P::OrderedMap,
-                            (true, true) => P::OptOrderedMap,
-                        })
-                    }
-                    _ => None,
-                };
-                if let Some(position) = position {
-                    for annotation in super::natural_any_serde_annotations(cli, position) {
-                        codegen_field.annotation(annotation);
-                    }
+            if !config.custom_json
+                && let Some(position) =
+                    super::natural_any_position(&field.rust_type, field.optional, cli)
+            {
+                for annotation in super::natural_any_serde_annotations(cli, position) {
+                    codegen_field.annotation(annotation);
                 }
             }
             // A member that is BOTH optional and nullable is stored as a nested `Option<Option<…>>`,

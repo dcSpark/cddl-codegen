@@ -262,22 +262,9 @@ pub fn add_schema<T: schemars::JsonSchema>(
     generator: &mut schemars::SchemaGenerator,
     claimed: &mut alloc::collections::BTreeMap<String, &'static str>,
 ) {
+    claim_schema_name::<T>(claimed);
     let name = <T as schemars::JsonSchema>::schema_name().into_owned();
     let rust = core::any::type_name::<T>();
-    // A — the name ledger. Two rows claiming one published name is a silent MERGE when their
-    // `schema_id`s also match (the id DEFAULTS to the name, so schemars sees one type, emits one
-    // definition, and every reference to the loser resolves to the winner's shape) and an
-    // order-dependent RENAME when the ids differ (schemars' `{base}{i}` suffix loop). The ledger is
-    // the only check that can see the merge, since there both returned refs equal the shared name.
-    // Keyed on `type_name` rather than on mere presence: two CDDL rules that alias the SAME rust
-    // type (`a = ext<uint>` and `b = ext<uint>` both lower to a `pub type … = Ext<u64>;` alias) are
-    // two rows for one type and must not trip the guard.
-    if let Some(previous) = claimed
-        .insert(name.clone(), rust)
-        .filter(|previous| *previous != rust)
-    {
-        panic!("cddl-codegen --json-schema-export: two distinct Rust types both publish the JSON schema name\n\"{name}\":\n  {previous}\n  {rust}\nA schema document can define only one type per name, so one of these is published under the other's name or under an order-dependent \"{name}2\" — decided by registration order, not by your spec. Give each type a `schemars::JsonSchema::schema_name()` that is unique within this crate; for a generic, vary it with the parameters (e.g. `format!(\"Base_{{}}\", T::schema_name())`). Note `schema_id()` DEFAULTS to `schema_name()`, so a hand-written impl that returns a constant name makes every instantiation the same type as far as `schemars` is concerned.");
-    }
     let schema = generator.subschema_for::<T>();
     if <T as schemars::JsonSchema>::inline_schema() {
         // C — an inline-schema type registers nothing, so the row publishes the returned schema under
@@ -317,6 +304,41 @@ pub fn add_schema<T: schemars::JsonSchema>(
     }
 }
 
+/// Put a type reached through a generated schema BODY through the published-name ledger without
+/// asking schemars to materialize it. This deliberately does NOT call `subschema_for`: claims are a
+/// preflight for types schemars will reach while an ordinary root is registered, not extra roots.
+///
+/// Inline types are absent from `$defs` at that boundary, so a transitive claim skips them. Ordinary
+/// `add` still claims inline roots before publishing their returned schema under the row's name.
+fn claim_reachable_schema_name<T: schemars::JsonSchema>(
+    claimed: &mut alloc::collections::BTreeMap<String, &'static str>,
+) {
+    if !<T as schemars::JsonSchema>::inline_schema() {
+        claim_schema_name::<T>(claimed);
+    }
+}
+
+fn claim_schema_name<T: schemars::JsonSchema>(
+    claimed: &mut alloc::collections::BTreeMap<String, &'static str>,
+) {
+    let name = <T as schemars::JsonSchema>::schema_name().into_owned();
+    let rust = core::any::type_name::<T>();
+    // A — the name ledger. Two rows claiming one published name is a silent MERGE when their
+    // `schema_id`s also match (the id DEFAULTS to the name, so schemars sees one type, emits one
+    // definition, and every reference to the loser resolves to the winner's shape) and an
+    // order-dependent RENAME when the ids differ (schemars' `{base}{i}` suffix loop). The ledger is
+    // the only check that can see the merge, since there both returned refs equal the shared name.
+    // Keyed on `type_name` rather than on mere presence: two CDDL rules that alias the SAME rust
+    // type (`a = ext<uint>` and `b = ext<uint>` both lower to a `pub type … = Ext<u64>;` alias) are
+    // two rows for one type and must not trip the guard.
+    if let Some(previous) = claimed
+        .insert(name.clone(), rust)
+        .filter(|previous| *previous != rust)
+    {
+        panic!("cddl-codegen --json-schema-export: two distinct Rust types both publish the JSON schema name\n\"{name}\":\n  {previous}\n  {rust}\nA schema document can define only one type per name, so one of these is published under the other's name or under an order-dependent \"{name}2\" — decided by registration order, not by your spec. Give each type a `schemars::JsonSchema::schema_name()` that is unique within this crate; for a generic, vary it with the parameters (e.g. `format!(\"Base_{{}}\", T::schema_name())`). Note `schema_id()` DEFAULTS to `schema_name()`, so a hand-written impl that returns a constant name makes every instantiation the same type as far as `schemars` is concerned.");
+    }
+}
+
 /// The registrar a generated `add_schemas` drives: `Registrar::new(generator)` then one
 /// `reg.add::<T>();` per row. It OWNS the published-name ledger, so the row shape carries only the
 /// type being registered — the bookkeeping the guard needs is the registrar's business, not
@@ -353,6 +375,11 @@ impl<'a> Registrar<'a> {
     /// Register `T` as a published root, subject to the name-injectivity guard.
     pub fn add<T: schemars::JsonSchema>(&mut self) {
         add_schema::<T>(self.generator, &mut self.claimed);
+    }
+
+    /// Check a transitive `$defs` candidate without materializing a schema or changing `$defs`.
+    pub fn claim_reachable<T: schemars::JsonSchema>(&mut self) {
+        claim_reachable_schema_name::<T>(&mut self.claimed);
     }
 }
 

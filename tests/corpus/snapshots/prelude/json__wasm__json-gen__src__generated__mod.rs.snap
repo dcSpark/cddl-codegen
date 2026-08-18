@@ -7,6 +7,21 @@ use cddl_lib::json_schema_gen::check_schema_ref_closure;
 
 pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     let mut reg = Registrar::new(generator);
+    reg.claim_reachable::<cddl_lib::Int>();
+    reg.claim_reachable::<cddl_lib::PreludeB64legacy>();
+    reg.claim_reachable::<cddl_lib::PreludeB64url>();
+    reg.claim_reachable::<cddl_lib::PreludeBigfloat>();
+    reg.claim_reachable::<cddl_lib::PreludeBigint>();
+    reg.claim_reachable::<cddl_lib::PreludeBignint>();
+    reg.claim_reachable::<cddl_lib::PreludeBiguint>();
+    reg.claim_reachable::<cddl_lib::PreludeDecfrac>();
+    reg.claim_reachable::<cddl_lib::PreludeEncodedCbor>();
+    reg.claim_reachable::<cddl_lib::PreludeInteger>();
+    reg.claim_reachable::<cddl_lib::PreludeMimeMessage>();
+    reg.claim_reachable::<cddl_lib::PreludeRegexp>();
+    reg.claim_reachable::<cddl_lib::PreludeTdate>();
+    reg.claim_reachable::<cddl_lib::PreludeUnsigned>();
+    reg.claim_reachable::<cddl_lib::PreludeUri>();
     reg.add::<cddl_lib::Int>();
     reg.add::<cddl_lib::Prelude>();
     reg.add::<cddl_lib::PreludeB64legacy>();

@@ -1354,9 +1354,10 @@ fn json_gen_extern_schema_rows() {
         "a never-instantiated generic-extern base must still be skipped:\n{mod_rs}"
     );
 
-    // SKIPPED: dep-owned types (non-export scope). Their emitted path would be `dep_crate::…`, which
-    // this json-gen crate's manifest does not (and must not) depend on — the dep's own json-gen run
-    // owns those schemas.
+    // SKIPPED: dep-owned types (non-export scope), including the `dep_alias` target reached by
+    // BigThing's subschema field and OwnTable's map-key schema BODY. Their emitted path would be
+    // `dep_crate::…`, which this json-gen crate's manifest does not (and must not) depend on — the
+    // dep's own json-gen run owns both rows and any transitive inventory beneath that alias.
     assert!(
         !mod_rs.contains("dep_crate"),
         "dep-owned (non-export scope) rows must be skipped:\n{mod_rs}"
@@ -1375,21 +1376,20 @@ fn json_gen_extern_schema_rows() {
     // belongs here as a twin pair, not as a lone negative.
     for suppressed in ["QuietExtern", "QuietThing", "QuietGroup"] {
         assert!(
-            !mod_rs.contains(suppressed),
+            !mod_rs.contains(&format!("reg.add::<cddl_lib::{suppressed}>();")),
             "@no_json_schema_export row for `{suppressed}` must be skipped:\n{mod_rs}"
         );
     }
 
-    // The name-injectivity guard's WIRING (the checks themselves are proven end to end by
-    // `integration_tests::json_schema_name_merge_fails` / `..._stolen_fails`, which run a json-gen
-    // crate and assert it panics — a local-tier cost). A guard that silently stops being threaded
-    // through the rows would leave both those fixtures failing for a DIFFERENT reason, so pin the
-    // three pieces that carry it here, in the fast tier: the registrar local (which OWNS the
-    // published-name ledger), the IMPORT of the registrar from the common runtime crate, and the
-    // `reg.add::<T>()` row call (asserted above with the KEPT rows). The guard's BODY no longer
-    // lives in this file — it is `static/json_schema_gen.rs`, hosted once per common crate and
-    // compiled/unit-tested in-crate by `json_schema_gen_tests` — so the import is what proves the
-    // rows still reach it.
+    // The name-injectivity guard's WIRING (the checks themselves are proven end to end by the three
+    // `integration_tests::json_schema_name_*_fails` vectors, which run a json-gen crate and assert
+    // it panics — a local-tier cost). The registrar has both row registration and side-effect-free
+    // transitive claims: the latter must stay before every row so a pair of row-less descendants is
+    // rejected before schemars silently merges their equal default schema ids. The fixture below is
+    // the cheap, deterministic source-shape control for that ordering; the negative cargo vector is
+    // the semantic proof. The guard's BODY no longer lives in this file — it is
+    // `static/json_schema_gen.rs`, hosted once per common crate and compiled/unit-tested in-crate by
+    // `json_schema_gen_tests` — so the import is what proves emitted code still reaches it.
     for wiring in [
         "let mut reg = Registrar::new(generator);",
         "use cddl_lib::json_schema_gen::Registrar;",
@@ -1413,6 +1413,118 @@ fn json_gen_extern_schema_rows() {
              into every json-gen crate:\n{mod_rs}"
         );
     }
+
+    // The suppressed generic-extern residents have no registration row of their own. Their two
+    // concrete aliases must be claimed in sorted spelling order before the authored parent's only
+    // row; a type merely declared but not reachable from that parent would have no claim to emit.
+    // This is source-only by design — the sibling negative integration fixture proves the resulting
+    // cargo run panics.
+    let suppressed_cli = cli_for(
+        std::path::Path::new("tests/json-schema-name-collision-loser-no-row-same-id/input.cddl"),
+        &[
+            "--wasm=false",
+            "--json-serde-derives=true",
+            "--json-schema-export=true",
+        ],
+    );
+    let suppressed_files = crate::api::generated_strings(&suppressed_cli)
+        .expect("suppressed generic extern fixture must generate");
+    let suppressed_mod = suppressed_files
+        .get("wasm/json-gen/src/generated/mod.rs")
+        .expect("json-gen generated/mod.rs must be emitted");
+    let claims = [
+        "reg.claim_reachable::<cddl_lib::SetA>();",
+        "reg.claim_reachable::<cddl_lib::SetB>();",
+    ];
+    let parent_row = "reg.add::<cddl_lib::Parent>();";
+    let parent_at = suppressed_mod
+        .find(parent_row)
+        .expect("parent row must be emitted");
+    let mut previous = 0;
+    for claim in claims {
+        let at = suppressed_mod
+            .find(claim)
+            .unwrap_or_else(|| panic!("reachable claim `{claim}` missing:\n{suppressed_mod}"));
+        assert!(
+            at < parent_at && at >= previous,
+            "claims must be deterministically ordered before the parent row:\n{suppressed_mod}"
+        );
+        previous = at;
+    }
+    for absent in [
+        "reg.add::<cddl_lib::SetA>();",
+        "reg.add::<cddl_lib::SetB>();",
+    ] {
+        assert!(
+            !suppressed_mod.contains(absent),
+            "a suppressed generic extern instance must have no independent row `{absent}`:\n{suppressed_mod}"
+        );
+    }
+
+    // Natural-JSON adapters own the complete schema for alias-hidden `any`: direct and sequence
+    // record fields, a type-choice arm, flattened/open-table map ranges, and an array tail all
+    // bypass the tagged AnyCbor JsonSchema impl. The reachability inventory must leave the aliases
+    // unclaimed at every one of those independently emitted boundaries.
+    let natural_any_cli = cli_for(
+        std::path::Path::new("tests/json-schema-natural-any-alias/input.cddl"),
+        &[
+            "--wasm=false",
+            "--json-serde-derives=true",
+            "--json-schema-export=true",
+        ],
+    );
+    let natural_any_files = crate::api::generated_strings(&natural_any_cli)
+        .expect("natural-any alias fixture must generate");
+    let natural_any_mod = natural_any_files
+        .get("wasm/json-gen/src/generated/mod.rs")
+        .expect("json-gen generated/mod.rs must be emitted");
+    let natural_any_source = natural_any_files
+        .values()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n");
+    for emitted_adapter in [
+        "natural_any_cbor_schema",
+        "natural_any_cbor_seq_schema",
+        "natural_any_cbor_map_schema",
+        "open_table_schema",
+    ] {
+        assert!(
+            natural_any_source.contains(emitted_adapter),
+            "fixture must exercise the `{emitted_adapter}` natural-any schema boundary"
+        );
+    }
+    for absent in [
+        "reg.claim_reachable::<cddl_lib::AnyAlias>();",
+        "reg.claim_reachable::<cddl_lib::AnySeqAlias>();",
+    ] {
+        assert!(
+            !natural_any_mod.contains(absent),
+            "a natural-any adapter must not claim its tagged source `{absent}`:\n{natural_any_mod}"
+        );
+    }
+
+    // The `Preserved` alias has a raw Map conceptual inner, but its OUTER RustType carries the
+    // `@duplicates preserve` flavor that makes it PairMap. PairMap reaches the key with
+    // `subschema_for`, so losing that outer config while body-walking aliases would silently omit
+    // this claim.
+    let config_cli = cli_for(
+        std::path::Path::new("tests/json-schema-reachable-config/input.cddl"),
+        &[
+            "--wasm=false",
+            "--json-serde-derives=true",
+            "--json-schema-export=true",
+        ],
+    );
+    let config_files =
+        crate::api::generated_strings(&config_cli).expect("configured-alias fixture must generate");
+    let config_mod = config_files
+        .get("wasm/json-gen/src/generated/mod.rs")
+        .expect("json-gen generated/mod.rs must be emitted");
+    assert!(
+        config_mod.contains("reg.claim_reachable::<cddl_lib::HiddenKey>();"),
+        "a body-walk through a preserve-table alias must retain its outer config:\n{config_mod}"
+    );
 
     // `--json-schema-root` extra roots (feature request 12, Ask A): the same fixture regenerated with
     // two extra roots, pinning the emitted SHAPE the compile proof (`integration_tests::json_extern`)

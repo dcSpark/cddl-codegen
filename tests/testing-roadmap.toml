@@ -175,7 +175,6 @@ entries = [
   "testing.arm-position-s-classifier-compile-time-forcing-function",
   "testing.schema-document-s-name-injectivity-enforced-row-side",
   "part-emitted-name-guard-mint-records-unminted-extra",
-  "testing.schema-name.collision-loser-no-row-same-id",
   "testing.schema-name.cross-crate-same-id-collision",
   "testing.schema-name.two-rowless-types-collide",
   "part-emitted-name-guard-neither-closes-holes-above-two",
@@ -3631,20 +3630,6 @@ boundary_md = '''This control owns current containment only. It does not claim t
 '''
 
 [[record]]
-id = "testing.guard.schema-name-collision-loser-no-row-same-id"
-title = "Current control for testing.schema-name.collision-loser-no-row-same-id."
-
-[record.payload]
-kind = "control"
-control_kind = "review_rule"
-control_state = "live"
-reference_ids = ["testing-roadmap-next-work-n53"]
-claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.schema-name.collision-loser-no-row-same-id's preserved detail.
-'''
-boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
-'''
-
-[[record]]
 id = "testing.guard.schema-name-cross-crate-same-id-collision"
 title = "Current control for testing.schema-name.cross-crate-same-id-collision."
 
@@ -5867,15 +5852,18 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 
 [[record]]
 id = "testing.schema-document-s-name-injectivity-enforced-row-side"
-title = "The schema document's name injectivity is enforced ROW-side, so the residue is everything the row set cannot see."
+title = "The schema document's name injectivity is enforced by rows plus generated transitive claims."
 
 [record.payload]
 kind = "control"
-body_md = '''- **The schema document's name injectivity is enforced ROW-side, so the residue is everything the row
-  set cannot see.** The document is written by a program we emit, so its content is a property of the
-  RUN rather than of the emitted source, and the row-side guard that closes every collision with a row
-  on the losing side — the runtime `add_schema` helper's name ledger, kept-its-own-name check and
-  inline-branch conflict check, firing in the consumer's own `cargo run` — is current state in
+body_md = '''- **The schema document's name injectivity is enforced by rows plus generated transitive claims.** The
+  document is written by a program we emit, so its content is a property of the RUN rather than of
+  the emitted source. Before its rows, the generated json-gen crate claims every same-crate,
+  finalized-IR type reachable through a generated schema body, without materializing a definition;
+  then the runtime `add_schema` helper's name ledger, kept-its-own-name check and inline-branch
+  conflict check fire in the consumer's own `cargo run`. The explicit boundary is generated bodies
+  only: extern/@custom_json bodies, arbitrary CLI roots and dependency-owned types stay opaque. This
+  current state is documented in
   `tests/README.md` § "JSON-schema document — Rust-side coverage (`run_test`'s per-fixture assertions
 '''
 control_kind = "review_rule"
@@ -5884,42 +5872,6 @@ reference_ids = ["testing-roadmap-next-work-n52"]
 claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.schema-document-s-name-injectivity-enforced-row-side's preserved detail.
 '''
 boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
-'''
-
-[[record]]
-id = "testing.schema-name.collision-loser-no-row-same-id"
-title = "A collision whose LOSER has no row and whose `schema_id`s match"
-
-[record.payload]
-kind = "work"
-body_md = '''  - **A collision whose LOSER has no row and whose `schema_id`s match** is a silent merge nothing can
-    see: the ledger only holds rows, and the merge makes both returned refs equal the shared name, so
-    the kept-its-own-name check reads clean. Reaching it needs a way to enumerate what a row pulls in
-    transitively. A finished-document `$defs` cardinality pass alone is not that enumeration: the
-    emitted crate has no independent reachable-Rust-type set to compare against, and a hand-written
-    `JsonSchema` impl can introduce types the IR cannot see. The in-repo design lead therefore needs
-    the generator to emit an independently derived inventory for the reachable generated types,
-    with the hand-written/transitive boundary stated explicitly, before runtime code compares that
-    inventory with the finished document. The alternative is an upstream `schemars` setting that
-    rejects two `TypeId`s resolving to one `schema_id`; that lever is report-and-wait (`schemars` is
-    a crates.io dependency, not a fork we pin like the `cddl` parser).
-'''
-work_state = "armed"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "wrong_public_api"
-control_ids = ["testing.guard.schema-name-collision-loser-no-row-same-id"]
-
-[record.payload.promotion_trigger]
-observer = "fresh-evidence submitter for testing.schema-name.collision-loser-no-row-same-id"
-dimension = "A collision whose LOSER has no row and whose `schema_id`s match"
-observable = "A no-row losing type shares schema_id with the winner and silently merges in the finished document."
-action_on_fire_md = '''Set testing.schema-name.collision-loser-no-row-same-id to ready and execute only its preserved acceptance/mechanical-layer scope.
-'''
-
-[record.payload.promotion_trigger.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.schema-name.collision-loser-no-row-same-id's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 '''
 
 [[record]]
@@ -5970,18 +5922,18 @@ title = "A collision between two types that BOTH lack rows"
 [record.payload]
 kind = "work"
 body_md = '''  - **A collision between two types that BOTH lack rows** — each reached only transitively from some
-    row'd type — is seen by neither check: the ledger holds rows, and "kept its own name" is asked
-    only of a registered type. With distinct `schema_id`s both are emitted and one takes `<name>2`
-    by first-encounter order, so an unrelated spec edit (a rule that sorts earlier, a reordered
-    struct field) can silently SWAP which published TypeScript name belongs to which type. The
-    byte-identity assertion cannot see it — it compares two runs of ONE spec, never two versions of
-    a spec. Same closing mechanism as the no-row-loser hole above (a post-pass over the finished
-    document); making the ordering irrelevant rather than merely loud would mean a published-name
-    scheme that does not depend on traversal order at all — a breaking rename of published names in
-    its own right, so it needs a consumer asking for name stability across spec edits. A cheaper
-    *tell* is worth recording beside that post-pass, as a candidate rather than a commitment, because
-    the post-pass is not implementable from inside the emitted crate at all (nothing there can
-    enumerate the reachable type set): schemars assigns a collision suffix by walking `for i in 2..`
+    row'd type — is now covered when both are same-crate, finalized-IR descendants of generated
+    schema bodies: preclaims put them through the name ledger before registration rows. The remaining
+    form is outside that inventory: opaque hand-written schema bodies, arbitrary CLI roots, or another
+    crate. With distinct `schema_id`s both bodies can still be emitted and one takes `<name>2` by
+    first-encounter order, so an unrelated spec edit (a rule that sorts earlier, a reordered struct
+    field) can silently SWAP which published TypeScript name belongs to which type. The byte-identity
+    assertion cannot see it — it compares two runs of ONE spec, never two versions of a spec. Making
+    the ordering irrelevant rather than merely loud would mean a published-name scheme that does not
+    depend on traversal order at all — a breaking rename of published names in its own right, so it
+    needs a consumer asking for name stability across spec edits. A cheaper *tell* is worth recording
+    as a candidate rather than a commitment, because the emitted crate cannot inspect opaque bodies:
+    schemars assigns a collision suffix by walking `for i in 2..`
     over the names it has already used (`schemars-1.2.1/src/generate.rs`, the `find_ref` name
     assignment — verified at that pinned version, which `static/Cargo_json_gen.toml` is what pins),
     so a document holding both `<base>` and `<base>2` where no registered row publishes `<base>2` is
@@ -6013,8 +5965,8 @@ body_md = '''  - **A collision between two types that BOTH lack rows** — each 
     generic arguments are inside the flag's accepted charset). Registering both makes them two rows
     publishing one `schema_name()` with different `std::any::type_name`s, which the ledger reports;
     registering only the instantiation that LOST the bare name makes the kept-its-own-name check
-    report the `<name>2` it was assigned. So the row-side guard is opt-in-able for exactly the shape
-    it cannot see on its own. (Reasoned from `static/json_schema_gen.rs`'s `add_schema` and `parse_json_schema_root`'s
+    report the `<name>2` it was assigned. So the rows-plus-preclaims guard is opt-in-able for exactly
+    the opaque shape it cannot see on its own. (Reasoned from `static/json_schema_gen.rs`'s `add_schema` and `parse_json_schema_root`'s
     charset — not run.) Reopening signal for building anything more: a public schemars accessor for
     the assigned-name map, or a consumer reporting a rename their `.d.ts` diff did not catch.
 
@@ -6031,7 +5983,7 @@ control_ids = ["testing.guard.schema-name-two-rowless-types-collide"]
 [record.payload.promotion_trigger]
 observer = "fresh-evidence submitter for testing.schema-name.two-rowless-types-collide"
 dimension = "A collision between two types that BOTH lack rows"
-observable = "What a consumer can do TODAY, and why that further lowers the priority: give each instantiation a row with `--json-schema-root` (`--json-schema-root=my_crate::AssetBundle<u64>` and `…<i64>` — generic arguments are inside the flag's accepted charset). Registering both makes them two rows publishing one `schema_name()` with different `std::any::type_name`s, which the ledger reports; registering only the instantiation that LOST the bare name makes the kept-its-own-name check report the `<name>2` it was assigned. So the row-side guard is opt-in-able for exactly the shape it cannot see on its own. (Reasoned from `static/json_schema_gen.rs`'s `add_schema` and `parse_json_schema_root`'s charset — not run.) Reopening signal for building anything more: a public schemars accessor for the assigned-name map, or a consumer reporting a rename their `.d.ts` diff did not catch."
+observable = "What a consumer can do TODAY, and why that further lowers the priority: give each instantiation a row with `--json-schema-root` (`--json-schema-root=my_crate::AssetBundle<u64>` and `…<i64>` — generic arguments are inside the flag's accepted charset). Registering both makes them two rows publishing one `schema_name()` with different `std::any::type_name`s, which the ledger reports; registering only the instantiation that LOST the bare name makes the kept-its-own-name check report the `<name>2` it was assigned. So the rows-plus-preclaims guard is opt-in-able for exactly the opaque shape it cannot see on its own. (Reasoned from `static/json_schema_gen.rs`'s `add_schema` and `parse_json_schema_root`'s charset — not run.) Reopening signal for building anything more: a public schemars accessor for the assigned-name map, or a consumer reporting a rename their `.d.ts` diff did not catch."
 action_on_fire_md = '''Set testing.schema-name.two-rowless-types-collide to ready and execute only its preserved acceptance/mechanical-layer scope.
 '''
 
@@ -6894,7 +6846,9 @@ parent_record_id = "testing.schema-document-s-name-injectivity-enforced-row-side
 title = "the emitted name guard)\". Mint the one cell that section records as unminted — an extra"
 body_md = '''  + the emitted name guard)". Mint the one cell that section records as unminted — an extra
   `--json-schema-root` root on the LOSING side of a collision — if a consumer reports a collision they
-  introduced through that flag. What remains — four holes, each needing its own mechanism:
+  introduced through that flag. The generated same-crate no-row-merge hole is delivered; what remains
+  is the cross-crate same-id merge, the two-rowless opaque/assigned-name-map residue, and this
+  extra-root-on-the-losing-side cell, each needing its own mechanism:
 '''
 
 [[part]]
@@ -7468,22 +7422,12 @@ target = "testing.guard.run-local-values-gate-cache-key-material-proven"
 [[relation]]
 source = "testing.schema-document-s-name-injectivity-enforced-row-side"
 kind = "parent_of"
-target = "testing.schema-name.collision-loser-no-row-same-id"
-
-[[relation]]
-source = "testing.schema-document-s-name-injectivity-enforced-row-side"
-kind = "parent_of"
 target = "testing.schema-name.cross-crate-same-id-collision"
 
 [[relation]]
 source = "testing.schema-document-s-name-injectivity-enforced-row-side"
 kind = "parent_of"
 target = "testing.schema-name.two-rowless-types-collide"
-
-[[relation]]
-source = "testing.schema-name.collision-loser-no-row-same-id"
-kind = "parent_of"
-target = "testing.guard.schema-name-collision-loser-no-row-same-id"
 
 [[relation]]
 source = "testing.schema-name.cross-crate-same-id-collision"
@@ -8317,13 +8261,6 @@ gate_id = "verify_cache_transparency"
 [[reference]]
 id = "testing-roadmap-next-work-n52"
 source = "testing.schema-document-s-name-injectivity-enforced-row-side"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
-id = "testing-roadmap-next-work-n53"
-source = "testing.schema-name.collision-loser-no-row-same-id"
 kind = "file_heading"
 path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"

@@ -132,6 +132,41 @@ struct SharedTwo {
     two: String,
 }
 
+/// Distinct inline types may share a display name: at a transitive boundary neither is a `$defs`
+/// claimant, so `Registrar::claim_reachable` must leave both out of the ledger. Rows still use
+/// `add`, whose inline-root publication has its separate conflicting-body check.
+struct InlineSharedOne;
+
+impl schemars::JsonSchema for InlineSharedOne {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("InlineShared")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <u64 as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        true
+    }
+}
+
+struct InlineSharedTwo;
+
+impl schemars::JsonSchema for InlineSharedTwo {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("InlineShared")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <String as schemars::JsonSchema>::json_schema(generator)
+    }
+
+    fn inline_schema() -> bool {
+        true
+    }
+}
+
 /// A non-row type and a later row that claim the same ref-unsafe published name. They are distinct
 /// schema identities, so schemars assigns the row a suffixed name rather than merging the schemas.
 /// The first type is deliberately registered outside `Registrar`, as a type reached transitively
@@ -207,6 +242,41 @@ fn registrar_ledger_catches_a_published_name_collision() {
     let mut reg = Registrar::new(&mut generator);
     reg.add::<SharedOne>();
     reg.add::<SharedTwo>();
+}
+
+/// A reachability claim is a ledger-only preflight: it catches the same name collision as a row,
+/// but must not call `subschema_for` or otherwise materialize a definition before the real root
+/// reaches it.
+#[test]
+fn registrar_reachable_claim_is_definition_free_and_uses_the_ledger() {
+    let mut generator = schemars::SchemaGenerator::default();
+    {
+        let mut reg = Registrar::new(&mut generator);
+        reg.claim_reachable::<Alpha>();
+    }
+    assert!(
+        generator.definitions().is_empty(),
+        "a reachability claim must not materialize a $defs entry"
+    );
+
+    let mut generator = schemars::SchemaGenerator::default();
+    let mut reg = Registrar::new(&mut generator);
+    reg.claim_reachable::<SharedOne>();
+    let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        reg.claim_reachable::<SharedTwo>();
+    }));
+    assert!(
+        panic.is_err(),
+        "reachability claims must share the row name-injectivity ledger"
+    );
+}
+
+#[test]
+fn registrar_reachable_claim_skips_inline_types() {
+    let mut generator = schemars::SchemaGenerator::default();
+    let mut reg = Registrar::new(&mut generator);
+    reg.claim_reachable::<InlineSharedOne>();
+    reg.claim_reachable::<InlineSharedTwo>();
 }
 
 /// The ledger's scope is ONE registrar, matching the scope it had as a local of one crate's

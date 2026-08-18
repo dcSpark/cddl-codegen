@@ -7,6 +7,11 @@ use cddl_lib::json_schema_gen::check_schema_ref_closure;
 
 pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     let mut reg = Registrar::new(generator);
+    reg.claim_reachable::<cddl_lib::DeltaCoin>();
+    reg.claim_reachable::<cddl_lib::Label>();
+    reg.claim_reachable::<cddl_lib::Nemap>();
+    reg.claim_reachable::<cddl_lib::PolicyId>();
+    reg.claim_reachable::<cddl_lib::StakeCredential>();
     reg.add::<cddl_lib::Credential>();
     reg.add::<cddl_lib::Holder>();
     reg.add::<cddl_lib::Int>();

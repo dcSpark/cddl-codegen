@@ -1,16 +1,13 @@
 ; Negative fixture: the schema document's names must be injective, and the guard must fail the
 ; CONSUMER's own json-gen run. This spec is deliberately UNBUILDABLE at the json-gen `cargo run`
 ; step — `integration_tests::json_schema_name_stolen_fails` asserts the run fails and names the
-; check-B message.
+; collision-ledger message.
 ;
-; The STOLEN-NAME case, and the reason a name ledger alone is not enough: the type that claims the
-; name FIRST has no registration row of its own. `alpha_parent` sorts before `shared` in the row
-; order (rows come from a `BTreeMap<RustIdent, _>` per scope), so its row registers first and pulls
-; `hidden_ext` in transitively; `hidden_ext` carries `@no_json_schema_export`, so it never appears in
-; the ledger, and its hand-written `JsonSchema` impl claims the name `Shared`. The later `shared` row
-; — whose derived `schema_name()` is also `Shared` — is then published as `Shared2`, a name decided by
-; registration order rather than by this spec. Only the "did this row keep its own name?" check sees
-; it.
+; The STOLEN-NAME case: the type that claims the name FIRST has no registration row of its own.
+; `hidden_ext` carries `@no_json_schema_export`, but `alpha_parent` reaches it through its generated
+; schema body, so the reachability preclaim must still put its hand-written `schema_name()` (`Shared`)
+; through the ledger before rows are registered. The later `shared` row publishes that same name and
+; must fail as a collision instead of silently becoming the order-dependent `Shared2`.
 alpha_parent = [x: hidden_ext]
 hidden_ext = _CDDL_CODEGEN_EXTERN_TYPE_ ; @no_json_schema_export
 shared = [y: uint]

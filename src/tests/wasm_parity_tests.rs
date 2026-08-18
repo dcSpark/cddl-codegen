@@ -491,10 +491,26 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
          to differential and the crate is intended NOT to produce a document",
     ),
     (
+        "json-schema-name-collision-loser-no-row-same-id",
+        "rust-only NEGATIVE json-gen reachability fixture (two suppressed generic extern instances \
+         publish one schema identity below an exported parent): its integration gate generates \
+         --wasm=false and asserts the json-gen run FAILS on the schema-name ledger",
+    ),
+    (
         "json-schema-name-stolen",
         "rust-only NEGATIVE json-gen fixture (a row-less extern claiming a later row's schema name): \
          its integration gate generates --wasm=false and asserts the json-gen run FAILS on the \
-         kept-its-own-name check, so there is no wasm surface to differential",
+         reachability name ledger, so there is no wasm surface to differential",
+    ),
+    (
+        "json-schema-natural-any-alias",
+        "rust-only json-gen emission fixture: it generates --wasm=false solely to prove natural-any \
+         schema adapters do not create tagged-source reachability claims",
+    ),
+    (
+        "json-schema-reachable-config",
+        "rust-only json-gen emission fixture: it generates --wasm=false solely to prove a \
+         preserve-table alias retains its configured key reachability",
     ),
     (
         "json-ref-dangling",

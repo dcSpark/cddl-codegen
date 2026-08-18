@@ -7,6 +7,14 @@ use cddl_lib::json_schema_gen::check_schema_ref_closure;
 
 pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     let mut reg = Registrar::new(generator);
+    reg.claim_reachable::<cddl_lib::Bounded>();
+    reg.claim_reachable::<cddl_lib::Exact>();
+    reg.claim_reachable::<cddl_lib::Lower>();
+    reg.claim_reachable::<cddl_lib::Maybe>();
+    reg.claim_reachable::<cddl_lib::NestedBounded>();
+    reg.claim_reachable::<cddl_lib::NestedUpper>();
+    reg.claim_reachable::<cddl_lib::OneOrMore>();
+    reg.claim_reachable::<cddl_lib::Upper>();
     reg.add::<cddl_lib::ExactMiddleOccurrence>();
     reg.add::<cddl_lib::MiddleOccurrence>();
     reg.add::<cddl_lib::OccurrenceHolder>();

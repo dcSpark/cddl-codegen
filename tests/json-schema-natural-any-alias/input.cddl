@@ -1,0 +1,9 @@
+; Every listed generated JSON schema adapter owns its `any` position's complete schema. The alias
+; must therefore not become a registrar reachability claim for AnyCbor's tagged JsonSchema impl.
+any_alias = any
+any_seq_alias = [* any_alias]
+parent = [direct: any_alias, sequence: any_seq_alias]
+choice = uint / any_alias
+open_map = {1: uint, * uint => any_alias}
+open_table = {* uint => any_alias, * tstr => any_alias}
+open_array = [uint, * any_alias]

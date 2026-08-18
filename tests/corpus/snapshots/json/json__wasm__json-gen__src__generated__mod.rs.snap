@@ -7,6 +7,12 @@ use cddl_lib::json_schema_gen::check_schema_ref_closure;
 
 pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     let mut reg = Registrar::new(generator);
+    reg.claim_reachable::<cddl_lib::BoundedPreservePmap>();
+    reg.claim_reachable::<cddl_lib::CustomWrapper>();
+    reg.claim_reachable::<cddl_lib::NePreservePmap>();
+    reg.claim_reachable::<cddl_lib::PreservePmap>();
+    reg.claim_reachable::<cddl_lib::RejectUints>();
+    reg.claim_reachable::<cddl_lib::Table>();
     reg.add::<cddl_lib::BoundedPreservePmapJson>();
     reg.add::<cddl_lib::BytesWrapper>();
     reg.add::<cddl_lib::CustomHolder>();

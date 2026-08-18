@@ -1,0 +1,7 @@
+; Negative fixture for a collision hidden wholly below one exported row. The two named generic
+; extern instances are deliberately suppressed as roots, so both are reached only by Parent's
+; derived schema. The hand-written JsonSchema impl deliberately gives them one default identity.
+ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_
+set_a = ext_set<uint> ; @no_json_schema_export
+set_b = ext_set<text> ; @no_json_schema_export
+parent = [numbers: set_a, words: set_b]

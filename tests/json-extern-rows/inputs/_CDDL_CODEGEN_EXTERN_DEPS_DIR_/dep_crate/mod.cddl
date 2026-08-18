@@ -1,1 +1,4 @@
 dep_thing = _CDDL_CODEGEN_EXTERN_TYPE_
+; The current crate may reference this dep-owned alias, but its json-gen registrar must neither
+; claim the alias nor descend into its target: the dependency owns that schema inventory.
+dep_alias = dep_thing

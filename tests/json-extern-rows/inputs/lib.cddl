@@ -7,9 +7,12 @@
 ;                      never-instantiated base leaks an E0107 row)
 ;   - `my_set`     : concrete instance    -> row KEPT (`cddl_lib::MySet`)
 ;   - `my_extern`  : plain extern         -> row KEPT (`cddl_lib::MyExtern`)
-;   - `dep_thing`  : dep-owned extern     -> row SKIPPED (non-export scope; the dep's own json-gen
-;                                            owns it, and this crate's json-gen manifest never
-;                                            depends on the dep)
+;   - `dep_thing`/`dep_alias`: dep-owned extern/alias -> rows and transitive claims SKIPPED
+;                                            (non-export scope; the dep's own json-gen owns it,
+;                                            and this crate's json-gen manifest never depends on
+;                                            the dep). `own_table` puts the alias at a generated
+;                                            map-key schema-BODY boundary as well as BigThing's
+;                                            ordinary subschema field boundary.
 ;   - `scoped_thing`: in-crate scoped type -> row KEPT with its real module path
 ;                                            (`cddl_lib::sub::module::ScopedThing`)
 ; It also pins the `@no_json_schema_export` suppression (the spec author's "this type is not part of
@@ -34,4 +37,6 @@ my_set = ext_set<uint>
 quiet_thing = [q: uint] ; @no_json_schema_export
 loud_group = (lg: uint)
 quiet_group = (qg: uint) ; @no_json_schema_export
-big_thing = [e: my_extern, s: my_set, d: dep_thing, sc: scoped_thing, loud_group, quiet_group]
+big_thing = [e: my_extern, s: my_set, d: dep_thing, da: dep_alias, sc: scoped_thing, loud_group, quiet_group]
+own_table = { * dep_alias => uint }
+table_holder = [entries: own_table]

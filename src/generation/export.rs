@@ -1937,8 +1937,8 @@ impl GenerationScope {
             // owner can change. A consequence worth stating: with deps registered first, a
             // cross-crate collision whose `schema_id`s DIFFER is caught by the emitted helper's
             // kept-its-own-name check (B), because `subschema_for` then hands the consumer's row
-            // `<name>2`. Measured cross-crate, not merely reasoned from the single-crate mechanism
-            // `integration_tests::json_schema_name_stolen_fails` exercises: the two-crate cell
+            // `<name>2`. Measured cross-crate rather than inferred from the same-crate reachability
+            // ledger exercised by `integration_tests::json_schema_name_stolen_fails`: the two-crate cell
             // `config_tests::a_derived_thread_links_and_a_collision_blames_the_consumer`
             // asserts the panic names the CONSUMER's type.
             //
@@ -2220,6 +2220,8 @@ mod static_runtime_dependency_bijection_tests {
         "borrow",
         "bounded",
         "char",
+        "claim_reachable_schema_name",
+        "claim_schema_name",
         "collect",
         "collections",
         "convert",

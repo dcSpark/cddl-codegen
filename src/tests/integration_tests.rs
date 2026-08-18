@@ -14963,17 +14963,29 @@ fn json_schema_name_merge_fails() {
     );
 }
 
-/// The STOLEN-NAME half of the guard (check B, "the row kept its own name"), and the reason the
-/// ledger alone is not enough: the type that claims the name first (`HiddenExt`, carrying
-/// `@no_json_schema_export`) has no registration row, so it never enters the ledger. `AlphaParent`
-/// sorts before `Shared` in the row order and pulls it in transitively; the later `Shared` row is then
-/// published as `Shared2` — a name decided by registration order rather than by the spec.
+/// A generic extern's concrete instances can be deliberately suppressed as roots while an exported
+/// parent still reaches them. The reachability claims emitted before the parent row must still put
+/// both hand-written schema names through the registrar ledger.
+#[test]
+fn json_schema_name_collision_loser_no_row_same_id_fails() {
+    run_json_gen_failure_test(
+        "json-schema-name-collision-loser-no-row-same-id",
+        "external_rust_defs_collision_loser_no_row_same_id",
+        "two distinct Rust types both publish the JSON schema name",
+    );
+}
+
+/// A STOLEN-NAME shape whose first claimant (`HiddenExt`, carrying `@no_json_schema_export`) has no
+/// registration row. The generated reachability preclaims must nevertheless put it through the
+/// name ledger before `AlphaParent` can pull it in transitively; the later `Shared` row publishes the
+/// same name and must therefore fail at the deterministic collision check rather than being assigned
+/// the order-dependent name `Shared2`.
 #[test]
 fn json_schema_name_stolen_fails() {
     run_json_gen_failure_test(
         "json-schema-name-stolen",
         "external_rust_defs_stolen",
-        "but the document assigned it \"Shared2\"",
+        "two distinct Rust types both publish the JSON schema name",
     );
 }
 
