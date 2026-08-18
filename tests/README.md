@@ -2195,7 +2195,9 @@ beyond finite fixed domains need a future design rather than a guessed decoder. 
 - **Front end + guards** — `robustness_tests::open_array_front_end` recognizes final loose,
   min-one, finite, max-only, min-only, and exact-zero forms. The polarity and carrier assertions in
   `robustness_tests::occurrence_on_array_record_field_rejects_gracefully` cover leading/middle
-  loose/min-one success plus exact same-major/zero success without a suffix wire-head discriminator;
+  loose/min-one success plus exact same-major/zero success without a suffix wire-head discriminator,
+  and multiple named exact-count segments (including adjacent/same-major and exact-zero boundaries)
+  with separate checked carriers and count-owned decoder loops;
   the variable-zero-minimum/non-empty/exact-zero optional-prefix distinctions; two-sided
   unproven-head optional-dispatch refusals and mandatory-framing controls; and
   declared repeated/suffix success, re-alias inheritance, emitted-major replacement, and
@@ -2205,7 +2207,7 @@ beyond finite fixed domains need a future design rather than a guessed decoder. 
   slot/marker-slot cases.
 - **Value-level e2e** — `tests/open-array-e2e` (`integration_tests::open_array_e2e`, compiled,
   non-preserve) drives leading and middle loose, min-one, finite/max-only, exact-zero, and exact
-  same-major segments, finite fixed-domain retries (including bool/null), and declared custom repeated/suffix heads through definite and indefinite
+  same-major segments, named multiple exact segments, finite fixed-domain retries (including bool/null), and declared custom repeated/suffix heads through definite and indefinite
   bytes: zero/in-window/below/above windows, max-bound stop before the suffix, wrong repeated type,
   absent/wrong suffix, suffix preservation, trailing-extra rejection, and nested stream position.
   It also keeps the shared constructor and carrier door tests.

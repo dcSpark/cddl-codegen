@@ -6133,6 +6133,77 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
             .any(|source| source.contains("pub rest: BoundedVec<u64, 0, 0>")),
         "an exact-zero middle segment must retain the checked zero carrier: {exact_zero:#?}"
     );
+    // Multiple occurrence-bearing members are safe only when each owns a finite exact count.  The
+    // generated record must keep every segment flat, named, and independently staged; this shape
+    // deliberately has same-major neighbours plus an exact-zero boundary, so a decoder cannot be
+    // accidentally relying on major peeking or a shared rest buffer.
+    let multiple_exact = run(
+        "m = [\n  prefix: uint\n  , 2*2 bytes ; @name chunks\n  , separator: tstr\n  , 0*0 uint ; @name absent\n  , 3*3 uint ; @name values\n  , suffix: uint\n]\n",
+        "multiple_exact_segments",
+    )
+    .expect("named exact-count array segments must generate together");
+    let multiple_exact_source = multiple_exact
+        .values()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n");
+    for field in [
+        "pub chunks: BoundedVec<Vec<u8>, 2, 2>",
+        "pub absent: BoundedVec<u64, 0, 0>",
+        "pub values: BoundedVec<u64, 3, 3>",
+    ] {
+        assert!(
+            multiple_exact_source.contains(field),
+            "every exact segment needs its own checked carrier `{field}`: {multiple_exact_source}"
+        );
+    }
+    for loop_bound in ["(chunks.len() as u64) < 2", "(values.len() as u64) < 3"] {
+        assert!(
+            multiple_exact_source.contains(loop_bound),
+            "each non-final exact segment must consume its own count, not inspect a major: {multiple_exact_source}"
+        );
+    }
+    let chunks_write = multiple_exact_source
+        .find("for element in self.chunks.iter()")
+        .unwrap();
+    let separator_write = multiple_exact_source.find("self.separator").unwrap();
+    let values_write = multiple_exact_source
+        .find("for element in self.values.iter()")
+        .unwrap();
+    assert!(
+        chunks_write < separator_write && separator_write < values_write,
+        "adjacent/leading exact segments must stay in authored wire order rather than dropping the first: {multiple_exact_source}"
+    );
+    let adjacent_exact = run(
+        "a = [\n prefix: uint\n , 2*2 bytes ; @name bytes_part\n , 3*3 uint ; @name ints_part\n , suffix: uint\n]\n",
+        "adjacent_exact_segments",
+    )
+    .expect("adjacent named exact segments need no fixed suffix boundary");
+    let adjacent_source = adjacent_exact
+        .values()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        adjacent_source.contains("(bytes_part.len() as u64) < 2")
+            && adjacent_source.contains("(ints_part.len() as u64) < 3"),
+        "every adjacent exact segment must reach the count-owned decoder: {adjacent_source}"
+    );
+    let aliased_exact = run(
+        "uint_segment = uint\nbytes_segment = bytes\nm = [\n  2*2 uint_segment ; @name numbers\n  , 3*3 bytes_segment ; @name blobs\n]\n",
+        "aliased_exact_segments",
+    )
+    .expect("multiple exact segments may use aliased elements in either major order");
+    let aliased_exact_source = aliased_exact
+        .values()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        aliased_exact_source.contains("pub numbers: BoundedVec<UintSegment, 2, 2>")
+            && aliased_exact_source.contains("pub blobs: BoundedVec<BytesSegment, 3, 3>"),
+        "the multi-segment walk must retain both aliased carriers: {aliased_exact_source}"
+    );
     let multi_major_middle = run("m = [uint, * int, tstr]\n", "multi_major_middle")
         .expect("a multi-major repeated element before a disjoint suffix must generate");
     assert!(
@@ -6180,6 +6251,18 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
             .any(|source| source.contains("impl Deserialize for M")),
         "a required bytes segment separates the optional uint from its same-major suffix, so this \
          shape must emit Deserialize: {optional_before_nonempty_middle:#?}"
+    );
+    let optional_before_later_exact_segment = run(
+        "m = [\n  ? uint\n  , 2*2 tstr ; @name text_part\n  , 2*2 uint ; @name uint_part\n]\n",
+        "optional_before_later_exact_segment",
+    )
+    .expect("a required exact segment is a hard boundary before a later same-major segment");
+    assert!(
+        optional_before_later_exact_segment
+            .values()
+            .any(|source| source.contains("impl Deserialize for M")),
+        "the required text segment separates the optional uint from the later uint segment, so no \
+         optional/segment ambiguity reaches past it: {optional_before_later_exact_segment:#?}"
     );
     let optional_before_exact_zero_middle = run(
         "m = [? bytes, 0*0 bytes, tstr]\n",
@@ -6619,9 +6702,72 @@ fn open_array_front_end() {
     ] {
         run(spec).expect_err("an unsafe middle occurrence must reject");
     }
-    // multiple count-permitting members
-    run("a = [uint, * uint, * tstr]\n").expect_err("multiple `*` members must reject");
-    run("a = [uint, + uint, * tstr]\n").expect_err("multiple count-permitting members must reject");
+    // Multiple segments only admit named finite exact boundaries.  The negative controls retain a
+    // single front-door refusal rather than silently changing to nested arrays or a greedy residue.
+    for (spec, needle) in [
+        (
+            "a = [uint, * uint, * tstr]\n",
+            "finite exact-count boundary",
+        ),
+        (
+            "a = [uint, + uint, * tstr]\n",
+            "finite exact-count boundary",
+        ),
+        ("a = [uint, 2*2 uint, 3*3 tstr]\n", "unique `@name`"),
+        (
+            "a = [\n uint\n , 2*2 uint ; @name chunks\n , 3*3 tstr ; @name chunks\n]\n",
+            "both emit the field `chunks`",
+        ),
+        (
+            "a = [\n chunks: uint\n , 2*2 uint ; @name chunks\n , 3*3 tstr ; @name values\n]\n",
+            "collides with fixed field `chunks`",
+        ),
+        (
+            "a = [\n uint\n , 2*2 uint ; @name chunks @duplicates reject\n , 3*3 tstr ; @name values\n]\n",
+            "must be captured named boundaries",
+        ),
+    ] {
+        let err = run(spec).expect_err("invalid multiple occurrence form must reject");
+        assert!(err.contains(needle), "expected `{needle}`, got: {err}");
+    }
+    // Preserve sidecars share the public member namespace even though this default-profile probe
+    // does not mint them. Fixed fields own `<field>_encoding`; exact segments own positional
+    // `<segment>_elem_encodings`. Check the segment-local collision and the fixed-field companion
+    // collision against a segment name.
+    for (spec, base, companion) in [
+        (
+            "a = [\n  uint\n  , 2*2 uint ; @name chunks\n  , 3*3 tstr ; @name chunks_elem_encodings\n]\n",
+            "chunks",
+            "chunks_elem_encodings",
+        ),
+        (
+            "a = [\n  chunks: uint\n  , 2*2 uint ; @name chunks_encoding\n  , 3*3 tstr ; @name values\n]\n",
+            "chunks",
+            "chunks_encoding",
+        ),
+    ] {
+        let err =
+            run(spec).expect_err("a preserve-sidecar companion collision must reject uniformly");
+        assert!(
+            err.contains(base) && err.contains(companion) && err.contains("--preserve-encodings"),
+            "expected the default profile to report the {base}/{companion} preserve collision, got: {err}"
+        );
+    }
+    // Exact segments mint only their positional `<segment>_elem_encodings` locals, never an
+    // ordinary `<segment>_encoding` companion. Thus two segments in the latter name relation are
+    // valid even on the preserve surface; pin the positive complement of the fixed-field rejection
+    // above against the actual preserve emitter.
+    let segment_encoding_name = gen_flags(
+        "a = [\n  uint\n  , 2*2 uint ; @name chunks\n  , 3*3 tstr ; @name chunks_encoding\n]\n",
+        &["--preserve-encodings=true"],
+    )
+    .expect("two exact segments may use `foo` and `foo_encoding` under preserve encodings");
+    assert!(
+        src(&segment_encoding_name).contains("pub chunks:")
+            && src(&segment_encoding_name).contains("pub chunks_encoding:"),
+        "the preserve profile must retain both safe segment fields: {}",
+        src(&segment_encoding_name)
+    );
     // bounded final tails share the generic checked-carrier seam, including finite, max-only,
     // min-only, loose-equivalent 0*, and exact-zero forms.
     for (spec, carrier) in [

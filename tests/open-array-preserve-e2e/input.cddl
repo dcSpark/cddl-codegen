@@ -9,6 +9,13 @@ required = [uint, + uint]           ; one-or-more tail — per-element encoding 
 bounded = [uint, 2*3 uint]          ; finite checked tail — same positional sidecar
 middle = [uint, * uint, tstr]        ; major-disjoint middle segment — same sidecar before suffix
 exact_middle = [uint, 2*2 uint, uint] ; count-delimited same-major segment — positional sidecar
+exact_segments = [
+  prefix: uint
+  , 2*2 uint ; @name chunks
+  , 0*0 uint ; @name absent
+  , 2*2 uint ; @name values
+  , suffix: uint
+]
 ; A finite, disjoint same-major fixed-choice middle retries its element decoder.  Preserve sidecars
 ; are committed only on successful attempts, so the final suffix width stays in its own position.
 repeat = 0 / 1

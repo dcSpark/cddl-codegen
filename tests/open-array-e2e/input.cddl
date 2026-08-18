@@ -24,6 +24,25 @@ middle_max = [uint, *2 bytes, tstr]
 middle_zero = [uint, *0 bytes, tstr]
 exact_middle = [uint, 2*2 uint, uint] ; count-delimited same-major exact segment
 exact_zero_middle = [uint, 0*0 uint, uint] ; exact-zero leaves same-major suffix in place
+; Every occurrence member is an exact named boundary.  Adjacent `absent`/`values` uses the same
+; uint major to prove decoding follows counts, never a major peek or suffix speculation.
+exact_segments = [
+  prefix: uint
+  , 2*2 bytes ; @name chunks
+  , separator: tstr
+  , 0*0 uint ; @name absent
+  , 3*3 uint ; @name values
+  , suffix: uint
+]
+; With no fixed suffix, only the final exact segment may use the owner boundary. The first must
+; still stop at its own count, even though both segments share the uint major.
+trailing_exact_segments = [
+  2*2 uint ; @name first
+  , 3*3 uint ; @name second
+]
+; The emitted-test minter must keep ExactSegments' source-ordered constructor slots when this
+; record is itself an ordinary member of another minted record.
+nested_exact_segments = [exact_segments]
 ; Same-major fixed-domain middle segments retry only the repeated decoder.  Their generator-owned
 ; finite literal domains are disjoint, including through transparent aliases, so a suffix cannot
 ; successfully decode as another repetition.

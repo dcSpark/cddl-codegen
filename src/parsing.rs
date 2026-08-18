@@ -1,7 +1,7 @@
 use crate::cli::Cli;
 use cddl::ast::parent::ParentVisitor;
 use cddl::{ast::*, token};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::comment_ast::{DuplicatesPolicy, RuleMetadata, merge_metadata, metadata_from_comments};
 use crate::intermediate::{
@@ -7078,6 +7078,7 @@ fn parse_record_from_group_choice(
     let DynamicRows {
         typed_row,
         rest,
+        array_segments,
         skip: rest_skip,
     } = recognize_dynamic_rows(
         types,
@@ -7574,13 +7575,15 @@ fn parse_record_from_group_choice(
             .with_source_index(index))
         })
         .collect();
-    reject_encoding_companion_collisions(types, rep, name, &fields);
+    reject_encoding_companion_collisions(types, rep, name, &fields, &rest, &array_segments);
     reject_wasm_open_map_insert_collisions(types, cli, name, &fields, &rest);
+    reject_array_segment_name_collisions(types, rep, name, &fields, &rest, &array_segments);
     RustRecord {
         rep,
         fields,
         forbidden_fields,
         rest,
+        array_segments,
         typed_row,
     }
 }
@@ -7625,6 +7628,60 @@ fn reject_wasm_open_map_insert_collisions(
     }
 }
 
+/// Multiple exact array segments are public struct members, so their `@name` values share the
+/// same namespace as fixed fields.  Keep this separate from the map-only wasm collision check:
+/// array segment names do not mint mutation methods, but silently renaming either member would
+/// change a public API and make preserve sidecars ambiguous.
+fn reject_array_segment_name_collisions(
+    types: &mut IntermediateTypes,
+    rep: Representation,
+    name: &RustIdent,
+    fields: &[RustField],
+    rest: &Option<Box<RestRow>>,
+    array_segments: &[RestRow],
+) {
+    if rep != Representation::Array || array_segments.is_empty() {
+        return;
+    }
+    let source_name = source_rule_name_of(types, name);
+    let rows: Vec<&RestRow> = rest
+        .iter()
+        .filter(|row| row.is_array_tail())
+        .map(Box::as_ref)
+        .chain(array_segments.iter())
+        .collect();
+    for row in &rows {
+        if RUST_KEYWORDS.contains(&row.field_name.as_str()) {
+            types.record_rejection(format!(
+                "rule `{source_name}`: exact-count array segment name `{}` is a Rust keyword. Give it a unique non-keyword `@name`.",
+                row.field_name
+            ));
+        }
+        if let Some(message) =
+            generated_local_field_rejection(&row.field_name, &source_name, rep, false)
+        {
+            types.record_rejection(message.replace("field", "exact-count array segment"));
+        }
+        if fields.iter().any(|field| field.name == row.field_name) {
+            types.record_rejection(format!(
+                "rule `{source_name}`: exact-count array segment `{}` collides with fixed field `{}`. Give every segment a unique `@name`.",
+                row.field_name, row.field_name
+            ));
+        }
+    }
+    for (index, row) in rows.iter().enumerate() {
+        if rows[..index]
+            .iter()
+            .any(|other| other.field_name == row.field_name)
+        {
+            types.record_rejection(format!(
+                "rule `{source_name}`: exact-count array segments would both emit field `{}`. Give every segment a unique `@name`.",
+                row.field_name
+            ));
+        }
+    }
+}
+
 /// The PAIRWISE half of the generated-local collision class: a record whose fields are individually
 /// fine but whose NAMES stand in an `<f>` / `<f>_encoding` relation collide once
 /// `--preserve-encodings` mints the per-field encoding companions (see
@@ -7637,21 +7694,57 @@ fn reject_encoding_companion_collisions(
     rep: Representation,
     name: &RustIdent,
     fields: &[RustField],
+    rest: &Option<Box<RestRow>>,
+    array_segments: &[RestRow],
 ) {
+    // A single historic array tail has no companion-name interaction beyond fixed fields. Keep
+    // that zero/one path byte-identical. In the new multiple-exact form, fixed fields still mint
+    // their ordinary `{field}_encoding` companions, while each segment mints a positional
+    // `{segment}_elem_encodings` local. Both can collide with any public member name.
+    let segments: Vec<&RestRow> = if array_segments.is_empty() {
+        vec![]
+    } else {
+        rest.as_deref()
+            .filter(|row| row.is_array_tail())
+            .into_iter()
+            .chain(array_segments.iter())
+            .collect()
+    };
+    let names: Vec<&str> = fields
+        .iter()
+        .map(|field| field.name.as_str())
+        .chain(segments.iter().map(|row| row.field_name.as_str()))
+        .collect();
     let mut collisions = Vec::new();
-    for base in fields.iter() {
+    // Only fixed fields use the established `{field}_encoding` member/local scheme. A segment
+    // named `foo` does NOT mint `foo_encoding`, so treating it as that base would gratuitously
+    // reject a safe `foo` / `foo_encoding` segment pair.
+    for base in fields.iter().map(|field| field.name.as_str()) {
         for (suffix, map_only, why) in ENCODING_COMPANION_SUFFIXES {
             if *map_only && rep != Representation::Map {
                 continue;
             }
-            let companion = format!("{}{suffix}", base.name);
-            if fields.iter().any(|f| f.name == companion) {
-                collisions.push((
-                    base.name.clone(),
-                    companion,
-                    why.replace("{base}", &base.name),
-                ));
+            let companion = format!("{base}{suffix}");
+            if names.iter().any(|name| *name == companion) {
+                collisions.push(((*base).to_owned(), companion, why.replace("{base}", base)));
             }
+        }
+    }
+    // A captured array segment serializes/deserializes element encodings through a positional
+    // `{segment}_elem_encodings` local. Its target may be either a fixed field or another exact
+    // segment, so check the same resolved member namespace as above.
+    for segment in &segments {
+        let base = segment.field_name.as_str();
+        let companion = format!("{base}_elem_encodings");
+        if names.iter().any(|name| *name == companion) {
+            collisions.push((
+                base.to_owned(),
+                companion.clone(),
+                format!(
+                    "the positional element-encoding companion minted for `{base}` is spelled \
+                     `{companion}`, so that member's local shadows it in the struct-init shorthand (E0308)"
+                ),
+            ));
         }
     }
     if collisions.is_empty() {
@@ -7679,6 +7772,7 @@ fn reject_encoding_companion_collisions(
 struct DynamicRows {
     typed_row: Option<Box<RestRow>>,
     rest: Option<Box<RestRow>>,
+    array_segments: Vec<RestRow>,
     skip: Vec<usize>,
 }
 
@@ -7698,6 +7792,29 @@ fn recognize_dynamic_rows(
     in_choice_arm: bool,
     cli: &Cli,
 ) -> DynamicRows {
+    if rep == Representation::Array {
+        let (mut segments, skip) = recognize_array_rest_segments(
+            types,
+            parent_visitor,
+            name,
+            flattened,
+            entry_count,
+            in_choice_arm,
+            cli,
+        );
+        let rest = segments.first().cloned().map(Box::new);
+        let array_segments = if segments.is_empty() {
+            vec![]
+        } else {
+            segments.drain(1..).collect()
+        };
+        return DynamicRows {
+            typed_row: None,
+            rest,
+            array_segments,
+            skip,
+        };
+    }
     if rep == Representation::Map
         && entry_count == 2
         && flattened
@@ -7719,8 +7836,193 @@ fn recognize_dynamic_rows(
     DynamicRows {
         typed_row: None,
         rest,
+        array_segments: vec![],
         skip: rest_index.into_iter().collect(),
     }
+}
+
+/// Recognize the positional dynamic rows of an ARRAY record.  The historic single-segment path
+/// remains untouched below so its zero/one output and diagnostics stay stable.  Multiple members
+/// are deliberately narrower: each must be a named, finite exact window, which makes every wire
+/// boundary count-owned instead of requiring a residue or major-discrimination algorithm.
+#[allow(clippy::too_many_arguments)]
+fn recognize_array_rest_segments(
+    types: &mut IntermediateTypes,
+    parent_visitor: &ParentVisitor,
+    name: &RustIdent,
+    flattened: &[&(GroupEntry, OptionalComma)],
+    entry_count: usize,
+    in_choice_arm: bool,
+    cli: &Cli,
+) -> (Vec<RestRow>, Vec<usize>) {
+    let count_permits = |ge: &GroupEntry| {
+        let occur = match ge {
+            GroupEntry::ValueMemberKey { ge, .. } => ge.occur.as_ref(),
+            GroupEntry::TypeGroupname { ge, .. } => ge.occur.as_ref(),
+            GroupEntry::InlineGroup { .. } => None,
+        };
+        occur
+            .map(|o| {
+                !matches!(
+                    o.occur,
+                    Occur::Optional { .. }
+                        | Occur::Exact {
+                            lower: Some(1),
+                            upper: Some(1),
+                            ..
+                        }
+                )
+            })
+            .unwrap_or(false)
+    };
+    let candidates: Vec<usize> = flattened
+        .iter()
+        .enumerate()
+        .filter(|(_, (ge, _))| count_permits(ge))
+        .map(|(index, _)| index)
+        .collect();
+    if candidates.len() <= 1 {
+        let (rest, skip) = recognize_array_rest_tail(
+            types,
+            parent_visitor,
+            name,
+            flattened,
+            entry_count,
+            in_choice_arm,
+            cli,
+        );
+        return (
+            rest.into_iter().map(|row| *row).collect(),
+            skip.into_iter().collect(),
+        );
+    }
+
+    // Preserve the historic multiplicity boundary for a repeated plain-group reference. A plain
+    // group is not an array item, so it cannot be one of the new exact-count segments; routing to
+    // the legacy recognizer retains its established "single trailing rest tail" diagnostic before
+    // the multi-segment classifier considers exactness or `@name` directives.
+    if candidates.iter().any(|&candidate| {
+        let (entry, _) = flattened[candidate];
+        matches!(entry, GroupEntry::TypeGroupname { ge, .. }
+            if types.directly_defined_plain_group_idents().any(|ident|
+                types.source_rule_name(ident).is_some_and(|source| source == ge.name.to_string())))
+    }) {
+        let (rest, skip) = recognize_array_rest_tail(
+            types,
+            parent_visitor,
+            name,
+            flattened,
+            entry_count,
+            in_choice_arm,
+            cli,
+        );
+        return (
+            rest.into_iter().map(|row| *row).collect(),
+            skip.into_iter().collect(),
+        );
+    }
+
+    let src = source_rule_name_of(types, name);
+    if in_choice_arm {
+        types.record_rejection(format!(
+            "rule `{src}`: multiple exact-count array occurrence segments inside a group-choice arm are unsupported. Give the array its own named rule and reference it from the arm."
+        ));
+        return (vec![], candidates);
+    }
+    if types.is_plain_group(name) {
+        types.record_rejection(format!(
+            "rule `{src}`: multiple exact-count array occurrence segments inside a plain group are unsupported. Give the array its own named rule and reference it from the group."
+        ));
+        return (vec![], candidates);
+    }
+
+    let mut rows = Vec::new();
+    let mut names = BTreeSet::new();
+    for &candidate in &candidates {
+        let (entry, comma) = flattened[candidate];
+        let occur = match entry {
+            GroupEntry::ValueMemberKey { ge, .. } => ge.occur.as_ref().map(|o| &o.occur),
+            GroupEntry::TypeGroupname { ge, .. } => ge.occur.as_ref().map(|o| &o.occur),
+            GroupEntry::InlineGroup { .. } => None,
+        };
+        let occurrence = normalized_dynamic_sequence_occurrence_window(types, occur);
+        if !occurrence.is_some_and(|(min, max)| min == max && (min, max) != (1, 1)) {
+            types.record_rejection(format!(
+                "rule `{src}`: multiple array occurrence segments require every repeated member to have a named finite exact-count boundary (`N*N`, other than `1*1`). Variable-cardinality segments (`*`, `+`, `n*m` where n != m, min-only, or max-only) need a single owner and remain unsupported."
+            ));
+            return (vec![], candidates);
+        }
+        if let GroupEntry::ValueMemberKey { ge, .. } = entry
+            && ge.member_key.is_some()
+        {
+            types.record_rejection(format!(
+                "rule `{src}`: an exact-count array occurrence segment is positional and cannot carry a member key. Drop the `key:` label."
+            ));
+            return (vec![], candidates);
+        }
+        let metadata = group_entry_rule_metadata(entry, comma);
+        let Some(field_name) = metadata.name.clone() else {
+            types.record_rejection(format!(
+                "rule `{src}`: multiple exact-count array occurrence segments require each repeated member to have a unique `@name`. Add `; @name <segment>` to this member."
+            ));
+            return (vec![], candidates);
+        };
+        if !names.insert(field_name.clone()) {
+            types.record_rejection(format!(
+                "rule `{src}`: multiple exact-count array occurrence segments would both emit the field `{field_name}`. Give every segment a unique `@name`."
+            ));
+            return (vec![], candidates);
+        }
+        reject_type_scoped_directives(
+            types,
+            &format!("the exact-count array occurrence segment of rule `{src}`"),
+            &metadata,
+        );
+        if reject_custom_codec_on_row_entry(
+            types,
+            &format!("exact-count array occurrence segment of rule `{src}`"),
+            "Name the segment element type as its own rule and put the pair there.",
+            &metadata,
+        ) || reject_custom_encodings_without_pair(
+            types,
+            &format!("the exact-count array occurrence segment of rule `{src}`"),
+            &metadata,
+        ) {
+            return (vec![], candidates);
+        }
+        if metadata.ignore || metadata.duplicates.is_some() {
+            types.record_rejection(format!(
+                "rule `{src}`: multiple exact-count array occurrence segments must be captured named boundaries; `@ignore` and `@duplicates` are not supported on a segment. Remove the directive."
+            ));
+            return (vec![], candidates);
+        }
+        let element = group_entry_to_type(types, parent_visitor, entry, cli);
+        if element.is_fixed_value() {
+            types.record_rejection(format!(
+                "rule `{src}`: an exact-count array occurrence segment cannot be a fixed value — use a typed element."
+            ));
+            return (vec![], candidates);
+        }
+        if element.is_basic(types)
+            && matches!(element.conceptual_type.resolve_alias_shallow(), ConceptualRustType::Rust(ident) if types.is_plain_group(ident))
+        {
+            types.record_rejection(format!(
+                "rule `{src}`: an exact-count array occurrence segment cannot capture a plain group, because a group splices several array members rather than one element. Frame it as its own array rule first."
+            ));
+            return (vec![], candidates);
+        }
+        rows.push(RestRow {
+            kind: RestKind::ArrayTail {
+                element,
+                source_index: candidate,
+            },
+            semantics: RestSemantics::Capture,
+            field_name,
+            dispatch_major: None,
+            occurrence,
+        });
+    }
+    (rows, candidates)
 }
 
 /// Recognize an OPEN TABLE — a NAMED rule spelled `t = { * K_t => V_t, * K_r => V_r }`: one typed
@@ -7748,6 +8050,7 @@ fn recognize_open_table(
     let rejected = || DynamicRows {
         typed_row: None,
         rest: None,
+        array_segments: vec![],
         skip: vec![0usize, 1usize],
     };
     let src = source_rule_name_of(types, name);
@@ -7818,6 +8121,7 @@ fn recognize_open_table(
     DynamicRows {
         typed_row: Some(Box::new(typed)),
         rest: Some(Box::new(catch_all)),
+        array_segments: vec![],
         skip,
     }
 }

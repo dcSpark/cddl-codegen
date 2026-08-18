@@ -16,15 +16,27 @@ const IGNORE_LOSSINESS_DOC_ARRAY: &str = "Open array with an ignored rest tail: 
      DROPS them, and re-serializes only the declared members. Byte round-trips do NOT hold for wire data \
      that carried extra trailing elements.";
 
-/// The array `@ignore` breadcrumb for a safe non-final occurrence segment. Its position matters:
-/// unlike a tail, the dropped values occur before one mandatory fixed suffix.
+/// The array `@ignore` breadcrumb for a safe non-final occurrence segment. `@ignore` is admitted
+/// only on the historic major-disjoint form, so its dropped values occur before one mandatory fixed
+/// suffix (multiple exact segments are capture-only).
 const IGNORE_LOSSINESS_DOC_ARRAY_MIDDLE: &str = "Open array with an ignored major-disjoint occurrence segment: tolerates matching elements before its mandatory fixed suffix on deserialize and DROPS them, and re-serializes only the declared members. Byte round-trips do NOT hold for wire data that carried dropped occurrence-segment elements.";
 
-/// True for a final array occurrence segment (and vacuously for map rows). Middle support is only
-/// admitted with an immediate fixed suffix, so every non-final array segment has a field after it.
+/// True for a final array occurrence segment (and vacuously for map rows). Historic variable middle
+/// support has an immediate fixed suffix; a multiple-exact segment can instead be followed by the
+/// next authored exact segment, whose count-owned boundary delimits it.
 fn array_segment_is_final(record: &RustRecord, rest: &RestRow) -> bool {
     match rest.array_source_index() {
-        Some(index) => record.fields.iter().all(|field| field.source_index < index),
+        Some(index) => {
+            record.fields.iter().all(|field| field.source_index < index)
+                && record
+                    .dynamic_rows()
+                    .filter(|row| row.is_array_tail())
+                    .all(|other| {
+                        other
+                            .array_source_index()
+                            .is_none_or(|other_index| other_index <= index)
+                    })
+        }
         None => true,
     }
 }
@@ -144,13 +156,18 @@ pub(super) fn generate_array_struct_serialization(
 ) {
     assert_eq!(record.rep, Representation::Array);
     let opt_self = if vars_in_self { "self." } else { "" };
-    let array_segment = record.captured_rest().filter(|rest| rest.is_array_tail());
+    let array_segments: Vec<&RestRow> = record
+        .captured_dynamic_rows()
+        .filter(|row| row.is_array_tail())
+        .collect();
+    let mut previous_source_index = None;
     for field in record.fields.iter() {
-        if let Some(segment) = array_segment
-            && segment
-                .array_source_index()
-                .is_some_and(|index| index + 1 == field.source_index)
-        {
+        for segment in array_segments.iter().copied().filter(|segment| {
+            segment.array_source_index().is_some_and(|index| {
+                index < field.source_index
+                    && previous_source_index.is_none_or(|previous| previous < index)
+            })
+        }) {
             generate_array_segment_serialization(
                 gen_scope,
                 types,
@@ -160,6 +177,7 @@ pub(super) fn generate_array_struct_serialization(
                 cli,
             );
         }
+        previous_source_index = Some(field.source_index);
         let field_expr = format!("{}{}", opt_self, field.name);
         if field.optional {
             if field.rust_type.is_fixed_value() {
@@ -256,11 +274,11 @@ pub(super) fn generate_array_struct_serialization(
     }
     // A final segment remains byte-identical to the historic tail: it is emitted after every
     // fixed field.  A middle segment was interleaved above at its source index.
-    if let Some(segment) = array_segment
-        && segment
+    for segment in array_segments.into_iter().filter(|segment| {
+        segment
             .array_source_index()
-            .is_some_and(|index| record.fields.iter().all(|field| field.source_index < index))
-    {
+            .is_some_and(|index| previous_source_index.is_none_or(|previous| previous < index))
+    }) {
         generate_array_segment_serialization(
             gen_scope,
             types,
@@ -561,13 +579,17 @@ pub(super) fn array_record_deser_refusals(
         // may be empty, so its suffix remains reachable and must be compared. The separate overlap
         // check below still considers the optional against the segment itself.
         for i in (field_index + 1)..record.fields.len() {
-            if record.rest.as_deref().is_some_and(|segment| {
-                segment.occurrence.is_some_and(|(min, _)| min > 0)
-                    && segment.array_source_index().is_some_and(|segment_index| {
-                        field.source_index < segment_index
-                            && record.fields[i].source_index > segment_index
-                    })
-            }) {
+            if record
+                .dynamic_rows()
+                .filter(|row| row.is_array_tail())
+                .any(|segment| {
+                    segment.occurrence.is_some_and(|(min, _)| min > 0)
+                        && segment.array_source_index().is_some_and(|segment_index| {
+                            field.source_index < segment_index
+                                && record.fields[i].source_index > segment_index
+                        })
+                })
+            {
                 break;
             }
             let next = &record.fields[i];
@@ -606,23 +628,38 @@ pub(super) fn array_record_deser_refusals(
         // wire head, so it is just as ambiguous as an overlapping head: a peek cannot tell "this
         // optional field" from "the first segment element". Otherwise preserve the established
         // CBOR-type overlap test (`* any` overlaps EVERYTHING).
-        if let Some(rest) = &record.rest
+        for rest in record.dynamic_rows().filter(|row| row.is_array_tail()) {
             // An exact-zero segment contributes no wire item. The fixed-field walk above already
             // compares this optional to the segment's suffix when one exists; if it is final, the
             // optional is owner-length-delimited just like any other terminal optional.
-            && rest.occurrence.is_none_or(|(_, max)| max != 0)
-            && rest.array_source_index().is_some_and(|segment_index| {
-                field.source_index < segment_index
-                    && record
-                        .fields
-                        .iter()
-                        .filter(|between| {
-                            field.source_index < between.source_index
-                                && between.source_index < segment_index
-                        })
-                        .all(|between| between.optional)
-            })
-        {
+            if !(rest.occurrence.is_none_or(|(_, max)| max != 0)
+                && rest.array_source_index().is_some_and(|segment_index| {
+                    field.source_index < segment_index
+                        && record
+                            .fields
+                            .iter()
+                            .filter(|between| {
+                                field.source_index < between.source_index
+                                    && between.source_index < segment_index
+                            })
+                            .all(|between| between.optional)
+                        // A preceding required segment has already consumed a positive, known
+                        // number of items, so it is a hard boundary: this optional cannot reach
+                        // a later segment. Exact-zero segments intentionally stay transparent.
+                        && record
+                            .dynamic_rows()
+                            .filter(|prior| prior.is_array_tail())
+                            .all(|prior| {
+                                prior.occurrence.is_none_or(|(min, _)| min == 0)
+                                    || !prior.array_source_index().is_some_and(|prior_index| {
+                                        field.source_index < prior_index
+                                            && prior_index < segment_index
+                                    })
+                            })
+                }))
+            {
+                continue;
+            }
             if field_has_unproven_wire_head || types.type_has_unproven_wire_head(rest.element()) {
                 reasons.push(format!(
                     "Array struct optional field {} is ambiguous with the open array occurrence \
@@ -702,13 +739,18 @@ pub(super) fn generate_array_struct_deserialization(
     let mut deser_code = DeserializationCode::default();
     let mut deser_ctor_fields = vec![];
     let mut encoding_struct_ctor_fields = vec![];
-    let array_segment = record.rest.as_deref().filter(|rest| rest.is_array_tail());
+    let array_segments: Vec<&RestRow> = record
+        .dynamic_rows()
+        .filter(|row| row.is_array_tail())
+        .collect();
+    let mut previous_source_index = None;
     for (field_index, field) in record.fields.iter().enumerate() {
-        if let Some(segment) = array_segment
-            && segment
-                .array_source_index()
-                .is_some_and(|index| index + 1 == field.source_index)
-        {
+        for segment in array_segments.iter().copied().filter(|segment| {
+            segment.array_source_index().is_some_and(|index| {
+                index < field.source_index
+                    && previous_source_index.is_none_or(|previous| previous < index)
+            })
+        }) {
             let fixed_domain_retry_position =
                 array_segment_uses_fixed_domain_retry(types, record, segment).then(|| {
                     record.fresh_generated_member_ident(&format!(
@@ -729,6 +771,7 @@ pub(super) fn generate_array_struct_deserialization(
                 &mut encoding_struct_ctor_fields,
             );
         }
+        previous_source_index = Some(field.source_index);
         // Under preserve-encodings a fixed value with no encoding variation (bool / null) still has
         // NO binding target — `encoding_var_names_str` is empty — so a `let {} = ` LHS would be
         // invalid Rust (`let  = ...`). Gate the preserve branch on a non-empty binding and let those
@@ -1155,18 +1198,23 @@ pub(super) fn generate_array_struct_deserialization(
             deser_ctor_fields.push((field.name.clone(), field.name.clone()));
         }
     }
-    // Final tails retain their historic owner-boundary loop.  Middle segments were emitted above
-    // exactly before their suffix field, using their source index.
-    if let Some(segment) = array_segment
-        && segment
-            .array_source_index()
-            .is_some_and(|index| record.fields.iter().all(|field| field.source_index < index))
-    {
+    // The final trailing segment retains the historic owner-boundary loop. Every earlier trailing
+    // segment is count-delimited by its exact window, even when no fixed field follows it.
+    let trailing_segments: Vec<&RestRow> = array_segments
+        .into_iter()
+        .filter(|segment| {
+            segment
+                .array_source_index()
+                .is_some_and(|index| previous_source_index.is_none_or(|previous| previous < index))
+        })
+        .collect();
+    let trailing_segment_count = trailing_segments.len();
+    for (index, segment) in trailing_segments.into_iter().enumerate() {
         generate_array_segment_deserialization(
             gen_scope,
             types,
             segment,
-            false,
+            index + 1 < trailing_segment_count,
             None,
             vars_in_self,
             cli,
@@ -3580,7 +3628,19 @@ pub(super) fn codegen_struct(
                     .from_wasm_boundary_clone(types, &rest.field_name, false)
                     .into_iter(),
             ));
-            wasm_new_comments.push(if !array_segment_is_final(record, rest) {
+            wasm_new_comments.push(if !record.array_segments.is_empty() {
+                if !array_segment_is_final(record, rest) {
+                    format!(
+                        "* `{}` - the complete checked exact-count occurrence-segment wrapper before the next authored array member (its count-owned CDDL boundary is enforced before construction)",
+                        rest.field_name
+                    )
+                } else {
+                    format!(
+                        "* `{}` - the complete checked final authored exact-count occurrence-segment wrapper (its count-owned CDDL boundary is enforced before construction)",
+                        rest.field_name
+                    )
+                }
+            } else if !array_segment_is_final(record, rest) {
                 if rest.has_exact_occurrence_window() {
                     format!(
                         "* `{}` - the complete checked exact-count occurrence-segment wrapper before its mandatory fixed suffix (its CDDL occurrence window is enforced before construction)",
@@ -3651,7 +3711,16 @@ pub(super) fn codegen_struct(
                 .arg_ref_self()
                 .ret(gen_scope.wasm_return_type(types, &rest_ty, name, "open-rest getter return"))
                 .vis("pub")
-                .doc(if rest.is_array_tail() && !array_segment_is_final(record, rest) {
+                .doc(if rest.is_array_tail() && !record.array_segments.is_empty() {
+                    if !array_segment_is_final(record, rest) {
+                        "The captured bounded exact-count occurrence segment before the next authored \
+                         array member, as its checked wasm list wrapper; its count-owned boundary \
+                         delimits the segment."
+                    } else {
+                        "The captured final authored exact-count occurrence segment, as its checked \
+                         wasm list wrapper; its count-owned boundary is enforced before construction."
+                    }
+                } else if rest.is_array_tail() && !array_segment_is_final(record, rest) {
                     if rest.is_non_empty_array_tail() {
                         "The captured one-or-more major-disjoint occurrence segment before its \
                          mandatory fixed suffix (CDDL `+ t` / `1* t`), as the restricted wasm list \
@@ -3788,23 +3857,71 @@ pub(super) fn codegen_struct(
             }
             wrapper.s_impl.push_fn(insert);
         }
+        // The native constructor for a multiple exact-segment record deliberately follows CDDL
+        // source order.  The wasm surface keeps its established field-then-wrapper parameter
+        // layout, so assemble the native call independently instead of assuming both orders are
+        // identical (which would feed a list wrapper to the next fixed scalar).
+        let wasm_native_new_args =
+            if record.rep == Representation::Array && !record.array_segments.is_empty() {
+                let mut args: Vec<(usize, String)> = record
+                    .fields
+                    .iter()
+                    .filter(|field| {
+                        !field.optional
+                            && !field.rust_type.is_fixed_value()
+                            && field.rust_type.config.default.is_none()
+                    })
+                    .map(|field| {
+                        (
+                            field.source_index,
+                            ToWasmBoundaryOperations::format(
+                                field
+                                    .rust_type
+                                    .from_wasm_boundary_clone(types, &field.name, false)
+                                    .into_iter(),
+                            ),
+                        )
+                    })
+                    .chain(
+                        record
+                            .captured_dynamic_rows()
+                            .filter(|row| row.is_array_tail() && row.is_restricted())
+                            .map(|row| {
+                                let rest_ty = rest_member_type(row);
+                                (
+                                    row.array_source_index()
+                                        .expect("array segment has a source index"),
+                                    ToWasmBoundaryOperations::format(
+                                        rest_ty
+                                            .from_wasm_boundary_clone(types, &row.field_name, false)
+                                            .into_iter(),
+                                    ),
+                                )
+                            }),
+                    )
+                    .collect();
+                args.sort_by_key(|(source_index, _)| *source_index);
+                args.into_iter().map(|(_, arg)| arg).collect::<Vec<_>>()
+            } else {
+                wasm_new_args
+            };
         if new_can_fail {
             wasm_new.line(format!(
                 "{}::new({}).map(Into::into).map_err(Into::into)",
                 rust_crate_struct_from_wasm(types, name, cli),
-                wasm_new_args.join(", ")
+                wasm_native_new_args.join(", ")
             ));
         } else if wasm_new_can_fail {
             wasm_new.line(format!(
                 "Ok(Self({}::new({})))",
                 rust_crate_struct_from_wasm(types, name, cli),
-                wasm_new_args.join(", ")
+                wasm_native_new_args.join(", ")
             ));
         } else {
             wasm_new.line(format!(
                 "Self({}::new({}))",
                 rust_crate_struct_from_wasm(types, name, cli),
-                wasm_new_args.join(", ")
+                wasm_native_new_args.join(", ")
             ));
         }
         if !wasm_new_comments.is_empty() {
@@ -3851,6 +3968,12 @@ pub(super) fn codegen_struct(
     let mut native_new_comments = Vec::new();
     // for clippy we generate a Default impl if new has no args
     let mut new_arg_count = 0;
+    // The one-segment ABI historically groups fixed fields before its tail argument.  A multiple
+    // exact-segment record is new API, so give its constructor the authored positional order too:
+    // callers can read the signature as the CDDL array without mentally moving every segment to a
+    // synthetic tail section.
+    let multi_exact_array_segments =
+        record.rep == Representation::Array && !record.array_segments.is_empty();
     for field in &record.fields {
         // (a field whose type has no deserialize refuses this record's too — recorded ahead of the
         // emission walk by `seed_no_deserialize_verdicts`, which is where the reason text lives)
@@ -3882,13 +4005,17 @@ pub(super) fn codegen_struct(
                 )
             } else {
                 // new
-                native_new.arg(&field.name, field.rust_type.for_rust_move(types, cli));
-                if let Some(comment) = &field.rule_metadata.comment {
-                    native_new_comments.push(format!("* `{}` - {}", field.name, comment));
+                if !multi_exact_array_segments {
+                    native_new.arg(&field.name, field.rust_type.for_rust_move(types, cli));
+                    if let Some(comment) = &field.rule_metadata.comment {
+                        native_new_comments.push(format!("* `{}` - {}", field.name, comment));
+                    }
+                    new_arg_count += 1;
                 }
-                new_arg_count += 1;
                 native_new_block.line(format!("{},", field.name));
-                if let Some(line) = value_bounds_check_line(&field.rust_type, &field.name, true) {
+                if !multi_exact_array_segments
+                    && let Some(line) = value_bounds_check_line(&field.rust_type, &field.name, true)
+                {
                     native_new.line(&line);
                 }
                 // field
@@ -3996,7 +4123,17 @@ pub(super) fn codegen_struct(
             },
             rest_member_type(rest).for_rust_member(types, false, cli),
         );
-        rest_field.doc(if rest.is_array_tail() && !array_segment_is_final(record, rest) {
+        rest_field.doc(if rest.is_array_tail() && !record.array_segments.is_empty() {
+            if !array_segment_is_final(record, rest) {
+                "Captured exact-count occurrence-segment elements before the next authored array member, \
+                 whose count-owned CDDL boundary is enforced by this checked carrier. Serialized at its \
+                 authored source position; supplied complete to `new()`."
+            } else {
+                "Captured final authored exact-count occurrence-segment elements, whose count-owned CDDL \
+                 boundary is enforced by this checked carrier. Serialized at its authored source position; \
+                 supplied complete to `new()`."
+            }
+        } else if rest.is_array_tail() && !array_segment_is_final(record, rest) {
             if array_segment_uses_fixed_domain_retry(types, record, rest) {
                 if rest.is_restricted() {
                     "Captured bounded finite fixed-domain occurrence-segment elements before the \
@@ -4197,9 +4334,12 @@ pub(super) fn codegen_struct(
             }
         } else if rest.is_array_tail() && rest.is_restricted() {
             let rest_ty = rest_member_type(rest).for_rust_move(types, cli);
-            native_new.arg(&rest.field_name, &rest_ty);
-            new_arg_count += 1;
-            native_new_comments.push(if !array_segment_is_final(record, rest) {
+            if !multi_exact_array_segments {
+                native_new.arg(&rest.field_name, &rest_ty);
+                new_arg_count += 1;
+            }
+            if !multi_exact_array_segments {
+                native_new_comments.push(if !array_segment_is_final(record, rest) {
                 if rest.has_exact_occurrence_window() {
                     format!(
                         "* `{}` - the complete checked exact-count occurrence-segment carrier before its mandatory fixed suffix (its CDDL occurrence window is enforced by this carrier)",
@@ -4221,7 +4361,8 @@ pub(super) fn codegen_struct(
                     "* `{}` - the complete checked trailing-array carrier (its CDDL occurrence window is enforced by this carrier)",
                     rest.field_name
                 )
-            });
+                });
+            }
             native_new_block.line(format!("{},", rest.field_name));
         } else {
             native_new_block.line(format!(
@@ -4229,6 +4370,62 @@ pub(super) fn codegen_struct(
                 rest.field_name,
                 rest_container_ctor(rest, cli)
             ));
+        }
+    }
+    if multi_exact_array_segments {
+        let mut args: Vec<(usize, String, String, Option<String>)> = record
+            .fields
+            .iter()
+            .filter(|field| {
+                !field.optional
+                    && !field.rust_type.is_fixed_value()
+                    && field.rust_type.config.default.is_none()
+            })
+            .map(|field| {
+                (
+                    field.source_index,
+                    field.name.clone(),
+                    field.rust_type.for_rust_move(types, cli),
+                    field
+                        .rule_metadata
+                        .comment
+                        .as_ref()
+                        .map(|comment| format!("* `{}` - {comment}", field.name)),
+                )
+            })
+            .chain(
+                record
+                    .captured_dynamic_rows()
+                    .filter(|row| row.is_array_tail())
+                    .map(|row| {
+                        (
+                            row.array_source_index()
+                                .expect("array segment has a source index"),
+                            row.field_name.clone(),
+                            rest_member_type(row).for_rust_move(types, cli),
+                            Some(format!(
+                                "* `{}` - an authored exact-count array segment; its cardinality is enforced by this checked carrier",
+                                row.field_name
+                            )),
+                        )
+                    }),
+            )
+            .collect();
+        args.sort_by_key(|(source_index, _, _, _)| *source_index);
+        for (_, arg_name, arg_type, arg_comment) in args {
+            native_new.arg(&arg_name, arg_type);
+            new_arg_count += 1;
+            if let Some(comment) = arg_comment {
+                native_new_comments.push(comment);
+            }
+        }
+        for field in &record.fields {
+            if !field.optional
+                && !field.rust_type.is_fixed_value()
+                && let Some(line) = value_bounds_check_line(&field.rust_type, &field.name, true)
+            {
+                native_new.line(&line);
+            }
         }
     }
     // The open table's hand-written JSON face, in place of the derives suppressed above.

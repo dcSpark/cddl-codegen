@@ -1,5 +1,6 @@
 ---
 source: src/tests/snapshot_tests.rs
+assertion_line: 788
 expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
@@ -27,8 +28,8 @@ pub mod serialization;
 use crate::generated::bounded::BoundedVec;
 use crate::generated::non_empty::NonEmptyVec;
 use cbor_encodings::{
-    BoundedEncoding, CapAnyEncoding, CapEncoding, ExactMiddleEncoding, FixedMiddleEncoding,
-    InnerEncoding, MiddleEncoding, OuterEncoding, RequiredEncoding,
+    BoundedEncoding, CapAnyEncoding, CapEncoding, ExactMiddleEncoding, ExactSegmentsEncoding,
+    FixedMiddleEncoding, InnerEncoding, MiddleEncoding, OuterEncoding, RequiredEncoding,
 };
 
 #[derive(Clone, Debug)]
@@ -104,6 +105,41 @@ impl ExactMiddle {
             index_0,
             index_2,
             rest,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ExactSegments {
+    pub prefix: u64,
+    pub suffix: u64,
+    /// Captured exact-count occurrence-segment elements before the next authored array member, whose count-owned CDDL boundary is enforced by this checked carrier. Serialized at its authored source position; supplied complete to `new()`.
+    pub chunks: BoundedVec<u64, 2, 2>,
+    /// Captured exact-count occurrence-segment elements before the next authored array member, whose count-owned CDDL boundary is enforced by this checked carrier. Serialized at its authored source position; supplied complete to `new()`.
+    pub absent: BoundedVec<u64, 0, 0>,
+    /// Captured exact-count occurrence-segment elements before the next authored array member, whose count-owned CDDL boundary is enforced by this checked carrier. Serialized at its authored source position; supplied complete to `new()`.
+    pub values: BoundedVec<u64, 2, 2>,
+    pub encodings: Option<ExactSegmentsEncoding>,
+}
+
+impl ExactSegments {
+    /// * `chunks` - an authored exact-count array segment; its cardinality is enforced by this checked carrier
+    /// * `absent` - an authored exact-count array segment; its cardinality is enforced by this checked carrier
+    /// * `values` - an authored exact-count array segment; its cardinality is enforced by this checked carrier
+    pub fn new(
+        prefix: u64,
+        chunks: BoundedVec<u64, 2, 2>,
+        absent: BoundedVec<u64, 0, 0>,
+        values: BoundedVec<u64, 2, 2>,
+        suffix: u64,
+    ) -> Self {
+        Self {
+            prefix,
+            suffix,
+            chunks,
+            absent,
+            values,
             encodings: None,
         }
     }

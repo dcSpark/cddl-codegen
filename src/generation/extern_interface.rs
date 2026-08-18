@@ -2009,6 +2009,7 @@ mod tests {
             fields,
             forbidden_fields: vec![],
             rest: None,
+            array_segments: vec![],
             typed_row: None,
         }
     }

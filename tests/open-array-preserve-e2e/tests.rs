@@ -133,6 +133,24 @@ mod open_array_preserve {
     }
 
     #[test]
+    fn exact_segments_preserve_each_sidecar_and_canonicalize_in_place() {
+        // [7(as 0x1807), 2(as 0x1802), 1000, absent, 17(as 0x1811), 1001, 9(as 0x1809)].
+        // `chunks` and `values` each carry distinct positional encoding sidecars; `absent` is a
+        // real exact-zero carrier between them and consumes no wire item.
+        let wire = bytes("86 1807 1802 1903e8 1811 1903e9 1809");
+        let exact = ExactSegments::from_cbor_bytes(&wire).unwrap();
+        assert_eq!(exact.chunks.as_slice(), &[2, 1000]);
+        assert!(exact.absent.as_slice().is_empty());
+        assert_eq!(exact.values.as_slice(), &[17, 1001]);
+        assert_eq!(exact.to_cbor_bytes(), wire, "each exact segment replays its own sidecar");
+        assert_eq!(
+            exact.to_canonical_cbor_bytes(),
+            bytes("86 07 02 1903e8 11 1903e9 09"),
+            "canonical normalization stays in the authored positions across exact-zero"
+        );
+    }
+
+    #[test]
     fn fixed_domain_same_major_middle_commits_only_successful_repeat_sidecars() {
         // [7, 0(as 0x1800), 1(as 0x1801), 2(as 0x1802)]. The first two values are successful
         // fixed-choice repetitions; the failed retry on 2 rewinds before suffix decoding, so its

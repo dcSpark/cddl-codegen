@@ -990,8 +990,11 @@ by count, so `[uint, 2*2 uint, uint]` needs neither a major discriminator nor pr
 owned heads. The decoder therefore obeys RFC 8610 greedy, non-backtracking matching without suffix
 speculation; final and safe-middle forms share the
 carrier/projection paths covered by `contain.occurrence-target.grpent.member.{zero_array,plus_array,bounded_array}`.
+Two or more occurrence members are supported when every member has a unique explicit `@name` and a
+finite exact `N*N` window other than `1*1`: each is a separate flat `BoundedVec` and exact count is
+its wire boundary, including adjacent and same-major segments.
 
-Still rejected gracefully: multiple occurrence-bearing members; inline-group and group-choice-arm
+Still rejected gracefully: variable-cardinality multiple occurrence-bearing members; inline-group and group-choice-arm
 occurrences; and plain-group occurrences, including a sole homogeneous `[* pg]` — RFC 8610 repeats
 that group by concatenating its member sequence flat, while the ordinary collection carrier would
 serialize each group value as a nested array. Supporting it needs a dedicated flat, arity-aware
@@ -1000,7 +1003,7 @@ custom-owned, or direct opaque-extern wire head on its repeated element or suffi
 outside the delivered finite fixed-domain class (`[uint, * bytes, bytes]`). A mandatory outer tag or `.cbor` frame supplies a proven wire head and is therefore
 admissible even when its inner codec is custom- or extern-owned. Those boundaries are
 pinned by `occurrence_on_array_record_field_rejects_gracefully`. Remaining work is the design that can express
-multiple occurrences and variable-cardinality general same-major boundaries — value-level
+variable multiple occurrences and variable-cardinality general same-major boundaries — value-level
 discrimination or residue beyond finite fixed domains — without permitting a constructed value to serialize to bytes that do not
 deserialize back to it. Any expansion must retain the one-source checked-carrier
 construction door and cover serialization, deserialization, every generated projection, matrix

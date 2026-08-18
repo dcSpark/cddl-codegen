@@ -13126,6 +13126,8 @@ fn emit_tests_open_array_execute() {
         "roundtrip_bounded",
         "roundtrip_bounded_min",
         "roundtrip_bounded_zero",
+        "roundtrip_exact_segments",
+        "roundtrip_nested_exact_segments",
         "roundtrip_ign",
     ] {
         assert!(
@@ -13198,6 +13200,8 @@ fn emit_tests_open_array_execute() {
         "wasm_roundtrip_bounded",
         "wasm_roundtrip_bounded_min",
         "wasm_roundtrip_bounded_zero",
+        "wasm_roundtrip_exact_segments",
+        "wasm_roundtrip_nested_exact_segments",
     ] {
         assert!(
             wasm_src.contains(&format!("fn {ty}()")),

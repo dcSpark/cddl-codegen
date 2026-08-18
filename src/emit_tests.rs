@@ -53,7 +53,8 @@
 use crate::cli::Cli;
 use crate::intermediate::{
     ConceptualRustType, EnumVariant, EnumVariantData, FixedValue, IntermediateTypes, Primitive,
-    RestRow, RustField, RustIdent, RustRecord, RustStruct, RustStructType, RustType,
+    Representation, RestRow, RustField, RustIdent, RustRecord, RustStruct, RustStructType,
+    RustType,
 };
 use crate::utils::convert_to_snake_case;
 
@@ -948,13 +949,51 @@ pub(crate) fn record_wasm_ctor_can_fail(record: &RustRecord, types: &Intermediat
         })
 }
 
-/// The generated record constructor's argument types, in its exact field-then-dynamic-row order.
-/// This is shared with the wasm emitted-test renderer so an added valid-by-construction dynamic row
-/// cannot make that face silently drop the record's round-trip test.
+/// The source-indexed native constructor slots for a multiple-exact ARRAY record. Its new API is
+/// intentionally source-ordered; consumers whose own public ABI is field-then-wrapper (the wasm
+/// face) must project by this identity rather than zip positions.
+pub(crate) fn multi_exact_array_ctor_arg_slots(
+    record: &RustRecord,
+) -> Option<Vec<(usize, RustType)>> {
+    if record.rep != Representation::Array || record.array_segments.is_empty() {
+        return None;
+    }
+    let mut args: Vec<(usize, RustType)> = record
+        .fields
+        .iter()
+        .filter(|field| {
+            !field.optional
+                && !field.rust_type.is_fixed_value()
+                && field.rust_type.config.default.is_none()
+        })
+        .map(|field| (field.source_index, field.rust_type.clone()))
+        .chain(
+            record
+                .captured_dynamic_rows()
+                .filter(|row| row.is_array_tail())
+                .map(|row| {
+                    (
+                        row.array_source_index()
+                            .expect("array segment has a source index"),
+                        row.container_type(),
+                    )
+                }),
+        )
+        .collect();
+    args.sort_by_key(|(source_index, _)| *source_index);
+    Some(args)
+}
+
+/// The generated record constructor's argument types, in its exact native ABI order. This is
+/// source order for multiple-exact ARRAY records and the historic field-then-dynamic-row order
+/// otherwise.
 pub(crate) fn record_ctor_arg_types(
     record: &RustRecord,
     types: &IntermediateTypes,
 ) -> Vec<RustType> {
+    if let Some(slots) = multi_exact_array_ctor_arg_slots(record) {
+        return slots.into_iter().map(|(_, ty)| ty).collect();
+    }
     let mut args: Vec<RustType> = record
         .fields
         .iter()
@@ -1260,6 +1299,42 @@ fn record_roundtrip(
                 return None;
             }
         }
+    }
+    // Multiple exact array segments have a source-ordered native constructor.  The established
+    // one-segment emitter builds fixed arguments before the tail, so rebuild only this new shape's
+    // mint list with source indices instead of pairing a correct type list with stale values.
+    if record.rep == Representation::Array && !record.array_segments.is_empty() {
+        let mut ordered: Vec<(usize, MintValue)> = record
+            .fields
+            .iter()
+            .filter(|field| {
+                !field.optional
+                    && !field.rust_type.is_fixed_value()
+                    && field.rust_type.config.default.is_none()
+            })
+            .map(|field| {
+                (
+                    field.source_index,
+                    valid_value(types, &field.rust_type)
+                        .expect("already validated mandatory field mint"),
+                )
+            })
+            .chain(
+                record
+                    .captured_dynamic_rows()
+                    .filter(|row| row.is_array_tail() && row.is_restricted())
+                    .map(|row| {
+                        (
+                            row.array_source_index()
+                                .expect("array segment has a source index"),
+                            valid_value(types, &row.container_type())
+                                .expect("already validated exact segment mint"),
+                        )
+                    }),
+            )
+            .collect();
+        ordered.sort_by_key(|(source_index, _)| *source_index);
+        valid_args = ordered.into_iter().map(|(_, value)| value).collect();
     }
     let base = render_rust(&MintValue::Record {
         ident: name.to_owned(),
@@ -2427,6 +2502,17 @@ pub(crate) fn mint_struct(
     let name = ident.to_string();
     match rust_struct.variant() {
         RustStructType::Record(record) => {
+            if let Some(slots) = multi_exact_array_ctor_arg_slots(record) {
+                let args = slots
+                    .iter()
+                    .map(|(_, ty)| valid_value_at(types, ty, depth + 1))
+                    .collect::<Option<_>>()?;
+                return Some(MintValue::Record {
+                    ident: name,
+                    args,
+                    can_fail: record_ctor_can_fail(record, types),
+                });
+            }
             let ctor_fields: Vec<&RustField> = record
                 .fields
                 .iter()

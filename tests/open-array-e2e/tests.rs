@@ -286,6 +286,66 @@ mod open_array {
         );
     }
 
+    #[test]
+    fn multiple_exact_segments_own_adjacent_same_major_boundaries() {
+        let wire = bytes("88 07 41aa 41bb 6178 01 02 03 09");
+        let decoded = ExactSegments::from_cbor_bytes(&wire).unwrap();
+        assert_eq!(decoded.prefix, 7);
+        assert_eq!(decoded.chunks.as_slice(), &[vec![0xaa], vec![0xbb]]);
+        assert_eq!(decoded.separator, "x");
+        assert!(decoded.absent.as_slice().is_empty());
+        assert_eq!(decoded.values.as_slice(), &[1, 2, 3]);
+        assert_eq!(decoded.suffix, 9);
+        assert_eq!(decoded.to_cbor_bytes(), wire);
+
+        let indefinite = bytes("9f 07 41aa 41bb 6178 01 02 03 09 ff");
+        let decoded_indefinite = ExactSegments::from_cbor_bytes(&indefinite).unwrap();
+        assert_eq!(decoded_indefinite.chunks.as_slice(), decoded.chunks.as_slice());
+        assert_eq!(decoded_indefinite.values.as_slice(), decoded.values.as_slice());
+
+        let constructed = ExactSegments::new(
+            7,
+            BoundedVec::try_from(vec![vec![0xaa], vec![0xbb]]).unwrap(),
+            "x".to_owned(),
+            BoundedVec::try_from(Vec::<u64>::new()).unwrap(),
+            BoundedVec::try_from(vec![1, 2, 3]).unwrap(),
+            9,
+        );
+        assert_eq!(constructed.to_cbor_bytes(), wire);
+
+        // A third bytes item belongs to the fixed text separator position, not `chunks`; the
+        // decoder must reject there instead of greedily taking it as residue.  Conversely an item
+        // at exact-zero's position belongs to `values`, proving the zero segment consumes none.
+        assert_decode_reject_reason::<ExactSegments>(
+            &bytes("89 07 41aa 41bb 41cc 6178 01 02 03 09"),
+            "expected `Text' byte received `Bytes'",
+        );
+        assert_decode_reject_reason::<ExactSegments>(
+            &bytes("89 07 41aa 41bb 6178 00 01 02 03 09"),
+            "Definite length mismatch",
+        );
+    }
+
+    #[test]
+    fn trailing_exact_segments_delimit_every_boundary_by_count() {
+        let wire = bytes("85 01 02 03 04 05");
+        let decoded = TrailingExactSegments::from_cbor_bytes(&wire).unwrap();
+        assert_eq!(decoded.first.as_slice(), &[1, 2]);
+        assert_eq!(decoded.second.as_slice(), &[3, 4, 5]);
+        assert_eq!(decoded.to_cbor_bytes(), wire);
+
+        let constructed = TrailingExactSegments::new(
+            BoundedVec::try_from(vec![1, 2]).unwrap(),
+            BoundedVec::try_from(vec![3, 4, 5]).unwrap(),
+        );
+        assert_eq!(constructed.to_cbor_bytes(), wire);
+
+        let indefinite = TrailingExactSegments::from_cbor_bytes(&bytes("9f 01 02 03 04 05 ff"))
+            .expect("an indefinite owner still delimits the final exact segment");
+        assert_eq!(indefinite.first.as_slice(), &[1, 2]);
+        assert_eq!(indefinite.second.as_slice(), &[3, 4, 5]);
+    }
+
     // --- fixed-domain same-major middle segments ---
 
     #[test]

@@ -950,7 +950,7 @@ impl RustStruct {
 }
 
 // Regular struct with fields and such
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct RustRecord {
     pub rep: Representation,
     pub fields: Vec<RustField>,
@@ -967,6 +967,10 @@ pub struct RustRecord {
     /// row) or an `Array`-rep record (rest tail). `Box`ed to keep `RustRecord` (and the
     /// `EnumVariantData::Inlined` embedding it) small — `RestRow` holds one or two `RustType`s.
     pub rest: Option<Box<RestRow>>,
+    /// Later positional occurrence segments of an ARRAY record.  The first segment remains in
+    /// `rest` for the zero/one-segment ABI; this empty-by-default tail carries the remaining
+    /// exact-count segments in authored wire order.  Map records never populate it.
+    pub array_segments: Vec<RestRow>,
     /// The TYPED row of an OPEN TABLE (`t = { * K_t => V_t, * K_r => V_r }`) — the leading
     /// `* K_t => V_t` row that claims exactly its key's single statically-known CBOR major, with
     /// `rest` holding the trailing catch-all that sees only the complement. `None` for every other
@@ -982,6 +986,25 @@ pub struct RustRecord {
     /// deserialize loop is the delivered zero-declared-keys form, which already IS pure major-type
     /// dispatch.
     pub typed_row: Option<Box<RestRow>>,
+}
+
+// IR snapshots are a compatibility surface too.  Keep the empty-by-default extension invisible so
+// every existing closed/single-segment record retains its byte-identical debug projection; a
+// populated multi-segment record spells the new state explicitly for IR diagnostics.
+impl std::fmt::Debug for RustRecord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut debug = f.debug_struct("RustRecord");
+        debug
+            .field("rep", &self.rep)
+            .field("fields", &self.fields)
+            .field("forbidden_fields", &self.forbidden_fields)
+            .field("rest", &self.rest)
+            .field("typed_row", &self.typed_row);
+        if !self.array_segments.is_empty() {
+            debug.field("array_segments", &self.array_segments);
+        }
+        debug.finish()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1441,6 +1464,7 @@ impl RustRecord {
             .as_deref()
             .into_iter()
             .chain(self.rest.as_deref())
+            .chain(self.array_segments.iter())
     }
 
     /// Choose a deterministic generated identifier that cannot shadow a user-visible record field

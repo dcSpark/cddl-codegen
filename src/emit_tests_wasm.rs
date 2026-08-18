@@ -72,7 +72,8 @@
 use crate::cli::Cli;
 use crate::emit_tests::{
     self, MintValue, arg_can_fail, bound_cases, map_key_expr, map_key_literal, measure_kind,
-    mint_struct, record_ctor_arg_types, record_wasm_ctor_can_fail, valid_value, variant_arg_fields,
+    mint_struct, multi_exact_array_ctor_arg_slots, record_ctor_arg_types,
+    record_wasm_ctor_can_fail, valid_value, variant_arg_fields,
 };
 use crate::generation::rust_crate_struct_from_wasm;
 use crate::intermediate::{
@@ -509,6 +510,29 @@ fn record_wasm_ctor_args<'a>(
     if native_types.len() != native_args.len() {
         return None;
     }
+    if let Some(slots) = multi_exact_array_ctor_arg_slots(record) {
+        let native_by_source: BTreeMap<usize, (&RustType, &'a MintValue)> = slots
+            .iter()
+            .zip(native_args)
+            .map(|((source_index, ty), value)| (*source_index, (ty, value)))
+            .collect();
+        let mut wasm = Vec::new();
+        // The public wasm constructor keeps its shipped fixed-field-then-wrapper ABI. Look up
+        // each value by its native source-order slot rather than treating the two ABIs as aligned.
+        for field in record_ctor_fields(record) {
+            let (_, value) = native_by_source.get(&field.source_index)?;
+            wasm.push((field.rust_type.clone(), *value));
+        }
+        for row in record
+            .captured_dynamic_rows()
+            .filter(|row| row.is_array_tail() && row.is_restricted())
+        {
+            let source_index = row.array_source_index()?;
+            let (_, value) = native_by_source.get(&source_index)?;
+            wasm.push((row.container_type(), *value));
+        }
+        return Some(wasm);
+    }
     let mut native = native_types.iter().zip(native_args);
     let mut wasm = Vec::new();
     for field in record.fields.iter().filter(|field| {
@@ -794,7 +818,23 @@ fn wasm_record_roundtrip(
     // §3 accessor read-back: primitive/c-enum ctor getters against the emit-time literal.
     let ctor_fields = record_ctor_fields(record);
     let mut readbacks = Vec::new();
-    for (f, amv) in ctor_fields.iter().zip(args) {
+    let native_by_source: BTreeMap<usize, &MintValue> = multi_exact_array_ctor_arg_slots(record)
+        .map(|slots| {
+            slots
+                .iter()
+                .zip(args)
+                .map(|((source_index, _), value)| (*source_index, value))
+                .collect()
+        })
+        .unwrap_or_default();
+    for (index, f) in ctor_fields.iter().enumerate() {
+        let amv = native_by_source
+            .get(&f.source_index)
+            .copied()
+            .unwrap_or_else(|| {
+                args.get(index)
+                    .expect("record mint matches constructor fields")
+            });
         if let Some(expected) = scalar_readback(&f.rust_type, amv) {
             // read back on the freshly-BUILT value (not the post-wire `back`): a getter reads
             // `self.0` through its `to_wasm_boundary` conversion, so a broken conversion still
@@ -1066,13 +1106,18 @@ fn wasm_record_bounds(
     cli: &Cli,
 ) -> Option<String> {
     let ctor_fields = record_ctor_fields(record);
-    let ctor_arg_types = record_ctor_arg_types(record, types);
-    // baseline args for every constructor argument, including valid-by-construction dynamic rows.
-    let mut baseline: Vec<String> = Vec::new();
-    for ty in &ctor_arg_types {
-        let m = valid_value(types, ty)?;
-        baseline.push(wasm_arg(types, &m, ty, scoped, cli)?);
-    }
+    let native_types = record_ctor_arg_types(record, types);
+    let native_values: Vec<MintValue> = native_types
+        .iter()
+        .map(|ty| valid_value(types, ty))
+        .collect::<Option<_>>()?;
+    // The public wasm ABI can differ from native source order for multi-exact records. Reuse the
+    // identity-preserving projection used by round-trip mints before choosing an index to mutate.
+    let wasm_ctor_args = record_wasm_ctor_args(types, record, &native_values)?;
+    let baseline: Vec<String> = wasm_ctor_args
+        .iter()
+        .map(|(ty, value)| wasm_arg(types, value, ty, scoped, cli))
+        .collect::<Option<_>>()?;
     let mut lines = Vec::new();
     for (i, f) in ctor_fields.iter().enumerate() {
         if !bounded_scalar(&f.rust_type) {

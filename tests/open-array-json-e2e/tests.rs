@@ -138,6 +138,31 @@ mod open_array_json {
     }
 
     #[test]
+    fn exact_segments_json_round_trip_every_named_carrier() {
+        let value = ExactSegments::new(
+            7,
+            BoundedVec::try_from(vec![vec![0xaa], vec![0xbb]]).unwrap(),
+            BoundedVec::try_from(Vec::<u64>::new()).unwrap(),
+            BoundedVec::try_from(vec![2, 3, 4]).unwrap(),
+            "end".to_owned(),
+        );
+        let json = serde_json::to_value(&value).unwrap();
+        assert_eq!(json["chunks"], serde_json::json!([[170], [187]]));
+        assert_eq!(json["absent"], serde_json::json!([]));
+        assert_eq!(json["values"], serde_json::json!([2, 3, 4]));
+        let back: ExactSegments = serde_json::from_value(json).unwrap();
+        assert_eq!(back.chunks.as_slice(), &[vec![0xaa], vec![0xbb]]);
+        assert!(back.absent.as_slice().is_empty());
+        assert_eq!(back.values.as_slice(), &[2, 3, 4]);
+        assert_eq!(back.suffix, "end");
+
+        assert!(serde_json::from_str::<ExactSegments>(
+            r#"{"prefix":7,"chunks":[[170]],"absent":[],"values":[2,3,4],"suffix":"end"}"#
+        )
+        .is_err());
+    }
+
+    #[test]
     fn bounded_any_tail_stays_natural_and_non_injective_values_fail_loudly() {
         let bounded = BoundedAny::new(
             7,

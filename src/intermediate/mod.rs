@@ -4268,115 +4268,123 @@ impl<'a> IntermediateTypes<'a> {
             let RustStructType::Record(record) = rust_struct.variant() else {
                 continue;
             };
-            let Some(segment) = record.rest.as_deref() else {
-                continue;
-            };
-            let Some(segment_index) = segment.array_source_index() else {
-                continue;
-            };
+            for segment in record.dynamic_rows().filter(|row| row.is_array_tail()) {
+                let segment_index = segment
+                    .array_source_index()
+                    .expect("array occurrence segment has a source index");
 
-            // The long-established final-tail form needs no discriminator: it consumes the owner
-            // array through its boundary exactly as before.  Exact-zero metadata is included here
-            // so an occurrence followed only by a forbidden member is not mistaken for final.
-            let has_later_member = record
-                .fields
-                .iter()
-                .any(|field| field.source_index > segment_index)
-                || record
-                    .forbidden_fields
+                // An exact window owns its complete wire boundary by count.  This check must precede
+                // the fixed-suffix lookup: adjacent exact segments are valid even though the next
+                // authored member is another segment rather than a RustField.
+                if segment.has_exact_occurrence_window() {
+                    continue;
+                }
+
+                // The long-established final-tail form needs no discriminator: it consumes the owner
+                // array through its boundary exactly as before.  Exact-zero metadata is included here
+                // so an occurrence followed only by a forbidden member is not mistaken for final.
+                let has_later_member = record
+                    .fields
                     .iter()
-                    .any(|field| field.source_index > segment_index);
-            if !has_later_member {
-                continue;
-            }
+                    .any(|field| field.source_index > segment_index)
+                    || record
+                        .forbidden_fields
+                        .iter()
+                        .any(|field| field.source_index > segment_index)
+                    || record
+                        .dynamic_rows()
+                        .filter(|row| row.is_array_tail())
+                        .any(|other| {
+                            other
+                                .array_source_index()
+                                .is_some_and(|index| index > segment_index)
+                        });
+                if !has_later_member {
+                    continue;
+                }
 
-            let source_rule = self
-                .source_rule_name(rule_ident)
-                .unwrap_or(rule_ident.as_ref());
-            let Some(suffix) = record
-                .fields
-                .iter()
-                .find(|field| field.source_index == segment_index + 1)
-            else {
-                rejections.push(format!(
+                let source_rule = self
+                    .source_rule_name(rule_ident)
+                    .unwrap_or(rule_ident.as_ref());
+                let Some(suffix) = record
+                    .fields
+                    .iter()
+                    .find(|field| field.source_index == segment_index + 1)
+                else {
+                    rejections.push(format!(
                     "rule `{source_rule}`: the occurrence-bearing array member at position {} must \
                      be followed immediately by one mandatory, single-item fixed suffix so greedy \
                      decoding can stop without guessing. Frame the repeated part as its own array, \
                      move it final, or use a major-disjoint fixed suffix.",
                     segment_index + 1
                 ));
-                continue;
-            };
-            if suffix.optional {
-                rejections.push(format!(
+                    continue;
+                };
+                if suffix.optional {
+                    rejections.push(format!(
                     "rule `{source_rule}`: the immediate suffix `{}` after an occurrence-bearing \
                      array member must be mandatory — an optional suffix gives greedy decoding no \
                      certain boundary. Frame the repeated part as its own array, move it final, or \
                      make the suffix mandatory and major-disjoint.",
                     suffix.name
                 ));
-                continue;
-            }
-            if suffix.rust_type.expanded_field_count(self) != Some(1) {
-                rejections.push(format!(
+                    continue;
+                }
+                if suffix.rust_type.expanded_field_count(self) != Some(1) {
+                    rejections.push(format!(
                     "rule `{source_rule}`: the immediate suffix `{}` after an occurrence-bearing \
                      array member must expand to exactly one CBOR item, but this suffix can splice \
                      multiple items. Frame the repeated part as its own array, move it final, or use \
                      a single-item major-disjoint suffix.",
                     suffix.name
                 ));
-                continue;
-            }
-            // An exact window has its boundary in the occurrence count, not in the next item's
-            // major. It consequently needs neither a generator-proven wire head nor a disjoint
-            // major. All variable windows retain the established discriminator proof verbatim.
-            if segment.has_exact_occurrence_window() {
-                continue;
-            }
-            let repeated_majors = self.effective_wire_majors(segment.element());
-            // A field-local pair has no transparent alias metadata channel. Keep its existing
-            // graceful refusal even if the field's replaced Rust type itself has one known major.
-            let suffix_majors = if suffix.rule_metadata.custom_serialize.is_some()
-                || suffix.rule_metadata.custom_deserialize.is_some()
-            {
-                None
-            } else {
-                self.effective_wire_majors(&suffix.rust_type)
-            };
-            if repeated_majors.is_none() || suffix_majors.is_none() {
-                let positions = match (repeated_majors.is_none(), suffix_majors.is_none()) {
-                    (true, true) => "the repeated element and immediate suffix",
-                    (true, false) => "the repeated element",
-                    (false, true) => "the immediate suffix",
-                    (false, false) => unreachable!(),
+                    continue;
+                }
+                let repeated_majors = self.effective_wire_majors(segment.element());
+                // A field-local pair has no transparent alias metadata channel. Keep its existing
+                // graceful refusal even if the field's replaced Rust type itself has one known major.
+                let suffix_majors = if suffix.rule_metadata.custom_serialize.is_some()
+                    || suffix.rule_metadata.custom_deserialize.is_some()
+                {
+                    None
+                } else {
+                    self.effective_wire_majors(&suffix.rust_type)
                 };
-                rejections.push(format!(
+                if repeated_majors.is_none() || suffix_majors.is_none() {
+                    let positions = match (repeated_majors.is_none(), suffix_majors.is_none()) {
+                        (true, true) => "the repeated element and immediate suffix",
+                        (true, false) => "the repeated element",
+                        (false, true) => "the immediate suffix",
+                        (false, false) => unreachable!(),
+                    };
+                    rejections.push(format!(
                     "rule `{source_rule}`: {positions} around the occurrence-bearing array member \
                      have a custom- or extern-owned, otherwise-unproven wire head — greedy decoding \
                      must know both possible CBOR majors before it can prove the boundary. Frame the \
                      repeated part as its own array, move it final, or use a major-disjoint boundary \
                      with generator-proven wire heads."
                 ));
-                continue;
-            }
+                    continue;
+                }
 
-            let repeated_majors = repeated_majors.expect("checked above");
-            let suffix_majors = suffix_majors.expect("checked above");
-            let overlap = repeated_majors
-                .iter()
-                .filter(|major| suffix_majors.contains(major))
-                .map(|major| format!("{major:?}"))
-                .collect::<Vec<_>>();
-            if !overlap.is_empty() {
-                if self
-                    .has_disjoint_fixed_domain_middle_boundary(segment.element(), &suffix.rust_type)
-                {
-                    // Greedy still means no suffix speculation: the generated loop tries the
-                    // repeated decoder once on the real cursor and restores it only when that
-                    // decoder fails.  The finite domains prove a suffix byte can never be a
-                    // successful repeated value.
-                } else {
-                    rejections.push(format!(
+                let repeated_majors = repeated_majors.expect("checked above");
+                let suffix_majors = suffix_majors.expect("checked above");
+                let overlap = repeated_majors
+                    .iter()
+                    .filter(|major| suffix_majors.contains(major))
+                    .map(|major| format!("{major:?}"))
+                    .collect::<Vec<_>>();
+                if !overlap.is_empty() {
+                    if self.has_disjoint_fixed_domain_middle_boundary(
+                        segment.element(),
+                        &suffix.rust_type,
+                    ) {
+                        // Greedy still means no suffix speculation: the generated loop tries the
+                        // repeated decoder once on the real cursor and restores it only when that
+                        // decoder fails.  The finite domains prove a suffix byte can never be a
+                        // successful repeated value.
+                    } else {
+                        rejections.push(format!(
                         "rule `{source_rule}`: the occurrence-bearing array member at position {} and \
                          its immediate suffix `{}` share CBOR major type(s) {}. RFC 8610 repetition is \
                          greedy and does not backtrack, so the generator will not guess where the \
@@ -4389,25 +4397,26 @@ impl<'a> IntermediateTypes<'a> {
                         suffix.name,
                         overlap.join(", ")
                     ));
-                }
-            } else {
-                // Both boundaries reached their effective major sets and proved disjoint. Mark an
-                // alias chain only when its declaration supplied that effective set; a mandatory
-                // generated tag/`.cbor` frame wins without reading an inner declaration, which
-                // must remain inert. Marking keeps a re-alias's authored origin live too.
-                if self.middle_boundary_consumes_wire_major_declaration(segment.element()) {
-                    mark_wire_major_consumed(
-                        &segment.element().conceptual_type,
-                        self,
-                        &mut consumed,
-                    );
-                }
-                if self.middle_boundary_consumes_wire_major_declaration(&suffix.rust_type) {
-                    mark_wire_major_consumed(
-                        &suffix.rust_type.conceptual_type,
-                        self,
-                        &mut consumed,
-                    );
+                    }
+                } else {
+                    // Both boundaries reached their effective major sets and proved disjoint. Mark an
+                    // alias chain only when its declaration supplied that effective set; a mandatory
+                    // generated tag/`.cbor` frame wins without reading an inner declaration, which
+                    // must remain inert. Marking keeps a re-alias's authored origin live too.
+                    if self.middle_boundary_consumes_wire_major_declaration(segment.element()) {
+                        mark_wire_major_consumed(
+                            &segment.element().conceptual_type,
+                            self,
+                            &mut consumed,
+                        );
+                    }
+                    if self.middle_boundary_consumes_wire_major_declaration(&suffix.rust_type) {
+                        mark_wire_major_consumed(
+                            &suffix.rust_type.conceptual_type,
+                            self,
+                            &mut consumed,
+                        );
+                    }
                 }
             }
         }
@@ -8004,6 +8013,7 @@ mod registration_tests {
                 dispatch_major: None,
                 occurrence: None,
             })),
+            array_segments: vec![],
             typed_row: None,
         };
         types.rust_structs.insert(
