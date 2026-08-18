@@ -64,7 +64,7 @@
  * CHECK_ONLINE=1 skips the offline forcing; a pre-set CARGO_NET_OFFLINE=true skips the fetch.
  * The fast tier (CI) is untouched.
  *
- * SELF-COMPLETENESS (the systematic catch, TDD): the first gate `self_checks` runs six meta-checks
+ * SELF-COMPLETENESS (the systematic catch, TDD): the first gate `self_checks` runs seven meta-checks
  * so a new gate that nobody registers fails the run rather than silently not existing:
  *   1. ignored-test classification — every `#[ignore]` test must be registered here as either a
  *      manual gate (run it) or a known-failing stub (never run it, shown as STUB).
@@ -78,6 +78,9 @@
  *   5. `requires:` edges are well-formed — the `--only` dependency fence's only enforcement.
  *   6. registry/readme integrity — every gate is named in `tests/README.md`, and prose next to a
  *      concurrent group carries no authored cardinal count that can drift from the registry.
+ *   7. ignored-draft index ban — Git's index must contain no `draft/` path. `.gitignore` protects
+ *      ordinary adds but not `git add -f`; checking the index catches both staged and committed
+ *      violations before they can become another history-rewrite incident.
  *
  * Meta-checks mutation-verified red-first at landing (repo idiom):
  *   - adding a throwaway `#[ignore]` test           -> meta-check 1 FAILED (unclassified ignore)
@@ -1251,7 +1254,7 @@ function ignoredTestsFromCargo(): string[] {
   return names;
 }
 
-// ---- the six self-completeness meta-checks (first gate) ------------------------------------------
+// ---- the seven self-completeness meta-checks (first gate) ----------------------------------------
 function runSelfChecks(): Outcome {
   const problems: string[] = [];
   const warnings: string[] = [];
@@ -1336,6 +1339,27 @@ function runSelfChecks(): Outcome {
   // membership belongs solely to the registry and the runner's symbolic runtime receipt.
   problems.push(...registryReadmeIntegrityProblems(REGISTRY, readFileSync(join(ROOT, "tests/README.md"), "utf8")));
 
+  // 7. `draft/` is explicitly local-only and gitignored, but `git add -f` bypasses ignore rules.
+  // Query the INDEX, not the working tree: that catches a force-added path while it is merely
+  // staged, and keeps failing after a violating commit until the path is untracked. This is the
+  // systematic guard for a repeatedly observed agent failure, not a duplicate ignore-file check.
+  const trackedDraft = Bun.spawnSync(
+    ["git", "ls-files", "-z", "--", "draft/"],
+    { cwd: ROOT, stdout: "pipe", stderr: "pipe" },
+  );
+  if (trackedDraft.exitCode !== 0) {
+    problems.push(
+      `meta-7: could not inspect Git's index for tracked draft paths: ${trackedDraft.stderr.toString().trim()}`,
+    );
+  } else {
+    const paths = trackedDraft.stdout.toString().split("\0").filter(Boolean).sort();
+    if (paths.length > 0)
+      problems.push(
+        `meta-7: Git's index contains local-only draft path(s): ${paths.join(", ")} — ` +
+        "remove them with `git rm --cached -- <paths>`; never force-add anything under draft/",
+      );
+  }
+
   for (const w of warnings) console.log("  WARN " + w);
   if (problems.length) {
     for (const p of problems) console.log("  FAIL " + p);
@@ -1347,7 +1371,7 @@ function runSelfChecks(): Outcome {
       `${scripts.length} matrix script(s) covered, CI runs the fast tier only, ` +
       `${groups.size} concurrency group(s) well-formed, ` +
       `${REGISTRY.reduce((n, g) => n + (g.requires?.length ?? 0), 0)} requires-edge(s) well-formed, ` +
-      `tests/README.md covers every registry gate`,
+      `tests/README.md covers every registry gate, draft/ index empty`,
   );
   return { status: "PASS" };
 }
@@ -1599,7 +1623,7 @@ const MANUAL_HEAVY = "manual_heavy";
 
 export const REGISTRY: Gate[] = [
   { id: "self_checks", tier: "fast", kind: "fn", run: runSelfChecks,
-    desc: "self-completeness meta-checks (ignored-test + matrix-script + CI + registry/README coverage)" },
+    desc: "self-completeness meta-checks (ignored-test + matrix-script + CI + registry/README + draft-index coverage)" },
 
   // --- fast tier (CI + the inner loop) ---
   { id: "fmt", tier: "fast", kind: "cmd", cmd: ["cargo", "fmt", "--all", "--", "--check"],
