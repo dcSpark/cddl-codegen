@@ -256,7 +256,10 @@ impl GenerationScope {
                             false,
                             cli,
                         );
-                    } else if let Some((min, max)) = rt.bounded_array_u64_bounds() {
+                    } else if let Some((min, max)) = rt
+                        .exact_homogeneous_array_u64_bounds()
+                        .or_else(|| rt.bounded_array_u64_bounds())
+                    {
                         self.generate_bounded_array_type(
                             types,
                             (**inner).clone(),
@@ -905,7 +908,11 @@ fn requested_structural_name(
                     "NonEmpty{}List",
                     inner.wasm_boundary_identity_fragment(types)
                 )
-            } else if rt.bounded_array_u64_bounds().is_some() {
+            } else if rt
+                .exact_homogeneous_array_u64_bounds()
+                .or_else(|| rt.bounded_array_u64_bounds())
+                .is_some()
+            {
                 rt.bounded_wasm_array_structural_name(types)
             } else {
                 inner.name_as_wasm_array(types)
@@ -940,7 +947,11 @@ fn requested_structural_name(
 /// array always gets a wrapper class, so only the loose-array (`[* …]`) case can be exposable.
 fn requested_exposable_member(types: &IntermediateTypes, rt: &RustType) -> Option<String> {
     match &rt.conceptual_type {
-        ConceptualRustType::Array(inner) if !rt.is_non_empty_array() && !rt.is_bounded_array() => {
+        ConceptualRustType::Array(inner)
+            if !rt.is_non_empty_array()
+                && !rt.is_bounded_array()
+                && !rt.is_type_enforced_exact_homogeneous_array() =>
+        {
             if ConceptualRustType::Array(Box::new(inner.conceptual_type.clone().into()))
                 .directly_wasm_exposable_ct(types)
             {

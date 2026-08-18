@@ -210,7 +210,7 @@ impl RustType {
         ) {
             return None;
         }
-        exact_byte_array_len_from_bounds(self.config.bounds)
+        exact_array_len_from_bounds(self.config.bounds)
     }
 
     /// The checked, already parser-validated exact byte length used by generated type spelling.
@@ -219,6 +219,156 @@ impl RustType {
         self.exact_byte_array_len().map(|result| {
             result.expect("exact byte array length must be validated before generation")
         })
+    }
+
+    /// The one semantic recognition of an exact homogeneous CDDL array occurrence. As with an
+    /// exact byte `.size`, CDDL normalizes the zero lower endpoint away, so both `0*0` and `*0`
+    /// arrive as `(None, Some(0))`. Unlike bytes this is an occurrence constraint, and unlike a
+    /// reject-duplicates set its cardinality is the *only* invariant: `[T; N]` cannot encode a
+    /// wrong length but cannot encode uniqueness either.
+    ///
+    /// This is alias-aware for invariant decisions. Raw spelling decisions keep using the
+    /// conceptual-array check at their own seam so an authored alias remains an alias at a member
+    /// site.
+    pub fn exact_homogeneous_array_len(&self) -> Option<Result<usize, i128>> {
+        if !matches!(
+            self.conceptual_type.resolve_alias_shallow(),
+            ConceptualRustType::Array(_)
+        ) || self.duplicates_reject()
+        {
+            return None;
+        }
+        exact_array_len_from_bounds(self.config.bounds)
+    }
+
+    /// The checked, parser-validated static-array length used by generated Rust spelling.
+    pub fn exact_homogeneous_array_len_checked(&self) -> Option<usize> {
+        self.exact_homogeneous_array_len().map(|result| {
+            result.expect("exact homogeneous array length must be validated before generation")
+        })
+    }
+
+    /// Whether this type contains a native exact array wider than the pinned serde/schemars trait
+    /// implementations. This is independent of its JSON position; callers decide whether an
+    /// adapter owns that position or it must be refused before code generation.
+    pub fn contains_wide_static_array(&self) -> bool {
+        const PINNED_ARRAY_TRAIT_MAX: usize = 32;
+
+        fn contains_wide_static_array(ty: &RustType) -> bool {
+            ty.exact_homogeneous_array_len_checked()
+                .is_some_and(|len| len > PINNED_ARRAY_TRAIT_MAX)
+                || match ty.conceptual_type.resolve_alias_shallow() {
+                    ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
+                        contains_wide_static_array(inner)
+                    }
+                    ConceptualRustType::Map(key, value) => {
+                        contains_wide_static_array(key) || contains_wide_static_array(value)
+                    }
+                    _ => false,
+                }
+        }
+
+        contains_wide_static_array(self)
+    }
+
+    /// Whether this JSON-derived type would require serde/schemars traits on a wide (`> 32`)
+    /// native exact array at a position our generated adapters do not yet own. The adapters cover
+    /// a direct static array, its optional field form, and a loose `Vec<[T; N]>`; every other
+    /// container would otherwise emit a crate that fails only when rustc asks its derived impl for
+    /// the pinned libraries' missing wide-array trait. Keep this shape predicate in the IR, beside
+    /// the carrier recognition, so a graceful parser/finalize refusal and the roadmap describe the
+    /// same boundary.
+    pub fn has_unadapted_wide_static_array_json_shape(&self) -> bool {
+        const PINNED_ARRAY_TRAIT_MAX: usize = 32;
+
+        fn contains_wide_static_array_below(ty: &RustType) -> bool {
+            match ty.conceptual_type.resolve_alias_shallow() {
+                ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
+                    inner.contains_wide_static_array()
+                }
+                ConceptualRustType::Map(key, value) => {
+                    key.contains_wide_static_array() || value.contains_wide_static_array()
+                }
+                _ => false,
+            }
+        }
+
+        if !self.contains_wide_static_array() {
+            return false;
+        }
+        let resolved = self.conceptual_type.resolve_alias_shallow();
+        // A direct `[T; N]` is precisely what `static_array` adapts, provided its element does not
+        // itself contain an unsupported wide static array.
+        if self
+            .exact_homogeneous_array_len_checked()
+            .is_some_and(|len| len > PINNED_ARRAY_TRAIT_MAX)
+        {
+            return contains_wide_static_array_below(self);
+        }
+        match resolved {
+            // The optional field adapter owns `Option<[T; N]>`, but no deeper optional shape.
+            ConceptualRustType::Optional(inner)
+                if inner
+                    .exact_homogeneous_array_len_checked()
+                    .is_some_and(|len| len > PINNED_ARRAY_TRAIT_MAX)
+                    && !contains_wide_static_array_below(inner) =>
+            {
+                false
+            }
+            // The sequence adapter owns exactly loose `Vec<[T; N]>`, not bounded/non-empty or
+            // recursively nested array carriers.
+            ConceptualRustType::Array(inner)
+                if matches!(self.config.bounds, None | Some((None, None)))
+                    && inner
+                        .exact_homogeneous_array_len_checked()
+                        .is_some_and(|len| len > PINNED_ARRAY_TRAIT_MAX)
+                    && !contains_wide_static_array_below(inner) =>
+            {
+                false
+            }
+            _ => true,
+        }
+    }
+
+    /// Natural JSON has a separate adapter family for an exact static array whose ELEMENT is CDDL
+    /// `any`. A direct `[any; N]` is owned by that family, but putting it inside another container
+    /// would route through the typed static-array adapter and serialize `AnyCbor` with its tagged
+    /// codec. Refuse that nested shape until a compositional natural-any adapter exists.
+    pub fn has_unadapted_natural_any_static_array_json_shape(&self) -> bool {
+        fn is_direct_static_any(ty: &RustType) -> bool {
+            ty.exact_homogeneous_array_len_checked().is_some()
+                && matches!(
+                    ty.conceptual_type.resolve_alias_shallow(),
+                    ConceptualRustType::Array(inner)
+                        if matches!(
+                            inner.conceptual_type.resolve_alias_shallow(),
+                            ConceptualRustType::Any
+                        )
+                )
+        }
+        fn contains_direct_static_any(ty: &RustType) -> bool {
+            is_direct_static_any(ty)
+                || match ty.conceptual_type.resolve_alias_shallow() {
+                    ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
+                        contains_direct_static_any(inner)
+                    }
+                    ConceptualRustType::Map(key, value) => {
+                        contains_direct_static_any(key) || contains_direct_static_any(value)
+                    }
+                    _ => false,
+                }
+        }
+
+        contains_direct_static_any(self) && !is_direct_static_any(self)
+    }
+
+    /// Exact-array endpoints in the legacy occurrence-wrapper vocabulary. This is only for
+    /// preserving the established wasm structural class identity (`U64ListMin3Max3`); the native
+    /// carrier itself is `[T; 3]`, not `BoundedVec<T, 3, 3>`.
+    pub fn exact_homogeneous_array_u64_bounds(&self) -> Option<(u64, u64)> {
+        let len = self.exact_homogeneous_array_len_checked()?;
+        let len = u64::try_from(len).expect("portable Rust array length fits u64");
+        Some((len, len))
     }
 
     /// A total, identifier-safe spelling of the configuration that changes this type's semantic
@@ -377,9 +527,9 @@ impl RustType {
     }
 }
 
-/// Bounds-only half of [`RustType::exact_byte_array_len`].  Primitive decode owns only a copied
+/// Bounds-only half of the exact static-array recognizers. Primitive decode owns only a copied
 /// config window, so keep the tuple interpretation here instead of duplicating it there.
-pub fn exact_byte_array_len_from_bounds(
+pub fn exact_array_len_from_bounds(
     bounds: Option<(Option<i128>, Option<i128>)>,
 ) -> Option<Result<usize, i128>> {
     let (min, max) = bounds?;
@@ -436,6 +586,39 @@ mod exact_byte_array_len_tests {
             .exact_byte_array_len(),
             Some(Err(i128::from(i32::MAX) + 1))
         );
+    }
+
+    #[test]
+    fn exact_homogeneous_arrays_are_static_but_bytes_and_reject_sets_are_not() {
+        let array = |bounds| {
+            RustType::new(ConceptualRustType::Array(Box::new(RustType::new(
+                ConceptualRustType::Primitive(Primitive::U64),
+            ))))
+            .with_bounds(bounds)
+        };
+        assert_eq!(
+            array((Some(3), Some(3))).exact_homogeneous_array_len(),
+            Some(Ok(3))
+        );
+        assert_eq!(
+            array((Some(0), Some(0))).exact_homogeneous_array_len(),
+            Some(Ok(0))
+        );
+        assert_eq!(array((None, Some(3))).exact_homogeneous_array_len(), None);
+        assert_eq!(
+            array((
+                Some(i128::from(i32::MAX) + 1),
+                Some(i128::from(i32::MAX) + 1)
+            ))
+            .exact_homogeneous_array_len(),
+            Some(Err(i128::from(i32::MAX) + 1))
+        );
+        let reject = array((Some(3), Some(3)))
+            .with_duplicates_policy(Some(crate::comment_ast::DuplicatesPolicy::Reject));
+        assert_eq!(reject.exact_homogeneous_array_len(), None);
+        let bytes = RustType::new(ConceptualRustType::Primitive(Primitive::Bytes))
+            .with_bounds((Some(3), Some(3)));
+        assert_eq!(bytes.exact_homogeneous_array_len(), None);
     }
 }
 
@@ -775,6 +958,7 @@ impl RustType {
                     | ConceptualRustType::Primitive(Primitive::U16)
                     | ConceptualRustType::Primitive(Primitive::U32)
                     | ConceptualRustType::Primitive(Primitive::U64)
+                    | ConceptualRustType::Array(_)
             )
         {
             bounds.0 = None;
@@ -1079,6 +1263,7 @@ impl RustType {
     /// at each construction site. `[+ T]` deliberately remains the older NonEmpty sibling.
     pub fn is_bounded_array(&self) -> bool {
         matches!(self.conceptual_type, ConceptualRustType::Array(_))
+            && self.exact_homogeneous_array_len_checked().is_none()
             && matches!(self.config.bounds, Some(bounds) if bounds != (None, None) && bounds != (Some(1), None))
     }
 
@@ -1106,7 +1291,10 @@ impl RustType {
         )
         .then_some(())?;
         let (min, max) = self.config.bounds?;
-        if (min, max) == (None, None) || (min, max) == (Some(1), None) {
+        if (min, max) == (None, None)
+            || (min, max) == (Some(1), None)
+            || self.exact_homogeneous_array_len_checked().is_some()
+        {
             return None;
         }
         let min = min.unwrap_or(0).try_into().ok()?;
@@ -1265,6 +1453,13 @@ impl RustType {
         ) && self.type_enforced_bounded_array_u64_bounds().is_some()
     }
 
+    /// Alias-aware invariant decision for an ordinary/preserve exact homogeneous occurrence.
+    /// The native `[T; N]` carrier makes the cardinality static, while the CBOR/JSON/component
+    /// list boundaries still stage through `Vec<T>` and cross a single `TryFrom` handover.
+    pub fn is_type_enforced_exact_homogeneous_array(&self) -> bool {
+        self.exact_homogeneous_array_len_checked().is_some()
+    }
+
     /// Whether this type, at ANY nesting level, contains the `[+ T]` NonEmptyVec shape (so the
     /// crate needs the `non_empty` runtime module + import). Recurses into container inners.
     pub fn contains_non_empty_array(&self) -> bool {
@@ -1362,6 +1557,7 @@ impl RustType {
         // fallible — the invalid (empty) state is unrepresentable, not runtime-rejected. Covers both
         // inline `[+ T]` and a field referencing a named `[+ …]` rule (alias-resolving).
         if self.is_type_enforced_non_empty()
+            || self.is_type_enforced_exact_homogeneous_array()
             || self.is_type_enforced_bounded_array()
             || self.is_type_enforced_bounded_map()
         {
@@ -1413,7 +1609,8 @@ impl RustType {
             );
         };
         let (min, max) = self
-            .bounded_array_u64_bounds()
+            .exact_homogeneous_array_u64_bounds()
+            .or_else(|| self.bounded_array_u64_bounds())
             .expect("bounded wasm wrapper has representable bounds");
         let base = inner.wasm_boundary_identity_fragment(types);
         match (min, max == u64::MAX) {
@@ -1425,6 +1622,12 @@ impl RustType {
 
     pub fn bounded_wasm_wrapper_name(&self, types: &IntermediateTypes) -> String {
         let ConceptualRustType::Array(inner) = &self.conceptual_type else {
+            // An authored named exact array remains an alias at member positions. The static
+            // invariant is alias-aware, but naming is not: its established wasm class is the
+            // authored rule ident, whose Array struct mint owns the wrapper.
+            if let ConceptualRustType::Alias(AliasIdent::Rust(ident), _) = &self.conceptual_type {
+                return ident.to_string();
+            }
             unreachable!("bounded_wasm_wrapper_name on a non-array: {:?}", self);
         };
         let bounds = self
@@ -1575,6 +1778,9 @@ impl RustType {
         match &self.conceptual_type {
             ConceptualRustType::Array(inner) => {
                 let element = inner.for_rust_member(types, from_wasm, cli);
+                if let Some(len) = self.exact_homogeneous_array_len_checked() {
+                    return format!("[{element}; {len}]");
+                }
                 if let Some((min, max)) = self.bounded_array_u64_bounds() {
                     let max = if max == u64::MAX {
                         "{ u64::MAX }".to_owned()
@@ -1676,7 +1882,7 @@ impl RustType {
         if self.is_non_empty_array() {
             return self.non_empty_wasm_wrapper_name(types);
         }
-        if self.is_bounded_array() {
+        if self.is_type_enforced_exact_homogeneous_array() || self.is_bounded_array() {
             return self.bounded_wasm_wrapper_name(types);
         }
         if self.is_non_empty_map() {
@@ -1720,7 +1926,7 @@ impl RustType {
         if self.is_non_empty_array() {
             return format!("&{}", self.non_empty_wasm_wrapper_name(types));
         }
-        if self.is_bounded_array() {
+        if self.is_type_enforced_exact_homogeneous_array() || self.is_bounded_array() {
             return format!("&{}", self.bounded_wasm_wrapper_name(types));
         }
         if self.is_non_empty_map() {
@@ -1760,7 +1966,7 @@ impl RustType {
         if self.is_non_empty_array() {
             return self.non_empty_wasm_wrapper_name(types);
         }
-        if self.is_bounded_array() {
+        if self.is_type_enforced_exact_homogeneous_array() || self.is_bounded_array() {
             return self.bounded_wasm_wrapper_name(types);
         }
         if self.is_non_empty_map() {
@@ -1785,6 +1991,7 @@ impl RustType {
         // crosses the wasm boundary through its restricted wrapper class, never as a bare `Vec`: the
         // bare form would drop the invariant AND mismatch the rust core type. Same reason as `[+ T]`.
         if self.is_non_empty_array()
+            || self.is_type_enforced_exact_homogeneous_array()
             || self.is_bounded_array()
             || self.is_reject_ordered_set()
             || self.is_bounded_map()
@@ -1828,7 +2035,7 @@ impl RustType {
         if self.is_non_empty_array() {
             return self.non_empty_wasm_wrapper_name(types);
         }
-        if self.is_bounded_array() {
+        if self.is_type_enforced_exact_homogeneous_array() || self.is_bounded_array() {
             return self.bounded_wasm_wrapper_name(types);
         }
         if self.is_non_empty_map() {
@@ -1933,6 +2140,7 @@ impl RustType {
             return format!("{expr}.clone().map(|bytes| bytes.to_vec())");
         }
         if self.is_non_empty_array()
+            || self.is_type_enforced_exact_homogeneous_array()
             || self.is_bounded_array()
             || self.is_reject_ordered_set()
             || self.is_bounded_map()
@@ -1957,6 +2165,7 @@ impl RustType {
             return format!("{expr}.clone().flatten().map(|bytes| bytes.to_vec())");
         }
         if self.is_non_empty_array()
+            || self.is_type_enforced_exact_homogeneous_array()
             || self.is_bounded_array()
             || self.is_reject_ordered_set()
             || self.is_bounded_map()
@@ -1979,6 +2188,7 @@ impl RustType {
         can_fail: bool,
     ) -> Vec<ToWasmBoundaryOperations> {
         if self.is_non_empty_array()
+            || self.is_type_enforced_exact_homogeneous_array()
             || self.is_bounded_array()
             || self.is_reject_ordered_set()
             || self.is_bounded_map()
@@ -2000,7 +2210,11 @@ impl RustType {
     /// by-ref unchanged (both cross as `&Wrapper`).
     #[allow(clippy::wrong_self_convention)]
     pub fn from_wasm_boundary_ref(&self, types: &IntermediateTypes, expr: &str) -> String {
-        if self.is_non_empty_array() || self.is_bounded_array() || self.is_reject_ordered_set() {
+        if self.is_non_empty_array()
+            || self.is_type_enforced_exact_homogeneous_array()
+            || self.is_bounded_array()
+            || self.is_reject_ordered_set()
+        {
             return expr.to_owned();
         }
         self.conceptual_type.from_wasm_boundary_ref(types, expr)

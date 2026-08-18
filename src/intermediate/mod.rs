@@ -670,6 +670,7 @@ impl<'a> IntermediateTypes<'a> {
                     RustStructType::Array { bounds: Some(bounds), .. }
                         if *bounds != (None, None)
                             && *bounds != (Some(1), None)
+                            && exact_array_len_from_bounds(Some(*bounds)).is_none()
                             && rs.config().duplicates
                                 != Some(crate::comment_ast::DuplicatesPolicy::Reject)
                 )
@@ -683,7 +684,30 @@ impl<'a> IntermediateTypes<'a> {
                         row.is_array_tail()
                             && row.is_restricted()
                             && !row.is_non_empty_array_tail()
+                            && !row.container_type().is_type_enforced_exact_homogeneous_array()
                     }))
+            })
+    }
+
+    /// Whether the generated Rust surface contains an ordinary/preserve exact homogeneous array.
+    /// These arrays need the generic serde/schemars adapter on dependency pins that only implement
+    /// trait derives through length 32; exact bytes and reject sets are intentionally excluded.
+    pub fn uses_static_exact_array(&self) -> bool {
+        let mut found = false;
+        self.visit_all_rust_types(&mut |rt| found |= rt.is_type_enforced_exact_homogeneous_array());
+        found
+            || self.rust_structs.values().any(|rs| {
+                matches!(rs.variant(), RustStructType::Array { bounds: Some(bounds), .. }
+                    if exact_array_len_from_bounds(Some(*bounds)).is_some()
+                        && rs.config().duplicates
+                            != Some(crate::comment_ast::DuplicatesPolicy::Reject))
+            })
+            || self.rust_structs.values().any(|rs| {
+                matches!(rs.variant(), RustStructType::Record(record)
+                if record.dynamic_rows().any(|row| {
+                    row.is_array_tail()
+                        && row.container_type().is_type_enforced_exact_homogeneous_array()
+                }))
             })
     }
 
@@ -1083,6 +1107,132 @@ impl<'a> IntermediateTypes<'a> {
         }
     }
 
+    /// Refuse a JSON-derived surface before it reaches rustc when a wide native exact array sits in
+    /// a containing shape the current static-array adapters do not own. The representation itself
+    /// remains valid without JSON, and the directly adapted field/newtype/loose-sequence forms stay
+    /// accepted; this is solely the missing serde/schemars composition boundary.
+    fn reject_unadapted_wide_static_array_json_shapes(&mut self, cli: &Cli) {
+        if !(cli.json_serde_derives || cli.json_schema_export) {
+            return;
+        }
+        fn check(rejections: &mut BTreeSet<String>, rule: &RustIdent, site: &str, ty: &RustType) {
+            if ty.has_unadapted_wide_static_array_json_shape() {
+                rejections.insert(format!(
+                    "rule `{rule}`: {site} contains a wide exact homogeneous array in a JSON shape \
+                     the generated adapters do not yet compose through. The pinned serde/schemars \
+                     versions implement array traits only through length 32, so emitting this crate \
+                     would fail to compile. Generate without --json-serde-derives/--json-schema-export, \
+                     or restructure so the wide exact array is a direct field/newtype payload or a \
+                     loose `Vec<[T; N]>` element; optional/bounded sequences, map entries, and deeper \
+                     nesting are not supported with the JSON flags yet."
+                ));
+            }
+            if ty.has_unadapted_natural_any_static_array_json_shape() {
+                rejections.insert(format!(
+                    "rule `{rule}`: {site} nests an exact CDDL `any` array behind a JSON container \
+                     the natural-JSON adapters do not yet compose through. Emitting it would route \
+                     each AnyCbor element through its tagged AnyCbor JSON codec instead of the required \
+                     natural JSON value. Generate without --json-serde-derives/--json-schema-export, \
+                     or make the exact `any` array itself a direct field or newtype payload."
+                ));
+            }
+        }
+        let mut rejections = BTreeSet::new();
+        for rust_struct in self.rust_structs.values() {
+            if rust_struct.config().custom_json {
+                continue;
+            }
+            let rule = rust_struct.ident();
+            match rust_struct.variant() {
+                RustStructType::Record(record) => {
+                    for field in &record.fields {
+                        // Optionality is stored on RustField, not wrapped in the RustType. The
+                        // direct-array adapter owns `Option<[T; N]>`, but `Option<Vec<[T; N]>>`
+                        // would be routed through the non-optional sequence adapter and fail its
+                        // trait signature at rustc.
+                        if field.optional
+                            && field.rust_type.contains_wide_static_array()
+                            && field
+                                .rust_type
+                                .exact_homogeneous_array_len_checked()
+                                .is_none_or(|len| len <= 32)
+                        {
+                            rejections.insert(format!(
+                                "rule `{rule}`: optional field `{}` contains a wide exact homogeneous \
+                                 array behind a JSON container the generated adapters do not yet own. \
+                                 Generate without --json-serde-derives/--json-schema-export, or make the \
+                                 wide exact array itself the optional field payload."
+                                , field.name
+                            ));
+                            continue;
+                        }
+                        check(
+                            &mut rejections,
+                            rule,
+                            &format!("field `{}`", field.name),
+                            &field.rust_type,
+                        );
+                    }
+                    // Dynamic rows do not use the normal RustField annotation path. Even a direct
+                    // wide static row therefore has no generated serde/schemars adapter yet.
+                    for row in record.dynamic_rows() {
+                        let container = row.container_type();
+                        if container.has_unadapted_natural_any_static_array_json_shape() {
+                            rejections.insert(format!(
+                                "rule `{rule}`: open-array segment `{}` nests an exact CDDL `any` \
+                                 array behind a JSON container the natural-JSON adapters do not yet \
+                                 compose through. Emitting it would use tagged AnyCbor JSON rather \
+                                 than the required natural JSON value. Generate without \
+                                 --json-serde-derives/--json-schema-export, or make the exact `any` \
+                                 array a regular direct field/newtype payload instead."
+                                , row.field_name
+                            ));
+                        } else if container.contains_wide_static_array() {
+                            rejections.insert(format!(
+                                "rule `{rule}`: open-array segment `{}` contains a wide exact homogeneous \
+                                 array, but dynamic rows do not yet have a JSON static-array adapter. \
+                                 Generate without --json-serde-derives/--json-schema-export, or make the \
+                                 wide exact array a regular direct field/newtype payload instead."
+                                , row.field_name
+                            ));
+                        }
+                    }
+                }
+                RustStructType::Wrapper { wrapped, .. } => {
+                    check(&mut rejections, rule, "wrapper payload", wrapped);
+                }
+                RustStructType::GroupChoice { variants, .. }
+                | RustStructType::TypeChoice { variants } => {
+                    for variant in variants {
+                        match &variant.data {
+                            EnumVariantData::RustType(ty) => {
+                                check(&mut rejections, rule, "type-choice payload", ty)
+                            }
+                            EnumVariantData::Inlined(record) => {
+                                for field in &record.fields {
+                                    check(
+                                        &mut rejections,
+                                        rule,
+                                        &format!("type-choice field `{}`", field.name),
+                                        &field.rust_type,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+                RustStructType::Array { .. }
+                | RustStructType::Table { .. }
+                | RustStructType::CStyleEnum { .. }
+                | RustStructType::Extern
+                | RustStructType::RawBytesType => {}
+            }
+        }
+        for rejection in rejections {
+            self.record_rejection(rejection);
+        }
+    }
+
     /// Whether `name` is claimed by an exported source rule this crate owns — the namespace a
     /// synthesized wasm wrapper must not silently shadow. Read source-rule ownership from `scopes`,
     /// not the finalized struct/alias registries: those also contain generator-synthesized
@@ -1332,7 +1482,7 @@ impl<'a> IntermediateTypes<'a> {
             ty.reject_ordered_set_wasm_wrapper_name(self)
         } else if ty.is_non_empty_array() {
             ty.non_empty_wasm_wrapper_name(self)
-        } else if ty.is_bounded_array() {
+        } else if ty.is_type_enforced_exact_homogeneous_array() || ty.is_bounded_array() {
             ty.bounded_wasm_wrapper_name(self)
         } else if ty.is_non_empty_map() {
             ty.non_empty_wasm_map_wrapper_name(self)
@@ -1432,7 +1582,7 @@ impl<'a> IntermediateTypes<'a> {
             }
         }
         // Register the import of a DEFERRED loose LIST wrapper that a locally-minted restricted
-        // wrapper (`NonEmpty*List`, `BoundedVec`, or a named restricted rule's class) borrows as its `try_from`
+        // wrapper (`NonEmpty*List`, a bounded/static carrier, or a named restricted rule's class) borrows as its `try_from`
         // source. The `try_from(&<Elem>List)` reference is conversion-internal — invisible to the
         // field walk, the same class of problem as a map's `keys()`-list
         // (`register_deferred_keys_list`), solved the same way: follow the CLASS, not the using
@@ -1449,10 +1599,10 @@ impl<'a> IntermediateTypes<'a> {
             deferred: &BTreeMap<RustIdent, ModuleScope>,
             wrapper_ident: &RustIdent,
             elem: &RustType,
-            bounded_outer: bool,
+            always_needs_loose_source: bool,
         ) {
             if elem.vec_of_self_directly_wasm_exposable(types)
-                || (!bounded_outer && (elem.is_non_empty_array() || elem.is_bounded_array()))
+                || (!always_needs_loose_source && elem.is_non_empty_array())
             {
                 return;
             }
@@ -1549,7 +1699,7 @@ impl<'a> IntermediateTypes<'a> {
                 .insert(keys_ident);
         }
         // The non-deferred analogue of `register_deferred_restricted_list_source`: a restricted list
-        // wrapper (`NonEmpty*List`, `BoundedVec`, a named restricted rule, or a dedup owner) emitted at `emit_scope`
+        // wrapper (`NonEmpty*List`, a bounded/static carrier, a named restricted rule, or a dedup owner) emitted at `emit_scope`
         // borrows a LOOSE `<Elem>List` as its `try_from` source, and that loose builder is a locally
         // minted class (typically ROOT-minted). Its `try_from(&<Elem>List)` names the loose builder
         // bare in `emit_scope`, so import it there — the list twin of `register_root_keys_list`. Also
@@ -1570,11 +1720,11 @@ impl<'a> IntermediateTypes<'a> {
             emit_scope: &ModuleScope,
             wrapper_ident: &RustIdent,
             elem: &RustType,
-            bounded_outer: bool,
+            always_needs_loose_source: bool,
         ) {
             if !wasm
                 || elem.vec_of_self_directly_wasm_exposable(types)
-                || (!bounded_outer && (elem.is_non_empty_array() || elem.is_bounded_array()))
+                || (!always_needs_loose_source && elem.is_non_empty_array())
             {
                 return;
             }
@@ -1772,10 +1922,11 @@ impl<'a> IntermediateTypes<'a> {
                                 .or_default()
                                 .insert(wrapper.clone());
                         }
-                        // A RESTRICTED wrapper (`[+ …]` / `@duplicates reject`) borrows a LOOSE
+                        // A RESTRICTED wrapper (`[+ …]`, bounded/static ordinary list, or `@duplicates reject`) borrows a LOOSE
                         // `<Elem>List` as its `try_from` source, named bare in its emission scope —
                         // import it there (deferred + non-deferred analogues).
                         if ty.is_non_empty_array()
+                            || ty.is_type_enforced_exact_homogeneous_array()
                             || ty.is_bounded_array()
                             || ty.is_reject_ordered_set()
                         {
@@ -1785,7 +1936,9 @@ impl<'a> IntermediateTypes<'a> {
                                 deferred,
                                 &wrapper,
                                 elem_ty,
-                                ty.is_bounded_array(),
+                                (ty.is_bounded_array()
+                                    || ty.is_type_enforced_exact_homogeneous_array())
+                                    && !ty.is_reject_ordered_set(),
                             );
                             register_root_restricted_list_source(
                                 refs,
@@ -1796,7 +1949,9 @@ impl<'a> IntermediateTypes<'a> {
                                 &emit_scope,
                                 &wrapper,
                                 elem_ty,
-                                ty.is_bounded_array(),
+                                (ty.is_bounded_array()
+                                    || ty.is_type_enforced_exact_homogeneous_array())
+                                    && !ty.is_reject_ordered_set(),
                             );
                         }
                         // The wrapper's emitted code names its ELEMENT type bare in its EMISSION
@@ -1943,7 +2098,7 @@ impl<'a> IntermediateTypes<'a> {
                     // A NAMED rule whose emitted class borrows the LOOSE `<Elem>List` as its
                     // `try_from(&<Elem>List)` source names that builder bare in THIS scope. Three rule
                     // families do so: a restricted `[+ …]` rule (`generate_non_empty_array_type`), an
-                    // ordinary/preserve bounded rule (`generate_bounded_array_type`), and a
+                    // ordinary/preserve bounded/static rule (`generate_bounded_array_type`), and a
                     // `@duplicates reject` rule of ANY bounds (`generate_reject_ordered_set_type`) —
                     // a plain `[*] reject` set still enters through `try_from(&FooList)`, so gating on
                     // the non-empty bound alone left its loose-source import (at the rule's scope) and
@@ -1955,22 +2110,25 @@ impl<'a> IntermediateTypes<'a> {
                     // no-op even when it reaches here.
                     // LOCKSTEP: this gate mirrors the three restricted emitters' `loose_list`
                     // decisions — a reject rule emits `try_from(&Loose)` regardless of its `[*]`/`[+]`
-                    // bound, while a bounded outer also does so over a constrained element. Change
+                    // bound, while a bounded/static outer also does so over a constrained element. Change
                     // them together.
                     // A rule whose own wrapper DEFERRED (index mode unifying a rule ident with an
                     // indexed structural name) emits no class and therefore no `try_from` — it still
                     // reaches this gate, and the two helpers' own guards plus the usage-derived
                     // import prune leave it importing nothing, so the gate stays keyed on the rule's
                     // SHAPE rather than on a placement decision made in the generator.
-                    let bounded = rust_struct.config().duplicates
+                    let exact_static = exact_array_len_from_bounds(*bounds).is_some();
+                    let bounded = matches!(
+                        bounds,
+                        Some(window) if *window != (None, None) && *window != (Some(1), None)
+                    ) && !exact_static;
+                    let always_needs_loose_source = rust_struct.config().duplicates
                         != Some(crate::comment_ast::DuplicatesPolicy::Reject)
-                        && matches!(
-                            bounds,
-                            Some(window) if *window != (None, None) && *window != (Some(1), None)
-                        );
+                        && (bounded || exact_static);
                     if wasm
                         && (*bounds == Some((Some(1), None))
                             || bounded
+                            || exact_static
                             || rust_struct.config().duplicates
                                 == Some(crate::comment_ast::DuplicatesPolicy::Reject))
                     {
@@ -1986,7 +2144,7 @@ impl<'a> IntermediateTypes<'a> {
                             deferred,
                             &rust_struct.ident,
                             element_type,
-                            bounded,
+                            always_needs_loose_source,
                         );
                         // The non-deferred analogue: the loose `<Elem>List` is a locally (ROOT-)
                         // minted class the rule's `try_from(&<Elem>List)` names bare in THIS scope,
@@ -2001,7 +2159,7 @@ impl<'a> IntermediateTypes<'a> {
                             current_scope,
                             &rust_struct.ident,
                             element_type,
-                            bounded,
+                            always_needs_loose_source,
                         );
                     }
                     mark_refs(
@@ -2445,11 +2603,12 @@ impl<'a> IntermediateTypes<'a> {
             for (wid, rt) in requested {
                 match &rt.conceptual_type {
                     ConceptualRustType::Array(elem) => {
-                        // A restricted list (`[+ …]` / `@duplicates reject`) borrows a LOOSE `<Elem>List`
+                        // A restricted list (`[+ …]`, bounded/static ordinary list, or `@duplicates reject`) borrows a LOOSE `<Elem>List`
                         // as its `try_from` source, named bare at the emission scope. Import it there —
                         // unless that loose source is itself a hosted requested wrapper (same scope, no
                         // import; `register_root_*` would misroute the structural name to root).
                         if rt.is_non_empty_array()
+                            || rt.is_type_enforced_exact_homogeneous_array()
                             || rt.is_bounded_array()
                             || rt.is_reject_ordered_set()
                         {
@@ -2459,7 +2618,9 @@ impl<'a> IntermediateTypes<'a> {
                                 deferred,
                                 wid,
                                 elem,
-                                rt.is_bounded_array(),
+                                (rt.is_bounded_array()
+                                    || rt.is_type_enforced_exact_homogeneous_array())
+                                    && !rt.is_reject_ordered_set(),
                             );
                             let loose =
                                 RustIdent::new(CDDLIdent::new(elem.name_as_wasm_array(self)));
@@ -2473,7 +2634,9 @@ impl<'a> IntermediateTypes<'a> {
                                     req_scope,
                                     wid,
                                     elem,
-                                    rt.is_bounded_array(),
+                                    (rt.is_bounded_array()
+                                        || rt.is_type_enforced_exact_homogeneous_array())
+                                        && !rt.is_reject_ordered_set(),
                                 );
                             }
                         }
@@ -4569,6 +4732,10 @@ impl<'a> IntermediateTypes<'a> {
         // and only a post-generic-resolution pass sees a key hidden behind a resolved generic
         // instance. Parse decides SHAPE, finalize decides STATICNESS.
         self.derive_open_table_dispatch_majors(cli, &mut wire_major_consumed);
+        self.reject_unadapted_wide_static_array_json_shapes(cli);
+        if self.has_rejections() {
+            return Err(self.rejections_error());
+        }
         // recursively check all types used as keys or contained within a type used as a key
         // this is so we only derive comparison or hash traits for those types. Demand is propagated as
         // SETS (`DemandSet`), union-merged: a tagged root spreads ITS flavor to every contained type;
@@ -5640,11 +5807,14 @@ impl<'a> IntermediateTypes<'a> {
             let ConceptualRustType::Array(elem) = &rt.conceptual_type else {
                 return;
             };
-            if !rt.is_bounded_array() || rt.is_bounded_reject_ordered_set() {
+            if !(rt.is_type_enforced_exact_homogeneous_array() || rt.is_bounded_array())
+                || rt.is_bounded_reject_ordered_set()
+            {
                 return;
             }
             let (min, _) = rt
-                .bounded_array_u64_bounds()
+                .exact_homogeneous_array_u64_bounds()
+                .or_else(|| rt.bounded_array_u64_bounds())
                 .expect("bounded occurrence bounds were validated during parsing");
             if self
                 .bounded_array_named_owner(elem, rt.config.bounds.unwrap())
@@ -5709,7 +5879,8 @@ impl<'a> IntermediateTypes<'a> {
                     unreachable!("an array rest tail's container is an Array");
                 };
                 let (min, _) = container
-                    .bounded_array_u64_bounds()
+                    .exact_homogeneous_array_u64_bounds()
+                    .or_else(|| container.bounded_array_u64_bounds())
                     .expect("bounded array-tail occurrence bounds were validated during parsing");
                 if self
                     .bounded_array_named_owner(element, container.config.bounds.unwrap())

@@ -171,6 +171,7 @@ fn composed_runtime_static_files(
     include_ordered_set: bool,
     include_pair_map: bool,
     include_any_cbor: bool,
+    include_static_array_json: bool,
     include_open_struct_rest_json: bool,
     include_open_table_json: bool,
     include_double_option: bool,
@@ -186,6 +187,27 @@ fn composed_runtime_static_files(
         let content = std::fs::read_to_string(cli.static_dir.join("double_option_json.rs"))?;
         out.push((
             "double_option.rs".to_owned(),
+            rustfmt_generated_string(&content)?.into_owned(),
+        ));
+    }
+
+    // Generic `[T; N]` JSON adapters are required only on the older serde/schemars pin, whose
+    // blanket array derives stop at 32. Keep this own module so typed exact arrays do not depend on
+    // the AnyCbor runtime, and compose each half only under the dependency flag that provides it.
+    if include_static_array_json && (cli.json_serde_derives || cli.json_schema_export) {
+        let mut content = String::new();
+        if cli.json_serde_derives {
+            content.push_str(&std::fs::read_to_string(
+                cli.static_dir.join("static_array_json.rs"),
+            )?);
+        }
+        if cli.json_schema_export {
+            content.push_str(&std::fs::read_to_string(
+                cli.static_dir.join("static_array_schemars.rs"),
+            )?);
+        }
+        out.push((
+            "static_array.rs".to_owned(),
             rustfmt_generated_string(&content)?.into_owned(),
         ));
     }
@@ -486,6 +508,9 @@ fn composed_runtime_static_files(
                     cli.static_dir.join("any_cbor_bounded_json.rs"),
                 )?);
             }
+            any_cbor_rs.push_str(&std::fs::read_to_string(
+                cli.static_dir.join("any_cbor_static_json.rs"),
+            )?);
             if include_ordered_set {
                 any_cbor_rs.push_str(&std::fs::read_to_string(
                     cli.static_dir.join("any_cbor_bounded_ordered_set_json.rs"),
@@ -516,6 +541,9 @@ fn composed_runtime_static_files(
                     cli.static_dir.join("any_cbor_bounded_schemars.rs"),
                 )?);
             }
+            any_cbor_rs.push_str(&std::fs::read_to_string(
+                cli.static_dir.join("any_cbor_static_schemars.rs"),
+            )?);
             if include_ordered_set {
                 any_cbor_rs.push_str(&std::fs::read_to_string(
                     cli.static_dir
@@ -986,6 +1014,7 @@ impl GenerationScope {
                 types.uses_ordered_set() || self.requested_ordered_set,
                 types.uses_pair_map() || self.requested_pair_map,
                 types.uses_any_cbor(),
+                types.uses_static_exact_array(),
                 types.uses_open_struct_rest(),
                 types.uses_open_table(),
                 types.uses_double_option(),
@@ -1012,7 +1041,7 @@ impl GenerationScope {
             Some(export_crate) => {
                 let mut runtime_files = Vec::new();
                 for (filename, content) in &composed_runtime_static_files(
-                    cli, true, true, true, true, true, true, true, true, true, true,
+                    cli, true, true, true, true, true, true, true, true, true, true, true,
                 )? {
                     // Same injection as the in-crate composition above: these files land in a
                     // HAND-OWNED crate root that this tool never writes, so they cannot rely on a
@@ -2346,7 +2375,7 @@ mod static_runtime_dependency_bijection_tests {
             "--json-schema-export=true",
         ]);
         let mut sources: Vec<(String, String)> = composed_runtime_static_files(
-            &cli, true, true, true, true, true, true, true, true, true, true,
+            &cli, true, true, true, true, true, true, true, true, true, true, true,
         )
         .expect("maximal static runtime composition")
         .into_iter()

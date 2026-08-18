@@ -5363,7 +5363,7 @@ fn parse_group_type<'a>(
                     Some((None, None)) => {
                         return GroupParsingType::HomogenousArray(elem_type, None);
                     }
-                    None | Some((Some(1), Some(1))) => {
+                    None => {
                         // if the only element is a basic group we don't need to create a new group but can just
                         // change how it is (de)serialized
                         if let ConceptualRustType::Rust(elem_ident) =
@@ -5373,6 +5373,32 @@ fn parse_group_type<'a>(
                             return GroupParsingType::WrappedBasicGroup(elem_type.not_basic());
                         }
                         // fall-through generic case. this is a general 1-element struct that needs creating
+                    }
+                    // An explicit `1*1` is semantically an occurrence collection even though its
+                    // wire count equals an unmarked one-item record. Preserve that authored
+                    // collection identity: a named `one = [1*1 uint]` consequently registers the
+                    // same exact static `[u64; 1]` alias as every other exact homogeneous window.
+                    // Two shapes intentionally retain the record/splice path: a fixed value has
+                    // no storable array element type, and a plain group must serialize flat rather
+                    // than as a nested `[Group; 1]`. An exactly-once member in a heterogeneous
+                    // record likewise remains scalar.
+                    Some((Some(1), Some(1))) => {
+                        if matches!(
+                            elem_type.conceptual_type.resolve_alias_shallow(),
+                            ConceptualRustType::Fixed(_)
+                        ) {
+                            // Fall through to the one-member record lowering below.
+                        } else if let ConceptualRustType::Rust(elem_ident) =
+                            elem_type.conceptual_type.resolve_alias_shallow()
+                            && types.is_plain_group(elem_ident)
+                        {
+                            return GroupParsingType::WrappedBasicGroup(elem_type.not_basic());
+                        } else {
+                            return GroupParsingType::HomogenousArray(
+                                elem_type,
+                                Some((Some(1), Some(1))),
+                            );
+                        }
                     }
                     Some(bounds) => {
                         return GroupParsingType::HomogenousArray(elem_type, Some(bounds));
@@ -6057,6 +6083,9 @@ fn rust_type_from_type1(
     if let Some(Err(length)) = result.exact_byte_array_len() {
         types.record_rejection(exact_byte_array_length_rejection(length));
     }
+    if let Some(Err(length)) = result.exact_homogeneous_array_len() {
+        types.record_rejection(exact_homogeneous_array_length_rejection(length));
+    }
     result
 }
 
@@ -6065,6 +6094,15 @@ fn rust_type_from_type1(
 fn exact_byte_array_length_rejection(length: i128) -> String {
     format!(
         "exact byte-string length `{length}` cannot be represented as a Rust array length on every supported target"
+    )
+}
+
+/// The shared graceful refusal for an exact homogeneous-array occurrence that cannot become a
+/// Rust static array on every supported target. Both direct/member and nested array routes pass
+/// through `rust_type_from_type1` after occurrence bounds are attached.
+fn exact_homogeneous_array_length_rejection(length: i128) -> String {
+    format!(
+        "exact homogeneous array length `{length}` cannot be represented as a Rust array length on every supported target"
     )
 }
 
@@ -8991,6 +9029,19 @@ fn parse_group_choice(
                         Representation::Array,
                         cli,
                     );
+                }
+                // A named homogeneous-array rule does not travel through the member `Type1`
+                // walker below, so validate its exact occurrence count here as well. Keep the
+                // effective rule policy: exact reject sets stay BoundedOrderedSet rather than
+                // becoming Rust arrays and therefore have no static-array object-size demand.
+                let effective_metadata =
+                    single_arm_array_effective_metadata(&rule_metadata, tag, name);
+                let array_type =
+                    RustType::new(ConceptualRustType::Array(Box::new(element_type.clone())))
+                        .with_bounds(bounds.unwrap_or((None, None)))
+                        .with_duplicates_policy(effective_metadata.duplicates);
+                if let Some(Err(length)) = array_type.exact_homogeneous_array_len() {
+                    types.record_rejection(exact_homogeneous_array_length_rejection(length));
                 }
                 // Covers non-generic set rules (Phase 2.2) and generic single-arm set DEFS (Phase 2.3):
                 // a generic def stores the wrapper (param element) as a `GenericDef`, and each

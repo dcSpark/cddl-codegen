@@ -26,20 +26,20 @@ use crate::generated::non_empty::NonEmptyVec;
 /// `[2*5 uint]`: inclusive length window enforced at the `BoundedVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
 pub type Bounded = BoundedVec<u64, 2, 5>;
 
-/// `[2*2 uint]`: inclusive length window enforced at the `BoundedVec` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
-pub type Exact = BoundedVec<u64, 2, 2>;
+/// `[2*2 uint]`: exact static `[T; N]` carrier; the list wrapper's `TryFrom<Vec<_>>` door performs the checked Vec-to-array handover (and the CBOR decoder crosses that same door).
+pub type Exact = [u64; 2];
 
 #[derive(Clone, Debug)]
 pub struct ExactMiddleOccurrence {
     pub prefix: u64,
     pub suffix: u64,
     /// Captured exact-count occurrence-segment elements before the mandatory fixed suffix, whose inclusive CDDL occurrence window is enforced by this checked carrier. Serialized at its authored source position; supplied complete to `new()`.
-    pub rest: BoundedVec<u64, 2, 2>,
+    pub rest: [u64; 2],
 }
 
 impl ExactMiddleOccurrence {
     /// * `rest` - the complete checked exact-count occurrence-segment carrier before its mandatory fixed suffix (its CDDL occurrence window is enforced by this carrier)
-    pub fn new(prefix: u64, suffix: u64, rest: BoundedVec<u64, 2, 2>) -> Self {
+    pub fn new(prefix: u64, suffix: u64, rest: [u64; 2]) -> Self {
         Self {
             prefix,
             suffix,
@@ -91,7 +91,7 @@ pub struct OccurrenceHolder {
     pub inline_upper: BoundedVec<u64, 0, 5>,
     pub inline_lower: BoundedVec<u64, 2, { u64::MAX }>,
     pub inline_maybe: BoundedVec<u64, 0, 1>,
-    pub inline_exact: BoundedVec<u64, 2, 2>,
+    pub inline_exact: [u64; 2],
 }
 
 impl OccurrenceHolder {
@@ -108,7 +108,7 @@ impl OccurrenceHolder {
         inline_upper: BoundedVec<u64, 0, 5>,
         inline_lower: BoundedVec<u64, 2, { u64::MAX }>,
         inline_maybe: BoundedVec<u64, 0, 1>,
-        inline_exact: BoundedVec<u64, 2, 2>,
+        inline_exact: [u64; 2],
     ) -> Self {
         Self {
             o,

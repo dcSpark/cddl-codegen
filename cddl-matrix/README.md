@@ -193,8 +193,9 @@ the guard that replaced the silent truncation this row's vector exposed; pinned 
 `signed_ints_width_rejects` / `width_collapse_rejects` execution fixtures),
 the eight `rangeop` rows (`rangeop.{inclusive,exclusive}` plus their head-type × sign variation
 rows `.int`/`.nint`/`.float`), the three occurrence-bound rows `occur.bounded{,.lower,.upper}`
-(out-of-count arrays against the generated bounded collection conversion door — `BoundedVec` or
-`BoundedOrderedSet` for reject sets), and the three fixed-value lexeme
+(out-of-count arrays against the generated collection handover — `BoundedVec` for variable
+windows, `[T; N]` conversion for exact ordinary windows, or `BoundedOrderedSet` for reject sets),
+and the three fixed-value lexeme
 rows `value.number.{hexfloat,hex,bin}` (wrong-value instances against the fixed 3.0 / 16 / 10,
 rejected as FixedValueMismatch — hex/bin carry hand pins including `[0]`, the silent-zero
 radix-conversion trap), the fixed-selector MEMBER-equality family

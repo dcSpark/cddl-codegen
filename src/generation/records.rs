@@ -518,7 +518,14 @@ fn generate_array_segment_deserialization(
     if rest.semantics == RestSemantics::Capture {
         let rest_expr = if rest.is_restricted() {
             let carrier = rest_member_type(rest).for_rust_member(types, false, cli);
-            format!("<{carrier}>::try_from({})?", rest.field_name)
+            if let Some(len) = rest.container_type().exact_homogeneous_array_len_checked() {
+                format!(
+                    "<{carrier}>::try_from({}).map_err(|elements: Vec<_>| DeserializeFailure::RangeCheck{{ found: elements.len() as i128, min: Some({len}), max: Some({len}) }})?",
+                    rest.field_name
+                )
+            } else {
+                format!("<{carrier}>::try_from({})?", rest.field_name)
+            }
         } else {
             rest.field_name.clone()
         };
@@ -4067,12 +4074,28 @@ pub(super) fn codegen_struct(
             // `[* any]` array member (`Seq`), and a `{* K => any}` table member with a stringifiable
             // (non-`any`) key — `Map` (non-preserve `BTreeMap`) / `OrderedMap` (preserve
             // `OrderedHashMap`) — plus the optional (`? N: …` → `Option<…>`) counterpart of each.
-            if !config.custom_json
-                && let Some(position) =
+            if !config.custom_json {
+                if let Some(position) =
                     super::natural_any_position(&field.rust_type, field.optional, cli)
-            {
-                for annotation in super::natural_any_serde_annotations(cli, position) {
-                    codegen_field.annotation(annotation);
+                {
+                    for annotation in super::natural_any_serde_annotations(cli, position) {
+                        codegen_field.annotation(annotation);
+                    }
+                } else {
+                    for annotation in super::static_array_serde_annotations(
+                        types,
+                        &field.rust_type,
+                        field.optional,
+                        cli,
+                    )
+                    .into_iter()
+                    .chain(super::static_array_sequence_serde_annotations(
+                        types,
+                        &field.rust_type,
+                        cli,
+                    )) {
+                        codegen_field.annotation(annotation);
+                    }
                 }
             }
             // A member that is BOTH optional and nullable is stored as a nested `Option<Option<…>>`,
@@ -4263,6 +4286,10 @@ pub(super) fn codegen_struct(
                         cli,
                         if rest.is_non_empty_array_tail() {
                             super::NaturalAnyPosition::NonEmptySeq
+                        } else if let Some(len) =
+                            rest.container_type().exact_homogeneous_array_len_checked()
+                        {
+                            super::NaturalAnyPosition::StaticSeq(len)
                         } else if rest.is_restricted() {
                             let (min, max) = rest
                                 .occurrence

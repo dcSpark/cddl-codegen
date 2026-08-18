@@ -1353,8 +1353,9 @@ once-per-ident set lets all three coexist.
 The three cells above and their ~20 siblings elsewhere are INCIDENT-shaped — each records the exact
 configuration of one past escape. `wrapper_participation_tests` is the ENUMERATION beside them:
 `PARTICIPATION_TABLE` is the grid AS DATA over emission MODE (`Local` control / `IndexDeferred` /
-`WorkspaceBorrowed` / `RequestedHosted`) × wrapper SHAPE (loose list, loose map, NonEmpty list,
-NonEmpty map, named table rule, `@duplicates reject` set, `@duplicates preserve` pair map) ×
+`WorkspaceBorrowed` / `RequestedHosted`) × wrapper SHAPE (loose list, exact static list, loose map,
+NonEmpty list, NonEmpty map, named table rule, `@duplicates reject` set, `@duplicates preserve`
+pair map) ×
 reference POSITION (inline-anonymous member, named-rule DECLARATION whose ident equals the structural
 name, named-rule REFERENCE, non-root declaring scope). Each row states its expected `Outcome`
 (`Defer` / `Borrow` / `Host` / `LocalWarned(<which warning>)` / `LocalSilent(<why silence is
@@ -1363,11 +1364,14 @@ REFERENCED rather than rebuilt — so the module's generated crates cover exactl
 did, and a new shape or mode is one table row rather than a new function. Each row's CDDL is DERIVED
 from its axes, and each owns a distinct element ident, so one generated crate carries a whole mode.
 
-Two participation facts the grid encodes rather than assumes: a reject set participates in every mode
-like the loose and NonEmpty twins (one seam, so an inline occurrence defers/borrows and a
+Three participation facts the grid encodes rather than assumes: a reject set participates in every
+mode like the loose and NonEmpty twins (one seam, so an inline occurrence defers/borrows and a
 rule-declared one is either the index mode's name-only unification or criterion 9's local shadow),
 and a reject wrapper that DEFERS borrows the dependency's `try_from` door with it, so the
-loose-source companion belongs only to the rows that mint locally; and the name-only index is
+loose-source companion belongs only to the rows that mint locally; an exact static list has the same
+split — a local or requested `[T; N]` wasm class owns its loose `<Elem>List` Vec-to-array source,
+whereas a wholly deferred/borrowed class owns no local source — with the local non-root, deferred,
+and requested rows pinning its root/dependency/host import homes; and the name-only index is
 flavor-SAFE by construction, because the structural name
 carries the container (`PairMapKToV` vs `MapKToV`), which makes a preserve table an ordinary shape
 row rather than a hazard cell. `wrapper_participation_table_is_complete_and_live` is the grid's own
@@ -1632,10 +1636,10 @@ back via `--extern-import` in place of a hand-stub tree (user docs:
   header / unknown version / unknown `@`-annotation / flag-vs-physical double declaration / empty
   path / malformed value all hard-error; an export whose `; unexported:` records mention DSL tags
   still parses cleanly), the wrapped staleness diagnostic, single-file-consumer ROOT_SCOPE
-  preservation, and `extern_import_roundtrips_exact_bytes_without_consuming_fixed_arrays` (exact
+  preservation, and `extern_import_roundtrips_exact_bytes_and_static_fixed_arrays` (exact
   byte lengths 0 and 64 remain `[u8; N]` in the dependency, their constraints survive the
   transparent-group export/import into the consumer's dependency-owned names, and the adjacent
-  exact homogeneous CDDL array remains `BoundedVec`).
+  exact homogeneous CDDL array is independently `[u64; 3]`).
 - **Writer vocabulary** (same file, `EXTERN_INTERFACE_WRITER_VOCABULARY` +
   `extern_interface_writer_vocabulary_matches_the_writers`): every `@…` annotation
   `generation/extern_interface.rs`'s rule-line assembly can WRITE into an export, paired with the
@@ -2190,7 +2194,12 @@ does not prove an optional-prefix dispatch boundary: its optional/reachable-foll
 be generator-proven and major-disjoint, so a custom codec or opaque extern on either side is
 serialize-only unless mandatory outer tag/`.cbor` framing proves the distinction. Loose `* t` / `0* t` uses default-empty `Vec<T>`; one-or-more
 `+ t` / `1* t` uses `NonEmptyVec<T>` and its first-element construction ABI; every other window uses
-a complete checked `BoundedVec<T, MIN, MAX>` constructor argument. The middle boundary deliberately
+a complete checked `BoundedVec<T, MIN, MAX>` constructor argument for variable windows; exact
+ordinary windows are `[T; N]` and their CBOR/component list inputs make one checked `Vec`
+handover. JSON adapters cover direct/optional fields and newtype choices (including natural exact
+`any` arrays), plus loose `Vec<[T; N]>` elements when `T` is not `any`; unadapted containing shapes
+are refused before codegen and remain explicitly roadmapped. Exact reject windows remain
+`BoundedOrderedSet<T, N, N>`. The middle boundary deliberately
 honors RFC 8610 greedy non-backtracking decoding: general same-major/value-discriminator suffixes
 beyond finite fixed domains need a future design rather than a guessed decoder. User docs: `docs/docs/output_format.mdx` § "Open arrays",
 `docs/docs/comment_dsl.mdx` § "@ignore". It is verified across the layers:
@@ -2200,7 +2209,7 @@ beyond finite fixed domains need a future design rather than a guessed decoder. 
   `robustness_tests::occurrence_on_array_record_field_rejects_gracefully` cover leading/middle
   loose/min-one success plus exact same-major/zero success without a suffix wire-head discriminator,
   and multiple named exact-count segments (including adjacent/same-major and exact-zero boundaries)
-  with separate checked carriers and count-owned decoder loops;
+  with separate static-array carriers and count-owned decoder loops;
   the variable-zero-minimum/non-empty/exact-zero optional-prefix distinctions; two-sided
   unproven-head optional-dispatch refusals and mandatory-framing controls; and
   declared repeated/suffix success, re-alias inheritance, emitted-major replacement, and

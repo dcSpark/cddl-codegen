@@ -525,7 +525,7 @@ fn emitted_bounds_site_differential_and_wart_scan() {
     for expected in [
         "BoundsMembers::new(vec![0u8; 2]",
         "BoundsMembers::new(vec![0u8; 4]",
-        "v.m_optional_size = Some(vec![0u8; 3].try_into().unwrap());",
+        "v.m_optional_size = Some(<[_; 3]>::try_from(vec![0u8; 3]).unwrap());",
         "WExactSize::new(vec![0u8; 2]).unwrap_err()",
         "WExactSize::new(vec![0u8; 4]).unwrap_err()",
     ] {
@@ -835,9 +835,9 @@ fn rust_emitted_tests_tighten_exact_byte_direct_storage_only() {
         .expect("rust emitted-test module must be emitted");
     let flat: String = rust.split_whitespace().collect();
     for direct_storage in [
-        "v.fixed_byte_list=Some(vec![vec![0u8;4].try_into().unwrap();1]);",
-        "v.rest.insert(\"a\".repeat(1),vec![0u8;4].try_into().unwrap());",
-        "v.entries.insert(vec![0u8;4].try_into().unwrap(),vec![0u8;4].try_into().unwrap(),);",
+        "v.fixed_byte_list=Some(vec![<[_;4]>::try_from(vec![0u8;4]).unwrap();1]);",
+        "v.rest.insert(\"a\".repeat(1),<[_;4]>::try_from(vec![0u8;4]).unwrap());",
+        "v.entries.insert(<[_;4]>::try_from(vec![0u8;4]).unwrap(),<[_;4]>::try_from(vec![0u8;4]).unwrap(),);",
     ] {
         assert!(
             flat.contains(direct_storage),
@@ -850,7 +850,8 @@ fn rust_emitted_tests_tighten_exact_byte_direct_storage_only() {
     );
     assert!(
         flat.contains("letv=FixedByteCollectionHolder::new(")
-            && flat.contains(".map(|__i|(__i.to_string(),vec![0u8;4].try_into().unwrap()))"),
+            && flat
+                .contains(".map(|__i|(__i.to_string(),<[_;4]>::try_from(vec![0u8;4]).unwrap()))"),
         "mandatory collection constructor arguments must materialize their nested exact-byte storage before calling the record door:\n{rust}"
     );
     assert!(
@@ -875,9 +876,9 @@ fn wasm_emitted_test_rust_twin_tightens_nested_exact_bytes() {
     let flat: String = wasm.split_whitespace().collect();
     assert!(
         flat.contains(
-            "letrust_v=cddl_lib::FixedByteCollectionHolder::new(vec![vec![0u8;4].try_into().unwrap();1],"
+            "letrust_v=cddl_lib::FixedByteCollectionHolder::new(vec![<[_;4]>::try_from(vec![0u8;4]).unwrap();1],"
         ) && flat.contains(
-            ".map(|__i|(__i.to_string(),vec![0u8;4].try_into().unwrap())).collect(),);"
+            ".map(|__i|(__i.to_string(),<[_;4]>::try_from(vec![0u8;4]).unwrap())).collect(),);"
         ),
         "the wasm emitted-test rust twin must materialize nested exact-byte collection storage:\n{wasm}"
     );

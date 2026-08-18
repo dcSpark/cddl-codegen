@@ -270,6 +270,7 @@ pub(super) fn value_bounds_check_line(ty: &RustType, e: &str, return_err: bool) 
     // the deliberate bounded-@duplicates-reject OrderedSet residue retains its runtime check. Alias-
     // resolving so a field referencing a named restricted rule skips the check too.
     if ty.is_type_enforced_non_empty()
+        || ty.is_type_enforced_exact_homogeneous_array()
         || ty.is_type_enforced_bounded_array()
         || ty.is_type_enforced_bounded_map()
     {
@@ -362,6 +363,7 @@ fn externally_wrapped_bounds_check_line(
         ));
     }
     if ty.is_type_enforced_non_empty()
+        || ty.is_type_enforced_exact_homogeneous_array()
         || ty.is_type_enforced_bounded_array()
         || ty.is_type_enforced_bounded_map()
     {

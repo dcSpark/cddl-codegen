@@ -577,15 +577,21 @@ impl GenerationScope {
             ConceptualRustType::Array(element) if ty.is_non_empty_array() => {
                 (types.non_empty_named_owner(element)?, false)
             }
-            ConceptualRustType::Array(element) if ty.is_bounded_array() => (
-                types.bounded_array_named_owner(
-                    element,
-                    ty.config
-                        .bounds
-                        .expect("bounded array reference carries its bounds"),
-                )?,
-                false,
-            ),
+            ConceptualRustType::Array(element)
+                if ty.is_bounded_array()
+                    || (ty.is_type_enforced_exact_homogeneous_array()
+                        && !ty.is_reject_ordered_set()) =>
+            {
+                (
+                    types.bounded_array_named_owner(
+                        element,
+                        ty.config
+                            .bounds
+                            .expect("bounded array reference carries its bounds"),
+                    )?,
+                    false,
+                )
+            }
             ConceptualRustType::Map(key, value) if ty.is_non_empty_map() => {
                 (types.non_empty_map_named_owner(key, value)?, false)
             }
@@ -1048,6 +1054,22 @@ impl GenerationScope {
                             "`{shape}`: inclusive length window enforced at the `{door}` \
                              `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same \
                              door, so wire-side and API-side rejection are identical)."
+                        ));
+                    }
+                    // Exact ordinary/preserve arrays are their own native `[T; N]` carrier rather
+                    // than a `BoundedVec`. They keep the established list-shaped wasm class and
+                    // cross its `try_from` door from the loose `Vec<T>` builder, where the one
+                    // checked Vec-to-array handover enforces the exact cardinality.
+                    if alias_info
+                        .base_type
+                        .is_type_enforced_exact_homogeneous_array()
+                        && !alias_info.base_type.is_reject_ordered_set()
+                    {
+                        let shape = render_wrapper_shape(&alias_info.base_type);
+                        doc_lines.push(format!(
+                            "`{shape}`: exact static `[T; N]` carrier; the list wrapper's \
+                             `TryFrom<Vec<_>>` door performs the checked Vec-to-array handover \
+                             (and the CBOR decoder crosses that same door)."
                         ));
                     }
                     // map-side twin: a named `{+ k => v}` rule's alias quotes the occurrence too.
@@ -1647,7 +1669,15 @@ impl GenerationScope {
                                                 Box::new(element_type.clone()),
                                             )
                                             .into();
-                                        ty.with_bounds(bounds).bounded_array_u64_bounds()
+                                        // Preserve the rule's uniqueness policy while reconstructing
+                                        // its occurrence carrier. Without it, an exact `0*0` reject
+                                        // set looks like an ordinary static array and disappears
+                                        // from the bounded-set branch as a loose OrderedSet.
+                                        ty.with_bounds(bounds)
+                                            .with_duplicates_policy(Some(
+                                                crate::comment_ast::DuplicatesPolicy::Reject,
+                                            ))
+                                            .bounded_array_u64_bounds()
                                     }),
                                     // See the non-empty arm below: a generator-synthesized
                                     // collection (a table rule's keys-list) must never claim
@@ -1679,7 +1709,9 @@ impl GenerationScope {
                                     ))
                                     .into();
                                 bounds.and_then(|bounds| {
-                                    ty.with_bounds(bounds).bounded_array_u64_bounds()
+                                    let ty = ty.with_bounds(bounds);
+                                    ty.exact_homogeneous_array_u64_bounds()
+                                        .or_else(|| ty.bounded_array_u64_bounds())
                                 })
                             } {
                                 self.generate_bounded_array_type(
@@ -2077,6 +2109,10 @@ impl GenerationScope {
             // non-preserve variant is a distinct fragment), so gated on usage alone, not preserve.
             if types.uses_any_cbor() {
                 self.rust_lib().raw("pub mod any_cbor;");
+            }
+            if (cli.json_serde_derives || cli.json_schema_export) && types.uses_static_exact_array()
+            {
+                self.rust_lib().raw("pub mod static_array;");
             }
             // only crates with an open struct-map rest row pull in the flatten JSON helpers, and only
             // under a json flag — keeps every other crate's output byte-identical. Either flag: the
@@ -3425,7 +3461,12 @@ fn json_schema_reachable_claims(
                 if !types.scope(ident).export() {
                     return;
                 }
-                if !types.alias_projection_suppressed(ident) {
+                // An exact homogeneous array's field annotation supplies its complete schema via
+                // the static-array adapter. Its alias has no `JsonSchema` implementation at wide
+                // lengths, so claiming it would emit an unsatisfied `claim_reachable::<[T; N]>`.
+                if !types.alias_projection_suppressed(ident)
+                    && !ty.is_type_enforced_exact_homogeneous_array()
+                {
                     claims.insert(format!(
                         "reg.claim_reachable::<{}>();",
                         rust_crate_struct_from_wasm(types, ident, cli)
@@ -5010,6 +5051,8 @@ pub enum NaturalAnyPosition {
     Seq,
     NonEmptySeq,
     OptSeq,
+    StaticSeq(usize),
+    OptStaticSeq(usize),
     BoundedSeq(u64, u64),
     OptBoundedSeq(u64, u64),
     BoundedUniqueSeq(u64, u64),
@@ -5042,14 +5085,25 @@ pub fn natural_any_position(
             // bounds live on the RustType configuration. The bounded adapter keeps natural JSON's
             // fallible AnyCbor walk AND re-enters the BoundedVec TryFrom door instead of pretending
             // this is Vec<AnyCbor>.
-            ty.type_enforced_bounded_array_u64_bounds().map_or_else(
-                || Some(if optional { P::OptSeq } else { P::Seq }),
-                |(min, max)| {
-                    Some(match (ty.duplicates_reject(), optional) {
-                        (true, false) => P::BoundedUniqueSeq(min, max),
-                        (true, true) => P::OptBoundedUniqueSeq(min, max),
-                        (false, false) => P::BoundedSeq(min, max),
-                        (false, true) => P::OptBoundedSeq(min, max),
+            ty.exact_homogeneous_array_len_checked().map_or_else(
+                || {
+                    ty.type_enforced_bounded_array_u64_bounds().map_or_else(
+                        || Some(if optional { P::OptSeq } else { P::Seq }),
+                        |(min, max)| {
+                            Some(match (ty.duplicates_reject(), optional) {
+                                (true, false) => P::BoundedUniqueSeq(min, max),
+                                (true, true) => P::OptBoundedUniqueSeq(min, max),
+                                (false, false) => P::BoundedSeq(min, max),
+                                (false, true) => P::OptBoundedSeq(min, max),
+                            })
+                        },
+                    )
+                },
+                |len| {
+                    Some(if optional {
+                        P::OptStaticSeq(len)
+                    } else {
+                        P::StaticSeq(len)
                     })
                 },
             )
@@ -5107,6 +5161,16 @@ pub fn natural_any_serde_annotations(cli: &Cli, pos: NaturalAnyPosition) -> Vec<
             "natural_any_cbor_seq_schema".to_owned(),
             true,
         ),
+        StaticSeq(len) => (
+            "natural_any_cbor_static_seq",
+            format!("natural_any_cbor_static_seq_schema::<{len}>"),
+            false,
+        ),
+        OptStaticSeq(len) => (
+            "natural_any_cbor_opt_static_seq",
+            format!("natural_any_cbor_opt_static_seq_schema::<{len}>"),
+            true,
+        ),
         BoundedSeq(min, max) => (
             "natural_any_cbor_bounded_seq",
             format!("natural_any_cbor_bounded_seq_schema::<{min}, {max}>"),
@@ -5159,6 +5223,80 @@ pub fn natural_any_serde_annotations(cli: &Cli, pos: NaturalAnyPosition) -> Vec<
     if cli.json_schema_export {
         out.push(format!(
             "#[schemars(schema_with = \"{base}::{schema_fn}\")]"
+        ));
+    }
+    out
+}
+
+/// JSON annotations for a typed exact static array. The pinned serde/schemars only implement their
+/// array traits through length 32, so these route `[T; N]` through the generated generic adapter
+/// without changing its ordinary JSON-array surface. `any` positions use their natural adapter
+/// instead; callers apply this only when `natural_any_position` returned `None`.
+pub fn static_array_serde_annotations(
+    types: &IntermediateTypes,
+    ty: &RustType,
+    optional: bool,
+    cli: &Cli,
+) -> Vec<String> {
+    let Some(len) = ty.exact_homogeneous_array_len_checked() else {
+        return Vec::new();
+    };
+    let ConceptualRustType::Array(element) = ty.conceptual_type.resolve_alias_shallow() else {
+        return Vec::new();
+    };
+    let base = format!("{}::static_array", cli.common_import_rust());
+    let mut out = Vec::new();
+    if cli.json_serde_derives {
+        let module = if optional {
+            "static_array_opt"
+        } else {
+            "static_array"
+        };
+        out.push(format!("#[serde(with = \"{base}::{module}\")]"));
+        if optional {
+            out.push("#[serde(default)]".to_owned());
+        }
+    }
+    if cli.json_schema_export {
+        let element = element.for_rust_member(types, false, cli);
+        let schema_fn = if optional {
+            "static_array_opt_schema"
+        } else {
+            "static_array_schema"
+        };
+        out.push(format!(
+            "#[schemars(schema_with = \"{base}::{schema_fn}::<{element}, {len}>\")]"
+        ));
+    }
+    out
+}
+
+/// JSON annotations for a loose homogeneous collection whose elements are exact static arrays.
+/// A derive for `Vec<[T; N]>` still asks serde/schemars for traits on the wide inner array, so the
+/// sequence adapter owns each element's list-to-array handover instead.
+pub fn static_array_sequence_serde_annotations(
+    types: &IntermediateTypes,
+    ty: &RustType,
+    cli: &Cli,
+) -> Vec<String> {
+    let ConceptualRustType::Array(element) = ty.conceptual_type.resolve_alias_shallow() else {
+        return Vec::new();
+    };
+    let Some(len) = element.exact_homogeneous_array_len_checked() else {
+        return Vec::new();
+    };
+    let ConceptualRustType::Array(inner) = element.conceptual_type.resolve_alias_shallow() else {
+        return Vec::new();
+    };
+    let base = format!("{}::static_array", cli.common_import_rust());
+    let mut out = Vec::new();
+    if cli.json_serde_derives {
+        out.push(format!("#[serde(with = \"{base}::static_array_seq\")]"));
+    }
+    if cli.json_schema_export {
+        let inner = inner.for_rust_member(types, false, cli);
+        out.push(format!(
+            "#[schemars(schema_with = \"{base}::static_array_seq_schema::<{inner}, {len}>\")]"
         ));
     }
     out

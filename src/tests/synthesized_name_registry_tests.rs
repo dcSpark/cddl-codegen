@@ -781,6 +781,55 @@ fn declared_deferral_and_extern_dependency_ownership_do_not_create_local_index_r
     named_external_registry
         .closure_check()
         .expect("the named dependency provider must close consumer-side references");
+
+    // The static-array twin must make the same exact-owner decision. The dependency names the
+    // canonical `DepFooListMin2Max2` wrapper, while the consumer spells the identical `[2*2
+    // dep_foo]` inline. This goes through raw collection provider discovery (not declared index
+    // deferral): the wrapper name itself still resolves to the dependency owner, but without the
+    // exact-array provider branch its local reference has no provider scope and closure rejects it.
+    let exact_owner_root = scratch("named_exact_dependency_owner");
+    write(
+        &exact_owner_root,
+        "lib.cddl",
+        "holder = [items: [2*2 dep_foo]]\n",
+    );
+    write(
+        &exact_owner_root,
+        "_CDDL_CODEGEN_EXTERN_DEPS_DIR_/registry_dep/mod.cddl",
+        "dep_foo = _CDDL_CODEGEN_EXTERN_TYPE_\n\
+         dep_foo_list_min2_max2 = [2*2 dep_foo]\n",
+    );
+    let exact_owner = generated_scope(&cli(
+        &exact_owner_root,
+        &[
+            "--common-import-override=registry_dep".to_owned(),
+            "--extern-wasm-crate=registry_dep=registry_dep_wasm".to_owned(),
+        ],
+    ));
+    let exact_owner_registry = exact_owner.wasm_collection_wrapper_registry();
+    assert_eq!(
+        exact_owner_registry.definition_kind(&ident("DepFooListMin2Max2")),
+        Some(WasmCollectionWrapperDefinition::DependencyClass),
+        "a dependency-owned named exact array must provide the consumer's matching inline static wrapper"
+    );
+    assert!(
+        !exact_owner_registry
+            .local_classes()
+            .contains_key(&ident("DepFooListMin2Max2")),
+        "the raw exact shape is dependency-owned, never a consumer collection-index row"
+    );
+    let exact_provider_scope =
+        ModuleScope::from(vec![EXTERN_DEPS_DIR.to_owned(), "registry_dep".to_owned()]);
+    assert!(
+        exact_owner_registry.references().iter().any(|reference| {
+            reference.wrapper().as_ref() == "DepFooListMin2Max2"
+                && reference.dependency_provider_scope() == Some(&exact_provider_scope)
+        }),
+        "the local inline exact array must record its named dependency provider so closure can qualify the reference"
+    );
+    exact_owner_registry
+        .closure_check()
+        .expect("the named exact dependency provider must close the local inline reference");
 }
 
 #[test]

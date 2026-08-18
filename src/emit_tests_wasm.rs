@@ -388,8 +388,13 @@ fn rust_scoped_for_direct_storage(
     scoped: &ScopeMap,
 ) -> String {
     let rendered = rust_scoped(mv, scoped);
-    if stored_type.exact_byte_array_len_checked().is_some() {
-        return format!("{rendered}.try_into().unwrap()");
+    if let Some(len) = stored_type
+        .exact_byte_array_len_checked()
+        .or_else(|| stored_type.exact_homogeneous_array_len_checked())
+    {
+        // This feeds an already-typed stored carrier, but `Wrapper::from(vec.try_into())` leaves
+        // the TryInto target ambiguous now that both BoundedVec and `[T; N]` are viable.
+        return format!("<[_; {len}]>::try_from({rendered}).unwrap()");
     }
     let render_array = |element: &RustType| {
         emit_tests::render_rust_array(mv, &|value| {
@@ -400,8 +405,11 @@ fn rust_scoped_for_direct_storage(
         emit_tests::render_rust_map(
             mv,
             &|expr| {
-                if key.exact_byte_array_len_checked().is_some() {
-                    format!("{expr}.try_into().unwrap()")
+                if let Some(len) = key
+                    .exact_byte_array_len_checked()
+                    .or_else(|| key.exact_homogeneous_array_len_checked())
+                {
+                    format!("<[_; {len}]>::try_from({expr}).unwrap()")
                 } else {
                     expr
                 }
@@ -464,12 +472,25 @@ fn rust_scoped_for_named(
         .rust_struct(type_ident)
         .map(|rust_struct| rust_struct.variant())
     {
-        Some(RustStructType::Array { element_type, .. })
-            if matches!(mv, MintValue::Array { .. }) =>
-        {
-            emit_tests::render_rust_array(mv, &|value| {
+        Some(RustStructType::Array {
+            element_type,
+            bounds,
+        }) if matches!(mv, MintValue::Array { .. }) => {
+            let array = emit_tests::render_rust_array(mv, &|value| {
                 rust_scoped_for_direct_storage(types, value, element_type, scoped)
-            })
+            });
+            let static_len = types
+                .rust_struct(type_ident)
+                .filter(|array| {
+                    array.config().duplicates != Some(crate::comment_ast::DuplicatesPolicy::Reject)
+                })
+                .and_then(|_| crate::intermediate::exact_array_len_from_bounds(*bounds))
+                .and_then(Result::ok);
+            if let Some(len) = static_len {
+                format!("<[_; {len}]>::try_from({array}).unwrap()")
+            } else {
+                array
+            }
         }
         Some(RustStructType::Table { domain, range, .. })
             if matches!(mv, MintValue::Map { .. }) =>
@@ -907,6 +928,19 @@ fn wasm_collection_build(
                     body.push_str(&format!(" l.add({elem_expr});"));
                 }
                 return Some(format!("{{ {body} l }}"));
+            }
+            if field_ty.is_type_enforced_exact_homogeneous_array() {
+                let e = elem.as_ref()?;
+                let elem_expr = wasm_arg(types, e, elem_ty, scoped, cli)?;
+                if elem_ty.vec_of_self_directly_wasm_exposable(types) {
+                    return Some(format!(
+                        "{wrapper}::try_from(vec![{elem_expr}; {count}]).ok().expect(\"static-array emitted-test mint\")"
+                    ));
+                }
+                return Some(format!(
+                    "{wrapper}::from({})",
+                    rust_scoped_for_direct_storage(types, mv, field_ty, scoped)
+                ));
             }
             if field_ty.is_type_enforced_bounded_array() {
                 // A bounded wrapper has no invalid empty seed when MIN > 0. For wasm-native

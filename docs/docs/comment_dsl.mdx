@@ -467,8 +467,9 @@ default. Every **other** set/array rule (a non-258 tagged idiom, a plain `[* a]`
 defaults to `preserve`, and **tables** still default to `reject`. Writing the effective default
 explicitly is accepted as self-documentation (a no-op, no warning); the opposite value is the live
 opt-out. In particular, `@duplicates preserve` on a tag-258 set is the **opt-out** back to the
-occurrence-selected `Vec<T>` / `NonEmptyVec<T>` / `BoundedVec<T, MIN, MAX>` carrier (today's wire
-behavior verbatim) for a rule that must accept and re-emit historical duplicate-bearing data.
+occurrence-selected `Vec<T>` / `NonEmptyVec<T>` / `BoundedVec<T, MIN, MAX>` carrier, or native
+`[T; N]` for an exact `N*N` homogeneous window (today's wire behavior verbatim), for a rule that
+must accept and re-emit historical duplicate-bearing data.
 
 :::warning Breaking change (decode-time)
 A tag-258 set previously defaulted to `preserve`; it now defaults to `reject`. Generated code still
@@ -627,7 +628,9 @@ The same entry-trailing slot serves an **open-array occurrence segment** — a f
   spelling `+ bytes ; @name extras` yields `pub extras: NonEmptyVec<Vec<u8>>` and its generated
   constructor's `first_extras_element` argument; a bounded spelling such as
   `2*3 bytes ; @name extras` yields `pub extras: BoundedVec<Vec<u8>, 2, 3>` and takes that complete
-  checked carrier in its generated constructor.
+  checked carrier in its generated constructor; an ordinary exact `2*2 bytes ; @name extras` yields
+  `pub extras: [Vec<u8>; 2]` instead. Exact `@duplicates reject` collections remain their ordered-set
+  carrier because an array alone cannot enforce uniqueness.
 - **`@duplicates`** does **not** apply to an occurrence segment and is rejected gracefully: an array segment is
   a positional sequence carrier in every supported occurrence flavor, so there are no keys for a
   duplicate policy to govern.

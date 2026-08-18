@@ -1,6 +1,5 @@
 ---
 source: src/tests/snapshot_tests.rs
-assertion_line: 788
 expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
@@ -359,7 +358,13 @@ impl Deserialize for ExactMiddle {
             }
             Ok(ExactMiddle {
                 index_0,
-                rest: <BoundedVec<u64, 2, 2>>::try_from(rest)?,
+                rest: <[u64; 2]>::try_from(rest).map_err(|elements: Vec<_>| {
+                    DeserializeFailure::RangeCheck {
+                        found: elements.len() as i128,
+                        min: Some(2),
+                        max: Some(2),
+                    }
+                })?,
                 index_2,
                 encodings: Some(ExactMiddleEncoding {
                     rest_elem_encodings,
@@ -501,9 +506,27 @@ impl Deserialize for ExactSegments {
             }
             Ok(ExactSegments {
                 prefix,
-                chunks: <BoundedVec<u64, 2, 2>>::try_from(chunks)?,
-                absent: <BoundedVec<u64, 0, 0>>::try_from(absent)?,
-                values: <BoundedVec<u64, 2, 2>>::try_from(values)?,
+                chunks: <[u64; 2]>::try_from(chunks).map_err(|elements: Vec<_>| {
+                    DeserializeFailure::RangeCheck {
+                        found: elements.len() as i128,
+                        min: Some(2),
+                        max: Some(2),
+                    }
+                })?,
+                absent: <[u64; 0]>::try_from(absent).map_err(|elements: Vec<_>| {
+                    DeserializeFailure::RangeCheck {
+                        found: elements.len() as i128,
+                        min: Some(0),
+                        max: Some(0),
+                    }
+                })?,
+                values: <[u64; 2]>::try_from(values).map_err(|elements: Vec<_>| {
+                    DeserializeFailure::RangeCheck {
+                        found: elements.len() as i128,
+                        min: Some(2),
+                        max: Some(2),
+                    }
+                })?,
                 suffix,
                 encodings: Some(ExactSegmentsEncoding {
                     chunks_elem_encodings,

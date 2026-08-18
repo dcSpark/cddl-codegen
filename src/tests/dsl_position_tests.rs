@@ -451,6 +451,23 @@ const GRID: &[Cell] = &[
             must_not: &[],
         },
     },
+    // 16b2. Exact homogeneous array aliases have a second, generator-owned discovery line: unlike
+    // a variable bounded `BoundedVec`, their native carrier is `[T; N]` and their list-shaped wasm
+    // wrapper makes the checked Vec-to-array handover. Pin it beside the ordinary alias-doc cell so
+    // this current-state generated-doc contract cannot silently regress to the old carrier prose.
+    Cell {
+        directive: "@doc",
+        position: "rule-exact-static-array-alias",
+        spec: "exact = [2*2 uint] ; @doc exact-alias user-doc\nholder = [f: exact]\n",
+        flags: &[],
+        wasm: false,
+        expect: Expect::Effect {
+            must: &[
+                "/// exact-alias user-doc\n/// `[2*2 uint]`: exact static `[T; N]` carrier; the list wrapper's `TryFrom<Vec<_>>` door performs the checked Vec-to-array handover (and the CBOR decoder crosses that same door).\npub type Exact = [u64; 2];",
+            ],
+            must_not: &["pub type Exact = BoundedVec"],
+        },
+    },
     // 16c. rule-position @doc on a NEWTYPE rule → /// on the emitted wrapper struct.
     Cell {
         directive: "@doc",

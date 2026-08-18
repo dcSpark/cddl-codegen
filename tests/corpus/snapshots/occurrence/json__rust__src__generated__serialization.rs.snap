@@ -56,7 +56,13 @@ impl Deserialize for ExactMiddleOccurrence {
             }
             Ok(ExactMiddleOccurrence {
                 prefix,
-                rest: <BoundedVec<u64, 2, 2>>::try_from(rest)?,
+                rest: <[u64; 2]>::try_from(rest).map_err(|elements: Vec<_>| {
+                    DeserializeFailure::RangeCheck {
+                        found: elements.len() as i128,
+                        min: Some(2),
+                        max: Some(2),
+                    }
+                })?,
                 suffix,
             })
         })()
@@ -300,7 +306,13 @@ impl Deserialize for OccurrenceHolder {
                     }
                     exact_arr.push(raw.unsigned_integer()?);
                 }
-                let exact_arr = BoundedVec::<_, 2, 2>::try_from(exact_arr)?;
+                let exact_arr: [_; 2] = exact_arr.try_into().map_err(|elements: Vec<_>| {
+                    DeserializeFailure::RangeCheck {
+                        found: elements.len() as i128,
+                        min: Some(2),
+                        max: Some(2),
+                    }
+                })?;
                 Ok(exact_arr)
             })()
             .map_err(|e| e.annotate("exact"))?;
@@ -464,7 +476,14 @@ impl Deserialize for OccurrenceHolder {
                     }
                     inline_exact_arr.push(raw.unsigned_integer()?);
                 }
-                let inline_exact_arr = BoundedVec::<_, 2, 2>::try_from(inline_exact_arr)?;
+                let inline_exact_arr: [_; 2] =
+                    inline_exact_arr.try_into().map_err(|elements: Vec<_>| {
+                        DeserializeFailure::RangeCheck {
+                            found: elements.len() as i128,
+                            min: Some(2),
+                            max: Some(2),
+                        }
+                    })?;
                 Ok(inline_exact_arr)
             })()
             .map_err(|e| e.annotate("inline_exact"))?;

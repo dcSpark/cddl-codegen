@@ -696,9 +696,9 @@ impl GenerationScope {
         wrapper.push(self, types);
     }
 
-    /// Emit the restricted wasm wrapper for a finite/zero-minimum homogeneous array.  It owns the
-    /// real `BoundedVec` so conversions into a parent are infallible; loose input is accepted only
-    /// through `try_from`, which reaches the same core `TryFrom<Vec<_>>` door as CBOR/JSON decode.
+    /// Emit the restricted wasm wrapper for a finite/zero-minimum homogeneous array. A non-exact
+    /// window owns `BoundedVec`; an exact ordinary/preserve window owns `[T; N]`. Both deliberately
+    /// retain the established list-shaped class name and a fallible loose-list `try_from` door.
     pub(super) fn generate_bounded_array_type(
         &mut self,
         types: &IntermediateTypes,
@@ -708,6 +708,7 @@ impl GenerationScope {
         rule_declared: bool,
         cli: &Cli,
     ) {
+        let exact_static = min == max && max != u64::MAX;
         let max_token = if max == u64::MAX {
             "{ u64::MAX }".to_owned()
         } else {
@@ -755,7 +756,11 @@ impl GenerationScope {
         }
         self.record_collection_wrapper(types, wrapper_ident, &shape);
         let elem_rust = element_type.for_rust_member(types, true, cli);
-        let inner_type = format!("BoundedVec<{elem_rust}, {min}, {max_token}>");
+        let inner_type = if exact_static {
+            format!("[{elem_rust}; {min}]")
+        } else {
+            format!("BoundedVec<{elem_rust}, {min}, {max_token}>")
+        };
         let elem_wasm = self.wasm_member_type(
             types,
             &element_type,
@@ -779,7 +784,10 @@ impl GenerationScope {
         // Requested wrappers set their own discovery docs, so retain the request attribution that
         // `create_base_wasm_struct` initially installed (the same clobber seam as NonEmptyVec).
         let attr_prefix = self.requested_attribution_prefix(wrapper_ident);
-        let construction = if self_named {
+        let construction = if exact_static {
+            "Loose input crosses the `Vec<T> -> [T; N]` conversion door; the stored static array \
+             makes wrong cardinality unrepresentable."
+        } else if self_named {
             "This self-named zero-minimum class owns the loose-builder ident itself, so construct it \
              with `new()` plus checked `add` calls; `add` fails before changing the value when it \
              would cross the declared bound."
@@ -787,15 +795,19 @@ impl GenerationScope {
             "Loose input enters through the core `BoundedVec` `TryFrom<Vec<_>>` door; `add` and \
              `try_from` fail before changing the value when they would cross the declared bound."
         };
+        let invariant = if exact_static {
+            "the native static array"
+        } else {
+            "the core `BoundedVec`"
+        };
         wrapper.s.doc(format!(
-            "{attr_prefix}`{shape}`: inclusive length window enforced by the core `BoundedVec`. \
-             {construction}"
+            "{attr_prefix}`{shape}`: inclusive length window enforced by {invariant}. {construction}"
         ));
         wrapper.push_inner_field(&inner_type);
         // A zero-minimum window has a valid empty seed. There is intentionally no wasm `new`
         // surface for a positive minimum: exposing one that only returns an error would advertise
         // an impossible construction route instead of the required `try_from`/`add` doors.
-        if min == 0 {
+        if min == 0 && !exact_static {
             wrapper
                 .s_impl
                 .new_fn("new")
@@ -823,31 +835,33 @@ impl GenerationScope {
             .arg_ref_self()
             .arg("index", "usize")
             .line(element_type.to_wasm_boundary(types, "self.0[index]", false));
-        wrapper
-            .s_impl
-            .new_fn("add")
-            .vis("pub")
-            .ret("Result<(), JsError>")
-            .arg_mut_self()
-            .arg(
-                "elem",
-                self.wasm_param_type(
-                    types,
-                    &element_type,
-                    wrapper_ident,
-                    "bounded list add parameter",
-                ),
-            )
-            .line(format!(
-                "self.0.push({}).map_err(|e| JsError::new(&e.to_string()))",
-                wasm_exact_byte_handover(&element_type, "elem", cli).unwrap_or_else(|| {
-                    ToWasmBoundaryOperations::format(
-                        element_type
-                            .from_wasm_boundary_clone(types, "elem", false)
-                            .into_iter(),
-                    )
-                })
-            ));
+        if !exact_static {
+            wrapper
+                .s_impl
+                .new_fn("add")
+                .vis("pub")
+                .ret("Result<(), JsError>")
+                .arg_mut_self()
+                .arg(
+                    "elem",
+                    self.wasm_param_type(
+                        types,
+                        &element_type,
+                        wrapper_ident,
+                        "bounded list add parameter",
+                    ),
+                )
+                .line(format!(
+                    "self.0.push({}).map_err(|e| JsError::new(&e.to_string()))",
+                    wasm_exact_byte_handover(&element_type, "elem", cli).unwrap_or_else(|| {
+                        ToWasmBoundaryOperations::format(
+                            element_type
+                                .from_wasm_boundary_clone(types, "elem", false)
+                                .into_iter(),
+                        )
+                    })
+                ));
+        }
         if element_type.vec_of_self_directly_wasm_exposable(types) {
             wrapper
                 .s_impl
@@ -855,9 +869,15 @@ impl GenerationScope {
                 .vis("pub")
                 .ret(format!("Result<{wrapper_ident}, JsError>"))
                 .arg("elements", format!("Vec<{elem_wasm}>"))
-                .line(
-                    "BoundedVec::try_from(elements).map(Self).map_err(|e| JsError::new(&e.to_string()))",
-                );
+                .line(if exact_static {
+                    format!(
+                        "elements.try_into().map(Self).map_err(|elements: Vec<_>| JsError::from({}::error::DeserializeError::from({}::error::DeserializeFailure::RangeCheck {{ found: elements.len() as i128, min: Some({min}), max: Some({max}) }})))",
+                        cli.common_import_wasm(),
+                        cli.common_import_wasm(),
+                    )
+                } else {
+                    "BoundedVec::try_from(elements).map(Self).map_err(|e| JsError::new(&e.to_string()))".to_owned()
+                });
         } else if let Some(loose_list) = loose_list.filter(|_| !self_named) {
             // Like NonEmptyVec, a non-exposable element enters through the existing loose wrapper.
             // Borrow + clone keeps the JS source valid while the one core conversion door checks
@@ -879,9 +899,15 @@ impl GenerationScope {
                     "let inner: {} = list.clone().into();",
                     element_type.name_as_rust_array(types, true, cli)
                 ))
-                .line(
-                    "BoundedVec::try_from(inner).map(Self).map_err(|e| JsError::new(&e.to_string()))",
-                );
+                .line(if exact_static {
+                    format!(
+                        "inner.try_into().map(Self).map_err(|elements: Vec<_>| JsError::from({}::error::DeserializeError::from({}::error::DeserializeFailure::RangeCheck {{ found: elements.len() as i128, min: Some({min}), max: Some({max}) }})))",
+                        cli.common_import_wasm(),
+                        cli.common_import_wasm(),
+                    )
+                } else {
+                    "BoundedVec::try_from(inner).map(Self).map_err(|e| JsError::new(&e.to_string()))".to_owned()
+                });
         }
         wrapper.add_conversion_methods(&inner_type, cli);
         wrapper.push(self, types);
@@ -1717,7 +1743,10 @@ impl GenerationScope {
                         false,
                         cli,
                     );
-                } else if let Some((min, max)) = rt.bounded_array_u64_bounds() {
+                } else if let Some((min, max)) = rt
+                    .exact_homogeneous_array_u64_bounds()
+                    .or_else(|| rt.bounded_array_u64_bounds())
+                {
                     if types
                         .bounded_array_named_owner(inner, rt.config.bounds.unwrap())
                         .is_none()

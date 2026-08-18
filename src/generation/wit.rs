@@ -2496,6 +2496,7 @@ fn wit_param_is_reject_set(ty: &RustType) -> bool {
 fn wit_param_validates(ty: &RustType, types: &IntermediateTypes) -> bool {
     if ty.has_value_bounds()
         || ty.is_type_enforced_non_empty()
+        || ty.is_type_enforced_exact_homogeneous_array()
         || ty.is_type_enforced_bounded_array()
         || ty.is_type_enforced_bounded_map()
         || wit_param_is_reject_set(ty)
@@ -2555,6 +2556,7 @@ fn wit_param_validates(ty: &RustType, types: &IntermediateTypes) -> bool {
 /// checked `TryFrom<Vec<_>>` door after WIT despecializes to a list.
 pub(crate) fn wit_param_despecialized(ty: &RustType, types: &IntermediateTypes) -> bool {
     if ty.is_type_enforced_non_empty()
+        || ty.is_type_enforced_exact_homogeneous_array()
         || ty.is_type_enforced_bounded_array()
         || ty.is_type_enforced_bounded_map()
         || wit_param_is_reject_set(ty)

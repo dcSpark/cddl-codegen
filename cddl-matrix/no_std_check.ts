@@ -361,15 +361,18 @@ const PROFILES: Profile[] = [
     // (the std prelude supplies the name) and an E0425 the moment the crate is built without it.
     // That is exactly the shape of the first consumer-reported no_std break, and this member set —
     // a plain `any`, an optional `any`, a `[* any]` seq, an optional seq, a `{* K => any}` table and
-    // an optional table — is what puts every adapter shape inside the thumb compile.
+    // an optional table — is what puts every adapter shape inside the thumb compile. `wide` makes
+    // the separately composed typed static-array runtime live too: its child modules must spell
+    // allocation macros explicitly rather than inheriting the host `std` prelude.
     id: "json_schema",
     libName: "nostd-json",
     flags: ["--preserve-encodings=true", "--json-serde-derives=true", "--json-schema-export=true"],
     cddl: [
       "inner = [ a: uint, b: text ]",
       "tbl = { * uint => text }",
+      "wide = [64*64 uint]",
       "any_members = { 1: any, ? 2: any, 3: [* any], ? 4: [* any], 5: { * uint => any }, ? 6: { * uint => any } }",
-      "outer = [ i: inner, t: tbl, ? o: bytes, am: any_members ]",
+      "outer = [ i: inner, t: tbl, ? o: bytes, w: wide, am: any_members ]",
       "",
     ].join("\n"),
   },

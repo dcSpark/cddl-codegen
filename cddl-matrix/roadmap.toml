@@ -629,28 +629,30 @@ event_md = '''a concrete query needs it
 
 [[record]]
 id = "matrix.fixed-array.static-representation"
-title = "Fixed-array representation optimization"
+title = "Compose exact static-array JSON support through containing shapes"
 
 [record.payload]
 kind = "work"
-body_md = '''### Fixed-array representation optimization
+body_md = '''### Compose exact static-array JSON support through containing shapes
 
-An exact `n*n T` can map to `[T; n]`, so the representation itself carries the constraint. The
-`uint .size 1` → `u8` mapping is the shipped precedent, independently of the `TryFrom` door, which
-stays as the ergonomic entry point. The fixed carrier and its construction door must compose with
-serialization, deserialization, Rust, wasm, JSON, component, cross-crate projection, matrix
-classification, and spec-derived boundary vectors.
+Exact ordinary/preserve `n*n T` occurrences now use `[T; n]` across Rust, CBOR, wasm, component,
+cross-crate projection, matrix classification, and boundary vectors. The pinned serde/schemars
+versions only derive arrays through length 32, so the generated `static_array` runtime presently
+adapts a direct field/newtype payload and a loose `Vec<[T; N]>` occurrence when `T` is not CDDL
+`any`. Direct/optional exact `any` arrays use the natural-JSON static adapter. That is not a general
+solution: an optional loose sequence, bounded sequence, map value, nested exact array, or another
+containing shape would still require `Serialize`/`Deserialize`/`JsonSchema` directly on a wide
+`[T; N]`. With either JSON flag, the generator now rejects those shapes loudly before codegen rather
+than emitting a crate that fails to compile.
 
 '''
 work_state = "ready"
-work_intent = "optimize"
-work_kind = "optimization"
+work_intent = "build_capability"
+work_kind = "feature"
 risk = "wrong_public_api"
-acceptance_md = '''Map exact n*n homogeneous array occurrences to [T; n], retain TryFrom as the ergonomic construction door, keep fixed-byte representation outside this identity, and update every applicable Rust, wasm, JSON, component, cross-crate, matrix, and boundary-vector surface.
-'''
+acceptance_md = '''Make JSON derives and schema generation compositional for every supported position that contains a wide exact ordinary/preserve array, including optional/loose/bounded sequences, map values, nested exact arrays, records, aliases, and type choices; preserve the ordinary JSON list surface and exact inner minItems/maxItems. Preserve CDDL `any`'s natural JSON rendering rather than falling back to AnyCbor's tagged codec, including nested exact-any arrays. Add execution coverage for representative nesting families. Until then, reject every unadapted containing shape under either JSON flag before codegen; do not claim complete JSON support while any containing shape still relies on serde/schemars' length-32 array traits.'''
 priority_band = "normal"
-priority_rationale_md = '''The fixed-array representation remains explicitly selected because an exact array type carries the cardinality invariant statically and avoids conflating this scope with the separate fixed-byte representation.
-'''
+priority_rationale_md = '''The native carrier is shipped, but JSON flags must not turn otherwise-supported CDDL nesting into a generated-crate compile failure. The remaining work is an adapter-composition design, not a reason to revert the representation.'''
 
 [[record]]
 id = "matrix.fixed-bytes.lowercase-base64-parser"
@@ -955,8 +957,10 @@ body_md = '''### Honor the remaining ambiguous/multiple count-permitting occurre
 
 A final occurrence after fixed members is supported: bare `*` / `0*` uses the loose open-array
 `Vec` rest tail, `+` / `1*` uses its `NonEmptyVec` twin with the shipped first-element construction
-door, and every other bounded window uses a complete checked `BoundedVec` carrier (including finite,
-max-only, min-only, and exact-zero windows). One leading/middle bare-type occurrence may precede an
+door; variable bounded windows use a complete checked `BoundedVec` carrier (including finite,
+max-only, and min-only windows), while ordinary/preserve exact `N*N` homogeneous windows use the
+native `[T; N]` carrier (including zero). Exact `@duplicates reject` remains a checked
+`BoundedOrderedSet<T, N, N>`. One leading/middle bare-type occurrence may precede an
 immediate mandatory, single-item fixed suffix. Variable windows retain the field-codec-free,
 effective, CBOR-major-disjoint boundary (`[uint, * bytes, tstr]`): heads are generator-proven or a
 transparent custom alias declares its actual wire major. A variable same-major boundary is also
@@ -967,7 +971,7 @@ owned heads. The decoder therefore obeys RFC 8610 greedy, non-backtracking match
 speculation; final and safe-middle forms share the
 carrier/projection paths covered by `contain.occurrence-target.grpent.member.{zero_array,plus_array,bounded_array}`.
 Two or more occurrence members are supported when every member has a unique explicit `@name` and a
-finite exact `N*N` window other than `1*1`: each is a separate flat `BoundedVec` and exact count is
+finite exact `N*N` window other than `1*1`: each is a separate flat `[T; N]` and exact count is
 its wire boundary, including adjacent and same-major segments.
 
 Still rejected gracefully: variable-cardinality multiple occurrence-bearing members; inline-group and group-choice-arm

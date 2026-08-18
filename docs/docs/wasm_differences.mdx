@@ -195,11 +195,13 @@ restricted wrappers.
 ## Bounded homogeneous arrays
 
 An ordinary or `@duplicates preserve` bounded homogeneous array (`[? T]`, `[*N T]`, `[N* T]`, or
-`[N*M T]`) uses the same loose-builder/restricted-wrapper pattern, but its restricted class wraps
-`BoundedVec<T, MIN, MAX>` and is named `<Elem>ListMaxN`, `<Elem>ListMinN`, or
+`[N*M T]`) uses the same loose-builder/restricted-wrapper pattern and is named `<Elem>ListMaxN`, `<Elem>ListMinN`, or
 `<Elem>ListMinNMaxN` (a named CDDL rule keeps its own class name). `try_from` borrows and clones the
-loose list into the core `BoundedVec::TryFrom<Vec<_>>` door; `add` returns `Result` because it can
-cross an upper bound. Only zero-minimum classes expose an infallible empty `new()` seed; positive-
+loose list into the core `BoundedVec::TryFrom<Vec<_>>` door for variable windows; `add` returns `Result` because it can
+cross an upper bound. An exact `N*N` ordinary/preserve wrapper instead stores `[T; N]` and its
+`try_from` makes the one `Vec<T>` → array handover with the standard `RangeCheck`; it has neither
+`new()` nor `add()`, since its cardinality cannot be mutated. Its public JS/WIT list identity is
+unchanged. Only zero-minimum variable classes expose an infallible empty `new()` seed; positive-
 minimum classes have no `new`. A zero-minimum **self-named** rule whose identifier is already the
 loose builder (`bar_list = [*5 bar]`) has no separate `try_from` source; it remains constructible
 through `new()` plus checked `add`, and its generated docs say so. A positive-minimum self-named

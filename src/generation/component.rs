@@ -524,23 +524,32 @@ impl Emitter<'_, '_> {
                     ))
                 };
                 let restricted = resolved.is_type_enforced_non_empty()
+                    || resolved.is_type_enforced_exact_homogeneous_array()
                     || resolved.is_type_enforced_bounded_array()
                     || resolved.is_type_enforced_bounded_map()
                     || super::wit::wit_param_despecialized(&resolved, self.types);
                 if !restricted {
                     return values;
                 }
+                let handover_err = resolved
+                    .exact_homogeneous_array_len_checked()
+                    .map(|len| {
+                        format!(
+                            "|values: Vec<_>| err(format!(\"array length {{}} does not equal {len}\", values.len()))"
+                        )
+                    })
+                    .unwrap_or_else(|| "err".to_owned());
                 if values.fallible {
                     Conv {
                         expr: format!(
-                            "{}.and_then(|values| values.try_into().map_err(err))",
-                            values.expr
+                            "{}.and_then(|values| values.try_into().map_err({handover_err}))",
+                            values.expr,
                         ),
                         fallible: true,
                     }
                 } else {
                     Conv {
-                        expr: format!("({}).try_into().map_err(err)", values.expr),
+                        expr: format!("({}).try_into().map_err({handover_err})", values.expr),
                         fallible: true,
                     }
                 }

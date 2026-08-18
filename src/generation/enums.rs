@@ -1313,19 +1313,18 @@ fn generate_enum(
         // newtype variant accepts variant-level `#[serde(with = …)]` / `#[schemars(schema_with = …)]`,
         // which serde/schemars apply to the variant's single field. The CBOR-only tag on a
         // tagged-`any` arm never appears in JSON, so the same natural routing is correct there too.
+        // Like record fields, a newtype enum arm can carry CDDL `any` or a wide exact `[T; N]`
+        // payload. Natural-any routing takes precedence: `[N* N any]` must use its own static
+        // natural adapter rather than the generic typed-array adapter (which would reintroduce
+        // AnyCbor's tagged JSON codec for each element).
         if !config.custom_json
-            && matches!(
-                &variant.data,
-                EnumVariantData::RustType(ty)
-                    if matches!(
-                        ty.conceptual_type.resolve_alias_shallow(),
-                        ConceptualRustType::Any
-                    )
-            )
+            && let EnumVariantData::RustType(ty) = &variant.data
         {
-            for annotation in
-                super::natural_any_serde_annotations(cli, super::NaturalAnyPosition::Direct)
-            {
+            let annotations = super::natural_any_position(ty, false, cli).map_or_else(
+                || super::static_array_serde_annotations(types, ty, false, cli),
+                |position| super::natural_any_serde_annotations(cli, position),
+            );
+            for annotation in annotations {
                 v.annotation(annotation);
             }
         }

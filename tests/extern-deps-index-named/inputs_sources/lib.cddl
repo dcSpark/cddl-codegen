@@ -28,4 +28,10 @@ nb_text_table = { + uint => tstr }
 ;     `use` can come ONLY from the reject rule's own emission-scope routing.
 reject_foos = [* idx_foo] ; @duplicates reject
 
+; (4) Exact static list over the same dependency-owned element. Its exact class is NOT in the dep
+; index, so it remains local in this NON-ROOT scope; however its `try_from(&IdxFooList)` source IS
+; indexed and must import from the dep collections module here. This distinguishes a local static
+; carrier from a wholly deferred wrapper and pins the Vec-to-array handover's source routing. The
+; named rule and its reference live in `sub.cddl`, precisely to make that import scope observable.
+
 holder = [a: nb_foo_map, b: text_table, c: nb_text_table, d: reject_foos]

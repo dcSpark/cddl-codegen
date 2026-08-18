@@ -771,6 +771,35 @@ fn exact_byte_array_lengths_refuse_negative_and_above_wasm32_floor() {
     }
 }
 
+/// Exact homogeneous arrays have the same portable object-size floor as exact bytes, but their
+/// top-level group-rule path bypasses the member Type1 walker. Exercise rule, member, and nested
+/// array routes so none can emit a host-only `[T; N]`; the ordinary zero/one/N shapes remain the
+/// positive static-carrier coverage in the array/open-array tests below.
+#[test]
+fn exact_homogeneous_array_lengths_refuse_above_wasm32_floor_at_every_route() {
+    let expected = "cannot be represented as a Rust array length on every supported target";
+    for (tag, spec) in [
+        (
+            "exact_array_above_wasm_rule",
+            "x = [2147483648*2147483648 uint]\n",
+        ),
+        (
+            "exact_array_above_wasm_member",
+            "x = [payload: [2147483648*2147483648 uint]]\n",
+        ),
+        (
+            "exact_array_above_wasm_nested",
+            "x = [[2147483648*2147483648 uint]]\n",
+        ),
+    ] {
+        let msg = expect_graceful_rejection(tag, spec, &["--wasm=false"]);
+        assert!(
+            msg.contains(expected) && msg.contains("2147483648"),
+            "{tag} must refuse the non-portable exact array without panic or widening, got: {msg}"
+        );
+    }
+}
+
 /// A count-permitting occurrence of a multi-item plain group repeats the group's sequence FLAT.
 /// It cannot use the ordinary `Vec<Pg>` carrier: `Pg::serialize` writes its own array header, so
 /// that carrier silently changes `[a, b, a, b]` into `[[a, b], [a, b]]`. Until a dedicated flat
@@ -3063,9 +3092,9 @@ fn emit_tests_mint_all_bounded_reject_occurrence_windows() {
     for emitted in [rust, wasm] {
         assert!(
             emitted.contains("BoundedOrderedSet")
-                && !emitted.contains("OrderedSet<u64>")
+                && !emitted.contains("pub(crate) OrderedSet<u64>")
                 && !emitted.contains("NonEmptyOrderedSet<u64>"),
-            "bounded reject windows must not lower to loose/non-empty ordered-set twins:\n{emitted}"
+            "bounded reject windows must not lower to loose/non-empty ordered-set storage twins:\n{emitted}"
         );
     }
 }
@@ -6133,8 +6162,8 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
     )
     .expect("a declared custom suffix head must prove the repeated bytes/text boundary");
     // An exact window has a count boundary, so it neither needs a major discriminator nor asks the
-    // reader to peek a repeated element's major.  It still uses the one BoundedVec carrier and its
-    // shared loose-Vec `TryFrom` construction door.
+    // reader to peek a repeated element's major. Its native carrier is a static array; the decoder
+    // alone stages a loose Vec and crosses the one checked handover.
     let exact_same_major = run("m = [uint, 2*2 uint, uint]\n", "exact_same_major")
         .expect("an exact middle window is delimited by count even when its suffix shares uint");
     let exact_source = exact_same_major
@@ -6143,8 +6172,9 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
         .collect::<Vec<_>>()
         .join("\n");
     assert!(
-        exact_source.contains("pub rest: BoundedVec<u64, 2, 2>"),
-        "an exact middle segment must retain the shared BoundedVec carrier: {exact_same_major:#?}"
+        exact_source.contains("pub rest: [u64; 2]")
+            && !exact_source.contains("pub rest: BoundedVec<u64, 2, 2>"),
+        "an exact middle segment must use its static carrier: {exact_same_major:#?}"
     );
     assert!(
         exact_source.contains("while (match len")
@@ -6157,8 +6187,8 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
     assert!(
         exact_zero
             .values()
-            .any(|source| source.contains("pub rest: BoundedVec<u64, 0, 0>")),
-        "an exact-zero middle segment must retain the checked zero carrier: {exact_zero:#?}"
+            .any(|source| source.contains("pub rest: [u64; 0]")),
+        "an exact-zero middle segment must use the zero-length static carrier: {exact_zero:#?}"
     );
     // Multiple occurrence-bearing members are safe only when each owns a finite exact count.  The
     // generated record must keep every segment flat, named, and independently staged; this shape
@@ -6175,13 +6205,13 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
         .collect::<Vec<_>>()
         .join("\n");
     for field in [
-        "pub chunks: BoundedVec<Vec<u8>, 2, 2>",
-        "pub absent: BoundedVec<u64, 0, 0>",
-        "pub values: BoundedVec<u64, 3, 3>",
+        "pub chunks: [Vec<u8>; 2]",
+        "pub absent: [u64; 0]",
+        "pub values: [u64; 3]",
     ] {
         assert!(
             multiple_exact_source.contains(field),
-            "every exact segment needs its own checked carrier `{field}`: {multiple_exact_source}"
+            "every exact segment needs its own static carrier `{field}`: {multiple_exact_source}"
         );
     }
     for loop_bound in ["(chunks.len() as u64) < 2", "(values.len() as u64) < 3"] {
@@ -6227,9 +6257,9 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
         .collect::<Vec<_>>()
         .join("\n");
     assert!(
-        aliased_exact_source.contains("pub numbers: BoundedVec<UintSegment, 2, 2>")
-            && aliased_exact_source.contains("pub blobs: BoundedVec<BytesSegment, 3, 3>"),
-        "the multi-segment walk must retain both aliased carriers: {aliased_exact_source}"
+        aliased_exact_source.contains("pub numbers: [UintSegment; 2]")
+            && aliased_exact_source.contains("pub blobs: [BytesSegment; 3]"),
+        "the multi-segment walk must retain both aliased static carriers: {aliased_exact_source}"
     );
     let multi_major_middle = run("m = [uint, * int, tstr]\n", "multi_major_middle")
         .expect("a multi-major repeated element before a disjoint suffix must generate");
@@ -6796,7 +6826,8 @@ fn open_array_front_end() {
         src(&segment_encoding_name)
     );
     // bounded final tails share the generic checked-carrier seam, including finite, max-only,
-    // min-only, loose-equivalent 0*, and exact-zero forms.
+    // min-only, loose-equivalent 0*, and exact-zero forms. Only the exact ordinary window becomes
+    // a static array; the non-exact bounded controls keep their checked BoundedVec carriers.
     for (spec, carrier) in [
         ("a = [uint, 2*3 bytes]\n", "BoundedVec<Vec<u8>, 2, 3>"),
         ("a = [uint, *3 bytes]\n", "BoundedVec<Vec<u8>, 0, 3>"),
@@ -6805,7 +6836,7 @@ fn open_array_front_end() {
             "BoundedVec<Vec<u8>, 2, { u64::MAX }>",
         ),
         ("a = [uint, 0* bytes]\n", "Vec<Vec<u8>>"),
-        ("a = [uint, *0 bytes]\n", "BoundedVec<Vec<u8>, 0, 0>"),
+        ("a = [uint, *0 bytes]\n", "[Vec<u8>; 0]"),
     ] {
         let out = run(spec).expect("a supported final occurrence must generate");
         assert!(
@@ -6814,11 +6845,127 @@ fn open_array_front_end() {
             src(&out)
         );
     }
+    let exact = run("a = [uint, 2*2 bytes]\n")
+        .expect("an exact ordinary tail must generate with a static carrier");
+    assert!(
+        src(&exact).contains("pub rest: [Vec<u8>; 2]")
+            && !src(&exact).contains("pub rest: BoundedVec<Vec<u8>, 2, 2>"),
+        "an exact ordinary tail must not retain BoundedVec storage: {}",
+        src(&exact)
+    );
+    let exact_holder = run("exact = [2*2 uint]\n\
+         exact_holder = [named: exact, inline: [2*2 uint]]\n")
+    .expect("named and inline exact arrays must remain constructor-safe");
+    let exact_holder_source = src(&exact_holder);
+    assert!(
+        exact_holder_source.contains("pub named: Exact")
+            && exact_holder_source.contains("pub inline: [u64; 2]")
+            && exact_holder_source.contains("pub fn new(named: Exact, inline: [u64; 2]) -> Self")
+            && !exact_holder_source
+                .contains("pub fn new(named: Exact, inline: [u64; 2]) -> Result"),
+        "complete native exact arrays must not make a containing constructor fallible: \\
+         {exact_holder_source}"
+    );
+    let reject_exact = run("reject = [2*2 uint] ; @duplicates reject\n")
+        .expect("an exact reject collection remains a bounded unique carrier");
+    assert!(
+        src(&reject_exact).contains("BoundedOrderedSet<u64, 2, 2>")
+            && !src(&reject_exact).contains("pub type Reject = [u64; 2]"),
+        "a reject exact collection must keep the uniqueness carrier: {}",
+        src(&reject_exact)
+    );
     let exact_once = run("a = [uint, 1*1 bytes]\n")
         .expect("the established exactly-once field path remains supported");
     assert!(
         src(&exact_once).contains("pub index_1: Vec<u8>"),
         "1*1 remains an ordinary mandatory field, not a rest carrier"
+    );
+    let named_exact_once = run("one = [1*1 uint]\n")
+        .expect("a named homogeneous exact-once array must retain collection semantics");
+    assert!(
+        src(&named_exact_once).contains("pub type One = [u64; 1]")
+            && !src(&named_exact_once).contains("pub struct One")
+            && !src(&named_exact_once).contains("BoundedVec<u64, 1, 1>"),
+        "a named `1*1` must remain an exact static array rather than a record or BoundedVec: {}",
+        src(&named_exact_once)
+    );
+    let named_fixed_once = run("one = [1*1 5]\n")
+        .expect("a named exactly-once fixed member must retain its fixed-value record path");
+    assert!(
+        src(&named_fixed_once).contains("pub struct One")
+            && !src(&named_fixed_once).contains("pub type One = ["),
+        "a fixed value has no storable static-array element and must not become an alias: {}",
+        src(&named_fixed_once)
+    );
+    let named_plain_group_once = run("pair = (a: uint, b: tstr)\none = [1*1 pair]\n")
+        .expect("a named exactly-once plain group must retain flat group-splice semantics");
+    assert!(
+        src(&named_plain_group_once).contains("pub struct One")
+            && !src(&named_plain_group_once).contains("pub type One = [Pair; 1]"),
+        "a plain group must not become a nested static-array element: {}",
+        src(&named_plain_group_once)
+    );
+    // Wide native exact arrays have JSON adapters only at direct/optional field, newtype-choice,
+    // and loose Vec-element doors. Every other containing shape must reject BEFORE generation;
+    // otherwise the pinned serde/schemars traits fail later while compiling a generated crate.
+    let json_flags = &["--json-serde-derives=true", "--json-schema-export=true"];
+    gen_flags(
+        "wide = [64*64 uint]\nh = [direct: wide, ? optional: wide, loose: [* wide]]\n",
+        json_flags,
+    )
+    .expect("the directly adapted wide-static-array JSON shapes must keep generating");
+    run("wide = [64*64 uint]\nopen = [prefix: uint, * wide]\n")
+        .expect("a wide exact array in an open tail remains supported without the JSON derives");
+    run("wide_any = [64*64 any]\nh = [prefix: uint, xs: [* wide_any]]\n")
+        .expect("a nested exact-any array remains supported without the JSON derives");
+    for (shape, spec) in [
+        (
+            "optional loose sequence",
+            "wide = [64*64 uint]\nh = [prefix: uint, ? xs: [* wide]]\n",
+        ),
+        (
+            "bounded sequence",
+            "wide = [64*64 uint]\nh = [prefix: uint, xs: [2*3 wide]]\n",
+        ),
+        (
+            "map value",
+            "wide = [64*64 uint]\nh = [prefix: uint, m: {* uint => wide}]\n",
+        ),
+        (
+            "deeper nesting",
+            "wide = [64*64 uint]\nh = [prefix: uint, xs: [* [* wide]]]\n",
+        ),
+        (
+            "exact array of wide elements",
+            "wide = [64*64 uint]\nh = [prefix: uint, xs: [2*2 wide]]\n",
+        ),
+        (
+            "open-array tail",
+            "wide = [64*64 uint]\nopen = [prefix: uint, * wide]\n",
+        ),
+        (
+            "nested exact-any array",
+            "wide_any = [64*64 any]\nh = [prefix: uint, xs: [* wide_any]]\n",
+        ),
+    ] {
+        let err = gen_flags(spec, json_flags)
+            .expect_err("unadapted wide-static-array JSON nesting must reject before codegen");
+        assert!(
+            (err.contains("wide exact homogeneous array") || err.contains("natural JSON"))
+                && err.contains("--json-serde-derives/--json-schema-export"),
+            "{shape}: rejection must name the JSON boundary and flag remedy, got: {err}"
+        );
+    }
+    let small_nested_any = gen_flags(
+        "small_any = [2*2 any]\nh = [prefix: uint, xs: [* small_any]]\n",
+        json_flags,
+    )
+    .expect_err("nested exact-any arrays must reject even below serde's length-32 trait limit");
+    assert!(
+        small_nested_any.contains("natural JSON")
+            && small_nested_any.contains("tagged AnyCbor")
+            && small_nested_any.contains("direct field or newtype payload"),
+        "the semantic exact-any refusal must not masquerade as a wide-array trait failure: {small_nested_any}"
     );
     let out_of_range = run("a = [uint, 18446744073709551616* bytes]\n")
         .expect_err("an occurrence endpoint beyond u64 must reject gracefully");

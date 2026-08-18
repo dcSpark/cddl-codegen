@@ -871,11 +871,12 @@ splice-position matrix is [Plain group placement](current_capacities#plain-group
 
 **The `rest` field.** A loose `*` / `0*` segment is `pub Vec<T>`, excluded from `new()` and defaulting
 empty. A `+` / `1*` segment is `pub NonEmptyVec<T>`: `new()` takes its first repeated element,
-preserving that public ABI. Every other window is `pub BoundedVec<T, MIN, MAX>`: `new()` takes the
-**complete checked carrier**, including zero-minimum and exact-zero windows, so callers can construct
-every admitted value without a bypassable `Vec` door. Decode stages one loose `Vec<T>` then enters
-exactly one `TryFrom` door for either restricted carrier; definite and indefinite values below or
-above the inclusive window reject with its `RangeCheck` for a final tail. A middle segment stops
+preserving that public ABI. An ordinary or duplicate-preserving exact `N*N` segment is `pub [T; N]`
+(including `*0`); `new()` accepts that already-valid carrier. Other variable windows are
+`pub BoundedVec<T, MIN, MAX>`. Decode stages one loose `Vec<T>` and exact windows make one
+`TryFrom<Vec<T>> for [T; N]` handover, mapping a short/long wire value to `RangeCheck`; variable
+windows retain the `BoundedVec` door. Exact `@duplicates reject` segments remain
+`BoundedOrderedSet<T, N, N>`. A middle segment stops
 greedily at its maximum: a further repeated-major item remains for the mandatory suffix to read and
 is rejected there, while a below-minimum middle segment still rejects through the carrier's
 `RangeCheck`. An exact middle segment takes exactly its declared count before the suffix. A definite
@@ -920,8 +921,9 @@ substitute). The JSON Schema is the ordinary array shape with the carrier's boun
 default) returning the minted list wrapper. The loose form has no constructor argument; the min-one
 form retains its first-element constructor; each bounded form takes its matching checked bounded list
 wrapper. WIT despecializes that wrapper to `list<T>` and component glue fallsibly converts it back to
-`BoundedVec` before native construction; its public carrier does not depend on whether the segment is
-final or safe-middle; see [wasm differences](wasm_differences#open-struct-map-rest-rows).
+its established list wrapper before native construction; component WIT remains `list<T>` and its
+guest glue restores `[T; N]` fallibly. The public native carrier does not depend on whether the
+segment is final or safe-middle; see [wasm differences](wasm_differences#open-struct-map-rest-rows).
 
 ### The `@ignore` (tolerate-and-drop) flavor
 
@@ -949,8 +951,8 @@ field type becomes `NonEmptyVec<T>` (or `NonEmptyMap<K, V>`), hand-written gener
 generated crate, so an empty value is simply not representable. A named rule aliases straight to it:
 `deltas = [+ int]` emits `pub type Deltas = NonEmptyVec<i64>`, giving the rule a real enforcement
 surface it never had standalone. Every other supported **ordinary or `@duplicates preserve`**
-homogeneous ARRAY window except bare `*` is likewise type-enforced: `[2*5 T]`, `[*5 T]`, `[2* T]`,
-`[? T]`, and `[2*2 T]` emit
+homogeneous ARRAY window except bare `*` is likewise type-enforced: exact `[2*2 T]` (and `[*0 T]`)
+emits `[T; N]`, while `[2*5 T]`, `[*5 T]`, `[2* T]`, and `[? T]` emit
 `BoundedVec<T, MIN, MAX>` (`u64::MAX` is the target-independent unbounded carrier). Bare `[* T]` remains `Vec<T>`.
 
 A bounded `@duplicates reject` array uses `BoundedOrderedSet<T, MIN, MAX>`. Its one
@@ -1017,6 +1019,18 @@ seeded with `BoundedVec::new()`; a positive-minimum value must enter through `Tr
 | `Foo::new(tags: Vec<Bar>) -> Result<Foo, DeserializeError>` | `Foo::new(tags: BoundedVec<Bar, 2, 5>) -> Foo` |
 | `let foo = Foo::new(tags)?;` | `let tags: BoundedVec<Bar, 2, 5> = tags.try_into()?; let foo = Foo::new(tags);` |
 | `tags.push(bar)` can silently exceed the window | `tags.push(bar)?` refuses the first out-of-window append before mutation |
+
+**Migrating an exact window** (`BoundedVec<T, N, N>` field → `[T; N]`) is deliberately a native API
+break: constructors and setters now take `[T; N]` and are infallible for cardinality. When a caller
+has a loose vector, convert it once at the assembly boundary:
+`let tags: [Bar; N] = tags.try_into()?; let foo = Foo::new(tags);`. CBOR, wasm list wrappers, and
+component `list<T>` remain list-shaped and make the equivalent checked handover themselves. JSON
+does so for direct/optional exact fields and exact type-choice payloads (including natural CDDL
+`any` arrays), and loose `Vec<[T; N]>` elements when `T` is not `any`. The remaining nested
+containing shapes, including nested exact-`any` arrays, are rejected under either JSON flag because
+the pinned serde/schemars array derives stop at length 32 and `any` requires its own natural adapter.
+This is separate from `bytes .size N`, whose `[u8; N]` storage retains a loose `Vec<u8>` constructor
+for compatibility.
 
 The type name, the generated doc comment (which quotes the originating CDDL), and the `TryFrom`
 signature are three redundant signals that a constraint exists. The wasm boundary mirrors this with a

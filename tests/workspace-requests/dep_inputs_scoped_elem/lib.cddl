@@ -1,8 +1,8 @@
 ; Cross-scope requested-element DEP spec (`--wrapper-requests` host side). The dep OWNS `scoped_foo`
 ; but defines it in a NON-ROOT scope (`sub/module.cddl` -> the `sub::module` scope, reachable
 ; externally as `wr_dep::sub::module::ScopedFoo`). Crucially, `root` references NOTHING scoped, so the
-; generated wasm ROOT never imports `ScopedFoo` for its own sake — a hosted `[* scoped_foo]` request
-; therefore cannot resolve its element through the module's bare `use super::*;` (which reaches only
-; the generated root), pinning that the request-collections import walk imports the element from its
-; true `crate::generated::sub::module` home.
+; generated wasm ROOT never imports `ScopedFoo` for its own sake — a hosted `[2*2 scoped_foo]` request
+; therefore cannot resolve either its element or its own-spec loose `ScopedFooList` source through
+; the module's bare `use super::*;` (which reaches only the generated root), pinning that the
+; request-collections import walk uses their true `crate::generated::sub::module` home.
 root = [a: uint]

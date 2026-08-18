@@ -1,0 +1,3 @@
+idx_foo_list_min2_max2 = [2*2 idx_foo]
+
+exact_holder = [exact: idx_foo_list_min2_max2]

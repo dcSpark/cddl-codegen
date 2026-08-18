@@ -1169,13 +1169,14 @@ impl GenerationScope {
                     // by every member/element/choice decode route and preserves byte-string
                     // framing (including the `_sz` metadata read).
                     if matches!(p, Primitive::Bytes)
-                        && let Some(len) =
-                            crate::intermediate::exact_byte_array_len_from_bounds(type_cfg.bounds)
-                                .map(|result| {
-                                    result.expect(
+                        && let Some(len) = crate::intermediate::exact_array_len_from_bounds(
+                            type_cfg.bounds,
+                        )
+                        .map(|result| {
+                            result.expect(
                                 "exact byte array length must be validated before generation",
                             )
-                                })
+                        })
                     {
                         let range_error = format!(
                             "DeserializeFailure::RangeCheck{{ found: bytes.len() as i128, min: Some({len}), max: Some({len}) }}.into()"
@@ -2352,6 +2353,15 @@ impl GenerationScope {
                         // the field (untouched below) — only the value var is rebound.
                         deser_code.content.line(&format!(
                             "let {arr_var_name} = NonEmptyVec::try_from({arr_var_name})?;"
+                        ));
+                    } else if let Some(Ok(len)) =
+                        crate::intermediate::exact_array_len_from_bounds(type_cfg.bounds)
+                    {
+                        // Exact ordinary/preserve homogeneous arrays stage on the wire as a Vec
+                        // and cross one static handover. Map the standard conversion error back
+                        // to the generator's established RangeCheck rather than leaking it.
+                        deser_code.content.line(&format!(
+                            "let {arr_var_name}: [_; {len}] = {arr_var_name}.try_into().map_err(|elements: Vec<_>| DeserializeFailure::RangeCheck{{ found: elements.len() as i128, min: Some({len}), max: Some({len}) }})?;"
                         ));
                     } else if let Some((min, max)) = type_cfg.bounds
                         && (min, max) != (None, None)

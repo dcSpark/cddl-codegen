@@ -147,7 +147,7 @@ mod open_array {
         assert_eq!(min.rest.as_slice(), &[2, 3]);
         assert_decode_reject_reason::<BoundedMin>(&bytes("81 07"), "0 not at least 2");
 
-        let zero = BoundedZero::new(7, BoundedVec::try_from(Vec::<u64>::new()).unwrap());
+        let zero = BoundedZero::new(7, []);
         assert_eq!(zero.to_cbor_bytes(), bytes("81 07"));
         assert_decode_reject_reason::<BoundedZero>(&bytes("82 07 01"), "1 not in range 0 - 0");
     }
@@ -305,10 +305,10 @@ mod open_array {
 
         let constructed = ExactSegments::new(
             7,
-            BoundedVec::try_from(vec![vec![0xaa], vec![0xbb]]).unwrap(),
+            [vec![0xaa], vec![0xbb]],
             "x".to_owned(),
-            BoundedVec::try_from(Vec::<u64>::new()).unwrap(),
-            BoundedVec::try_from(vec![1, 2, 3]).unwrap(),
+            [],
+            [1, 2, 3],
             9,
         );
         assert_eq!(constructed.to_cbor_bytes(), wire);
@@ -335,8 +335,8 @@ mod open_array {
         assert_eq!(decoded.to_cbor_bytes(), wire);
 
         let constructed = TrailingExactSegments::new(
-            BoundedVec::try_from(vec![1, 2]).unwrap(),
-            BoundedVec::try_from(vec![3, 4, 5]).unwrap(),
+            [1, 2],
+            [3, 4, 5],
         );
         assert_eq!(constructed.to_cbor_bytes(), wire);
 
@@ -498,8 +498,8 @@ mod open_array {
     // --- exact same-major middle segment (`exact_middle = [uint, 2*2 uint, uint]`) ---
 
     #[test]
-    fn exact_middle_is_count_delimited_and_uses_the_checked_carrier_door() {
-        let native = ExactMiddle::new(7, 99, BoundedVec::try_from(vec![2, 3]).unwrap());
+    fn exact_middle_is_count_delimited_and_uses_the_native_array_carrier() {
+        let native = ExactMiddle::new(7, 99, [2, 3]);
         assert_eq!(native.rest.as_slice(), &[2, 3]);
         assert_eq!(native.to_cbor_bytes(), bytes("84 07 02 03 1863"));
 
@@ -530,7 +530,7 @@ mod open_array {
 
     #[test]
     fn exact_zero_middle_leaves_the_same_major_suffix_in_place_for_both_owner_forms() {
-        let native = ExactZeroMiddle::new(7, 99, BoundedVec::try_from(Vec::<u64>::new()).unwrap());
+        let native = ExactZeroMiddle::new(7, 99, []);
         assert_eq!(native.to_cbor_bytes(), bytes("82 07 1863"));
         for wire in [bytes("82 07 1863"), bytes("9f 07 1863 ff")] {
             let exact = ExactZeroMiddle::from_cbor_bytes(&wire).unwrap();

@@ -1,4 +1,10 @@
 ; The dep's `scoped_foo`, living in the `sub::module` scope. A plain uint record, referenced nowhere
-; at the generated root — a hosted `[* scoped_foo]` requested wrapper is its only user, so its wasm
-; class must be imported into `requested_collections.rs` from `crate::generated::sub::module`.
+; at the generated root. The own-spec loose `ScopedFooList` below and a hosted `[2*2 scoped_foo]`
+; wrapper both require its wasm class to be imported into `requested_collections.rs` from
+; `crate::generated::sub::module`.
 scoped_foo = [x: uint]
+
+; The host's requested exact static wrapper borrows this OWN-SPEC loose source rather than
+; co-hosting another `ScopedFooList` in requested_collections.rs. Its declaring scope is non-root,
+; so that host file must import both this class and ScopedFoo from sub::module.
+scoped_foo_list = [* scoped_foo]

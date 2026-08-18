@@ -18269,6 +18269,7 @@ fn extern_wrapper_index_deferred_try_from_sources() {
     );
 
     let wasm_mod = std::fs::read_to_string(export.join("wasm/src/generated/mod.rs")).unwrap();
+    let wasm_sub = std::fs::read_to_string(export.join("wasm/src/generated/sub/mod.rs")).unwrap();
     let wasm_index =
         std::fs::read_to_string(export.join("wasm/src/generated/collections.rs")).unwrap();
 
@@ -18327,6 +18328,31 @@ fn extern_wrapper_index_deferred_try_from_sources() {
     assert!(
         wasm_mod.contains("IdxFooList"),
         "the deferred loose source's import must be routed at the reject rule's scope"
+    );
+
+    // Exact static list: its canonical exact class is local (the dependency index lists only the
+    // loose source), while `try_from(&IdxFooList)` must import that source in the NON-ROOT module
+    // that owns the named exact rule. This is the static-carrier counterpart of the map/reject
+    // source seams above, and the cargo-check below is the emitted-wasm correctness floor.
+    assert!(
+        wasm_sub.contains("pub struct IdxFooListMin2Max2(pub(crate) [")
+            && wasm_sub.contains("pub fn try_from(list: &IdxFooList)"),
+        "the named exact wrapper must remain locally minted with its checked loose-source door:\n{wasm_sub}"
+    );
+    assert!(
+        wasm_sub.contains("use index_dep_crate_wasm::collections::")
+            && wasm_sub.contains("IdxFooList"),
+        "the local non-root exact wrapper must import its deferred loose source from the dependency:\n{wasm_sub}"
+    );
+    assert!(
+        !wasm_mod.contains("pub struct IdxFooList(")
+            && !wasm_sub.contains("pub struct IdxFooList("),
+        "the dependency-owned loose source must not be re-minted in either generated scope"
+    );
+    assert!(
+        wasm_index.contains("IdxFooListMin2Max2")
+            && !wasm_index.contains("pub use crate::generated::IdxFooList;"),
+        "the exact class is this crate's index row, while the loose source remains dependency-owned:\n{wasm_index}"
     );
 
     index_named_wasm_check("extern_wrapper_index_deferred_try_from_sources", &export);
@@ -19130,7 +19156,6 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
         ("IdxFooListMax1", "0, 1"),
         ("IdxFooListMax5", "0, 5"),
         ("IdxFooListMin2", "2, { u64::MAX }"),
-        ("IdxFooListMin2Max2", "2, 2"),
         ("IdxFooListMin2Max5", "2, 5"),
     ] {
         assert!(
@@ -19141,10 +19166,27 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
         );
     }
     assert!(
+        requested.contains("pub struct IdxFooListMin2Max2(pub(crate) [wr_dep::IdxFoo; 2]);")
+            && !requested.contains("pub struct IdxFooListMin2Max2(pub(crate) BoundedVec"),
+        "the exact requested window must use its native static carrier while preserving its wasm class:\n{requested}"
+    );
+    assert!(
         requested.contains("pub fn try_from(list: &IdxFooList)")
             && requested.contains("BoundedVec::try_from(inner)")
             && requested.contains(".map(Self)"),
         "every non-exposable requested bounded wrapper must use the shared checked door:\n{requested}"
+    );
+    assert!(
+        requested.contains("impl IdxFooListMin2Max2 {\n    pub fn len")
+            && !requested.contains("array length")
+            && !requested.contains("impl IdxFooListMin2Max2 {\n    pub fn new")
+            && !requested.contains("impl IdxFooListMin2Max2 {\n    pub fn add"),
+        "a fixed list has only the fallible list handover, never mutation or an empty seed:\n{requested}"
+    );
+    assert!(
+        requested.contains("impl From<[wr_dep::IdxFoo; 2]> for IdxFooListMin2Max2")
+            && requested.contains("impl AsRef<[wr_dep::IdxFoo; 2]> for IdxFooListMin2Max2"),
+        "the fixed wrapper must retain native-to-wasm and wasm-to-native conversion surfaces:\n{requested}"
     );
     assert!(
         requested.contains("impl IdxFooListMax1 {\n    pub fn new() -> Self")
@@ -22043,7 +22085,7 @@ fn workspace_requests_hosts_cross_scope_elements() {
     let sidecar1 = scratch1.join("sc.rs");
     write_sidecar(
         &sidecar1,
-        "    (\"wr_dep\", \"ScopedFooList\", \"[* scoped_foo]\"),\n",
+        "    (\"wr_dep\", \"ScopedFooListMin2Max2\", \"[2*2 scoped_foo]\"),\n",
     );
     let o1 = gen_dep("dep_inputs_scoped_elem", "export_xscope_f1", &sidecar1);
     assert!(
@@ -22057,9 +22099,12 @@ fn workspace_requests_hosts_cross_scope_elements() {
             .unwrap();
     // The element wasm class is imported from its TRUE scoped home, not left to `use super::*;`.
     assert!(
-        requested1.contains("use crate::generated::sub::module::ScopedFoo;"),
-        "the hosted wrapper must import its cross-scope element from crate::generated::sub::module, \
-         not rely on the root-only `use super::*;`:\n{requested1}"
+        requested1.contains("use crate::generated::sub::module::{ScopedFoo, ScopedFooList};")
+            && requested1.contains("pub struct ScopedFooListMin2Max2")
+            && requested1.contains("pub fn try_from(list: &ScopedFooList)"),
+        "the hosted exact wrapper must import both its cross-scope element and own-spec loose source \
+         from crate::generated::sub::module, not rely on root-only `use super::*;` or mint a second \
+         source:\n{requested1}"
     );
     // The honest compile gate (RED at HEAD before the fix: E0425 cannot find type `ScopedFoo`).
     let check1 = tool_cmd("cargo")
@@ -22070,8 +22115,8 @@ fn workspace_requests_hosts_cross_scope_elements() {
         .unwrap();
     assert!(
         check1.status.success(),
-        "the facet-1 wasm crate must compile: the hosted `[* scoped_foo]` wrapper's element resolves \
-         at crate::generated::sub::module::ScopedFoo:\n{}",
+        "the facet-1 wasm crate must compile: the hosted `[2*2 scoped_foo]` wrapper's element and \
+         loose source resolve at crate::generated::sub::module:\n{}",
         String::from_utf8_lossy(&check1.stderr)
     );
     assert_no_unused_generated_warnings(
@@ -29215,11 +29260,12 @@ fn export_static_crate_warns_on_new_files_only() {
     //    the notice fires for those and for nothing else. This is the whole channel by which a consumer
     //    learns they owe `pub mod json_schema_gen;` — and the prerequisite for the hand feature-gating
     //    recipe in `--export-static-crate`'s docs, which starts from that declaration being theirs.
-    //    The flag brings exactly two: the json-gen helper hub, and `open_struct_rest_json.rs`, whose
-    //    serde flatten half stays behind `--json-serde-derives` while its rest-row schema helper is
-    //    this flag's (the exported dir is a pure function of the flag set, never of the spec).
+    //    The flag brings exactly three: the json-gen helper hub, the static-array JSON/schema
+    //    adapter, and `open_struct_rest_json.rs`, whose serde flatten half stays behind
+    //    `--json-serde-derives` while its rest-row schema helper is this flag's. The exported dir
+    //    is a pure function of the flag set, never of the spec.
     let stderr4 = export_with(&["--json-schema-export=true"]);
-    for module in ["json_schema_gen", "open_struct_rest_json"] {
+    for module in ["json_schema_gen", "static_array", "open_struct_rest_json"] {
         assert!(
             stderr4.contains(&format!("NEW static file {module}.rs"))
                 && stderr4.contains(&format!("declare `pub mod {module};`")),
@@ -29228,7 +29274,7 @@ fn export_static_crate_warns_on_new_files_only() {
         );
     }
     assert!(
-        stderr4.matches("NEW static file").count() == 2,
+        stderr4.matches("NEW static file").count() == 3,
         "only the flag-introduced files are new — every other runtime file was already \
          written:\n{stderr4}"
     );

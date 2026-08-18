@@ -358,8 +358,13 @@ fn render_rust_for_direct_storage(
     stored_type: &RustType,
 ) -> String {
     let rendered = render_rust(mv);
-    if stored_type.exact_byte_array_len_checked().is_some() {
-        return format!("{rendered}.try_into().unwrap()");
+    if let Some(len) = stored_type
+        .exact_byte_array_len_checked()
+        .or_else(|| stored_type.exact_homogeneous_array_len_checked())
+    {
+        // This feeds an already-typed stored carrier, but `Wrapper::from(vec.try_into())` leaves
+        // the TryInto target ambiguous now that both BoundedVec and `[T; N]` are viable.
+        return format!("<[_; {len}]>::try_from({rendered}).unwrap()");
     }
     let render_array = |element: &RustType| {
         render_rust_array(mv, &|value| {
@@ -370,8 +375,11 @@ fn render_rust_for_direct_storage(
         render_rust_map(
             mv,
             &|expr| {
-                if key.exact_byte_array_len_checked().is_some() {
-                    format!("{expr}.try_into().unwrap()")
+                if let Some(len) = key
+                    .exact_byte_array_len_checked()
+                    .or_else(|| key.exact_homogeneous_array_len_checked())
+                {
+                    format!("<[_; {len}]>::try_from({expr}).unwrap()")
                 } else {
                     expr
                 }
@@ -388,10 +396,24 @@ fn render_rust_for_direct_storage(
         }
         ConceptualRustType::Rust(type_ident) => {
             match types.rust_struct(type_ident).map(RustStruct::variant) {
-                Some(RustStructType::Array { element_type, .. })
-                    if matches!(mv, MintValue::Array { .. }) =>
-                {
-                    render_array(element_type)
+                Some(RustStructType::Array {
+                    element_type,
+                    bounds,
+                }) if matches!(mv, MintValue::Array { .. }) => {
+                    let array = render_array(element_type);
+                    let static_len = types
+                        .rust_struct(type_ident)
+                        .filter(|array| {
+                            array.config().duplicates
+                                != Some(crate::comment_ast::DuplicatesPolicy::Reject)
+                        })
+                        .and_then(|_| crate::intermediate::exact_array_len_from_bounds(*bounds))
+                        .and_then(Result::ok);
+                    if let Some(len) = static_len {
+                        format!("<[_; {len}]>::try_from({array}).unwrap()")
+                    } else {
+                        array
+                    }
                 }
                 Some(RustStructType::Table { domain, range, .. })
                     if matches!(mv, MintValue::Map { .. }) =>
@@ -1696,6 +1718,16 @@ fn record_roundtrip(
             // first element through `new`; both gain one more element here through the non-shrinking
             // `.push` API so serialization/deserialization executes the tail loop.
             crate::intermediate::RestKind::ArrayTail { element, .. } => {
+                // Exact static tails are already fully represented in the baseline `[T; N]`.
+                // They have no length-preserving `push` operation, and attempting one would
+                // manufacture the pre-static-carrier test failure this branch is meant to avoid.
+                if rest
+                    .container_type()
+                    .exact_homogeneous_array_len_checked()
+                    .is_some()
+                {
+                    continue;
+                }
                 match valid_value(types, element) {
                     Some(e) => cases.push((
                         format!(
@@ -2098,6 +2130,7 @@ fn record_deser_reject(
             (f.rust_type.config.bounds.is_some()
                 && measure_kind(&f.rust_type).is_some()
                 && !f.rust_type.is_type_enforced_non_empty()
+                && !f.rust_type.is_type_enforced_exact_homogeneous_array()
                 && !f.rust_type.is_type_enforced_bounded_array()
                 && !f.rust_type.is_type_enforced_bounded_map()
                 // Exact bytes are stored as `[u8; N]`: an invalid mutation cannot be expressed.
@@ -2243,7 +2276,10 @@ fn choice_construct_reject(
                 // own `try_from(..).unwrap()`, not exercise the ctor (the same skip
                 // `record_deser_reject` applies). Rejection via the TryFrom door is covered by
                 // the hand-written fixture tests.
-                if arg_ty.is_type_enforced_non_empty() || arg_ty.is_type_enforced_bounded_map() {
+                if arg_ty.is_type_enforced_non_empty()
+                    || arg_ty.is_type_enforced_exact_homogeneous_array()
+                    || arg_ty.is_type_enforced_bounded_map()
+                {
                     continue;
                 }
                 (
@@ -2978,11 +3014,14 @@ pub(crate) fn mint_struct(
                 count,
                 non_empty: *bounds == Some((Some(1), None)),
                 bounded: bounds.and_then(|(min, max)| {
-                    ((min, max) != (None, None) && (min, max) != (Some(1), None)).then_some((
-                        u64::try_from(min.unwrap_or(0)).ok()?,
-                        max.map(|v| u64::try_from(v).ok())
-                            .unwrap_or(Some(u64::MAX))?,
-                    ))
+                    (crate::intermediate::exact_array_len_from_bounds(Some((min, max))).is_none()
+                        && (min, max) != (None, None)
+                        && (min, max) != (Some(1), None))
+                        .then_some((
+                            u64::try_from(min.unwrap_or(0)).ok()?,
+                            max.map(|v| u64::try_from(v).ok())
+                                .unwrap_or(Some(u64::MAX))?,
+                        ))
                 }),
                 reject,
                 unique_elems,

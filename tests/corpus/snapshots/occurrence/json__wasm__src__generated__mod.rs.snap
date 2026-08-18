@@ -101,10 +101,10 @@ impl AsRef<Vec<Vec<u8>>> for BytesList {
     }
 }
 
-/// `[2*2 uint]`: inclusive length window enforced by the core `BoundedVec`. Loose input enters through the core `BoundedVec` `TryFrom<Vec<_>>` door; `add` and `try_from` fail before changing the value when they would cross the declared bound.
+/// `[2*2 uint]`: inclusive length window enforced by the native static array. Loose input crosses the `Vec<T> -> [T; N]` conversion door; the stored static array makes wrong cardinality unrepresentable.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
-pub struct Exact(pub(crate) BoundedVec<u64, 2, 2>);
+pub struct Exact(pub(crate) [u64; 2]);
 
 #[wasm_bindgen]
 impl Exact {
@@ -116,31 +116,27 @@ impl Exact {
         self.0[index]
     }
 
-    pub fn add(&mut self, elem: u64) -> Result<(), JsError> {
-        self.0.push(elem).map_err(|e| JsError::new(&e.to_string()))
-    }
-
     pub fn try_from(elements: Vec<u64>) -> Result<Exact, JsError> {
-        BoundedVec::try_from(elements)
-            .map(Self)
-            .map_err(|e| JsError::new(&e.to_string()))
+        elements.try_into().map(Self).map_err(|elements: Vec<_>| {
+            JsError::from(cddl_lib::error::DeserializeError::from(
+                cddl_lib::error::DeserializeFailure::RangeCheck {
+                    found: elements.len() as i128,
+                    min: Some(2),
+                    max: Some(2),
+                },
+            ))
+        })
     }
 }
 
-impl From<BoundedVec<u64, 2, 2>> for Exact {
-    fn from(native: BoundedVec<u64, 2, 2>) -> Self {
+impl From<[u64; 2]> for Exact {
+    fn from(native: [u64; 2]) -> Self {
         Self(native)
     }
 }
 
-impl From<Exact> for BoundedVec<u64, 2, 2> {
-    fn from(wasm: Exact) -> Self {
-        wasm.0
-    }
-}
-
-impl AsRef<BoundedVec<u64, 2, 2>> for Exact {
-    fn as_ref(&self) -> &BoundedVec<u64, 2, 2> {
+impl AsRef<[u64; 2]> for Exact {
+    fn as_ref(&self) -> &[u64; 2] {
         &self.0
     }
 }
@@ -826,5 +822,11 @@ impl From<Upper> for BoundedVec<u64, 0, 5> {
 impl AsRef<BoundedVec<u64, 0, 5>> for Upper {
     fn as_ref(&self) -> &BoundedVec<u64, 0, 5> {
         &self.0
+    }
+}
+
+impl From<Exact> for [u64; 2] {
+    fn from(wasm: Exact) -> Self {
+        wasm.0
     }
 }

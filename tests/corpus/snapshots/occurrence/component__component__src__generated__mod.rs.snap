@@ -34,9 +34,12 @@ pub struct WitExactMiddleOccurrence(pub RefCell<cddl_lib::ExactMiddleOccurrence>
 
 impl wit_types::GuestExactMiddleOccurrence for WitExactMiddleOccurrence {
     fn new(prefix: u64, suffix: u64, rest: Vec<u64>) -> Result<Self, String> {
-        let rest = (rest.into_iter().collect::<Vec<_>>())
-            .try_into()
-            .map_err(err)?;
+        let rest =
+            (rest.into_iter().collect::<Vec<_>>())
+                .try_into()
+                .map_err(|values: Vec<_>| {
+                    err(format!("array length {} does not equal 2", values.len()))
+                })?;
         let inner = cddl_lib::ExactMiddleOccurrence::new(prefix, suffix, rest);
         Ok(WitExactMiddleOccurrence(RefCell::new(inner)))
     }
@@ -145,9 +148,12 @@ impl wit_types::GuestOccurrenceHolder for WitOccurrenceHolder {
         let maybe = (maybe.into_iter().collect::<Vec<_>>())
             .try_into()
             .map_err(err)?;
-        let exact = (exact.into_iter().collect::<Vec<_>>())
-            .try_into()
-            .map_err(err)?;
+        let exact =
+            (exact.into_iter().collect::<Vec<_>>())
+                .try_into()
+                .map_err(|values: Vec<_>| {
+                    err(format!("array length {} does not equal 2", values.len()))
+                })?;
         let nested = nested
             .into_iter()
             .map(|x| (x.into_iter().collect::<Vec<_>>()).try_into().map_err(err))
@@ -171,7 +177,9 @@ impl wit_types::GuestOccurrenceHolder for WitOccurrenceHolder {
             .map_err(err)?;
         let inline_exact = (inline_exact.into_iter().collect::<Vec<_>>())
             .try_into()
-            .map_err(err)?;
+            .map_err(|values: Vec<_>| {
+                err(format!("array length {} does not equal 2", values.len()))
+            })?;
         let inner = cddl_lib::OccurrenceHolder::new(
             o,
             b,

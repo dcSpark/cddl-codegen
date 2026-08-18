@@ -12,8 +12,8 @@
 //!
 //! * MODE — `Local` (control: no dep flags), `IndexDeferred` (`--extern-wrapper-index`),
 //!   `WorkspaceBorrowed` (`--workspace-dep`), `RequestedHosted` (`--wrapper-requests`, dep side).
-//! * SHAPE — loose list / loose map / NonEmpty list / NonEmpty map / named table rule /
-//!   `@duplicates reject` set / `@duplicates preserve` pair map.
+//! * SHAPE — loose list / exact static list / loose map / NonEmpty list / NonEmpty map / named
+//!   table rule / `@duplicates reject` set / `@duplicates preserve` pair map.
 //! * POSITION — inline-anonymous member / named-rule DECLARATION whose ident equals the structural
 //!   name / named-rule REFERENCE from another rule's member / a non-root declaring scope.
 //!
@@ -67,6 +67,9 @@ pub(crate) enum Mode {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub(crate) enum Shape {
     LooseList,
+    /// An ordinary/preserve `[N*N elem]`: native `[T; N]`, wasm list-shaped class, and (when this
+    /// crate mints it) a loose `<Elem>List` `try_from` source.
+    ExactList,
     LooseMap,
     NonEmptyList,
     NonEmptyMap,
@@ -183,6 +186,18 @@ pub(crate) const PARTICIPATION_TABLE: &[Row] = &[
     },
     Row {
         mode: Mode::Local,
+        shape: Shape::ExactList,
+        position: Position::NonRootScope,
+        elem: "loc_ex_scp",
+        class: "LocExScpListMin2Max2",
+        expect: Outcome::LocalSilent(
+            "the static carrier is locally minted, and its non-root try_from source imports the root loose builder",
+        ),
+        pinned_by: None,
+        why: "an exact static wrapper still needs LocExScpList as its loose Vec-to-array handover source; this row pins the root-to-non-root import",
+    },
+    Row {
+        mode: Mode::Local,
         shape: Shape::LooseMap,
         position: Position::InlineAnonymous,
         elem: "loc_lm_inl",
@@ -292,6 +307,16 @@ pub(crate) const PARTICIPATION_TABLE: &[Row] = &[
         expect: Outcome::Defer,
         pinned_by: None,
         why: "the import must be routed into the NON-ROOT module holding the referencing struct",
+    },
+    Row {
+        mode: Mode::IndexDeferred,
+        shape: Shape::ExactList,
+        position: Position::NonRootScope,
+        elem: "idx_ex_scp",
+        class: "IdxExScpListMin2Max2",
+        expect: Outcome::Defer,
+        pinned_by: None,
+        why: "a wholly deferred static carrier borrows the dependency's class and its Vec-to-array door, so it owes no local IdxExScpList source",
     },
     Row {
         mode: Mode::IndexDeferred,
@@ -414,6 +439,16 @@ pub(crate) const PARTICIPATION_TABLE: &[Row] = &[
     },
     Row {
         mode: Mode::WorkspaceBorrowed,
+        shape: Shape::ExactList,
+        position: Position::InlineAnonymous,
+        elem: "wsp_ex_inl",
+        class: "WspExInlListMin2Max2",
+        expect: Outcome::Borrow,
+        pinned_by: None,
+        why: "the borrowed static carrier includes its Vec-to-array conversion door in the dependency, so no local WspExInlList companion is minted or requested",
+    },
+    Row {
+        mode: Mode::WorkspaceBorrowed,
         shape: Shape::LooseMap,
         position: Position::InlineAnonymous,
         elem: "wsp_lm_inl",
@@ -504,6 +539,16 @@ pub(crate) const PARTICIPATION_TABLE: &[Row] = &[
     },
     Row {
         mode: Mode::RequestedHosted,
+        shape: Shape::ExactList,
+        position: Position::NotApplicable,
+        elem: "req_ex",
+        class: "ReqExListMin2Max2",
+        expect: Outcome::Host,
+        pinned_by: None,
+        why: "the host rebuilds the native static carrier and co-hosts ReqExList as its loose Vec-to-array handover source",
+    },
+    Row {
+        mode: Mode::RequestedHosted,
         shape: Shape::LooseMap,
         position: Position::NotApplicable,
         elem: "req_lm",
@@ -578,6 +623,7 @@ impl Shape {
     fn cddl(self, elem: &str) -> String {
         match self {
             Shape::LooseList => format!("[* {elem}]"),
+            Shape::ExactList => format!("[2*2 {elem}]"),
             Shape::LooseMap => format!("{{* uint => {elem}}}"),
             Shape::NonEmptyList => format!("[+ {elem}]"),
             Shape::NonEmptyMap => format!("{{+ uint => {elem}}}"),
@@ -669,7 +715,17 @@ fn build_spec(mode: Mode, rows: &[&Row]) -> SpecFiles {
                     policy.is_none(),
                     "flavored shapes stay at root in this grid"
                 );
-                sub_members.push(format!("  {}_m: {shape}", row.elem));
+                // The exact-list row needs the named-rule route as well as a non-root use: its
+                // class's `try_from(&<Elem>List)` source is emitted at the rule's scope, while the
+                // loose source itself remains synthesized at root. Other shapes keep the compact
+                // inline position this axis conventionally represents.
+                if row.shape == Shape::ExactList {
+                    let ident = row.shape.declared_rule_ident(row.class);
+                    sub.push_str(&format!("{ident} = {shape}\n\n"));
+                    sub_members.push(format!("  {}_m: {ident}", row.elem));
+                } else {
+                    sub_members.push(format!("  {}_m: {shape}", row.elem));
+                }
             }
             Position::NotApplicable => unreachable!("request rows build no consumer spec"),
         }
@@ -819,6 +875,14 @@ fn generate_consumer_mode(prefix: &str, mode: Mode, rows: &[&Row]) -> Generated 
 /// The loose `try_from` SOURCE a restricted wrapper implies, if this row has one.
 fn loose_source_class(row: &Row) -> Option<String> {
     match row.shape {
+        // A locally minted/hosted exact wrapper still crosses its one checked Vec-to-array door
+        // through the loose element list. A wholly deferred/borrowed wrapper owns that door in the
+        // dependency, so this crate owes no companion class or import.
+        Shape::ExactList if matches!(row.expect, Outcome::Defer | Outcome::Borrow) => None,
+        Shape::ExactList => Some(format!(
+            "{}List",
+            crate::utils::convert_to_camel_case(row.elem)
+        )),
         Shape::NonEmptyList => Some(row.class.trim_start_matches("NonEmpty").to_owned()),
         Shape::NonEmptyMap => Some(row.class.trim_start_matches("NonEmpty").to_owned()),
         // A DEFERRED reject wrapper borrows the dependency's whole class — its `try_from` door
@@ -967,6 +1031,81 @@ fn wrapper_participation_local_mode() {
     for row in &rows {
         assert_row(row, &batch);
     }
+    let exact_non_root = rows
+        .iter()
+        .find(|row| row.shape == Shape::ExactList && row.position == Position::NonRootScope)
+        .expect("the local exact non-root source-control row");
+    let source =
+        loose_source_class(exact_non_root).expect("locally minted exact wrapper owes source");
+    assert!(
+        batch.wasm_src.contains(&format!("pub struct {source}(")),
+        "the local exact wrapper must mint its loose Vec-to-array source {source}:\n{}",
+        batch.wasm_src
+    );
+    assert!(
+        batch
+            .wasm_src
+            .lines()
+            .any(|line| { line.starts_with("use crate::generated::") && line.contains(&source) }),
+        "the non-root exact wrapper's bare try_from(&{source}) source must import from root:\n{}",
+        batch.wasm_src
+    );
+}
+
+/// Two named non-root restricted rules reach the `RustStructType::Array` source-registration arm
+/// directly, rather than incidentally through an inline occurrence. The exact outer names the root
+/// `FooList` builder; the NonEmpty outer over an inline variable-bounded element names the root
+/// `FooListMin2Max3List` builder. The latter is the subtle corrected case: only a nested NonEmpty
+/// element suppresses a loose source, never a nested bounded/static one.
+#[test]
+fn named_restricted_rules_import_nonroot_loose_sources() {
+    let root = scratch_root("named_restricted_nonroot_sources");
+    let _ = std::fs::remove_dir_all(&root);
+    let input = root.join("inputs");
+    let export = root.join("export");
+    write_files(
+        &input,
+        &[
+            ("lib.cddl".to_owned(), "foo = [x: uint]\n".to_owned()),
+            (
+                "sub.cddl".to_owned(),
+                "exact = [2*2 foo]\n\
+                 outer = [+ [2*3 foo]]\n\
+                 holder = [field: exact, bounded: outer]\n"
+                    .to_owned(),
+            ),
+        ],
+    );
+    let out = codegen_cmd()
+        .arg(format!("--input={}", input.display()))
+        .arg(format!("--output={}", export.display()))
+        .arg("--wasm=true")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "named restricted non-root source resident must generate: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let sub = std::fs::read_to_string(export.join("wasm/src/generated/sub/mod.rs")).unwrap();
+    assert!(
+        sub.contains("pub struct Exact(")
+            && sub
+                .lines()
+                .any(|line| line.starts_with("use crate::generated::") && line.contains("FooList"))
+            && sub.contains("list: &FooList"),
+        "the named exact class must import its root loose Vec-to-array source in its declaring scope:\n{sub}"
+    );
+    assert!(
+        sub.contains("pub struct Outer(")
+            && sub.contains("try_from(list: &FooListMin2Max3List)")
+            && sub.lines().any(|line| {
+                line.starts_with("use crate::generated::") && line.contains("FooListMin2Max3List")
+            }),
+        "the named NonEmpty outer over an inline bounded element must import its root loose source; \
+         nested bounded/static elements never take the nested-NonEmpty suppression:\n{sub}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
 }
 
 /// MODE = `IndexDeferred`: the dep's index lists every structural name the spec derives, so what the
@@ -1363,6 +1502,7 @@ fn wrapper_participation_table_is_complete_and_live() {
     ] {
         for shape in [
             Shape::LooseList,
+            Shape::ExactList,
             Shape::LooseMap,
             Shape::NonEmptyList,
             Shape::NonEmptyMap,

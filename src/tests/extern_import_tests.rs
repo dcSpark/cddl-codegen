@@ -83,11 +83,11 @@ fn generate(input: &std::path::Path, extra: &[&str]) -> Result<BTreeMap<String, 
 /// extern-interface channel inside a transparent plain group.  Pin the whole round trip rather
 /// than only the renderer text: the consumer must parse the committed export back into the same
 /// static carriers.  The exact-zero normalization and a width above serde's historical 32-element
-/// array limit exercise the two non-obvious endpoints.  The exact homogeneous CDDL ARRAY beside
-/// them is the negative identity control for the still-open fixed-array campaign: this fixed-byte
-/// delivery must leave its `BoundedVec` carrier alone.
+/// array limit exercise the two non-obvious endpoints. The exact homogeneous CDDL ARRAY beside
+/// them is an independent identity control: it crosses the same seam using its own `[T; N]`
+/// native carrier rather than being mistaken for exact bytes.
 #[test]
-fn extern_import_roundtrips_exact_bytes_without_consuming_fixed_arrays() {
+fn extern_import_roundtrips_exact_bytes_and_static_fixed_arrays() {
     let dep_spec = "exacts = (zero: bytes .size 0, wide: bytes .size 64)\n\
                     fixed_values = [3*3 uint]\n\
                     dep_holder = [exacts, values: fixed_values]\n";
@@ -102,9 +102,9 @@ fn extern_import_roundtrips_exact_bytes_without_consuming_fixed_arrays() {
         "the dependency widened an exact byte carrier back to Vec:\n{dep_rust}"
     );
     assert!(
-        dep_rust.contains("pub type FixedValues = BoundedVec<u64, 3, 3>;")
-            && !dep_rust.contains("pub type FixedValues = [u64; 3];"),
-        "the fixed-byte delivery changed the still-separate fixed-array representation:\n{dep_rust}"
+        dep_rust.contains("pub type FixedValues = [u64; 3];")
+            && !dep_rust.contains("pub type FixedValues = BoundedVec<u64, 3, 3>;"),
+        "the dependency did not retain the exact homogeneous array's static native carrier:\n{dep_rust}"
     );
 
     let export = mint_export(dep_spec, "dep", "exact_bytes");
