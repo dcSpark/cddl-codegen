@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.1">
 <title data-rh="true">Component Differences | cddl-codegen</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://dcspark.github.io/cddl-codegen/component_differences"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Component Differences | cddl-codegen"><meta data-rh="true" name="description" content="--component emits a third face beside the rust and wasm crates: a"><meta data-rh="true" property="og:description" content="--component emits a third face beside the rust and wasm crates: a"><link data-rh="true" rel="icon" href="/cddl-codegen/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://dcspark.github.io/cddl-codegen/component_differences"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/component_differences" hreflang="en"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/component_differences" hreflang="x-default"><link rel="stylesheet" href="/cddl-codegen/assets/css/styles.472964ba.css">
-<script src="/cddl-codegen/assets/js/runtime~main.d44ce425.js" defer="defer"></script>
+<script src="/cddl-codegen/assets/js/runtime~main.daeb7d1f.js" defer="defer"></script>
 <script src="/cddl-codegen/assets/js/main.dc07992d.js" defer="defer"></script>
 </head>
 <body>
@@ -62,6 +62,10 @@ already follows, and it is asserted end to end by the behavioural gate <code>com
 <code>FooList.new()</code>/<code>add()</code>. The wasm face&#x27;s wrappers exist for ownership safety first and type-support
 gaps second; the borrow-parameter rule above covers the ownership half, and WIT&#x27;s type system has
 neither of the gaps (nested lists, lists of handles and nested <code>option</code>s are all expressible).</p>
+<p>An exact <code>bytes .size N</code> remains <code>list&lt;u8&gt;</code> in WIT even though native storage is <code>[u8; N]</code>.
+Direct constructors retain their loose list door; an optional or nested list/table position converts
+each list at the consuming boundary and returns the native <code>RangeCheck</code> through its <code>result</code> on a
+wrong length. Getters make the reverse array-to-list projection.</p>
 <p>The consequence is that <strong>constraints move from the type to the door</strong>. A <code>[+ t]</code> non-empty,
 bounded, or <code>@duplicates reject</code> <strong>set</strong> all despecialize to a plain <code>list&lt;…&gt;</code>, so the invariant
 is re-checked where the list is <em>consumed</em>: the constructor or setter returns
@@ -116,17 +120,27 @@ therefore keeps the nullable two-state surface.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="rest-rows-and-open-tables-project-as-extra-getters">Rest rows and open tables project as extra getters<a href="#rest-rows-and-open-tables-project-as-extra-getters" class="hash-link" aria-label="Direct link to Rest rows and open tables project as extra getters" title="Direct link to Rest rows and open tables project as extra getters" translate="no">​</a></h2>
 <p>A rule that captures entries it did not declare — an
 <a class="" href="/cddl-codegen/output_format#open-struct-maps-rest-rows">open struct-map</a> (<code>{ 1: uint, * k =&gt; v }</code>), an
-<a class="" href="/cddl-codegen/output_format#open-arrays-rest-tails">open array</a> (<code>[uint, * t]</code> or <code>[uint, + t]</code>), or an <strong>open table</strong>
+<a class="" href="/cddl-codegen/output_format#open-arrays-rest-tails">open array</a> (<code>[uint, * t]</code>, <code>[uint, + t]</code>, a variable
+major-disjoint middle whose effective heads are generator-proven or declared by a transparent custom
+alias, a finite disjoint fixed-domain same-major middle, or an exact middle <code>[uint, 2*2 t, uint]</code>),
+or an <strong>open table</strong>
 (<code>t = { * k1 =&gt; v1, * k2 =&gt; v2 }</code>) — projects each captured row as one <strong>read-only getter</strong> on the
 resource, named after the row (<code>rest</code> by default, or whatever
 <a class="" href="/cddl-codegen/comment_dsl#name"><code>@name</code></a> gives it). A map row is <code>list&lt;tuple&lt;k, v&gt;&gt;</code>, an array tail is <code>list&lt;t&gt;</code>,
 which is the collection spelling above with nothing new added.</p>
-<p>Each such getter is read-only in the strong sense and has <strong>no setter</strong>, so on this face a captured
-region can be read but not written. A loose rest row/tail is <strong>not</strong> a constructor parameter; a
+<p>Each such getter is read-only in the strong sense and has <strong>no setter or record-level insertion
+method</strong>, so on this face a captured region can be read but not written. In particular, unlike the
+wasm <code>insert_&lt;row&gt;</code> parent-mutation door, component keeps the returned list as a snapshot-only
+read surface. A loose rest row/tail is <strong>not</strong> a constructor parameter; a
 non-empty array tail (<code>+ t</code> / <code>1* t</code>) contributes its first element to the constructor so the
-resource starts valid, while the getter remains list-shaped. That is the same
-posture the wasm face takes on the field itself, minus the mutable wrapper the wasm face hands back —
-here the whole-map snapshot rule applies, so what you get is a copy. An
+resource starts valid, while the getter remains list-shaped. Restricted dynamic map rows keep their
+row-local window at this boundary too: the shipped typed-row <code>+</code> form contributes its first key and
+value, while bounded typed rows and restricted open-struct/catch-all rows contribute a
+<code>list&lt;tuple&lt;k, v&gt;&gt;</code>; the fallible constructor restores the native <code>NonEmptyMap</code>/<code>BoundedMap</code> or
+duplicate-preserving pair-map carrier through its checked door. An exact-zero fixed member similarly
+makes even a loose open-struct rest list a fallible constructor input, so its forbidden key is
+checked before the native record exists. This is the same snapshot posture as the wasm getter — no
+returned collection mutates the parent resource. An
 <a class="" href="/cddl-codegen/comment_dsl#ignore"><code>@ignore</code></a> row stores nothing and therefore projects <strong>no</strong> getter at all.</p>
 <p>An open table projects <strong>both</strong> of its rows this way, the typed one and the trailing catch-all, each
 its own <code>list&lt;tuple&lt;…&gt;&gt;</code> getter. This is the one place the component face is <em>less</em> despecialized

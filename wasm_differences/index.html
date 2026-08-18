@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.1">
 <title data-rh="true">Wasm Differences | cddl-codegen</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://dcspark.github.io/cddl-codegen/wasm_differences"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Wasm Differences | cddl-codegen"><meta data-rh="true" name="description" content="In the wasm crate we can&#x27;t always go one to one with the rust crate. Here are some differences/extra types in the WASM create. AsRef From and Into are implemented to go between the rust and wasm crate types to help."><meta data-rh="true" property="og:description" content="In the wasm crate we can&#x27;t always go one to one with the rust crate. Here are some differences/extra types in the WASM create. AsRef From and Into are implemented to go between the rust and wasm crate types to help."><link data-rh="true" rel="icon" href="/cddl-codegen/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://dcspark.github.io/cddl-codegen/wasm_differences"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/wasm_differences" hreflang="en"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/wasm_differences" hreflang="x-default"><link rel="stylesheet" href="/cddl-codegen/assets/css/styles.472964ba.css">
-<script src="/cddl-codegen/assets/js/runtime~main.d44ce425.js" defer="defer"></script>
+<script src="/cddl-codegen/assets/js/runtime~main.daeb7d1f.js" defer="defer"></script>
 <script src="/cddl-codegen/assets/js/main.dc07992d.js" defer="defer"></script>
 </head>
 <body>
@@ -48,6 +48,11 @@ needs a wrapper, or the direct exposure below when it doesn&#x27;t — while a N
 <code>[* foo]</code> all share it — the list-side counterpart of a sole-owner table rule aliasing <code>MapKeyToValue</code>
 (below). The two must agree on the element: a rule of that ident with any <em>other</em> shape is rejected
 by name at generation time, naming the use that mints the class, rather than shadowing it.</p>
+<p>Nested restricted arrays keep the restricted child&#x27;s identity in their structural class name and
+carrier: <code>[* [* uint]]</code> uses <code>ArrU64List</code> over <code>Vec&lt;Vec&lt;u64&gt;&gt;</code>, while <code>[* [*5 uint]]</code> uses
+<code>U64ListMax5List</code> over <code>Vec&lt;BoundedVec&lt;u64, 0, 5&gt;&gt;</code>. Outer occurrence bounds compose with that
+identity as well, so loose, outer-bounded, inner-bounded, and doubly bounded shapes cannot select one
+wrapper according to traversal order.</p>
 <p>Table <code>keys()</code> keeps the established structural spelling even when the key is a restricted
 collection: keys of type <code>[* uint]</code>, <code>[+ uint]</code>, and <code>[2*5 uint]</code> all return <code>ArrU64List</code>. The map&#x27;s
 <code>insert</code>/<code>get</code> doors still take the appropriate loose, non-empty, or bounded key wrapper; the
@@ -105,7 +110,10 @@ everywhere a class type crosses the boundary, and why collection parameters are 
 rather than bare vectors.</p>
 <p>Secondarily, the wrapper also covers element types <code>wasm_bindgen</code> can&#x27;t put in a bare <code>Vec</code> at all:
 <code>Vec&lt;bool&gt;</code> (no <code>VectorIntoWasmAbi</code> for bool) and doubly-nested types like <code>Vec&lt;Vec&lt;T&gt;&gt;</code> (which
-includes any array of byte strings, since <code>bytes</code> is already <code>Vec&lt;u8&gt;</code>).</p>
+includes any array of byte strings, since a non-exact <code>bytes</code> value is already <code>Vec&lt;u8&gt;</code>).
+An exact <code>bytes .size N</code> is <code>[u8; N]</code> in Rust but still crosses wasm as a <code>Vec&lt;u8&gt;</code>: getters copy
+the array into that list, while a direct constructor may keep the loose list door and collection
+<code>add</code>/<code>insert</code> paths return <code>JsError</code> if their stored-carrier handover finds a wrong length.</p>
 <p>Text arrays do <strong>not</strong> get a list wrapper: <code>wasm_bindgen</code> exposes <code>Vec&lt;String&gt;</code> directly (a JS
 string array, in both parameter and return position), and strings are <strong>copied</strong> at the boundary,
 so the ownership hazard above doesn&#x27;t apply to them. Anonymous <code>[* text]</code> positions therefore
@@ -115,7 +123,12 @@ API — a copied-at-the-boundary element type has nothing for a wrapper to prote
 rules like <code>texts = [* text]</code> still surface as a class under their own identifier, like any other
 named rule.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="tables">Tables<a href="#tables" class="hash-link" aria-label="Direct link to Tables" title="Direct link to Tables" translate="no">​</a></h2>
-<p>Map literals also generate a type for them with <code>new()</code>, <code>len() -&gt; usize</code>, <code>insert(K, V) -&gt; Option&lt;V&gt;</code>, <code>get(K) -&gt; Option&lt;V&gt;</code> and <code>keys() -&gt; Vec&lt;K&gt;</code>. An anonymously-inlined map member gets a structural <code>MapKeyToValue</code> name derived from its <code>Key</code> and <code>Value</code> types. A named table rule <strong>always</strong> surfaces as a JS class under its own identifier, independent of what else the spec contains. When that rule is the sole owner of its map shape, the structural <code>MapKeyToValue</code> name becomes a rust-source-level <code>pub type</code> alias to the rule&#x27;s class (<code>wasm_bindgen</code> does not export type aliases, so anonymous/embedded uses of the same shape resolve to the rule&#x27;s JS class); if two or more named rules share one shape, each still gets its own class and anonymous inline uses of that shape get the structural <code>MapKeyToValue</code> class.</p>
+<p>Map literals also generate a type for them with <code>new()</code>, <code>len() -&gt; usize</code>, <code>insert(K, V) -&gt; Option&lt;V&gt;</code>, <code>get(K) -&gt; Option&lt;V&gt;</code> and <code>keys() -&gt; Vec&lt;K&gt;</code>. An anonymously-inlined map member gets a structural <code>MapKeyToValue</code> name derived from the full boundary identities of its <code>Key</code> and <code>Value</code> types. That derivation is recursive: nested array/map occurrence restrictions and a nested map&#x27;s duplicate policy contribute identifier-safe fragments, so incompatible native carriers never select one JS class; wholly loose descendants retain their established spelling. A named table rule <strong>always</strong> surfaces as a JS class under its own identifier, independent of what else the spec contains. When that rule is the sole owner of its map shape, the structural <code>MapKeyToValue</code> name becomes a rust-source-level <code>pub type</code> alias to the rule&#x27;s class (<code>wasm_bindgen</code> does not export type aliases, so anonymous/embedded uses of the same shape resolve to the rule&#x27;s JS class); if two or more named rules share one shape, each still gets its own class and anonymous inline uses of that shape get the structural <code>MapKeyToValue</code> class.</p>
+<p>One established boundary exception applies when <code>K</code> is itself a restricted array or map. A bounded
+table&#x27;s checked <code>try_from</code> builder and a table&#x27;s <code>keys()</code> list use the key&#x27;s <strong>loose outer collection</strong>
+form; only that outer occurrence/duplicate-policy restriction is erased. Restrictions nested inside
+the key remain in the structural name and carrier, while the native table and its <code>insert</code>/<code>get</code>
+surface keep the fully restricted key type.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="non-empty-containers-the-two-wrapper-pattern">Non-empty containers (the two-wrapper pattern)<a href="#non-empty-containers-the-two-wrapper-pattern" class="hash-link" aria-label="Direct link to Non-empty containers (the two-wrapper pattern)" title="Direct link to Non-empty containers (the two-wrapper pattern)" translate="no">​</a></h2>
 <p>A non-empty container — <code>[+ T]</code> → <code>NonEmptyVec&lt;T&gt;</code>, <code>{+ k =&gt; v}</code> → <code>NonEmptyMap&lt;K, V&gt;</code> (see
 <a class="" href="/cddl-codegen/output_format#non-empty-containers">Output format</a>) — crosses the wasm boundary as
@@ -151,11 +164,13 @@ comment). See <a class="" href="/cddl-codegen/command_line_flags"><code>--wasm-l
 restricted wrappers.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="bounded-homogeneous-arrays">Bounded homogeneous arrays<a href="#bounded-homogeneous-arrays" class="hash-link" aria-label="Direct link to Bounded homogeneous arrays" title="Direct link to Bounded homogeneous arrays" translate="no">​</a></h2>
 <p>An ordinary or <code>@duplicates preserve</code> bounded homogeneous array (<code>[? T]</code>, <code>[*N T]</code>, <code>[N* T]</code>, or
-<code>[N*M T]</code>) uses the same loose-builder/restricted-wrapper pattern, but its restricted class wraps
-<code>BoundedVec&lt;T, MIN, MAX&gt;</code> and is named <code>&lt;Elem&gt;ListMaxN</code>, <code>&lt;Elem&gt;ListMinN</code>, or
+<code>[N*M T]</code>) uses the same loose-builder/restricted-wrapper pattern and is named <code>&lt;Elem&gt;ListMaxN</code>, <code>&lt;Elem&gt;ListMinN</code>, or
 <code>&lt;Elem&gt;ListMinNMaxN</code> (a named CDDL rule keeps its own class name). <code>try_from</code> borrows and clones the
-loose list into the core <code>BoundedVec::TryFrom&lt;Vec&lt;_&gt;&gt;</code> door; <code>add</code> returns <code>Result</code> because it can
-cross an upper bound. Only zero-minimum classes expose an infallible empty <code>new()</code> seed; positive-
+loose list into the core <code>BoundedVec::TryFrom&lt;Vec&lt;_&gt;&gt;</code> door for variable windows; <code>add</code> returns <code>Result</code> because it can
+cross an upper bound. An exact <code>N*N</code> ordinary/preserve wrapper instead stores <code>[T; N]</code> and its
+<code>try_from</code> makes the one <code>Vec&lt;T&gt;</code> → array handover with the standard <code>RangeCheck</code>; it has neither
+<code>new()</code> nor <code>add()</code>, since its cardinality cannot be mutated. Its public JS/WIT list identity is
+unchanged. Only zero-minimum variable classes expose an infallible empty <code>new()</code> seed; positive-
 minimum classes have no <code>new</code>. A zero-minimum <strong>self-named</strong> rule whose identifier is already the
 loose builder (<code>bar_list = [*5 bar]</code>) has no separate <code>try_from</code> source; it remains constructible
 through <code>new()</code> plus checked <code>add</code>, and its generated docs say so. A positive-minimum self-named
@@ -296,27 +311,41 @@ rust/wasm type-alias parity, since a bare <code>AnyCbor</code> alias would add n
 unknown entries into a <code>rest</code> field. On the wasm boundary that field is a <strong>read-only <code>rest()</code> getter</strong>
 returning the minted map wrapper for the row&#x27;s <code>K</code>/<code>V</code> shape (<code>MapU64ToAny</code>, <code>MapAnyToAny</code>, …, or the
 <code>PairMap</code>-backed wrapper under <code>@duplicates preserve</code>) — the same map-wrapper surface as any table.
-There is <strong>no</strong> <code>rest</code> constructor argument and <strong>no setter</strong> (v1): the field defaults empty and is
-mutated through the returned wrapper&#x27;s own <code>insert</code>/<code>get</code>/<code>keys</code> API. The declared members keep their
-ordinary per-field constructor arguments and getters.</p>
+For a loose <code>*</code> / <code>0*</code> row there is <strong>no</strong> <code>rest</code> constructor argument: the field defaults empty.
+The returned wrapper is a detached snapshot, so its <code>insert</code>/<code>get</code>/<code>keys</code> API changes that wrapper
+rather than the parent record. To mutate the record, call its explicit
+<code>insert_&lt;row&gt;(key, value) -&gt; Result&lt;(), JsError&gt;</code> method (<code>insert_rest</code> by default). It converts at
+the wasm boundary and updates the native parent itself: ordinary maps replace an equal key, while
+<code>@duplicates preserve</code> appends a pair. A restricted <code>+</code> / <code>1*</code> / bounded row still crosses <code>new</code> as
+its complete checked structural wrapper, and the parent insertion method takes the carrier&#x27;s checked
+path so a maximum failure leaves the record unchanged. An exact-zero fixed member changes the loose
+constructor case too: its open record takes the complete rest wrapper at fallible <code>new</code>; its parent
+method delegates to the native <code>insert_&lt;row&gt;</code> validation door, so forbidden keys surface as
+<code>JsError</code> without changing the record. The declared members keep their ordinary per-field
+constructor arguments and getters.</p>
 <p>A <strong>typed key domain</strong> (<code>* K =&gt; V</code> with <code>K</code> a rule of your own rather than <code>uint</code>/<code>text</code>/<code>any</code>) adds no
 new name family: the getter returns the same structural class named after <code>K</code>&#x27;s and <code>V</code>&#x27;s wasm faces
 (<code>MapMdToText</code>, or <code>PairMapMdToText</code> under <code>@duplicates preserve</code>), and that wrapper&#x27;s <code>keys()</code> returns
 what a <em>table</em> on the same key type returns — a bare <code>Vec</code> when <code>K</code> is wasm-native, the minted
 <code>&lt;K&gt;List</code> class (<code>MdList</code>, <code>BytesList</code>) otherwise.</p>
-<p>An <a class="" href="/cddl-codegen/output_format#open-arrays-rest-tails">open array</a> (<code>[uint, tstr, * t]</code> or
-<code>[uint, tstr, + t]</code>) captures its trailing elements into a <code>rest</code> field the same way. On the wasm
-boundary that field is a <strong>read-only getter named after the field</strong> (<code>rest()</code> by default) returning
-the minted <strong>list</strong> wrapper for the tail&#x27;s element type (<code>AnyList</code> for an <code>* any</code> tail, <code>BytesList</code>
-for <code>* bytes</code>, or a bare <code>Vec</code> for a wasm-native element) — the same list-wrapper surface as any
-homogeneous array. A loose <code>*</code> tail has no constructor argument and defaults empty. A non-empty
-<code>+</code> / <code>1*</code> tail instead adds a first-element constructor argument and returns the corresponding
-restricted non-empty list wrapper (<code>NonEmptyBytesList</code>, for example), so the wasm API cannot create
-an empty tail. Neither flavor has a setter.</p>
-<p>An <a class="" href="/cddl-codegen/comment_dsl#ignore"><code>@ignore</code></a> rest row <strong>or rest tail</strong> stores nothing, so its wasm class has
+<p>An <a class="" href="/cddl-codegen/output_format#open-arrays-rest-tails">open array</a> (<code>[uint, tstr, * t]</code>,
+<code>[uint, tstr, + t]</code>, or a safe middle form <code>[uint, * bytes, tstr]</code>) captures its repeated elements
+into a <code>rest</code> field the same way. On the wasm boundary that field is a <strong>read-only getter named
+after the field</strong> (<code>rest()</code> by default) returning the minted <strong>list</strong> wrapper for the segment&#x27;s
+element type (<code>AnyList</code> for an <code>* any</code> segment, <code>BytesList</code> for <code>* bytes</code>, or a bare <code>Vec</code> for a
+wasm-native element) — the same list-wrapper surface as any homogeneous array. A loose <code>*</code> segment
+has no constructor argument and defaults empty. A non-empty <code>+</code> / <code>1*</code> segment instead adds a
+first-element constructor argument and returns the corresponding restricted non-empty list wrapper
+(<code>NonEmptyBytesList</code>, for example), so the wasm API cannot create an empty segment. A bounded
+segment uses its matching checked list wrapper. The carrier/getter surface is the same for final
+tails, variable major-disjoint middle placement (whether its effective heads are generator-proven or
+declared by a transparent custom alias), finite disjoint fixed-domain same-major middle placement,
+and exact count-delimited middle placement; neither
+flavor has a setter.</p>
+<p>An <a class="" href="/cddl-codegen/comment_dsl#ignore"><code>@ignore</code></a> rest row <strong>or occurrence segment</strong> stores nothing, so its wasm class has
 <strong>no <code>rest()</code> getter</strong> — it is a plain closed struct&#x27;s wasm surface. The read-tolerance (unknown
-entries / trailing elements decode and are dropped) comes for free through the rust deserializer, so
-the wasm boundary adds nothing new.</p>
+entries / final or safe-middle elements decode and are dropped) comes for free through the rust
+deserializer, so the wasm boundary adds nothing new.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="open-tables">Open tables<a href="#open-tables" class="hash-link" aria-label="Direct link to Open tables" title="Direct link to Open tables" translate="no">​</a></h2>
 <p>An <a class="" href="/cddl-codegen/output_format#open-tables-a-typed-row-plus-a-catch-all">open table</a> — a named rule
 <code>t = { * K_t =&gt; V_t, * K_r =&gt; V_r }</code>, one typed row plus one trailing typed catch-all — mints a real <code>#[wasm_bindgen]</code> class under the <strong>rule&#x27;s own name</strong>. That
@@ -333,10 +362,21 @@ so a container getter would cost every read an extra hop. There is deliberately 
 getter</strong> for this row.</li>
 <li class="">the <strong>catch-all</strong> row keeps the ordinary
 <a href="#open-struct-map-rest-rows" class="">rest-row</a> contract: a <strong>read-only <code>rest()</code> getter</strong> returning the
-minted map wrapper for <code>K_r</code>/<code>V_r</code> (<code>MapMdToMd</code>, or <code>PairMapMdToMd</code> under <code>@duplicates preserve</code>),
-no constructor argument and no setter. Its own entry count is <code>t.rest().len()</code>.</li>
+minted map wrapper for <code>K_r</code>/<code>V_r</code> (<code>MapMdToMd</code>, or <code>PairMapMdToMd</code> under <code>@duplicates preserve</code>).
+Its record-level <code>insert_rest(key, value) -&gt; Result&lt;(), JsError&gt;</code> mutates that catch-all parent
+row; the wrapper returned by <code>rest()</code> remains a snapshot. Loose rows have no constructor argument;
+restricted rows cross as a checked wrapper. Its own entry count is <code>t.rest().len()</code>.</li>
 </ul>
-<p><code>new()</code> is nullary — both rows default empty, exactly as a rest row does on a closed struct.</p>
+<p>For the loose <code>*</code> form, <code>new()</code> is nullary and both rows default empty. A typed <code>+</code> / <code>1*</code> row is the
+exception: <code>new(first_key, first_value)</code> enters the native <code>NonEmptyMap</code> (or preserve-mode
+<code>NonEmptyPairMap</code>) field directly, so the flattened typed surface has no operation that can empty it;
+the catch-all remains an empty-capable <code>rest()</code> wrapper.</p>
+<p>A bounded typed row remains checked at this boundary. Its <code>new</code> takes a loose typed-row builder and
+returns <code>Result</code>, including for a zero-minimum finite window: it converts that builder to the native
+<code>BoundedMap</code>/<code>BoundedPairMap</code> before construction. Its flattened <code>insert</code> also returns <code>Result</code> when
+a finite maximum would be exceeded. A restricted catch-all (and an open-struct rest row) is a checked
+structural wrapper passed whole to the fallible constructor; it is never a loose map a JS caller could
+use to erase the window.</p>
 <p><code>keys()</code> returns what a <em>table</em> on the same key type returns: a bare <code>Vec</code> when <code>K_t</code> is wasm-native,
 the minted <code>&lt;K_t&gt;List</code> class otherwise. The list is named after the key&#x27;s <strong>use-site</strong> identifier, not
 its resolved one, so two aliases of one underlying type key two open tables under two distinct list
