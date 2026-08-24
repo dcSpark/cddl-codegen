@@ -132,5 +132,5 @@ wit-parser = "=0.247.0"
 # Deliberately default-features: the `dummy-module` feature gates a `ComponentEncoder` path that is a
 # FALSE ORACLE for worlds exporting resources (it fails a package that resolves, encodes, validates
 # and builds).
-wit-component = "=0.247.0"
+wit-component = "=0.257.1"
 wasmparser = "=0.247.0"
