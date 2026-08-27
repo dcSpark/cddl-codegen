@@ -346,9 +346,11 @@ fn rust_scoped(mv: &MintValue, scoped: &ScopeMap) -> String {
             ident,
             inner,
             can_fail,
+            checked_try_from,
         } => format!(
-            "{}::new({}){}",
+            "{}::{}({}){}",
             sc(ident),
+            if *checked_try_from { "try_from" } else { "new" },
             rust_scoped(inner, scoped),
             unwrap(*can_fail)
         ),
@@ -537,14 +539,16 @@ fn rust_scoped_for_named(
                 ident,
                 inner,
                 can_fail,
+                checked_try_from,
             } = mv
             else {
                 return rendered;
             };
             let inner = rust_scoped_for_constructor_arg(types, inner, wrapped, scoped);
             format!(
-                "{}::new({inner}){}",
+                "{}::{}({inner}){}",
                 scoped_name(ident),
+                if *checked_try_from { "try_from" } else { "new" },
                 if *can_fail { ".unwrap()" } else { "" }
             )
         }

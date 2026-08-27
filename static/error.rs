@@ -117,6 +117,20 @@ impl DeserializeError {
         }
     }
 
+    /// A public checked constructor names its nominal type. A generated codec that re-enters that
+    /// same constructor still owns the OUTER decode annotation, so clear the constructor's location
+    /// before the codec adds it; otherwise `Bounded.Bounded` leaks into diagnostics.
+    ///
+    /// `pub`, not `pub(crate)`, is load-bearing for `--export-static-crate`: the runtime and the
+    /// generated serialization module are then separate crates. `doc(hidden)` keeps this generated-
+    /// code ABI out of the consumer-facing API documentation; public visibility also prevents an
+    /// unused-method warning in runtime profiles whose specs mint no checked scalar wrapper.
+    #[doc(hidden)]
+    pub fn without_location(mut self) -> Self {
+        self.location = None;
+        self
+    }
+
     fn fmt_indent(&self, f: &mut core::fmt::Formatter<'_>, indent: u32) -> core::fmt::Result {
         use core::fmt::Display;
         for _ in 0..indent {

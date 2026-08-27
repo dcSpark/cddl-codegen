@@ -74,6 +74,30 @@ const CARGO_TIMEOUT_S = 900;
  */
 const DEPTH_LIMIT_REQUIRES_STD_SUBSTRING = "--deserialize-depth-limit output requires the `std` feature";
 
+/**
+ * B5-404's checked-scalar decode handoff crosses a crate boundary under `--export-static-crate`.
+ * Keep both proof directions live: `split_config` must call the runtime helper and that helper must
+ * therefore be public; `raw_bytes` must NOT call it, so the clean-warning verdict proves the
+ * always-emitted runtime does not acquire dead private API in a profile with no bounded nominal.
+ */
+function assertCheckedScalarRuntimeAbi(
+  profile: string, errorPath: string, serializationPath: string, expectsUse: boolean,
+): void {
+  const error = readFileSync(errorPath, "utf8");
+  if (!error.includes("pub fn without_location("))
+    throw new Error(
+      `profile ${profile}: error runtime does not publicly expose the generated-code ` +
+      "without_location ABI required by split runtime crates",
+    );
+  const serialization = readFileSync(serializationPath, "utf8");
+  const usesHelper = serialization.includes("DeserializeError::without_location");
+  if (usesHelper !== expectsUse)
+    throw new Error(
+      `profile ${profile}: expected generated serialization to ${expectsUse ? "use" : "not use"} ` +
+      "DeserializeError::without_location",
+    );
+}
+
 // ---- outcome ------------------------------------------------------------------------------------
 // Mirrors check.ts's `Outcome` without importing it: this script is the standalone entry point, and
 // check.ts imports IT (not the other way round) to avoid a cycle through the registry.
@@ -356,14 +380,17 @@ const PROFILES: Profile[] = [
     // no other profile covers: `any_cbor.rs` is emitted only when the finalized IR contains `any`,
     // and under `--json-serde-derives` the WHOLE of `static/any_cbor_json.rs` is appended to it —
     // eight nested inline `natural_any_cbor_*` adapter modules, all compiled whether or not the spec
-    // reaches them. A file-top `use alloc::…` does not reach a nested inline module, so each of those
+    // reaches them. It also includes the optional+nullable wide array whose presence-aware callback
+    // is assembled into `static_array.rs`; schema-only or host checks cannot certify its no_std
+    // imports. A file-top `use alloc::…` does not reach a nested inline module, so each of those
     // modules carries its own `use super::alloc::…;` BY HAND; a missed one is invisible under `std`
     // (the std prelude supplies the name) and an E0425 the moment the crate is built without it.
     // That is exactly the shape of the first consumer-reported no_std break, and this member set —
     // a plain `any`, an optional `any`, a `[* any]` seq, an optional seq, a `{* K => any}` table and
     // an optional table — is what puts every adapter shape inside the thumb compile. `wide` makes
-    // the separately composed typed static-array runtime live too: its child modules must spell
-    // allocation macros explicitly rather than inheriting the host `std` prelude.
+    // the separately composed typed static-array and duplicate-reject-set fragments live too;
+    // `wide_dynamic_row` reaches the captured open-array annotation seam itself. Their child
+    // modules must spell allocation macros explicitly rather than inheriting the host `std` prelude.
     id: "json_schema",
     libName: "nostd-json",
     flags: ["--preserve-encodings=true", "--json-serde-derives=true", "--json-schema-export=true"],
@@ -371,8 +398,13 @@ const PROFILES: Profile[] = [
       "inner = [ a: uint, b: text ]",
       "tbl = { * uint => text }",
       "wide = [64*64 uint]",
+      "wide_nonempty = [+ wide]",
+      "wide_bounded = [2*3 wide]",
+      "wide_reject = [2*3 wide] ; @duplicates reject",
+      "wide_nullable_optional = [ prefix: uint, ? value: (wide / null) ]",
+      "wide_dynamic_row = [ prefix: uint, * wide ]",
       "any_members = { 1: any, ? 2: any, 3: [* any], ? 4: [* any], 5: { * uint => any }, ? 6: { * uint => any } }",
-      "outer = [ i: inner, t: tbl, ? o: bytes, w: wide, am: any_members ]",
+      "outer = [ i: inner, t: tbl, ? o: bytes, w: wide, wn: wide_nonempty, wb: wide_bounded, wr: wide_reject, no: wide_nullable_optional, dr: wide_dynamic_row, am: any_members ]",
       "",
     ].join("\n"),
   },
@@ -482,6 +514,12 @@ function generateSplitProfile(): string {
     console.log(gen.stderr);
     throw new Error(`generation failed for profile ${SPLIT_ID}`);
   }
+  assertCheckedScalarRuntimeAbi(
+    SPLIT_ID,
+    join(root, "runtime", "src", "error.rs"),
+    join(root, "gen", "core", "rust", "src", "generated", "serialization.rs"),
+    true,
+  );
 
   // Hand-owned half, part 2: the crate root. `pub mod` lines only, plus the one documented opt-in
   // line — without it the runtime crate is a plain `std` crate and the thumb cell would fail on a
@@ -598,6 +636,14 @@ function generateProfile(p: Profile): { out: string; specPath: string } {
     console.log(gen.stdout);
     console.log(gen.stderr);
     throw new Error(`generation failed for profile ${p.id}`);
+  }
+  if (p.id === "raw_bytes") {
+    assertCheckedScalarRuntimeAbi(
+      p.id,
+      join(out, "rust", "src", "generated", "error.rs"),
+      join(out, "rust", "src", "generated", "serialization.rs"),
+      false,
+    );
   }
   if (p.consumer) {
     const rustSrc = join(out, "rust", "src");

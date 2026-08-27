@@ -4,3 +4,6 @@
 hidden_key = _CDDL_CODEGEN_EXTERN_TYPE_ ; @no_json_schema_export
 preserved = { * hidden_key => uint } ; @duplicates preserve
 parent = [entries: preserved]
+hidden_leaf = _CDDL_CODEGEN_EXTERN_TYPE_ ; @no_json_schema_export
+wide_leaf = [64*64 hidden_leaf]
+wide_sequence_parent = [entries: [* wide_leaf]]

@@ -121,7 +121,8 @@ pub struct WitWExactSize(pub RefCell<cddl_lib::WExactSize>);
 
 impl wit_types::GuestWExactSize for WitWExactSize {
     fn new(inner: Vec<u8>) -> Result<Self, String> {
-        let inner = cddl_lib::WExactSize::new(inner).map_err(err)?;
+        let inner: Vec<u8> = inner;
+        let inner = cddl_lib::WExactSize::try_from(inner).map_err(err)?;
         Ok(WitWExactSize(RefCell::new(inner)))
     }
 
@@ -148,7 +149,8 @@ pub struct WitWIntRange(pub RefCell<cddl_lib::WIntRange>);
 
 impl wit_types::GuestWIntRange for WitWIntRange {
     fn new(inner: u64) -> Result<Self, String> {
-        let inner = cddl_lib::WIntRange::new(inner).map_err(err)?;
+        let inner: u64 = inner;
+        let inner = cddl_lib::WIntRange::try_from(inner).map_err(err)?;
         Ok(WitWIntRange(RefCell::new(inner)))
     }
 
@@ -175,7 +177,8 @@ pub struct WitWNintRange(pub RefCell<cddl_lib::WNintRange>);
 
 impl wit_types::GuestWNintRange for WitWNintRange {
     fn new(inner: u64) -> Result<Self, String> {
-        let inner = cddl_lib::WNintRange::new(inner).map_err(err)?;
+        let inner: u64 = inner;
+        let inner = cddl_lib::WNintRange::try_from(inner).map_err(err)?;
         Ok(WitWNintRange(RefCell::new(inner)))
     }
 
@@ -202,7 +205,8 @@ pub struct WitWZeroExact(pub RefCell<cddl_lib::WZeroExact>);
 
 impl wit_types::GuestWZeroExact for WitWZeroExact {
     fn new(inner: u64) -> Result<Self, String> {
-        let inner = cddl_lib::WZeroExact::new(inner).map_err(err)?;
+        let inner: u64 = inner;
+        let inner = cddl_lib::WZeroExact::try_from(inner).map_err(err)?;
         Ok(WitWZeroExact(RefCell::new(inner)))
     }
 
@@ -230,7 +234,8 @@ pub struct WitWZeroLen(pub RefCell<cddl_lib::WZeroLen>);
 impl wit_types::GuestWZeroLen for WitWZeroLen {
     fn new(inner: Vec<u8>) -> Result<Self, String> {
         let inner = inner.into_iter().collect();
-        let inner = cddl_lib::WZeroLen::new(inner).map_err(err)?;
+        let inner: Vec<u8> = inner;
+        let inner = cddl_lib::WZeroLen::try_from(inner).map_err(err)?;
         Ok(WitWZeroLen(RefCell::new(inner)))
     }
 

@@ -1559,7 +1559,27 @@ impl Emitter<'_, '_> {
             " -> Self"
         };
         let mut out = format!("\n    fn new({}){ret} {{\n", params.join(", "));
-        let (lines, args) = self.materialize(&ctor.params, alias);
+        let (mut lines, args) = self.materialize(&ctor.params, alias);
+        if self.types.requires_checked_try_from(&resource.ident) {
+            // `TryFrom` does not contribute a unique expected type to a preceding `collect()`:
+            // core's blanket `TryFrom<T> for T` is another viable implementation.  Wrapper
+            // resources have exactly the one `inner` parameter, so pin the value to the native
+            // construction type before crossing B5-404's checked door.  This is deliberately at
+            // the component boundary rather than a `Vec<u8>` special case in `wit_to_rust_typed`:
+            // the WIT projection may spell a scalar's input differently, while `for_rust_move`
+            // remains the rust constructor's authoritative input contract.
+            let inner = ctor
+                .params
+                .first()
+                .expect("a checked wrapper resource has its inner constructor parameter");
+            let name = kebab_to_snake(&inner.name);
+            let rust_type = inner
+                .rust_type
+                .as_ref()
+                .expect("a checked wrapper resource has its native inner type")
+                .for_rust_move(self.types, self.cli);
+            lines.push(format!("let {name}: {rust_type} = {name};"));
+        }
         for line in lines {
             let _ = writeln!(out, "        {line}");
         }
@@ -1567,7 +1587,15 @@ impl Emitter<'_, '_> {
         // the WIT: the WIT constructor is ALSO fallible when a despecialized collection has to be
         // re-validated here, which the rust `new` knows nothing about. So it is read off the rust
         // face's own rule rather than off `ctor.fallible`.
-        let call = format!("{rust}::new({})", args.join(", "));
+        let call = format!(
+            "{rust}::{}({})",
+            if self.types.requires_checked_try_from(&resource.ident) {
+                "try_from"
+            } else {
+                "new"
+            },
+            args.join(", ")
+        );
         let build = if self.rust_new_can_fail(&resource.ident) {
             let _ = writeln!(out, "        let inner = {call}.map_err(err)?;");
             format!("{rep}(RefCell::new(inner))")

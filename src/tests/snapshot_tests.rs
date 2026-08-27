@@ -526,8 +526,8 @@ fn emitted_bounds_site_differential_and_wart_scan() {
         "BoundsMembers::new(vec![0u8; 2]",
         "BoundsMembers::new(vec![0u8; 4]",
         "v.m_optional_size = Some(<[_; 3]>::try_from(vec![0u8; 3]).unwrap());",
-        "WExactSize::new(vec![0u8; 2]).unwrap_err()",
-        "WExactSize::new(vec![0u8; 4]).unwrap_err()",
+        "WExactSize::try_from(vec![0u8; 2]).unwrap_err()",
+        "WExactSize::try_from(vec![0u8; 4]).unwrap_err()",
     ] {
         assert!(
             emitted_tests.contains(expected),
@@ -566,12 +566,13 @@ fn emitted_bounds_site_differential_and_wart_scan() {
         "WIntRange::new",
         "inner>100",
     );
-    let int_wrapper_deserialize = exactly(
-        &all,
-        SiteKind::WrapperDeserialize,
-        rust_ser,
-        "WIntRange::deserialize",
-        "inner>100",
+    assert!(
+        !all.iter().any(|site| {
+            site.kind == SiteKind::WrapperDeserialize
+                && site.file == rust_ser
+                && site.context == "WIntRange::deserialize"
+        }),
+        "a nominal scalar's CBOR path must re-enter TryFrom, not re-spell its range check: {all:#?}"
     );
     let uint_primitive = exactly(
         &all,
@@ -609,13 +610,12 @@ fn emitted_bounds_site_differential_and_wart_scan() {
         zero_upper_collection.kind,
         int_ctor.kind,
         int_wrapper_new.kind,
-        int_wrapper_deserialize.kind,
     ]
     .into_iter()
     .collect();
     assert_eq!(
         kinds.len(),
-        5,
+        4,
         "one range-check observation satisfied multiple coordinates"
     );
 
@@ -624,7 +624,6 @@ fn emitted_bounds_site_differential_and_wart_scan() {
         zero_upper_collection,
         int_ctor,
         int_wrapper_new,
-        int_wrapper_deserialize,
     ] {
         assert!(
             !site.payload.found.is_empty()
@@ -633,12 +632,7 @@ fn emitted_bounds_site_differential_and_wart_scan() {
             "incomplete RangeCheck payload: {site:#?}"
         );
     }
-    for site in [
-        int_ctor,
-        int_wrapper_new,
-        int_wrapper_deserialize,
-        uint_primitive,
-    ] {
+    for site in [int_ctor, int_wrapper_new, uint_primitive] {
         assert_eq!(
             canonical(site),
             canonical(int_ctor),
@@ -1767,6 +1761,11 @@ fn json_gen_extern_schema_rows() {
     assert!(
         config_mod.contains("reg.claim_reachable::<cddl_lib::HiddenKey>();"),
         "a body-walk through a preserve-table alias must retain its outer config:\n{config_mod}"
+    );
+    assert!(
+        config_mod.contains("reg.claim_reachable::<cddl_lib::HiddenLeaf>();"),
+        "a recursive static-array descriptor must walk its terminal named leaf without claiming \
+         the native array/alias carriers:\n{config_mod}"
     );
 
     // `--json-schema-root` extra roots (feature request 12, Ask A): the same fixture regenerated with

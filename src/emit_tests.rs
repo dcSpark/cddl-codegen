@@ -155,11 +155,13 @@ pub(crate) enum MintValue {
         args: Vec<MintValue>,
         can_fail: bool,
     },
-    /// a named `@newtype`/tag wrapper: `Ident::new(inner)` (+ `.unwrap()`)
+    /// a named `@newtype`/tag wrapper. B5-404's scalar windows use the public `TryFrom` door;
+    /// other wrappers retain their established `new(inner)` construction.
     Wrapper {
         ident: String,
         inner: Box<MintValue>,
         can_fail: bool,
+        checked_try_from: bool,
     },
     /// a c-style enum variant: `Ident::Variant`
     CEnum { ident: String, variant: String },
@@ -215,7 +217,13 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
             ident,
             inner,
             can_fail,
-        } => format!("{ident}::new({}){}", render_rust(inner), unwrap(*can_fail)),
+            checked_try_from,
+        } => format!(
+            "{ident}::{}({}){}",
+            if *checked_try_from { "try_from" } else { "new" },
+            render_rust(inner),
+            unwrap(*can_fail)
+        ),
         MintValue::CEnum { ident, variant } => format!("{ident}::{variant}"),
         MintValue::Choice {
             ident,
@@ -449,13 +457,15 @@ fn render_rust_for_direct_storage(
                         ident,
                         inner,
                         can_fail,
+                        checked_try_from,
                     } = mv
                     else {
                         return rendered;
                     };
                     let inner = render_rust_for_constructor_arg(types, inner, wrapped);
                     format!(
-                        "{ident}::new({inner}){}",
+                        "{ident}::{}({inner}){}",
+                        if *checked_try_from { "try_from" } else { "new" },
                         if *can_fail { ".unwrap()" } else { "" }
                     )
                 }
@@ -617,7 +627,7 @@ pub fn emit_generated_tests(
                             .exact_byte_array_len_checked()
                             .and(wrapped.config.bounds)
                     })
-                    .and_then(|mm| wrapper_construct_reject(types, &name, wrapped, mm)),
+                    .and_then(|mm| wrapper_construct_reject(types, ident, &name, wrapped, mm)),
             },
             _ => None,
         };
@@ -671,6 +681,7 @@ pub fn emit_generated_tests(
                 float_min_max,
             } => wrapper_roundtrip(
                 types,
+                ident,
                 types.can_new_fail(ident),
                 &name,
                 wrapped,
@@ -1840,6 +1851,7 @@ fn choice_roundtrip(
 #[allow(clippy::too_many_arguments)]
 fn wrapper_roundtrip(
     types: &IntermediateTypes,
+    ident: &RustIdent,
     can_fail: bool,
     name: &str,
     wrapped: &RustType,
@@ -1877,7 +1889,12 @@ fn wrapper_roundtrip(
     // slots here would leave their standalone emitted-test mint as an unhandled `Result`.
     let inner = render_rust_for_constructor_arg(types, &inner, wrapped);
     let base = format!(
-        "{name}::new({inner}){}",
+        "{name}::{}({inner}){}",
+        if types.requires_checked_try_from(ident) {
+            "try_from"
+        } else {
+            "new"
+        },
         if can_fail { ".unwrap()" } else { "" }
     );
     roundtrip_body(
@@ -2331,6 +2348,7 @@ fn choice_construct_reject(
 /// from `min_max`.
 fn wrapper_construct_reject(
     types: &IntermediateTypes,
+    ident: &RustIdent,
     name: &str,
     wrapped: &RustType,
     min_max: Bounds,
@@ -2358,10 +2376,15 @@ fn wrapper_construct_reject(
         .into_iter()
         .map(|(expr, accept, label)| {
             let expr = render_rust_for_constructor_arg(types, &expr, wrapped);
-            if accept {
-                format!("    assert!({name}::new({expr}).is_ok(), \"{name}::new {label} value must be accepted\");")
+            let constructor = if types.requires_checked_try_from(ident) {
+                "try_from"
             } else {
-                format!("    assert!(matches!({name}::new({expr}).unwrap_err().failure(), DeserializeFailure::RangeCheck {{ .. }}), \"{name}::new {label} value must be rejected as RangeCheck\");")
+                "new"
+            };
+            if accept {
+                format!("    assert!({name}::{constructor}({expr}).is_ok(), \"{name}::{constructor} {label} value must be accepted\");")
+            } else {
+                format!("    assert!(matches!({name}::{constructor}({expr}).unwrap_err().failure(), DeserializeFailure::RangeCheck {{ .. }}), \"{name}::{constructor} {label} value must be rejected as RangeCheck\");")
             }
         })
         .collect();
@@ -2955,6 +2978,7 @@ pub(crate) fn mint_struct(
                 // exact-byte wrappers retain their bound on `wrapped` (rather than `min_max`) so
                 // their Vec -> [u8; N] door must still be unwrapped in every emitted mint.
                 can_fail: types.can_new_fail(ident),
+                checked_try_from: types.requires_checked_try_from(ident),
             })
         }
         RustStructType::CStyleEnum { variants } => variants.first().map(|v| MintValue::CEnum {

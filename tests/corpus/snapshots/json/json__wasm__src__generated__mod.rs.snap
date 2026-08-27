@@ -334,7 +334,7 @@ impl ExactBytesWrapper {
     }
 
     pub fn new(inner: Vec<u8>) -> Result<ExactBytesWrapper, JsError> {
-        cddl_lib::ExactBytesWrapper::new(inner)
+        cddl_lib::ExactBytesWrapper::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }
@@ -394,7 +394,7 @@ impl I16Wrapper {
     }
 
     pub fn new(inner: i16) -> Result<I16Wrapper, JsError> {
-        cddl_lib::I16Wrapper::new(inner)
+        cddl_lib::I16Wrapper::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }
@@ -454,7 +454,7 @@ impl I64Wrapper {
     }
 
     pub fn new(inner: i64) -> Result<I64Wrapper, JsError> {
-        cddl_lib::I64Wrapper::new(inner)
+        cddl_lib::I64Wrapper::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }
@@ -1585,7 +1585,7 @@ impl U8Wrapper {
     }
 
     pub fn new(inner: u8) -> Result<U8Wrapper, JsError> {
-        cddl_lib::U8Wrapper::new(inner)
+        cddl_lib::U8Wrapper::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }

@@ -191,26 +191,15 @@ impl cbor_event::se::Serialize for ExactBytesWrapper {
         &self,
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
-        serializer.write_bytes(&self.0)
+        serializer.write_bytes(self.get())
     }
 }
 
 impl Deserialize for ExactBytesWrapper {
     fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
-            let inner = Ok::<_, DeserializeError>(raw.bytes()?)
-                .and_then(|bytes| {
-                    bytes.try_into().map_err(|bytes: Vec<u8>| {
-                        DeserializeFailure::RangeCheck {
-                            found: bytes.len() as i128,
-                            min: Some(4),
-                            max: Some(4),
-                        }
-                        .into()
-                    })
-                })
-                .map(|bytes: [u8; 4]| bytes)?;
-            Ok(Self(inner))
+            let inner = raw.bytes()?;
+            Self::try_from(inner).map_err(DeserializeError::without_location)
         })()
         .map_err(|e| e.annotate("ExactBytesWrapper"))
     }
@@ -221,10 +210,10 @@ impl cbor_event::se::Serialize for I16Wrapper {
         &self,
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
-        if self.0 >= 0 {
-            serializer.write_unsigned_integer(self.0 as u64)
+        if self.get() >= 0 {
+            serializer.write_unsigned_integer(self.get() as u64)
         } else {
-            serializer.write_negative_integer(self.0 as i64)
+            serializer.write_negative_integer(self.get() as i64)
         }
     }
 }
@@ -264,15 +253,7 @@ impl Deserialize for I16Wrapper {
                         }
                     })? as i16,
             };
-            if inner < -32768 || inner > 32767 {
-                return Err(DeserializeFailure::RangeCheck {
-                    found: inner as i128,
-                    min: Some(-32768),
-                    max: Some(32767),
-                }
-                .into());
-            }
-            Ok(Self(inner))
+            Self::try_from(inner).map_err(DeserializeError::without_location)
         })()
         .map_err(|e| e.annotate("I16Wrapper"))
     }
@@ -283,10 +264,10 @@ impl cbor_event::se::Serialize for I64Wrapper {
         &self,
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
-        if self.0 >= 0 {
-            serializer.write_unsigned_integer(self.0 as u64)
+        if self.get() >= 0 {
+            serializer.write_unsigned_integer(self.get() as u64)
         } else {
-            serializer.write_negative_integer(self.0 as i64)
+            serializer.write_negative_integer(self.get() as i64)
         }
     }
 }
@@ -327,15 +308,7 @@ impl Deserialize for I64Wrapper {
                     })
                     .map(|(x, _enc)| x)? as i64,
             };
-            if inner < -9223372036854775808 || inner > 9223372036854775807 {
-                return Err(DeserializeFailure::RangeCheck {
-                    found: inner as i128,
-                    min: Some(-9223372036854775808),
-                    max: Some(9223372036854775807),
-                }
-                .into());
-            }
-            Ok(Self(inner))
+            Self::try_from(inner).map_err(DeserializeError::without_location)
         })()
         .map_err(|e| e.annotate("I64Wrapper"))
     }
@@ -1041,7 +1014,7 @@ impl cbor_event::se::Serialize for U8Wrapper {
         &self,
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
-        serializer.write_unsigned_integer(self.0 as u64)
+        serializer.write_unsigned_integer(self.get() as u64)
     }
 }
 
@@ -1063,15 +1036,7 @@ impl Deserialize for U8Wrapper {
                         Ok(x)
                     }
                 })? as u8;
-            if inner > 255 {
-                return Err(DeserializeFailure::RangeCheck {
-                    found: inner as i128,
-                    min: None,
-                    max: Some(255),
-                }
-                .into());
-            }
-            Ok(Self(inner))
+            Self::try_from(inner).map_err(DeserializeError::without_location)
         })()
         .map_err(|e| e.annotate("U8Wrapper"))
     }

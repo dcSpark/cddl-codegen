@@ -32,7 +32,8 @@ pub struct WitSizedText(pub RefCell<cddl_lib::SizedText>);
 
 impl wit_types::GuestSizedText for WitSizedText {
     fn new(inner: String) -> Result<Self, String> {
-        let inner = cddl_lib::SizedText::new(inner).map_err(err)?;
+        let inner: String = inner;
+        let inner = cddl_lib::SizedText::try_from(inner).map_err(err)?;
         Ok(WitSizedText(RefCell::new(inner)))
     }
 

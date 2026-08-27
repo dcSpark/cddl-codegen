@@ -50,9 +50,9 @@ mod tests {
 
     #[test]
     fn hash() {
-        let hash = Hash::new(vec![0xBA, 0xAD, 0xF0, 0x0D, 0xDE, 0xAD, 0xBE, 0xEF]).unwrap();
+        let hash = Hash::try_from(vec![0xBA, 0xAD, 0xF0, 0x0D, 0xDE, 0xAD, 0xBE, 0xEF]).unwrap();
         deser_test(&hash);
-        assert!(Hash::new(vec![0x00, 0xBA, 0xAD, 0xF0, 0x0D, 0xDE, 0xAD, 0xBE, 0xEF]).is_err());
+        assert!(Hash::try_from(vec![0x00, 0xBA, 0xAD, 0xF0, 0x0D, 0xDE, 0xAD, 0xBE, 0xEF]).is_err());
     }
 
     #[test]
@@ -1379,7 +1379,7 @@ mod tests {
         assert!(BoundsTypeChoice::new_bytes(vec![0; 65]).is_err());
         BoundsGroupChoice::new_a(0, "four".to_owned()).unwrap();
         assert!(BoundsGroupChoice::new_a(0, "hello".to_owned()).is_err());
-        deser_test(&BoundsGroupChoice::new_c(Hash::new(vec![]).unwrap(), Hash::new(vec![]).unwrap()));
+        deser_test(&BoundsGroupChoice::new_c(Hash::try_from(vec![]).unwrap(), Hash::try_from(vec![]).unwrap()));
     }
 
     #[test]

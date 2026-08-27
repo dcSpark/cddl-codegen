@@ -8,8 +8,17 @@
 ; then hosts `json_schema_gen.rs`, whose reference-closure check walks a `serde_json::Value`, while
 ; no type in the crate derives `serde::Serialize`.
 ;
-; Deliberately minimal: two plain records, one array-rep and one map-rep, which is all a
-; "does the crate the flag pair produces actually build and write its document" cell needs.
+; Two plain records cover the original "does the crate the flag pair produces actually build and
+; write its document" contract. The wide rows additionally pin schema-only default/required
+; semantics: without serde attributes for schemars to inspect, a loose captured row still defaults
+; empty while an exact row remains required, and the recursive selector retains the wide leaf's
+; item bounds.
 own_record = [a: uint, b: text]
 
 own_map = {c: text}
+
+wide = [64*64 uint]
+
+wide_tail_loose = [prefix: uint, * wide]
+
+wide_tail_exact = [prefix: uint, 2*2 wide]

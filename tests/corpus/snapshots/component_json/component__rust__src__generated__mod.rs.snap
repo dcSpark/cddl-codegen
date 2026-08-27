@@ -50,7 +50,7 @@ pub type Counts = NonEmptyMap<String, u64>;
 
 #[derive(Clone, Debug)]
 pub struct Hash {
-    pub(crate) inner: [u8; 32],
+    inner: [u8; 32],
     pub encodings: Option<HashEncoding>,
 }
 
@@ -59,7 +59,7 @@ impl Hash {
         &self.inner
     }
 
-    pub fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
+    fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
         let inner: [u8; 32] = inner.try_into().map_err(|bytes: Vec<u8>| {
             DeserializeError::new(
                 "Hash",
@@ -102,7 +102,7 @@ impl<'de> serde::de::Deserialize<'de> for Hash {
         let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;
         decode_canonical_hex(&s)
             .ok()
-            .and_then(|bytes| Hash::new(bytes).ok())
+            .and_then(|bytes| Hash::try_from(bytes).ok())
             .ok_or_else(|| {
                 serde::de::Error::invalid_value(
                     serde::de::Unexpected::Str(&s),

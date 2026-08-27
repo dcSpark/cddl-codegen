@@ -54,7 +54,7 @@ fn native_record() -> cddl_lib::Record {
     cddl_lib::Record::new(
         ID,
         NAME.to_owned(),
-        cddl_lib::Hash::new(digest_bytes()).unwrap(),
+        cddl_lib::Hash::try_from(digest_bytes()).unwrap(),
         cddl_lib::Int::new_nint(DELTA_NINT),
         cddl_lib::non_empty::NonEmptyVec::try_from(tags()).unwrap(),
         props().into_iter().collect(),
@@ -276,7 +276,7 @@ fn byte_roundtrip_is_byte_equal_to_native_serialization() -> Result<()> {
     // record and a type choice.
     assert_eq!(
         api.hash().call_to_cbor_bytes(&mut *store, hs.hash)?,
-        cddl_lib::Hash::new(digest_bytes()).unwrap().to_cbor_bytes()
+        cddl_lib::Hash::try_from(digest_bytes()).unwrap().to_cbor_bytes()
     );
     let mut native_root = cddl_lib::Node::new("root".to_owned());
     native_root.children = Some(vec![cddl_lib::Node::new("kid".to_owned())]);
@@ -310,7 +310,9 @@ fn fallible_doors_return_err_and_leave_the_instance_usable() -> Result<()> {
     // The error string is the rust crate's own `Display`, not a boundary-invented message.
     assert_eq!(
         short,
-        cddl_lib::Hash::new(vec![0u8; 31]).unwrap_err().to_string()
+        cddl_lib::Hash::try_from(vec![0u8; 31])
+            .unwrap_err()
+            .to_string()
     );
     assert!(!long.is_empty());
     // The instance survived both rejections — the property a trap would destroy.

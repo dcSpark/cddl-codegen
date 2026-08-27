@@ -123,14 +123,14 @@ impl Outcome {
 }
 
 #[derive(Clone, Debug)]
-pub struct Stamp(pub(crate) [u8; 4]);
+pub struct Stamp([u8; 4]);
 
 impl Stamp {
     pub fn get(&self) -> &[u8; 4] {
         &self.0
     }
 
-    pub fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
+    fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
         let inner: [u8; 4] = inner.try_into().map_err(|bytes: Vec<u8>| {
             DeserializeError::new(
                 "Stamp",

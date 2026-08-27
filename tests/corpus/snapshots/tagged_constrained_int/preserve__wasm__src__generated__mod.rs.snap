@@ -229,7 +229,7 @@ impl TaggedCtlNe {
     }
 
     pub fn new(inner: i64) -> Result<TaggedCtlNe, JsError> {
-        cddl_lib::TaggedCtlNe::new(inner)
+        cddl_lib::TaggedCtlNe::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }
@@ -274,7 +274,7 @@ impl TaggedRangeExcl {
     }
 
     pub fn new(inner: i64) -> Result<TaggedRangeExcl, JsError> {
-        cddl_lib::TaggedRangeExcl::new(inner)
+        cddl_lib::TaggedRangeExcl::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }
@@ -319,7 +319,7 @@ impl TaggedRangeIncl {
     }
 
     pub fn new(inner: i64) -> Result<TaggedRangeIncl, JsError> {
-        cddl_lib::TaggedRangeIncl::new(inner)
+        cddl_lib::TaggedRangeIncl::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }
@@ -364,7 +364,7 @@ impl TaggedRangeNint {
     }
 
     pub fn new(inner: i64) -> Result<TaggedRangeNint, JsError> {
-        cddl_lib::TaggedRangeNint::new(inner)
+        cddl_lib::TaggedRangeNint::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }
@@ -409,7 +409,7 @@ impl TaggedRangeUint {
     }
 
     pub fn new(inner: u64) -> Result<TaggedRangeUint, JsError> {
-        cddl_lib::TaggedRangeUint::new(inner)
+        cddl_lib::TaggedRangeUint::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }

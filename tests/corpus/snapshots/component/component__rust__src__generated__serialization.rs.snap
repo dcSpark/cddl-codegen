@@ -20,26 +20,15 @@ impl cbor_event::se::Serialize for Hash {
         &self,
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
-        serializer.write_bytes(&self.0)
+        serializer.write_bytes(self.get())
     }
 }
 
 impl Deserialize for Hash {
     fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
-            let inner = Ok::<_, DeserializeError>(raw.bytes()?)
-                .and_then(|bytes| {
-                    bytes.try_into().map_err(|bytes: Vec<u8>| {
-                        DeserializeFailure::RangeCheck {
-                            found: bytes.len() as i128,
-                            min: Some(32),
-                            max: Some(32),
-                        }
-                        .into()
-                    })
-                })
-                .map(|bytes: [u8; 32]| bytes)?;
-            Ok(Self(inner))
+            let inner = raw.bytes()?;
+            Self::try_from(inner).map_err(DeserializeError::without_location)
         })()
         .map_err(|e| e.annotate("Hash"))
     }

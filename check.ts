@@ -753,7 +753,10 @@ export function nestedToolPermitsForGate(o: {
 // nondeterministic, and a gate that fails on a number would be flaky by construction. What the
 // numbers buy is the ability to replace pessimistic constants (the 4 GiB slot, the one-permit
 // nested bound) with measured ones, and to split the NEXT whole-machine incident into "the memory
-// bound was wrong again" vs "memory was healthy, something else saturated".
+// bound was wrong again" vs "memory was healthy, something else saturated". OS memory-pressure
+// notifications sharpen exactly that split: the kernel knows it is about to reclaim before either
+// sampled number moves, so a run whose peaks looked healthy but which the OS was already squeezing
+// is attributable to memory rather than left in the "something else saturated" bucket by default.
 export interface ProcStat { pid: number; comm: string; ppid: number; rssBytes: number }
 
 /**
@@ -803,13 +806,43 @@ export interface MemPeaks {
   maxSingleComm: string;
   /** Machine-wide MemAvailable floor over the run — the number the budget's basis dips to. */
   memAvailFloorGiB?: number;
+  /**
+   * OS low-memory notifications seen during the run (`process.on("memoryPressure")`, Bun 1.4+ —
+   * Linux and Windows deliver "critical"). `pressureEvents` is the TOTAL; `pressure` is a bounded
+   * prefix, because a reclaim storm can deliver these faster than the 1 s tick and an unbounded
+   * list would grow the printed block and the ledger row without bound. A Bun without the event
+   * leaves both at their zero values, which is indistinguishable from a healthy run — deliberately
+   * so: this is a hint, never a measurement to assert on. `atS` is when the loop DISPATCHED the
+   * notification, not when the kernel raised it: a sequential gate runs under `spawnSync` and blocks
+   * the loop for its whole duration (which is also why `ticks` is 1 on such a run), so a squeeze
+   * mid-gate surfaces at the gate boundary. The COUNT still survives that; only the timing slips.
+   */
+  pressureEvents: number;
+  pressure: { level: string; atS: number }[];
 }
+
+/** How many pressure notifications the sampler keeps VERBATIM; the rest are counted only. */
+const MAX_PRESSURE_ROWS = 32;
 
 function startMemSampler(intervalMs = 1000): { stop: () => MemPeaks } {
   const peaks: MemPeaks = {
     ticks: 0, readErrors: 0, peakTreeGiB: 0, peakTreeProcs: 0, peakRustc: 0,
-    maxSingleGiB: 0, maxSingleComm: "-",
+    maxSingleGiB: 0, maxSingleComm: "-", pressureEvents: 0, pressure: [],
   };
+  // The one signal the 1 s tick cannot synthesize, so it is subscribed rather than sampled. Both the
+  // subscribe and the unsubscribe are guarded: on a Bun that does not emit this event the listener
+  // is simply never called, and on a runtime whose `process` rejects the name outright the sampler
+  // carries on with the counts at zero — same failure philosophy as every other read in here.
+  const startedAt = Date.now();
+  const onPressure = (level?: unknown): void => {
+    peaks.pressureEvents++;
+    if (peaks.pressure.length < MAX_PRESSURE_ROWS)
+      peaks.pressure.push({
+        level: typeof level === "string" ? level : level === undefined ? "unknown" : String(level),
+        atS: Math.round((Date.now() - startedAt) / 100) / 10,
+      });
+  };
+  try { process.on("memoryPressure", onPressure); } catch { /* no such event here — counts stay 0 */ }
   // Page size once: x86-64 and most aarch64 kernels use 4096, but 16k/64k-page arm64 kernels
   // exist, and rss in /proc is in PAGES.
   let pageBytes = 4096;
@@ -860,6 +893,7 @@ function startMemSampler(intervalMs = 1000): { stop: () => MemPeaks } {
   return {
     stop: () => {
       clearInterval(timer);
+      try { process.off("memoryPressure", onPressure); } catch { /* never registered — nothing to undo */ }
       tick(); // one final sample, so a run shorter than the interval still reports something
       return peaks;
     },
@@ -869,7 +903,8 @@ function startMemSampler(intervalMs = 1000): { stop: () => MemPeaks } {
 /** The sampler's end-of-run report: a printed block, and a row in the gitignored local ledger. */
 function reportMemPeaks(peaks: MemPeaks, tier: Tier): void {
   if (peaks.ticks === 0) {
-    console.log(`\nmemory sampler: no samples (${peaks.readErrors} read error(s) — no /proc on this platform?)`);
+    console.log(`\nmemory sampler: no samples (${peaks.readErrors} read error(s) — no /proc on this platform?)` +
+      `; OS memory-pressure events ${peaks.pressureEvents}`);
     return;
   }
   const gib = (n: number | undefined): string => n === undefined ? "?" : n.toFixed(2);
@@ -878,9 +913,15 @@ function reportMemPeaks(peaks: MemPeaks, tier: Tier): void {
     `peak run Σ RSS ${gib(peaks.peakTreeGiB)} GiB over ${peaks.peakTreeProcs} proc(s); ` +
     `peak concurrent rustc ${peaks.peakRustc}; ` +
     `largest single process ${gib(peaks.maxSingleGiB)} GiB (${peaks.maxSingleComm}); ` +
-    `machine MemAvailable floor ${gib(peaks.memAvailFloorGiB)} GiB` +
+    `machine MemAvailable floor ${gib(peaks.memAvailFloorGiB)} GiB; ` +
+    `OS memory-pressure events ${peaks.pressureEvents}` +
     (peaks.readErrors ? `; ${peaks.readErrors} read error(s)` : ""),
   );
+  // The zero case is reported above and says something on its own ("the OS never squeezed us"), so
+  // this second line exists only when there IS a squeeze to place in the run's timeline.
+  if (peaks.pressureEvents)
+    console.log(`  pressure at (s): ${peaks.pressure.map(p => `${p.atS}s ${p.level}`).join(", ")}` +
+      (peaks.pressureEvents > peaks.pressure.length ? ` … +${peaks.pressureEvents - peaks.pressure.length} more` : ""));
   try {
     mkdirSync(join(ROOT, "draft"), { recursive: true });
     const ledger = join(ROOT, "draft", "memory-peaks.jsonl");
@@ -3132,7 +3173,16 @@ async function runSelfLogged(): Promise<never> {
   const fd = openSync(logPath, "w");
   const child = Bun.spawn([process.argv[0], process.argv[1], ...process.argv.slice(2)], {
     cwd: ROOT,
-    env: { ...process.env, CHECK_SELF_LOG: logPath },
+    // BUN_FEATURE_FLAG_NO_ORPHANS goes on the INNER bun only — the one that owns every gate child —
+    // never on this outer pump: the flag makes a bun die with its parent, and the outer's parent is
+    // whatever launched the run (a harness-tracked background task included), whose lifetime must
+    // not bound the run's. Coverage boundary, measured on bun 1.4.0: an abruptly-killed inner takes
+    // its DIRECT children (prctl PDEATHSIG) and, since the env var propagates, every consecutive
+    // bun-under-bun level below — so a killed `bun run <script>.ts` gate reclaims the script AND the
+    // cargo the script spawns. It stops at the first non-bun spawner: a killed `cargo test` gate
+    // still strands rustc/test-binary descendants (the full `/proc` descendant walk runs only on a
+    // GRACEFUL exit, when nothing is left to reclaim anyway).
+    env: { ...process.env, CHECK_SELF_LOG: logPath, BUN_FEATURE_FLAG_NO_ORPHANS: "1" },
     stdout: "pipe",
     stderr: "pipe",
     stdin: "inherit",

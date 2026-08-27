@@ -866,6 +866,9 @@ impl<'a> IntermediateTypes<'a> {
     /// (`? f: (T / null)`), whose rust member is therefore a nested `Option<Option<T>>`. Gates the
     /// standalone `double_option` runtime module (the `#[serde(with)]` adapter that keeps the JSON
     /// surface's absent / present-null / present-value distinction) under `--json-serde-derives`.
+    /// This is intentionally a coarse spec-level module gate: an exact-array member uses the
+    /// `static_array` presence-aware callback instead, but a record with such a member still emits
+    /// the compatibility module alongside it.
     ///
     /// The struct-field position is the WHOLE reachable universe for a nested `Option`: every other
     /// spelling collapses one of the two `Option`s before it reaches a serde surface — a table value
@@ -1109,22 +1112,51 @@ impl<'a> IntermediateTypes<'a> {
 
     /// Refuse a JSON-derived surface before it reaches rustc when a wide native exact array sits in
     /// a containing shape the current static-array adapters do not own. The representation itself
-    /// remains valid without JSON, and the directly adapted field/newtype/loose-sequence forms stay
-    /// accepted; this is solely the missing serde/schemars composition boundary.
+    /// remains valid without JSON; direct and all sequence/set-tree field/newtype and open-array
+    /// forms stay accepted, while maps (including dynamic map rows) remain outside this JSON
+    /// handover boundary.
     fn reject_unadapted_wide_static_array_json_shapes(&mut self, cli: &Cli) {
         if !(cli.json_serde_derives || cli.json_schema_export) {
             return;
         }
-        fn check(rejections: &mut BTreeSet<String>, rule: &RustIdent, site: &str, ty: &RustType) {
-            if ty.has_unadapted_wide_static_array_json_shape() {
+        fn legacy_direct_typed_static_array_sequence(ty: &RustType, field_optional: bool) -> bool {
+            if field_optional
+                || ty.duplicates_reject()
+                || !matches!(ty.config.bounds, None | Some((None, None)))
+            {
+                return false;
+            }
+            let ConceptualRustType::Array(element) = ty.conceptual_type.resolve_alias_shallow()
+            else {
+                return false;
+            };
+            let ConceptualRustType::Array(inner) = element.conceptual_type.resolve_alias_shallow()
+            else {
+                return false;
+            };
+            element.exact_homogeneous_array_len_checked().is_some()
+                && !inner.contains_wide_static_array()
+                && !ty.contains_exact_natural_any_static_array()
+        }
+
+        fn check(
+            rejections: &mut BTreeSet<String>,
+            rule: &RustIdent,
+            site: &str,
+            ty: &RustType,
+            field_optional: bool,
+        ) {
+            if ty.has_unadapted_wide_static_array_json_shape()
+                && !legacy_direct_typed_static_array_sequence(ty, field_optional)
+            {
                 rejections.insert(format!(
                     "rule `{rule}`: {site} contains a wide exact homogeneous array in a JSON shape \
                      the generated adapters do not yet compose through. The pinned serde/schemars \
                      versions implement array traits only through length 32, so emitting this crate \
                      would fail to compile. Generate without --json-serde-derives/--json-schema-export, \
-                     or restructure so the wide exact array is a direct field/newtype payload or a \
-                     loose `Vec<[T; N]>` element; optional/bounded sequences, map entries, and deeper \
-                     nesting are not supported with the JSON flags yet."
+                     or avoid map/table containment. Loose, nonempty, and bounded sequence and \
+                     duplicate-reject set carriers and open-array segments are supported; map entries \
+                     and dynamic map rows are not supported with the JSON flags yet."
                 ));
             }
             if ty.has_unadapted_natural_any_static_array_json_shape() {
@@ -1133,7 +1165,8 @@ impl<'a> IntermediateTypes<'a> {
                      the natural-JSON adapters do not yet compose through. Emitting it would route \
                      each AnyCbor element through its tagged AnyCbor JSON codec instead of the required \
                      natural JSON value. Generate without --json-serde-derives/--json-schema-export, \
-                     or make the exact `any` array itself a direct field or newtype payload."
+                     or avoid map/table containment. Sequence and duplicate-reject set carriers are \
+                     supported; map entries are not."
                 ));
             }
         }
@@ -1146,67 +1179,42 @@ impl<'a> IntermediateTypes<'a> {
             match rust_struct.variant() {
                 RustStructType::Record(record) => {
                     for field in &record.fields {
-                        // Optionality is stored on RustField, not wrapped in the RustType. The
-                        // direct-array adapter owns `Option<[T; N]>`, but `Option<Vec<[T; N]>>`
-                        // would be routed through the non-optional sequence adapter and fail its
-                        // trait signature at rustc.
-                        if field.optional
-                            && field.rust_type.contains_wide_static_array()
-                            && field
-                                .rust_type
-                                .exact_homogeneous_array_len_checked()
-                                .is_none_or(|len| len <= 32)
-                        {
-                            rejections.insert(format!(
-                                "rule `{rule}`: optional field `{}` contains a wide exact homogeneous \
-                                 array behind a JSON container the generated adapters do not yet own. \
-                                 Generate without --json-serde-derives/--json-schema-export, or make the \
-                                 wide exact array itself the optional field payload."
-                                , field.name
-                            ));
-                            continue;
-                        }
+                        // Optional+nullable exact-array fields have a presence-aware recursive
+                        // adapter: the descriptor owns the inner nullable value and the callback
+                        // owns the outer presence Option. They are ordinary collection trees here;
+                        // map/table and dynamic-row containment remains below this field path's
+                        // adapter boundary.
                         check(
                             &mut rejections,
                             rule,
                             &format!("field `{}`", field.name),
                             &field.rust_type,
+                            field.optional,
                         );
                     }
-                    // Dynamic rows do not use the normal RustField annotation path. Even a direct
-                    // wide static row therefore has no generated serde/schemars adapter yet.
+                    // Array occurrence segments are derive-owned struct fields and use the same
+                    // recursive/legacy selector as a declared field at their dedicated emission
+                    // seam. Dynamic MAP rows still lack a map descriptor, so the shared predicate
+                    // accepts the supported sequence/set tree and refuses only map containment.
                     for row in record.dynamic_rows() {
                         let container = row.container_type();
-                        if container.has_unadapted_natural_any_static_array_json_shape() {
-                            rejections.insert(format!(
-                                "rule `{rule}`: open-array segment `{}` nests an exact CDDL `any` \
-                                 array behind a JSON container the natural-JSON adapters do not yet \
-                                 compose through. Emitting it would use tagged AnyCbor JSON rather \
-                                 than the required natural JSON value. Generate without \
-                                 --json-serde-derives/--json-schema-export, or make the exact `any` \
-                                 array a regular direct field/newtype payload instead."
-                                , row.field_name
-                            ));
-                        } else if container.contains_wide_static_array() {
-                            rejections.insert(format!(
-                                "rule `{rule}`: open-array segment `{}` contains a wide exact homogeneous \
-                                 array, but dynamic rows do not yet have a JSON static-array adapter. \
-                                 Generate without --json-serde-derives/--json-schema-export, or make the \
-                                 wide exact array a regular direct field/newtype payload instead."
-                                , row.field_name
-                            ));
-                        }
+                        let site = if row.is_array_tail() {
+                            format!("open-array segment `{}`", row.field_name)
+                        } else {
+                            format!("dynamic map row `{}`", row.field_name)
+                        };
+                        check(&mut rejections, rule, &site, &container, false);
                     }
                 }
                 RustStructType::Wrapper { wrapped, .. } => {
-                    check(&mut rejections, rule, "wrapper payload", wrapped);
+                    check(&mut rejections, rule, "wrapper payload", wrapped, false);
                 }
                 RustStructType::GroupChoice { variants, .. }
                 | RustStructType::TypeChoice { variants } => {
                     for variant in variants {
                         match &variant.data {
                             EnumVariantData::RustType(ty) => {
-                                check(&mut rejections, rule, "type-choice payload", ty)
+                                check(&mut rejections, rule, "type-choice payload", ty, false)
                             }
                             EnumVariantData::Inlined(record) => {
                                 for field in &record.fields {
@@ -1215,6 +1223,7 @@ impl<'a> IntermediateTypes<'a> {
                                         rule,
                                         &format!("type-choice field `{}`", field.name),
                                         &field.rust_type,
+                                        field.optional,
                                     );
                                 }
                             }
@@ -7330,6 +7339,39 @@ impl<'a> IntermediateTypes<'a> {
 
     pub fn can_new_fail(&self, name: &RustIdent) -> bool {
         self.news_can_fail.contains(name)
+    }
+
+    /// B5-404's nominal scalar carriers: unlike an occurrence-bounded member (whose containing
+    /// record owns the check), a named integer/bytes/text window owns its public invariant.  Keep
+    /// this IR fact next to `can_new_fail`: the rust, wasm, component, and emitted-test faces must
+    /// agree that construction crosses the wrapper's `TryFrom` impl, rather than each growing a
+    /// local notion of a "bounded newtype".
+    pub fn requires_checked_try_from(&self, name: &RustIdent) -> bool {
+        let Some(RustStructType::Wrapper {
+            wrapped, min_max, ..
+        }) = self.rust_struct(name).map(RustStruct::variant)
+        else {
+            return false;
+        };
+        if min_max.is_none() && wrapped.exact_byte_array_len_checked().is_none() {
+            return false;
+        }
+        matches!(
+            wrapped.resolve_alias_shallow(),
+            ConceptualRustType::Primitive(
+                Primitive::Bytes
+                    | Primitive::Str
+                    | Primitive::U8
+                    | Primitive::U16
+                    | Primitive::U32
+                    | Primitive::U64
+                    | Primitive::I8
+                    | Primitive::I16
+                    | Primitive::I32
+                    | Primitive::I64
+                    | Primitive::N64
+            )
+        )
     }
 
     pub fn mark_scope(&mut self, ident: RustIdent, scope: ModuleScope) {

@@ -40,14 +40,14 @@ pub enum Color {
 pub type Counts = NonEmptyMap<String, u64>;
 
 #[derive(Clone, Debug)]
-pub struct Hash(pub(crate) [u8; 32]);
+pub struct Hash([u8; 32]);
 
 impl Hash {
     pub fn get(&self) -> &[u8; 32] {
         &self.0
     }
 
-    pub fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
+    fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
         let inner: [u8; 32] = inner.try_into().map_err(|bytes: Vec<u8>| {
             DeserializeError::new(
                 "Hash",

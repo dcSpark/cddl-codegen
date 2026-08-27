@@ -143,14 +143,14 @@ impl From<u64> for CustomWrapper {
 }
 
 #[derive(Clone, Debug)]
-pub struct ExactBytesWrapper(pub(crate) [u8; 4]);
+pub struct ExactBytesWrapper([u8; 4]);
 
 impl ExactBytesWrapper {
     pub fn get(&self) -> &[u8; 4] {
         &self.0
     }
 
-    pub fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
+    fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
         let inner: [u8; 4] = inner.try_into().map_err(|bytes: Vec<u8>| {
             DeserializeError::new(
                 "ExactBytesWrapper",
@@ -190,7 +190,7 @@ impl<'de> serde::de::Deserialize<'de> for ExactBytesWrapper {
         let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;
         decode_canonical_hex(&s)
             .ok()
-            .and_then(|bytes| ExactBytesWrapper::new(bytes).ok())
+            .and_then(|bytes| ExactBytesWrapper::try_from(bytes).ok())
             .ok_or_else(|| {
                 serde::de::Error::invalid_value(
                     serde::de::Unexpected::Str(&s),
@@ -218,14 +218,14 @@ impl schemars::JsonSchema for ExactBytesWrapper {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct I16Wrapper(pub(crate) i16);
+pub struct I16Wrapper(i16);
 
 impl I16Wrapper {
     pub fn get(&self) -> i16 {
         self.0
     }
 
-    pub fn new(inner: i16) -> Result<Self, DeserializeError> {
+    fn new(inner: i16) -> Result<Self, DeserializeError> {
         if inner < -32768 || inner > 32767 {
             return Err(DeserializeError::new(
                 "I16Wrapper",
@@ -263,7 +263,7 @@ impl<'de> serde::de::Deserialize<'de> for I16Wrapper {
         D: serde::de::Deserializer<'de>,
     {
         let inner = <i16 as serde::de::Deserialize>::deserialize(deserializer)?;
-        Self::new(inner).map_err(|_e| {
+        Self::try_from(inner).map_err(|_e| {
             serde::de::Error::invalid_value(
                 serde::de::Unexpected::Signed(inner as i64),
                 &"invalid I16Wrapper",
@@ -287,14 +287,14 @@ impl schemars::JsonSchema for I16Wrapper {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct I64Wrapper(pub(crate) i64);
+pub struct I64Wrapper(i64);
 
 impl I64Wrapper {
     pub fn get(&self) -> i64 {
         self.0
     }
 
-    pub fn new(inner: i64) -> Result<Self, DeserializeError> {
+    fn new(inner: i64) -> Result<Self, DeserializeError> {
         if inner < -9223372036854775808 || inner > 9223372036854775807 {
             return Err(DeserializeError::new(
                 "I64Wrapper",
@@ -332,7 +332,7 @@ impl<'de> serde::de::Deserialize<'de> for I64Wrapper {
         D: serde::de::Deserializer<'de>,
     {
         let inner = <i64 as serde::de::Deserialize>::deserialize(deserializer)?;
-        Self::new(inner).map_err(|_e| {
+        Self::try_from(inner).map_err(|_e| {
             serde::de::Error::invalid_value(
                 serde::de::Unexpected::Signed(inner as i64),
                 &"invalid I64Wrapper",
@@ -798,14 +798,14 @@ impl schemars::JsonSchema for U64Wrapper {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct U8Wrapper(pub(crate) u8);
+pub struct U8Wrapper(u8);
 
 impl U8Wrapper {
     pub fn get(&self) -> u8 {
         self.0
     }
 
-    pub fn new(inner: u8) -> Result<Self, DeserializeError> {
+    fn new(inner: u8) -> Result<Self, DeserializeError> {
         if inner > 255 {
             return Err(DeserializeError::new(
                 "U8Wrapper",
@@ -843,7 +843,7 @@ impl<'de> serde::de::Deserialize<'de> for U8Wrapper {
         D: serde::de::Deserializer<'de>,
     {
         let inner = <u8 as serde::de::Deserialize>::deserialize(deserializer)?;
-        Self::new(inner).map_err(|_e| {
+        Self::try_from(inner).map_err(|_e| {
             serde::de::Error::invalid_value(
                 serde::de::Unexpected::Unsigned(inner as u64),
                 &"invalid U8Wrapper",

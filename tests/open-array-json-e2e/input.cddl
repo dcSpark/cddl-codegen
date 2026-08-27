@@ -11,12 +11,83 @@ required_any = [uint, + any]        ; required natural-fallible AnyCbor JSON arr
 bounded = [uint, 2*3 uint]          ; required finite BoundedVec JSON array
 bounded_any = [uint, 1*2 any]       ; bounded natural-fallible AnyCbor JSON array
 wide = [64*64 uint]                 ; typed static array beyond serde's historical 32 limit
+wide_any = [64*64 any]              ; natural static-array leaf for recursive sequence carriers
 wide_holder = [wide: wide]
 wide_optional = [prefix: uint, ? wide: [64*64 uint]]
 wide_any_optional = [prefix: uint, ? wide: [64*64 any]]
 wide_any_choice = [64*64 any] / tstr
 wide_list_holder = [xs: [* wide]]   ; nested static arrays need an element-aware JSON adapter
 wide_choice = wide / tstr           ; a newtype enum payload needs the direct static-array adapter
+wide_nested = [2*2 [64*64 uint]]    ; recursive exact-array JSON/schema descriptor, not Vec support
+wide_nested_holder = [nested: wide_nested]
+wide_nested_optional = [prefix: uint, ? nested: wide_nested]
+wide_nested_choice = wide_nested / tstr
+wide_nested_deep = [2*2 wide_nested] ; third exact layer proves recursive descriptor composition
+wide_nested_deep_holder = [nested: wide_nested_deep]
+wide_nested_any = [2*2 [64*64 any]]
+wide_nested_any_holder = [nested: wide_nested_any]
+wide_nested_any_choice = wide_nested_any / tstr
+; Recursive JSON descriptor sequence carriers: every outer list remains a JSON list, while
+; NonEmptyVec/BoundedVec re-enter their existing TryFrom<Vec<_>> invariant door after decoding.
+wide_seq_holder = [xs: [* wide]]
+wide_seq_optional = [prefix: uint, ? xs: [* wide]]
+wide_nonempty_holder = [xs: [+ wide]]
+wide_bounded_holder = [xs: [2*3 wide]]
+wide_min_holder = [xs: [2* wide]]
+wide_max_holder = [xs: [*3 wide]]
+wide_mixed_holder = [xs: [* [+ [2*3 wide]]]]
+wide_any_seq_holder = [xs: [* wide_any]]
+wide_any_nonempty_holder = [xs: [+ wide_any]]
+wide_any_bounded_holder = [xs: [1*2 wide_any]]
+wide_nullable = wide / null
+wide_nullable_seq_holder = [xs: [* wide_nullable]]
+; An OPTIONAL nullable member has an outer presence Option and an inner nullable Option. These
+; vectors keep the JSON three-state table while the recursive exact-array descriptor owns only the
+; inner type.
+wide_nullable_optional = [prefix: uint, ? value: (wide / null)]
+wide_restricted = [2*3 wide]
+wide_restricted_nullable_optional = [prefix: uint, ? value: (wide_restricted / null)]
+short_any = [2*2 any]
+short_any_nullable_optional = [prefix: uint, ? value: (short_any / null)]
+nested_short_any = [2*2 short_any]
+nested_short_any_nullable_optional = [prefix: uint, ? value: (nested_short_any / null)]
+wide_seq_choice = [* wide] / tstr
+wide_seq_alias = [* wide]
+wide_seq_newtype = wide_seq_alias ; @newtype
+wide_newtype = wide ; @newtype
+wide_any_newtype = wide_any ; @newtype
+; Duplicate-reject collections use their checked OrderedSet carriers, but JSON remains an ordered
+; list. The recursive descriptor owns every inner exact-array handover, and each outer carrier
+; crosses its existing TryFrom<Vec<_>> door exactly once on read.
+wide_reject_loose = [* wide] ; @duplicates reject
+wide_reject_nonempty = [+ wide] ; @duplicates reject
+wide_reject_bounded = [2*3 wide] ; @duplicates reject
+wide_reject_exact = [2*2 wide] ; @duplicates reject
+wide_reject_holder = [
+  loose: wide_reject_loose,
+  nonempty: wide_reject_nonempty,
+  bounded: wide_reject_bounded,
+  exact: wide_reject_exact,
+]
+wide_reject_optional = [prefix: uint, ? xs: wide_reject_loose]
+wide_reject_nullable_optional = [prefix: uint, ? xs: (wide_reject_bounded / null)]
+wide_reject_newtype = wide_reject_loose ; @newtype
+wide_reject_choice = wide_reject_loose / tstr
+wide_reject_any = [* wide_any] ; @duplicates reject
+wide_reject_any_holder = [xs: wide_reject_any]
+; Dynamic occurrence segments use the same recursive exact-array descriptor as declared fields.
+; Loose remains omitted/defaulted; every restricted carrier stays required and crosses its checked
+; door after JSON stages a list. The middle vector retains its positional suffix in the native/CBOR
+; face while JSON keeps its established named-field list shape.
+wide_tail_loose = [prefix: uint, * wide]
+wide_tail_nonempty = [prefix: uint, + wide]
+wide_tail_bounded = [prefix: uint, 2*3 wide]
+wide_tail_exact = [prefix: uint, 2*2 wide]
+wide_tail_middle = [prefix: uint, * wide, suffix: tstr]
+wide_tail_reject = [prefix: uint, * wide_reject_loose]
+short_any_tail = [2*2 any]
+short_any_outer_tail = [* short_any_tail]
+wide_tail_natural_any = [prefix: uint, * short_any_outer_tail]
 middle_bounded = [uint, 2*3 uint, tstr] ; shared BoundedVec JSON/schema surface before suffix
 exact_middle = [uint, 2*2 uint, uint] ; exact same-major middle keeps that shared surface
 exact_segments = [

@@ -1318,7 +1318,7 @@ impl String32 {
     }
 
     pub fn new(inner: String) -> Result<String32, JsError> {
-        cddl_lib::String32::new(inner)
+        cddl_lib::String32::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }
@@ -1367,7 +1367,7 @@ impl String64 {
     }
 
     pub fn new(inner: String) -> Result<String64, JsError> {
-        cddl_lib::String64::new(inner)
+        cddl_lib::String64::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }

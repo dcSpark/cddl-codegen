@@ -467,7 +467,7 @@ impl Stamp {
     }
 
     pub fn new(inner: Vec<u8>) -> Result<Stamp, JsError> {
-        cddl_lib::Stamp::new(inner)
+        cddl_lib::Stamp::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }

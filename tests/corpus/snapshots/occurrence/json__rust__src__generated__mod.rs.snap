@@ -38,6 +38,8 @@ pub struct ExactMiddleOccurrence {
     pub prefix: u64,
     pub suffix: u64,
     /// Captured exact-count occurrence-segment elements before the mandatory fixed suffix, whose inclusive CDDL occurrence window is enforced by this checked carrier. Serialized at its authored source position; supplied complete to `new()`.
+    #[serde(with = "crate::generated::static_array::static_array")]
+    #[schemars(schema_with = "crate::generated::static_array::static_array_schema::<u64, 2>")]
     pub rest: [u64; 2],
 }
 

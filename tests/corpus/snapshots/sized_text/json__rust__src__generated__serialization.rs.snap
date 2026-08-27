@@ -15,7 +15,7 @@ impl cbor_event::se::Serialize for SizedText {
         &self,
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
-        serializer.write_text(&self.0)
+        serializer.write_text(self.get())
     }
 }
 
@@ -23,15 +23,7 @@ impl Deserialize for SizedText {
     fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
             let inner = raw.text()?;
-            if inner.len() < 1 || inner.len() > 16 {
-                return Err(DeserializeFailure::RangeCheck {
-                    found: inner.len() as i128,
-                    min: Some(1),
-                    max: Some(16),
-                }
-                .into());
-            }
-            Ok(Self(inner))
+            Self::try_from(inner).map_err(DeserializeError::without_location)
         })()
         .map_err(|e| e.annotate("SizedText"))
     }

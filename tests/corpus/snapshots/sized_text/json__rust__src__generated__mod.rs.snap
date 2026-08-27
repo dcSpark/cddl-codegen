@@ -22,14 +22,14 @@ pub mod serialization;
 use crate::generated::error::*;
 
 #[derive(Clone, Debug)]
-pub struct SizedText(pub(crate) String);
+pub struct SizedText(String);
 
 impl SizedText {
     pub fn get(&self) -> &String {
         &self.0
     }
 
-    pub fn new(inner: String) -> Result<Self, DeserializeError> {
+    fn new(inner: String) -> Result<Self, DeserializeError> {
         if inner.len() < 1 || inner.len() > 16 {
             return Err(DeserializeError::new(
                 "SizedText",
@@ -67,7 +67,7 @@ impl<'de> serde::de::Deserialize<'de> for SizedText {
         D: serde::de::Deserializer<'de>,
     {
         let inner = <String as serde::de::Deserialize>::deserialize(deserializer)?;
-        Self::new(inner.clone()).map_err(|_e| {
+        Self::try_from(inner.clone()).map_err(|_e| {
             serde::de::Error::invalid_value(
                 serde::de::Unexpected::Str(&inner),
                 &"invalid SizedText",

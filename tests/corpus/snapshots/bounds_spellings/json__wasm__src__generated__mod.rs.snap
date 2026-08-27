@@ -156,7 +156,7 @@ impl WExactSize {
     }
 
     pub fn new(inner: Vec<u8>) -> Result<WExactSize, JsError> {
-        cddl_lib::WExactSize::new(inner)
+        cddl_lib::WExactSize::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }
@@ -216,7 +216,7 @@ impl WIntRange {
     }
 
     pub fn new(inner: u64) -> Result<WIntRange, JsError> {
-        cddl_lib::WIntRange::new(inner)
+        cddl_lib::WIntRange::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }
@@ -276,7 +276,7 @@ impl WNintRange {
     }
 
     pub fn new(inner: u64) -> Result<WNintRange, JsError> {
-        cddl_lib::WNintRange::new(inner)
+        cddl_lib::WNintRange::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }
@@ -336,7 +336,7 @@ impl WZeroExact {
     }
 
     pub fn new(inner: u64) -> Result<WZeroExact, JsError> {
-        cddl_lib::WZeroExact::new(inner)
+        cddl_lib::WZeroExact::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }
@@ -396,7 +396,7 @@ impl WZeroLen {
     }
 
     pub fn new(inner: Vec<u8>) -> Result<WZeroLen, JsError> {
-        cddl_lib::WZeroLen::new(inner)
+        cddl_lib::WZeroLen::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }

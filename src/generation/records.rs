@@ -4074,8 +4074,17 @@ pub(super) fn codegen_struct(
             // `[* any]` array member (`Seq`), and a `{* K => any}` table member with a stringifiable
             // (non-`any`) key — `Map` (non-preserve `BTreeMap`) / `OrderedMap` (preserve
             // `OrderedHashMap`) — plus the optional (`? N: …` → `Option<…>`) counterpart of each.
+            let composed_double_option_annotations = if field.is_double_option() {
+                super::static_array_double_option_serde_annotations(types, &field.rust_type, cli)
+            } else {
+                Vec::new()
+            };
             if !config.custom_json {
-                if let Some(position) =
+                if !composed_double_option_annotations.is_empty() {
+                    for annotation in &composed_double_option_annotations {
+                        codegen_field.annotation(annotation);
+                    }
+                } else if let Some(position) =
                     super::natural_any_position(&field.rust_type, field.optional, cli)
                 {
                     for annotation in super::natural_any_serde_annotations(cli, position) {
@@ -4086,12 +4095,14 @@ pub(super) fn codegen_struct(
                         types,
                         &field.rust_type,
                         field.optional,
+                        true,
                         cli,
                     )
                     .into_iter()
                     .chain(super::static_array_sequence_serde_annotations(
                         types,
                         &field.rust_type,
+                        field.optional,
                         cli,
                     )) {
                         codegen_field.annotation(annotation);
@@ -4100,16 +4111,21 @@ pub(super) fn codegen_struct(
             }
             // A member that is BOTH optional and nullable is stored as a nested `Option<Option<…>>`,
             // which serde's plain derive collapses in both directions (present-null reads back as
-            // absent; absent writes as `null`). Steer it through the `double_option` adapter so the
-            // JSON surface carries the same three states the CBOR surface does. Disjoint from the
-            // natural-`any` block above by construction: that one matches on the field's OUTER
-            // conceptual type being `Any`/`Array`/`Map`, this one on its being `Optional`.
+            // absent; absent writes as `null`). Exact-array trees have already taken the composed
+            // presence-aware recursive callback above. This fallback steers every remaining
+            // optional+nullable member through `double_option` so JSON carries the same three
+            // states as CBOR. Disjoint from the natural-`any` block above by construction: that one
+            // matches on the field's OUTER conceptual type being `Any`/`Array`/`Map`, this one on
+            // its being `Optional`.
             //
             // `manual_json` excludes the two hand-owned JSON faces, and neither is a silent gap: an
             // open table has NO declared fields at all (`is_open_table` requires `fields.is_empty()`),
             // so the shape is unreachable there by construction; and under `@custom_json` the spec
             // author owns both serde impls, so the tool steers nothing.
-            if !manual_json && field.is_double_option() {
+            if !manual_json
+                && field.is_double_option()
+                && composed_double_option_annotations.is_empty()
+            {
                 // The member type verbatim, spelled exactly as the field declaration above spells
                 // it — it is what the `schemars` neutralizer hands back to the derive.
                 let member_type = format!(
@@ -4268,14 +4284,25 @@ pub(super) fn codegen_struct(
         // the object's top level (`emit_rest_flatten_json`). An ARRAY `* t` tail renders as an ORDINARY
         // JSON array under the field name (positions are already erased in JSON, and serde flatten has
         // no array analog): skip-if-empty on write + default-on-read (so an empty tail ≡ closed-struct
-        // JSON, mirroring the empty-tail ≡ closed-struct CBOR invariant), and — for an `any`-element
-        // tail (`Vec<AnyCbor>`) — the natural-fallible walk reusing the homogeneous `[* any]` member
-        // `Seq` adapter (a typed element uses its own serde).
+        // JSON, mirroring the empty-tail ≡ closed-struct CBOR invariant). A direct `any` element
+        // keeps its established natural-fallible adapter. Every other array row goes through the
+        // same ordered exact-array selector as a declared field, using RestRow::container_type()
+        // as the one native-carrier spelling: recursive annotations first, then the legacy direct
+        // typed-Vec callback. This is deliberately here rather than a row-only descriptor because
+        // captured segments are ordinary derive-owned fields which merely bypass RustField's loop.
         if !manual_json {
             if rest.is_array_tail() {
                 if cli.json_serde_derives && !rest.is_restricted() {
                     rest_field
                         .annotation("#[serde(skip_serializing_if = \"Vec::is_empty\", default)]");
+                }
+                // Schemars normally learns this field is optional from serde's `default`, but the
+                // two JSON flags are independent. Under schema-only generation no serde attribute
+                // exists for it to inspect, so state the same loose-tail default directly. Do not
+                // apply this to restricted rows: their checked carriers are deliberate required
+                // construction/schema inputs even when their lower bound is zero.
+                if cli.json_schema_export && !cli.json_serde_derives && !rest.is_restricted() {
+                    rest_field.annotation("#[schemars(default)]");
                 }
                 let elem_is_any = matches!(
                     rest.element().conceptual_type.resolve_alias_shallow(),
@@ -4299,6 +4326,17 @@ pub(super) fn codegen_struct(
                             super::NaturalAnyPosition::Seq
                         },
                     ) {
+                        rest_field.annotation(annotation);
+                    }
+                } else {
+                    let container = rest.container_type();
+                    for annotation in
+                        super::static_array_serde_annotations(types, &container, false, true, cli)
+                            .into_iter()
+                            .chain(super::static_array_sequence_serde_annotations(
+                                types, &container, false, cli,
+                            ))
+                    {
                         rest_field.annotation(annotation);
                     }
                 }

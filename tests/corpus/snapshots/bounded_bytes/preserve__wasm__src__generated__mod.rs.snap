@@ -31,7 +31,7 @@ impl Hash {
     }
 
     pub fn new(inner: Vec<u8>) -> Result<Hash, JsError> {
-        cddl_lib::Hash::new(inner)
+        cddl_lib::Hash::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }

@@ -4163,6 +4163,7 @@ fn a_runtime_table_exports_a_runtime_the_other_flavor_compiles_against() {
         "non_empty.rs",
         "non_empty_map.rs",
         "ordered_hash_map.rs",
+        "static_array.rs",
     ] {
         assert!(
             runtime_src.join(expected).is_file(),

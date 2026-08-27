@@ -94,14 +94,14 @@ impl BoundsMembers {
 }
 
 #[derive(Clone, Debug)]
-pub struct WExactSize(pub(crate) [u8; 3]);
+pub struct WExactSize([u8; 3]);
 
 impl WExactSize {
     pub fn get(&self) -> &[u8; 3] {
         &self.0
     }
 
-    pub fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
+    fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
         let inner: [u8; 3] = inner.try_into().map_err(|bytes: Vec<u8>| {
             DeserializeError::new(
                 "WExactSize",
@@ -141,7 +141,7 @@ impl<'de> serde::de::Deserialize<'de> for WExactSize {
         let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;
         decode_canonical_hex(&s)
             .ok()
-            .and_then(|bytes| WExactSize::new(bytes).ok())
+            .and_then(|bytes| WExactSize::try_from(bytes).ok())
             .ok_or_else(|| {
                 serde::de::Error::invalid_value(
                     serde::de::Unexpected::Str(&s),
@@ -169,14 +169,14 @@ impl schemars::JsonSchema for WExactSize {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct WIntRange(pub(crate) u64);
+pub struct WIntRange(u64);
 
 impl WIntRange {
     pub fn get(&self) -> u64 {
         self.0
     }
 
-    pub fn new(inner: u64) -> Result<Self, DeserializeError> {
+    fn new(inner: u64) -> Result<Self, DeserializeError> {
         if inner > 100 {
             return Err(DeserializeError::new(
                 "WIntRange",
@@ -214,7 +214,7 @@ impl<'de> serde::de::Deserialize<'de> for WIntRange {
         D: serde::de::Deserializer<'de>,
     {
         let inner = <u64 as serde::de::Deserialize>::deserialize(deserializer)?;
-        Self::new(inner).map_err(|_e| {
+        Self::try_from(inner).map_err(|_e| {
             serde::de::Error::invalid_value(
                 serde::de::Unexpected::Unsigned(inner),
                 &"invalid WIntRange",
@@ -238,14 +238,14 @@ impl schemars::JsonSchema for WIntRange {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct WNintRange(pub(crate) u64);
+pub struct WNintRange(u64);
 
 impl WNintRange {
     pub fn get(&self) -> u64 {
         self.0
     }
 
-    pub fn new(inner: u64) -> Result<Self, DeserializeError> {
+    fn new(inner: u64) -> Result<Self, DeserializeError> {
         if inner > 99 {
             return Err(DeserializeError::new(
                 "WNintRange",
@@ -283,7 +283,7 @@ impl<'de> serde::de::Deserialize<'de> for WNintRange {
         D: serde::de::Deserializer<'de>,
     {
         let inner = <u64 as serde::de::Deserialize>::deserialize(deserializer)?;
-        Self::new(inner).map_err(|_e| {
+        Self::try_from(inner).map_err(|_e| {
             serde::de::Error::invalid_value(
                 serde::de::Unexpected::Signed(inner as i64),
                 &"invalid WNintRange",
@@ -307,14 +307,14 @@ impl schemars::JsonSchema for WNintRange {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct WZeroExact(pub(crate) u64);
+pub struct WZeroExact(u64);
 
 impl WZeroExact {
     pub fn get(&self) -> u64 {
         self.0
     }
 
-    pub fn new(inner: u64) -> Result<Self, DeserializeError> {
+    fn new(inner: u64) -> Result<Self, DeserializeError> {
         if inner != 0 {
             return Err(DeserializeError::new(
                 "WZeroExact",
@@ -352,7 +352,7 @@ impl<'de> serde::de::Deserialize<'de> for WZeroExact {
         D: serde::de::Deserializer<'de>,
     {
         let inner = <u64 as serde::de::Deserialize>::deserialize(deserializer)?;
-        Self::new(inner).map_err(|_e| {
+        Self::try_from(inner).map_err(|_e| {
             serde::de::Error::invalid_value(
                 serde::de::Unexpected::Unsigned(inner),
                 &"invalid WZeroExact",
@@ -376,14 +376,14 @@ impl schemars::JsonSchema for WZeroExact {
 }
 
 #[derive(Clone, Debug)]
-pub struct WZeroLen(pub(crate) Vec<u8>);
+pub struct WZeroLen(Vec<u8>);
 
 impl WZeroLen {
     pub fn get(&self) -> &Vec<u8> {
         &self.0
     }
 
-    pub fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
+    fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
         if inner.len() > 32 {
             return Err(DeserializeError::new(
                 "WZeroLen",
@@ -429,7 +429,7 @@ impl<'de> serde::de::Deserialize<'de> for WZeroLen {
         let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;
         decode_canonical_hex(&s)
             .ok()
-            .and_then(|bytes| WZeroLen::new(bytes).ok())
+            .and_then(|bytes| WZeroLen::try_from(bytes).ok())
             .ok_or_else(|| {
                 serde::de::Error::invalid_value(
                     serde::de::Unexpected::Str(&s),

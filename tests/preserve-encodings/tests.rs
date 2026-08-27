@@ -1257,7 +1257,7 @@ mod tests {
         assert!(BoundsTypeChoice::new_bytes(vec![0; 65]).is_err());
         BoundsGroupChoice::new_a(0, "four".to_owned()).unwrap();
         assert!(BoundsGroupChoice::new_a(0, "hello".to_owned()).is_err());
-        deser_test(&BoundsGroupChoice::new_c(Hash::new(vec![]).unwrap(), Hash::new(vec![]).unwrap()));
+        deser_test(&BoundsGroupChoice::new_c(Hash::try_from(vec![]).unwrap(), Hash::try_from(vec![]).unwrap()));
     }
 
     #[test]

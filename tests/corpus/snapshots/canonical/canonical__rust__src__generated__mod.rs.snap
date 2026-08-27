@@ -529,7 +529,7 @@ impl From<TaggedText> for String {
 
 #[derive(Clone, Debug)]
 pub struct String32 {
-    pub(crate) inner: String,
+    inner: String,
     pub encodings: Option<String32Encoding>,
 }
 
@@ -538,7 +538,7 @@ impl String32 {
         &self.inner
     }
 
-    pub fn new(inner: String) -> Result<Self, DeserializeError> {
+    fn new(inner: String) -> Result<Self, DeserializeError> {
         if inner.len() < 16 || inner.len() > 32 {
             return Err(DeserializeError::new(
                 "String32",
@@ -566,7 +566,7 @@ impl TryFrom<String> for String32 {
 
 #[derive(Clone, Debug)]
 pub struct String64 {
-    pub(crate) inner: String,
+    inner: String,
     pub encodings: Option<String64Encoding>,
 }
 
@@ -575,7 +575,7 @@ impl String64 {
         &self.inner
     }
 
-    pub fn new(inner: String) -> Result<Self, DeserializeError> {
+    fn new(inner: String) -> Result<Self, DeserializeError> {
         if inner.len() > 64 {
             return Err(DeserializeError::new(
                 "String64",

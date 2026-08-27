@@ -20,14 +20,14 @@ pub mod serialization;
 use crate::generated::error::*;
 
 #[derive(Clone, Debug)]
-pub struct SizedText(pub(crate) String);
+pub struct SizedText(String);
 
 impl SizedText {
     pub fn get(&self) -> &String {
         &self.0
     }
 
-    pub fn new(inner: String) -> Result<Self, DeserializeError> {
+    fn new(inner: String) -> Result<Self, DeserializeError> {
         if inner.len() < 1 || inner.len() > 16 {
             return Err(DeserializeError::new(
                 "SizedText",

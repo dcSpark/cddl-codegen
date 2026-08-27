@@ -89,14 +89,14 @@ impl BoundsMembers {
 }
 
 #[derive(Clone, Debug)]
-pub struct WExactSize(pub(crate) [u8; 3]);
+pub struct WExactSize([u8; 3]);
 
 impl WExactSize {
     pub fn get(&self) -> &[u8; 3] {
         &self.0
     }
 
-    pub fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
+    fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
         let inner: [u8; 3] = inner.try_into().map_err(|bytes: Vec<u8>| {
             DeserializeError::new(
                 "WExactSize",
@@ -120,14 +120,14 @@ impl TryFrom<Vec<u8>> for WExactSize {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct WIntRange(pub(crate) u64);
+pub struct WIntRange(u64);
 
 impl WIntRange {
     pub fn get(&self) -> u64 {
         self.0
     }
 
-    pub fn new(inner: u64) -> Result<Self, DeserializeError> {
+    fn new(inner: u64) -> Result<Self, DeserializeError> {
         if inner > 100 {
             return Err(DeserializeError::new(
                 "WIntRange",
@@ -151,14 +151,14 @@ impl TryFrom<u64> for WIntRange {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct WNintRange(pub(crate) u64);
+pub struct WNintRange(u64);
 
 impl WNintRange {
     pub fn get(&self) -> u64 {
         self.0
     }
 
-    pub fn new(inner: u64) -> Result<Self, DeserializeError> {
+    fn new(inner: u64) -> Result<Self, DeserializeError> {
         if inner > 99 {
             return Err(DeserializeError::new(
                 "WNintRange",
@@ -182,14 +182,14 @@ impl TryFrom<u64> for WNintRange {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct WZeroExact(pub(crate) u64);
+pub struct WZeroExact(u64);
 
 impl WZeroExact {
     pub fn get(&self) -> u64 {
         self.0
     }
 
-    pub fn new(inner: u64) -> Result<Self, DeserializeError> {
+    fn new(inner: u64) -> Result<Self, DeserializeError> {
         if inner != 0 {
             return Err(DeserializeError::new(
                 "WZeroExact",
@@ -213,14 +213,14 @@ impl TryFrom<u64> for WZeroExact {
 }
 
 #[derive(Clone, Debug)]
-pub struct WZeroLen(pub(crate) Vec<u8>);
+pub struct WZeroLen(Vec<u8>);
 
 impl WZeroLen {
     pub fn get(&self) -> &Vec<u8> {
         &self.0
     }
 
-    pub fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
+    fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
         if inner.len() > 32 {
             return Err(DeserializeError::new(
                 "WZeroLen",

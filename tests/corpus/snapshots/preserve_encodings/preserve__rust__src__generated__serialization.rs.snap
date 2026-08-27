@@ -5083,12 +5083,12 @@ impl cbor_event::se::Serialize for Hash {
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_bytes_sz(
-            &self.inner,
+            self.get(),
             self.encodings
                 .as_ref()
                 .map(|encs| encs.inner_encoding.clone())
                 .unwrap_or_default()
-                .to_str_len_sz(self.inner.len() as u64),
+                .to_str_len_sz(self.get().len() as u64),
         )
     }
 }
@@ -5099,18 +5099,9 @@ impl Deserialize for Hash {
             let (inner, inner_encoding) = raw
                 .bytes_sz()
                 .map(|(bytes, enc)| (bytes, StringEncoding::from(enc)))?;
-            if inner.len() > 8 {
-                return Err(DeserializeFailure::RangeCheck {
-                    found: inner.len() as i128,
-                    min: None,
-                    max: Some(8),
-                }
-                .into());
-            }
-            Ok(Self {
-                inner,
-                encodings: Some(HashEncoding { inner_encoding }),
-            })
+            let mut value = Self::try_from(inner).map_err(DeserializeError::without_location)?;
+            value.encodings = Some(HashEncoding { inner_encoding });
+            Ok(value)
         })()
         .map_err(|e| e.annotate("Hash"))
     }
@@ -9456,12 +9447,12 @@ impl cbor_event::se::Serialize for String1632 {
             ),
         )?;
         serializer.write_text_sz(
-            &self.inner,
+            self.get(),
             self.encodings
                 .as_ref()
                 .map(|encs| encs.inner_encoding.clone())
                 .unwrap_or_default()
-                .to_str_len_sz(self.inner.len() as u64),
+                .to_str_len_sz(self.get().len() as u64),
         )
     }
 }
@@ -9481,21 +9472,12 @@ impl Deserialize for String1632 {
                     .into());
                 }
             };
-            if inner.len() < 16 || inner.len() > 32 {
-                return Err(DeserializeFailure::RangeCheck {
-                    found: inner.len() as i128,
-                    min: Some(16),
-                    max: Some(32),
-                }
-                .into());
-            }
-            Ok(Self {
-                inner,
-                encodings: Some(String1632Encoding {
-                    inner_tag_encoding,
-                    inner_encoding,
-                }),
-            })
+            let mut value = Self::try_from(inner).map_err(DeserializeError::without_location)?;
+            value.encodings = Some(String1632Encoding {
+                inner_tag_encoding,
+                inner_encoding,
+            });
+            Ok(value)
         })()
         .map_err(|e| e.annotate("String1632"))
     }
@@ -9507,12 +9489,12 @@ impl cbor_event::se::Serialize for String64 {
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_text_sz(
-            &self.inner,
+            self.get(),
             self.encodings
                 .as_ref()
                 .map(|encs| encs.inner_encoding.clone())
                 .unwrap_or_default()
-                .to_str_len_sz(self.inner.len() as u64),
+                .to_str_len_sz(self.get().len() as u64),
         )
     }
 }
@@ -9523,18 +9505,9 @@ impl Deserialize for String64 {
             let (inner, inner_encoding) = raw
                 .text_sz()
                 .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
-            if inner.len() > 64 {
-                return Err(DeserializeFailure::RangeCheck {
-                    found: inner.len() as i128,
-                    min: None,
-                    max: Some(64),
-                }
-                .into());
-            }
-            Ok(Self {
-                inner,
-                encodings: Some(String64Encoding { inner_encoding }),
-            })
+            let mut value = Self::try_from(inner).map_err(DeserializeError::without_location)?;
+            value.encodings = Some(String64Encoding { inner_encoding });
+            Ok(value)
         })()
         .map_err(|e| e.annotate("String64"))
     }
@@ -10828,11 +10801,11 @@ impl cbor_event::se::Serialize for TopLevelNegRange {
         &self,
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
-        if self.inner >= 0 {
+        if self.get() >= 0 {
             serializer.write_unsigned_integer_sz(
-                self.inner as u64,
+                self.get() as u64,
                 fit_sz(
-                    self.inner as u64,
+                    self.get() as u64,
                     self.encodings
                         .as_ref()
                         .map(|encs| encs.inner_encoding)
@@ -10841,9 +10814,9 @@ impl cbor_event::se::Serialize for TopLevelNegRange {
             )
         } else {
             serializer.write_negative_integer_sz(
-                self.inner as i128,
+                self.get() as i128,
                 fit_sz(
-                    (self.inner + 1).unsigned_abs(),
+                    (self.get() + 1).unsigned_abs(),
                     self.encodings
                         .as_ref()
                         .map(|encs| encs.inner_encoding)
@@ -10895,18 +10868,9 @@ impl Deserialize for TopLevelNegRange {
                     (x as i64, Some(enc))
                 }
             };
-            if inner < -10 || inner > -3 {
-                return Err(DeserializeFailure::RangeCheck {
-                    found: inner as i128,
-                    min: Some(-10),
-                    max: Some(-3),
-                }
-                .into());
-            }
-            Ok(Self {
-                inner,
-                encodings: Some(TopLevelNegRangeEncoding { inner_encoding }),
-            })
+            let mut value = Self::try_from(inner).map_err(DeserializeError::without_location)?;
+            value.encodings = Some(TopLevelNegRangeEncoding { inner_encoding });
+            Ok(value)
         })()
         .map_err(|e| e.annotate("TopLevelNegRange"))
     }
@@ -10918,9 +10882,9 @@ impl cbor_event::se::Serialize for TopLevelPosRange {
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_unsigned_integer_sz(
-            self.inner,
+            self.get(),
             fit_sz(
-                self.inner,
+                self.get(),
                 self.encodings
                     .as_ref()
                     .map(|encs| encs.inner_encoding)
@@ -10935,18 +10899,9 @@ impl Deserialize for TopLevelPosRange {
         (|| -> Result<_, DeserializeError> {
             let (inner, inner_encoding) =
                 raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
-            if inner < 3 || inner > 10 {
-                return Err(DeserializeFailure::RangeCheck {
-                    found: inner as i128,
-                    min: Some(3),
-                    max: Some(10),
-                }
-                .into());
-            }
-            Ok(Self {
-                inner,
-                encodings: Some(TopLevelPosRangeEncoding { inner_encoding }),
-            })
+            let mut value = Self::try_from(inner).map_err(DeserializeError::without_location)?;
+            value.encodings = Some(TopLevelPosRangeEncoding { inner_encoding });
+            Ok(value)
         })()
         .map_err(|e| e.annotate("TopLevelPosRange"))
     }
@@ -10968,9 +10923,9 @@ impl cbor_event::se::Serialize for TopLevelTaggedRange {
             ),
         )?;
         serializer.write_unsigned_integer_sz(
-            self.inner,
+            self.get(),
             fit_sz(
-                self.inner,
+                self.get(),
                 self.encodings
                     .as_ref()
                     .map(|encs| encs.inner_encoding)
@@ -10995,21 +10950,12 @@ impl Deserialize for TopLevelTaggedRange {
                     .into());
                 }
             };
-            if inner < 3 || inner > 10 {
-                return Err(DeserializeFailure::RangeCheck {
-                    found: inner as i128,
-                    min: Some(3),
-                    max: Some(10),
-                }
-                .into());
-            }
-            Ok(Self {
-                inner,
-                encodings: Some(TopLevelTaggedRangeEncoding {
-                    inner_tag_encoding,
-                    inner_encoding,
-                }),
-            })
+            let mut value = Self::try_from(inner).map_err(DeserializeError::without_location)?;
+            value.encodings = Some(TopLevelTaggedRangeEncoding {
+                inner_tag_encoding,
+                inner_encoding,
+            });
+            Ok(value)
         })()
         .map_err(|e| e.annotate("TopLevelTaggedRange"))
     }

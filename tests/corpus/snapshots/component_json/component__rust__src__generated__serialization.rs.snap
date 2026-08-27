@@ -24,12 +24,12 @@ impl Serialize for Hash {
         force_canonical: bool,
     ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_bytes_sz(
-            &self.inner,
+            self.get(),
             self.encodings
                 .as_ref()
                 .map(|encs| encs.inner_encoding.clone())
                 .unwrap_or_default()
-                .to_str_len_sz(self.inner.len() as u64, force_canonical),
+                .to_str_len_sz(self.get().len() as u64, force_canonical),
         )
     }
 }
@@ -37,24 +37,12 @@ impl Serialize for Hash {
 impl Deserialize for Hash {
     fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
-            let (inner, inner_encoding) =
-                Ok::<_, DeserializeError>(raw.bytes_sz()?).and_then(|(bytes, enc)| {
-                    bytes
-                        .try_into()
-                        .map_err(|bytes: Vec<u8>| {
-                            DeserializeFailure::RangeCheck {
-                                found: bytes.len() as i128,
-                                min: Some(32),
-                                max: Some(32),
-                            }
-                            .into()
-                        })
-                        .map(|bytes: [u8; 32]| (bytes, StringEncoding::from(enc)))
-                })?;
-            Ok(Self {
-                inner,
-                encodings: Some(HashEncoding { inner_encoding }),
-            })
+            let (inner, inner_encoding) = raw
+                .bytes_sz()
+                .map(|(bytes, enc)| (bytes, StringEncoding::from(enc)))?;
+            let mut value = Self::try_from(inner).map_err(DeserializeError::without_location)?;
+            value.encodings = Some(HashEncoding { inner_encoding });
+            Ok(value)
         })()
         .map_err(|e| e.annotate("Hash"))
     }

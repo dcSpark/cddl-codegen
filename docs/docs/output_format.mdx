@@ -188,7 +188,11 @@ The three serde attributes are what make the JSON column carry all three states:
 derive reads a JSON `null` into the **outer** `None` and writes the outer `None` **as** `null`, so
 without them present-null would decode as absent and absent would be indistinguishable from
 present-null in the text. The `double_option` adapter module is emitted into the generated crate
-under `--json-serde-derives` only for specs that have such a member.
+under `--json-serde-derives` only for specs that have such a member. If `T` is an exact-array tree
+that needs the static-array adapter, generation instead emits one presence-aware recursive callback:
+it owns the outer `Option`, delegates a present value to the descriptor for the inner nullable type,
+and still omits an absent key. This preserves the same three-state table while keeping exact-array
+JSON list shapes and bounds.
 
 :::caution Breaking for producers that wrote `null` to mean absent
 A JSON document whose producer wrote `"field0": null` for an **absent** member now decodes as
@@ -197,10 +201,11 @@ for absent and reserve `null` for the CDDL `null`.
 :::
 
 Under `--json-schema-export` the member's schema is unchanged (`"type": ["integer", "null"]`, not
-listed in `required`); the emitted `#[schemars(with = …)]` exists only to stop `schemars` reading the
-serde `with` module path as a type. On the **wasm** read side the two `Option`s are flattened into
-one, because `wasm_bindgen` cannot expose `Option<Option<T>>` — the presence bit is restored
-additively by a `has_<field>()` accessor, see
+listed in `required`); the ordinary callback emits `#[schemars(with = …)]` only to stop `schemars`
+reading the serde `with` module path as a type. The composed exact-array callback instead supplies
+the recursive inner schema directly, preserving its `null` branch and every sequence bound.
+On the **wasm** read side the two `Option`s are flattened into one, because `wasm_bindgen` cannot
+expose `Option<Option<T>>` — the presence bit is restored additively by a `has_<field>()` accessor, see
 [Wasm differences](./wasm_differences#nullable--nested-options).
 
 ## Nominal tag-258 set types
@@ -1025,12 +1030,20 @@ break: constructors and setters now take `[T; N]` and are infallible for cardina
 has a loose vector, convert it once at the assembly boundary:
 `let tags: [Bar; N] = tags.try_into()?; let foo = Foo::new(tags);`. CBOR, wasm list wrappers, and
 component `list<T>` remain list-shaped and make the equivalent checked handover themselves. JSON
-does so for direct/optional exact fields and exact type-choice payloads (including natural CDDL
-`any` arrays), and loose `Vec<[T; N]>` elements when `T` is not `any`. The remaining nested
-containing shapes, including nested exact-`any` arrays, are rejected under either JSON flag because
-the pinned serde/schemars array derives stop at length 32 and `any` requires its own natural adapter.
-This is separate from `bytes .size N`, whose `[u8; N]` storage retains a loose `Vec<u8>` constructor
-for compatibility.
+does so recursively for every ordinary, `@duplicates preserve`, or `@duplicates reject` loose,
+nonempty, bounded, nullable, and exact collection tree that contains a wide exact array or an exact natural-`any` position,
+including aliases/newtypes, ordinary optional fields, type-choice payloads, and captured open-array
+segments. Each node remains a JSON list;
+exact layers retain `minItems = maxItems`, restricted sequence layers re-enter their existing
+`NonEmptyVec`, `BoundedVec`, `NonEmptyOrderedSet`, or `BoundedOrderedSet` `TryFrom<Vec<_>>` door,
+and duplicate-reject schemas additionally publish `uniqueItems: true`.
+The established typed direct `Vec<[T; N]>` case remains compatible. Open-array segments retain their
+named field shape; loose segments keep `skip_serializing_if = "Vec::is_empty"` plus `default`, while
+restricted segments are required. Map/table entries, open-struct map rest rows, and dynamic map rows
+still reject under either JSON flag. Optional+nullable three-state fields compose their outer presence
+option with the recursive descriptor for the inner nullable member, including short natural-`any`
+exact arrays. This is separate from `bytes .size N`, whose `[u8; N]` storage retains a
+loose `Vec<u8>` constructor for compatibility.
 
 The type name, the generated doc comment (which quotes the originating CDDL), and the `TryFrom`
 signature are three redundant signals that a constraint exists. The wasm boundary mirrors this with a
@@ -1400,16 +1413,22 @@ remains a valid clean rebuild and generated file paths (and any
 without hand files need no facade. Impl blocks on generated types compile from any module in the
 crate, so a facade is only needed when hand *items* must appear under the scope's path.
 
-### Generated wrapper fields are `pub(crate)`
+### Generated wrapper field visibility
 
-Newtype wrappers (bare tags, [`@newtype`](./comment_dsl), bounded ranges) and the wasm crate's
-`pub struct X(rust::X)` wrappers back their inner value with a **`pub(crate)`** field (named
-`inner` under `--preserve-encodings=true`, an anonymous tuple field otherwise). External crates
-still cannot construct or mutate a wrapper directly — the `new()` bound check holds at the crate
-boundary, the one where it is observable — but your own hand modules (which live outside the
-generated subtree, per the layout above) can reach the field, e.g. to write a `RawBytesEncoding`
-impl on a bounded newtype or to access a wasm wrapper's native value via `self.0`. wasm_bindgen
-ignores non-`pub` fields, so the wasm ABI is unchanged.
+Named integer and byte/text value windows (`limited = uint .le 10`, `digest = bytes .size 32`)
+are the invariant-owning exception: their native backing field is **private**, including to hand
+modules in the same crate. Construct them with `Limited::try_from(value)` /
+`Digest::try_from(bytes)` and read them through `get()`. CBOR, JSON, wasm, and component decoding
+all cross that same door, so no public or codec path can materialize an invalid value. Exact bytes
+still store `[u8; N]` behind the loose `Vec<u8>` `TryFrom` input. This is an intentional API break
+from the former public `new()` and `pub(crate)` field.
+
+Other newtype wrappers (bare tags and unconstrained [`@newtype`](./comment_dsl) rules) and the wasm
+crate's `pub struct X(rust::X)` handles back their inner value with a **`pub(crate)`** field (named
+`inner` under `--preserve-encodings=true`, an anonymous tuple field otherwise). Hand modules can
+therefore augment those ordinary wrappers through the carrier, and wasm hand modules can reach the
+already-validated native value via `self.0`. wasm_bindgen ignores non-`pub` fields, so the wasm ABI
+is unchanged.
 
 This applies uniformly to the wasm *collection* wrappers too: the plain list wrappers (`FooList`),
 the structural map wrappers (`MapKToV`) and named map/table rules, and the `NonEmpty*` list/map
@@ -1419,10 +1438,10 @@ wrappers all back their inner `Vec`/`BTreeMap`/`OrderedHashMap`/`NonEmptyVec`/`B
 visibility is the macro's choice, not the generator's — give that macro a `pub(crate)` field if its
 wrappers are hand-augmented.
 
-When any of these wrappers' `pub(crate)` tuple-field line would exceed rustfmt's default
+When any of the ordinary wrappers' `pub(crate)` tuple-field line would exceed rustfmt's default
 `max_width` (100 columns) — long generic map/list types with fully-qualified paths in a wasm
-wrapper, or a rust-crate newtype (default profile, where the field is a tuple rather than the named
-`inner`) over a long-named type — the wrapper is emitted with a
+wrapper, or an unconstrained rust-crate newtype (default profile, where the field is a tuple rather
+than the named `inner`) over a long-named type — the wrapper is emitted with a
 `#[rustfmt::skip]` attribute and a two-line citation comment, and its field is laid out in the
 canonical two-line tuple shape by the generator itself. This works around
 [rust-lang/rustfmt#5703](https://github.com/rust-lang/rustfmt/issues/5703), where rustfmt breaks the

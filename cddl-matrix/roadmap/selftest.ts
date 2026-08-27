@@ -321,7 +321,7 @@ export const FROZEN_NEGATIVE_SELFTEST_EXPECTATIONS: ReadonlyMap<string, Expected
   ["evidence_timing_join_structural", { code: "E-SCHEMA-STATE", logical_path: "record.testing.fixture-cost-historical.evidence_ids" }],
   ["evidence_draft_log_rejected", { code: "E-REFERENCE-FORBIDDEN", logical_path: "reference[4].path" }],
   ["schema_duplicate_assignment_rejected", { code: "E-TOML-PARSE", logical_path: "$" }],
-  ["schema_duplicate_table_rejected", { code: "E-TOML-NONCANONICAL", logical_path: "$" }],
+  ["schema_duplicate_table_rejected", { code: "E-TOML-PARSE", logical_path: "$" }],
   ["schema_duplicate_nested_payload_rejected", { code: "E-TOML-PARSE", logical_path: "$" }],
   ["noncanonical_comment", { code: "E-TOML-NONCANONICAL", logical_path: "$" }],
   ["noncanonical_inline_table", { code: "E-TOML-NONCANONICAL", logical_path: "$" }],

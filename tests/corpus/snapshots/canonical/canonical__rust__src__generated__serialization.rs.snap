@@ -2678,12 +2678,12 @@ impl Serialize for String32 {
             ),
         )?;
         serializer.write_text_sz(
-            &self.inner,
+            self.get(),
             self.encodings
                 .as_ref()
                 .map(|encs| encs.inner_encoding.clone())
                 .unwrap_or_default()
-                .to_str_len_sz(self.inner.len() as u64, force_canonical),
+                .to_str_len_sz(self.get().len() as u64, force_canonical),
         )
     }
 }
@@ -2703,21 +2703,12 @@ impl Deserialize for String32 {
                     .into());
                 }
             };
-            if inner.len() < 16 || inner.len() > 32 {
-                return Err(DeserializeFailure::RangeCheck {
-                    found: inner.len() as i128,
-                    min: Some(16),
-                    max: Some(32),
-                }
-                .into());
-            }
-            Ok(Self {
-                inner,
-                encodings: Some(String32Encoding {
-                    inner_tag_encoding,
-                    inner_encoding,
-                }),
-            })
+            let mut value = Self::try_from(inner).map_err(DeserializeError::without_location)?;
+            value.encodings = Some(String32Encoding {
+                inner_tag_encoding,
+                inner_encoding,
+            });
+            Ok(value)
         })()
         .map_err(|e| e.annotate("String32"))
     }
@@ -2730,12 +2721,12 @@ impl Serialize for String64 {
         force_canonical: bool,
     ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_text_sz(
-            &self.inner,
+            self.get(),
             self.encodings
                 .as_ref()
                 .map(|encs| encs.inner_encoding.clone())
                 .unwrap_or_default()
-                .to_str_len_sz(self.inner.len() as u64, force_canonical),
+                .to_str_len_sz(self.get().len() as u64, force_canonical),
         )
     }
 }
@@ -2746,18 +2737,9 @@ impl Deserialize for String64 {
             let (inner, inner_encoding) = raw
                 .text_sz()
                 .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
-            if inner.len() > 64 {
-                return Err(DeserializeFailure::RangeCheck {
-                    found: inner.len() as i128,
-                    min: None,
-                    max: Some(64),
-                }
-                .into());
-            }
-            Ok(Self {
-                inner,
-                encodings: Some(String64Encoding { inner_encoding }),
-            })
+            let mut value = Self::try_from(inner).map_err(DeserializeError::without_location)?;
+            value.encodings = Some(String64Encoding { inner_encoding });
+            Ok(value)
         })()
         .map_err(|e| e.annotate("String64"))
     }

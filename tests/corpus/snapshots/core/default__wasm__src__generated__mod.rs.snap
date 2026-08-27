@@ -2407,7 +2407,7 @@ impl Hash {
     }
 
     pub fn new(inner: Vec<u8>) -> Result<Hash, JsError> {
-        cddl_lib::Hash::new(inner)
+        cddl_lib::Hash::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }
@@ -3677,7 +3677,7 @@ impl NintGeNewtype {
     }
 
     pub fn new(inner: u64) -> Result<NintGeNewtype, JsError> {
-        cddl_lib::NintGeNewtype::new(inner)
+        cddl_lib::NintGeNewtype::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }
@@ -3722,7 +3722,7 @@ impl NintLeNewtype {
     }
 
     pub fn new(inner: u64) -> Result<NintLeNewtype, JsError> {
-        cddl_lib::NintLeNewtype::new(inner)
+        cddl_lib::NintLeNewtype::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }
@@ -6961,7 +6961,7 @@ impl TopLevelNegRange {
     }
 
     pub fn new(inner: i64) -> Result<TopLevelNegRange, JsError> {
-        cddl_lib::TopLevelNegRange::new(inner)
+        cddl_lib::TopLevelNegRange::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }
@@ -7006,7 +7006,7 @@ impl TopLevelPosRange {
     }
 
     pub fn new(inner: u64) -> Result<TopLevelPosRange, JsError> {
-        cddl_lib::TopLevelPosRange::new(inner)
+        cddl_lib::TopLevelPosRange::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }
@@ -7094,7 +7094,7 @@ impl TopLevelTaggedRange {
     }
 
     pub fn new(inner: u64) -> Result<TopLevelTaggedRange, JsError> {
-        cddl_lib::TopLevelTaggedRange::new(inner)
+        cddl_lib::TopLevelTaggedRange::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }

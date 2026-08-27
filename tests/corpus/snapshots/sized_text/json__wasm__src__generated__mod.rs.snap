@@ -46,7 +46,7 @@ impl SizedText {
     }
 
     pub fn new(inner: String) -> Result<SizedText, JsError> {
-        cddl_lib::SizedText::new(inner)
+        cddl_lib::SizedText::try_from(inner)
             .map(Into::into)
             .map_err(Into::into)
     }

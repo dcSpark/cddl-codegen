@@ -3,7 +3,7 @@
 // (docs/docs/output_format.mdx § "Per-scope hand modules: the facade pattern"). It exercises the
 // three halves of the facade contract that the string-level ingredient pins cannot: (a) a hand
 // item merged into the scope namespace, (b) an inherent impl on the generated wrapper that reads
-// its `pub(crate) inner` field from OUTSIDE the generated subtree, and (c) `_assert_paths`, which
+// its public checked-carrier getter from OUTSIDE the generated subtree, and (c) `_assert_paths`, which
 // pins every public path the composition promises.
 
 use crate::assets::Bounded;
@@ -14,12 +14,11 @@ use crate::assets::Bounded;
 pub struct AssetTag;
 
 // (b) An inherent impl on the GENERATED wrapper, authored in a hand module living outside
-// `src/generated/**`, reading the `pub(crate)` `inner` field (named `inner` under
-// --preserve-encodings=true). This is the pub(crate) wrapper-field half of the contract: an
-// external crate could not touch `inner`, but this in-crate hand module can.
+// `src/generated/**`. A bounded scalar's carrier is private even within the crate, so hand modules
+// compose through the same read-only getter exposed to downstream crates.
 impl Bounded {
     pub fn hand_first_byte(&self) -> Option<u8> {
-        self.inner.first().copied()
+        self.get().first().copied()
     }
 }
 

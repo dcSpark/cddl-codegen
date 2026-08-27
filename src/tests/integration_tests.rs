@@ -9405,6 +9405,12 @@ fn bounded_any_members_keep_natural_json_and_exact_schema_windows() {
             && source.contains("natural_any_cbor_bounded_seq_schema::<2, 3>"),
         "bounded any fields must select the bounded natural JSON/schema adapters:\n{source}"
     );
+    // Plain `any` plus bounded (not exact) lists must compile without `static_array`; this is the
+    // conditional-assembly control for recursive exact-any's NaturalAny descriptor impl.
+    assert!(
+        !source.contains("pub mod static_array;"),
+        "this no-static-array control must not gain an unrelated exact-array runtime:\n{source}"
+    );
     const PIN: &str = r##"
 #[cfg(test)]
 mod __bounded_any_json_pin {
@@ -15275,6 +15281,32 @@ fn json_schema_export_without_serde_derives() {
             "{name} must reach `$defs`; got keys {:?}",
             defs.keys().collect::<Vec<_>>()
         );
+    }
+
+    let required = |name: &str| {
+        defs[name]["required"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{name} must publish a required-property array"))
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .unwrap_or_else(|| panic!("{name} required entries must be strings"))
+            })
+            .collect::<Vec<_>>()
+    };
+    assert!(
+        !required("WideTailLoose").contains(&"rest"),
+        "a loose captured array row defaults empty under schema-only generation"
+    );
+    assert!(
+        required("WideTailExact").contains(&"rest"),
+        "a restricted captured array row remains required under schema-only generation"
+    );
+    for name in ["WideTailLoose", "WideTailExact"] {
+        let leaf = &defs[name]["properties"]["rest"]["items"];
+        assert_eq!(leaf["minItems"], 64, "{name} inner minimum");
+        assert_eq!(leaf["maxItems"], 64, "{name} inner maximum");
     }
 }
 
@@ -28726,6 +28758,15 @@ fn export_static_crate_writes_composed_runtime_and_manifest() {
         "non_empty_map.rs must keep OrderedHashMap storage and append the reduced-consumer \
          BTreeMap bridge under --preserve-encodings:\n{non_empty_map_rs}"
     );
+    let static_array_rs = read("static_array.rs");
+    assert!(
+        static_array_rs.contains("struct RejectSet<")
+            && static_array_rs.contains("OrderedSet::try_from(elements)")
+            && static_array_rs.contains("NonEmptyOrderedSet::try_from(elements)")
+            && static_array_rs.contains("BoundedOrderedSet::try_from(elements)"),
+        "the serde static-array composition must include every ordered-set descriptor under \
+         --export-static-crate:\n{static_array_rs}"
+    );
     // No module wiring is written — the target crate owns its declarations.
     assert!(
         !static_dir.join("mod.rs").exists() && !static_dir.join("lib.rs").exists(),
@@ -28914,6 +28955,14 @@ fn export_static_crate_writes_composed_runtime_and_manifest() {
     );
     let json_schema_gen_rs =
         std::fs::read_to_string(schema_src.join("json_schema_gen.rs")).unwrap();
+    let schema_static_array_rs =
+        std::fs::read_to_string(schema_src.join("static_array.rs")).unwrap();
+    assert!(
+        schema_static_array_rs
+            .contains("impl<Inner, T> RecursiveSchema<super::ordered_set::OrderedSet<T>>")
+            && schema_static_array_rs.contains("\"uniqueItems\": true"),
+        "the schema-only/common-import static runtime must include the ordered-set schema fragment:\n{schema_static_array_rs}"
+    );
     assert!(
         json_schema_gen_rs.contains("pub struct Registrar<")
             && json_schema_gen_rs.contains("pub fn add_schema<T: schemars::JsonSchema>(")
@@ -29941,20 +29990,16 @@ fn integration_extern_only_scope_exported_in_interface_tree() {
     );
 }
 
-/// Pin: generated wrapper (bounded newtype) fields are emitted `pub(crate)`, not private. The
-/// bound-check boundary that matters is the CRATE boundary — external crates still cannot
-/// literal-construct or mutate the wrapper — while hand-written modules in the consumer's OWN crate
-/// (which under the thin-root layout live outside the always-clobbered generated subtree) legitimately
-/// need field access (e.g. a `RawBytesEncoding` impl on a bounded newtype). In-crate privacy was
-/// already bypassable by dropping a hand file inside the scope subtree, so it protected nothing real.
-/// Asserts all three emission sites: the rust `inner` named field under `--preserve-encodings=true`,
-/// the rust tuple field under the default profile, and the wasm wrapper's tuple field. Generated as
-/// strings (no static dir / nested cargo), like the sibling wrapper/scope tests.
+/// B5-404: a named scalar window owns its invariant. Its native backing field is private, its public
+/// construction door is `TryFrom`, and decoding re-enters that door rather than re-spelling a second
+/// range check plus a direct tuple construction. The wasm wrapper remains `pub(crate)`: it carries an
+/// ALREADY-VALID native nominal and cannot construct that nominal after the native field becomes private.
+/// Anonymous/member-local windows deliberately retain their containing-constructor checks instead.
 #[test]
-fn integration_wrapper_fields_are_pub_crate() {
+fn integration_bounded_scalar_newtypes_have_private_checked_carriers() {
     use clap::Parser;
     let dir = std::env::temp_dir().join(format!(
-        "cddl_codegen_wrapper_pub_crate_{:016x}",
+        "cddl_codegen_bounded_scalar_private_{:016x}",
         checkout_hash()
     ));
     let _ = std::fs::remove_dir_all(&dir);
@@ -29981,23 +30026,23 @@ fn integration_wrapper_fields_are_pub_crate() {
         "--input",
         dir.to_str().unwrap(),
         "--output",
-        "wrapper_pub_crate_pe",
+        "bounded_scalar_private_pe",
         "--preserve-encodings=true",
         "--wasm=true",
     ]);
     let files = crate::api::generated_strings(&cli).unwrap_or_else(|e| panic!("gen failed: {e}"));
     let rust = get(&files, "rust/src/generated/mod.rs");
     assert!(
-        rust.lines()
-            .any(|l| l.trim() == "pub(crate) inner: Vec<u8>,"),
-        "preserve-encodings rust wrapper `inner` field must be `pub(crate)` (crate-boundary bound \
-         check; hand files outside the generated subtree need field access):\n{rust}"
+        rust.lines().any(|l| l.trim() == "inner: Vec<u8>,")
+            && !rust.contains("pub(crate) inner: Vec<u8>,")
+            && rust.contains("impl TryFrom<Vec<u8>> for Bounded"),
+        "preserve-encodings bounded scalar must retain only a private native carrier and checked \
+         TryFrom door:\n{rust}"
     );
     let wasm = get(&files, "wasm/src/generated/mod.rs");
     assert!(
         wasm.contains("pub struct Bounded(pub(crate) cddl_lib::Bounded);"),
-        "preserve-encodings wasm wrapper tuple field must be `pub(crate)` (unblocks consumer wasm \
-         hand files doing `self.0`; wasm_bindgen ignores non-pub fields so the ABI is unchanged):\n{wasm}"
+        "the wasm handle may keep its crate-private validated-native carrier:\n{wasm}"
     );
 
     // Default profile: rust wrapper uses an anonymous tuple field.
@@ -30006,20 +30051,50 @@ fn integration_wrapper_fields_are_pub_crate() {
         "--input",
         dir.to_str().unwrap(),
         "--output",
-        "wrapper_pub_crate_def",
+        "bounded_scalar_private_def",
         "--wasm=true",
     ]);
     let files = crate::api::generated_strings(&cli).unwrap_or_else(|e| panic!("gen failed: {e}"));
-    let _ = std::fs::remove_dir_all(&dir);
     let rust = get(&files, "rust/src/generated/mod.rs");
     assert!(
-        rust.contains("pub struct Bounded(pub(crate) Vec<u8>);"),
-        "default-profile rust wrapper tuple field must be `pub(crate)`:\n{rust}"
+        rust.contains("pub struct Bounded(Vec<u8>);")
+            && !rust.contains("pub struct Bounded(pub(crate) Vec<u8>);")
+            && rust.contains("fn new(inner: Vec<u8>) -> Result<Self, DeserializeError>")
+            && !rust.contains("pub fn new(inner: Vec<u8>)"),
+        "default-profile bounded scalar must not allow direct construction or a public unchecked \
+         constructor:\n{rust}"
+    );
+    let serialization = get(&files, "rust/src/generated/serialization.rs");
+    assert!(
+        serialization.contains("Self::try_from(inner)")
+            && !serialization.contains("Ok(Self(inner))"),
+        "CBOR decode must re-enter the bounded scalar's TryFrom door:\n{serialization}"
     );
     let wasm = get(&files, "wasm/src/generated/mod.rs");
     assert!(
         wasm.contains("pub struct Bounded(pub(crate) cddl_lib::Bounded);"),
         "default-profile wasm wrapper tuple field must be `pub(crate)`:\n{wasm}"
+    );
+
+    // The constructor error's type location is cleared only when the outer codec annotation will
+    // replace it. Without annotations, returning `TryFrom`'s error intact keeps the nominal type in
+    // the diagnostic instead of silently degrading the error while consolidating the check.
+    let cli = crate::cli::Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        dir.to_str().unwrap(),
+        "--output",
+        "bounded_scalar_private_no_annotate",
+        "--wasm=false",
+        "--annotate-fields=false",
+    ]);
+    let files = crate::api::generated_strings(&cli).unwrap_or_else(|e| panic!("gen failed: {e}"));
+    let _ = std::fs::remove_dir_all(&dir);
+    let serialization = get(&files, "rust/src/generated/serialization.rs");
+    assert!(
+        serialization.contains("Self::try_from(inner)")
+            && !serialization.contains("DeserializeError::without_location"),
+        "a no-annotation decode must preserve TryFrom's nominal error location:\n{serialization}"
     );
 }
 

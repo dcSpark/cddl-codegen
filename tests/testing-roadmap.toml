@@ -206,6 +206,7 @@ entries = [
   "testing.assert-hand-authored-json-schema-against-type-s",
   "testing.composing-registration-rows-across-generation-passes-share-output",
   "testing.machine-readable-ownership-co-owned-features-std-list",
+  "testing.per-gate-cgroup-memory-cap-kernel-enforced-slot",
 ]
 
 [[section]]
@@ -299,6 +300,16 @@ claim_md = '''Two distinct normalized-registry claimants — an internal synthes
 '''
 evidence_ids = ["testing.incident-observation.scoped-symbol-provenance-grid.authored-group-proof", "testing.incident-observation.scoped-symbol-provenance-grid.synthesized-arm-proof"]
 incident_ids = ["testing.incident-observation.scoped-symbol-provenance-grid.authored-group", "testing.incident-observation.scoped-symbol-provenance-grid.synthesized-arm"]
+
+[[record]]
+id = "testing.admission.schema-name-two-rowless-types-collide"
+title = "Admission for the CML-measured two-rowless schema-name collision."
+
+[record.payload]
+kind = "testing_system_admission"
+admission_kind = "silent_corruption"
+claim_md = '''CML observed two opaque, rowless schema bodies with distinct ids receive traversal-order-dependent assigned names. An unrelated spec edit can therefore silently rename a published TypeScript type; the two definitions remain present, so ordinary document-closure checks do not detect the public-API break. The admitted work is the precise assigned-name detector or an explicitly chosen, documented safe mitigation.'''
+evidence_ids = ["testing.evidence.schema-name-two-rowless-types-collide.cml-report"]
 
 [[record]]
 id = "testing.alloc-imports-nested-inline-modules-hand-carried-design"
@@ -1714,6 +1725,23 @@ action_on_fire_md = '''Set testing.emitter-drops-overloadable-parameter-building
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.emitter-drops-overloadable-parameter-building-fresh-config-invisible's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 '''
+
+[[record]]
+id = "testing.evidence.schema-name-two-rowless-types-collide.cml-report"
+title = "Consumer evidence for the two-rowless schema-name collision."
+
+[record.payload]
+kind = "evidence"
+evidence_kind = "consumer_report"
+claim_md = '''This audit confirms the B5-105 baseline's retained CML report: the rowless `AssetBundle` and `AssetBundle2` schemas are both emitted through opaque hand-written generic bodies, but traversal order decides which keeps the bare assigned name. A non-semantic spec edit can therefore rename a published TypeScript type without a generated-crate error.'''
+freshness = "as_of"
+reference_ids = ["testing-consumer-report-cml-schema-name-two-rowless"]
+at_commit = "a89a43fb7acf7b3aa441e29acfa4db9ef9b8ac7c"
+observed_at = "2026-08-19"
+unprobed_remainder_md = '''This consumer report proves the observed opaque two-rowless path and its public-name consequence. `observed_at` and `at_commit` identify this audit's confirmation of the retained report, not an independently recorded original report date. The evidence does not establish a closed denominator of opaque hand-written schema bodies, choose the `$defs` heuristic, or demonstrate a Schemars assigned-name accessor.'''
+
+[record.payload.scope]
+surfaces = ["json-schema-document", "published-typescript-api"]
 
 [[record]]
 id = "testing.exclusion-reasons-informational-interchange"
@@ -4619,6 +4647,74 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
+id = "testing.per-gate-cgroup-memory-cap-kernel-enforced-slot"
+title = "A per-gate cgroup-v2 memory cap: kernel-enforced slots under the derived `CARGO_BUILD_JOBS` bound."
+
+[record.payload]
+kind = "work"
+body_md = '''- **A per-gate cgroup-v2 memory cap: kernel-enforced slots under the derived `CARGO_BUILD_JOBS`
+  bound.** The budget a batched gate runs under is ARITHMETIC: `check.ts` prices a slot, derives
+  `CARGO_BUILD_JOBS` from free memory, and preflights a floor (`tests/README.md` § "Gate-level
+  concurrency (registry-declared, opt-in)"). A mispriced slot is therefore not a gate failure but a
+  whole-machine stall — the 32 GiB WSL2 box that went unresponsive for ~10 minutes under a full
+  tier and had to be power-cycled was priced, not enforced. A cgroup-v2 cap is the enforcement
+  half, and Bun 1.4's `Bun.spawn`/`Bun.spawnSync` `cgroup:` option is the whole mechanism needed
+  to reach it: the child joins the named cgroup BEFORE exec, so every rustc the gate's cargo forks
+  is accounted against one `memory.max` it cannot leave. Measured end to end on the dev box (WSL2,
+  no systemd, bun 1.4.0): `/sys/fs/cgroup/user-1000` is user-owned with `memory` in
+  `subtree_control`; a spawned child joins before exec and a grandchild inherits membership; a
+  3.2 GiB allocator under `memory.max=256M` with `memory.swap.max=0` died exit 137 with
+  `oom_kill=1` while the machine stayed responsive; `memory.oom.group=1` is writable, so a gate
+  dies as a unit instead of losing one rustc and continuing; and `memory.max` accounts page cache
+  but reclaims it before OOM, so a cargo build's own artifact I/O cannot spuriously kill a
+  correctly-sized gate. The derived soft bound stays either way — it is what keeps a healthy run
+  fast, while the cap fires only where the pricing was wrong. The same handle also closes the
+  residual left by the process-reclaim half: `check.ts`'s self-log re-exec sets
+  `BUN_FEATURE_FLAG_NO_ORPHANS=1` on the inner bun, which reclaims an abruptly-killed run's direct
+  children through `PR_SET_PDEATHSIG` and propagates through every consecutive bun-under-bun level,
+  stopping at the first non-bun spawner — so a killed `cargo` gate still strands its rustc
+  processes, its test binary, and that binary's nested tool_cmd cargos. `cgroup.kill` reclaims that
+  subtree atomically BY HANDLE, which is exactly the reclaim AGENTS.md's "never kill by
+  tool-generic pattern" prohibition asks for and a pattern match cannot give (a `pkill -f` over
+  scratch-named cargos once killed a concurrent session's live run). Deferred because the writable
+  delegated subtree is an ENVIRONMENT property rather than a bun one: a systemd host puts a login
+  shell in a root-owned session scope where the same mkdir is denied, the root cgroup is never
+  writable, and `Bun.spawn` THROWS ENOENT on an unjoinable cgroup instead of degrading. Shipping is
+  therefore not the option but the regime around it — a run-start probe that creates and removes a
+  scratch cgroup under the delegated root, a fallback to the derived bound alone when that probe
+  fails, and a mode line in the run's own banner so a log states which regime produced it, since a
+  cap that silently did not apply is worse evidence than no cap at all. Typing is not a blocker:
+  `@types/bun` >= 1.4.0 is already in place.
+'''
+signal_md = '''Reopening signal (operator-side; either half alone buys the same build, because one
+  probe-and-fallback regime delivers both the cap and the handle): a tier run that freezes the
+  machine AGAIN with the derived bound in place, its own sampled peak at or above the machine's
+  memory cap — both freezes on record predate that bound, so this is an unmet observation rather
+  than a restatement of them; or an operator who stopped a run counting, per killed run, the
+  processes still alive under that run's own scratch paths after the pdeathsig reclaim, enough
+  that they must be cleared by hand before the next tier clears its preflight. Both are measured
+  by the party who has already lost the machine or the terminal, from the run's own log and
+  process list.
+
+'''
+work_state = "deferred"
+work_intent = "build_system"
+work_kind = "infrastructure"
+risk = "resource_exhaustion"
+
+[record.payload.reopening_signal]
+observer = "operator of a check.ts tier run on the machine that lost capacity or processes"
+dimension = "A per-gate cgroup-v2 memory cap: kernel-enforced slots under the derived `CARGO_BUILD_JOBS` bound."
+observable = "Either half fires: a tier run freezes the machine while the derived CARGO_BUILD_JOBS bound is in place and that run's own sampled memory peak sits at or above the machine's cap; or an operator who stopped a run counts processes still alive under that run's own scratch paths after the pdeathsig reclaim, enough that they must be cleared by hand before the next tier clears its preflight."
+action_on_fire_md = '''Set testing.per-gate-cgroup-memory-cap-kernel-enforced-slot to ready and execute only its preserved acceptance/mechanical-layer scope: the run-start delegated-subtree probe, the fallback to the derived bound alone, the announced mode line, and the per-gate memory.max/memory.swap.max/memory.oom.group cap plus handle-derived cgroup.kill reclaim.
+'''
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "manual"
+review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.per-gate-cgroup-memory-cap-kernel-enforced-slot's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
+'''
+
+[[record]]
 id = "testing.prettyplease-shelling-rustfmt"
 title = "`prettyplease` instead of shelling to `rustfmt`."
 
@@ -5617,14 +5713,15 @@ body_md = '''  - **A collision between two types that BOTH lack rows** — each 
     renames a *published TypeScript type* on an unrelated spec edit, which for a published package is
     an API break.
 
-    It is recorded rather than built for a reason that is now probed rather than assumed: a precise
-    detector needs the schema_id -> assigned-name mapping, and `schemars::SchemaGenerator` exposes no
-    such accessor — `definitions()` / `definitions_mut()` / `take_definitions()` all return only
-    `Map<String, Value>` (read at `schemars-1.2.1/src/generate.rs`). From the finished document alone
-    the `{base}{i}` rename is indistinguishable from a type genuinely named `Foo2`, so the
-    `$defs`-shaped heuristic above would fire on legitimate corpora and train people to ignore it.
-    The consumer's own committed-`.d.ts` CI diff is the precise detector for this class and is
-    already the standing recommendation.
+    The CML report satisfies the old transition: this is ready work, not an armed possibility. A
+    precise detector needs the schema_id -> assigned-name mapping, and
+    `schemars::SchemaGenerator` exposes no such accessor — `definitions()` /
+    `definitions_mut()` / `take_definitions()` all return only `Map<String, Value>` (read at
+    `schemars-1.2.1/src/generate.rs`). From the finished document alone the `{base}{i}` rename is
+    indistinguishable from a type genuinely named `Foo2`, so a `$defs`-shaped heuristic needs an
+    explicit opt-out and decision rather than being silently assumed. The consumer's committed
+    `.d.ts` CI diff remains the precise current mitigation while the implementation decision is
+    made.
 
     What a consumer can do TODAY, and why that further lowers the priority: give each instantiation a
     row with `--json-schema-root` (`--json-schema-root=my_crate::AssetBundle<u64>` and `…<i64>` —
@@ -5633,30 +5730,20 @@ body_md = '''  - **A collision between two types that BOTH lack rows** — each 
     registering only the instantiation that LOST the bare name makes the kept-its-own-name check
     report the `<name>2` it was assigned. So the rows-plus-preclaims guard is opt-in-able for exactly
     the opaque shape it cannot see on its own. (Reasoned from `static/json_schema_gen.rs`'s `add_schema` and `parse_json_schema_root`'s
-    charset — not run.) Reopening signal for building anything more: a public schemars accessor for
-    the assigned-name map, or a consumer reporting a rename their `.d.ts` diff did not catch.
+    charset — not run.)
 
   The document's reference CLOSURE is checked in two places — our own per-fixture assertion and the
   emitted `export_schemas()` walking the CONSUMER's document before it writes, both current state in
   `tests/README.md` § "JSON-schema document — Rust-side coverage (`run_test`'s per-fixture assertions
 '''
-work_state = "armed"
+work_state = "ready"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "wrong_public_api"
+acceptance_md = '''Resolve the CML-measured two-rowless rename hole by obtaining and using a precise Schemars `schema_id`→assigned-name accessor, or by preparing and pursuing that narrow upstream ask through the maintainer-approved filing path. Make and record an explicit decision between a guarded `$defs` `{base}{i}` heuristic (including its `Foo2` false-positive and opt-out contract) and the non-heuristic row/root plus committed-`.d.ts` remedy. Prove the chosen detection or mitigation keeps published names stable across the traversal-order edit that caused the consumer event; do not treat the already-observed event as a future promotion prerequisite.'''
+priority_rationale_md = '''A consumer already observed an unrelated spec edit silently rename a published TypeScript type. The precise accessor is external, but choosing and documenting the safe remedy is now our active work.'''
 control_ids = ["testing.guard.schema-name-two-rowless-types-collide"]
-
-[record.payload.promotion_trigger]
-observer = "fresh-evidence submitter for testing.schema-name.two-rowless-types-collide"
-dimension = "A collision between two types that BOTH lack rows"
-observable = "What a consumer can do TODAY, and why that further lowers the priority: give each instantiation a row with `--json-schema-root` (`--json-schema-root=my_crate::AssetBundle<u64>` and `…<i64>` — generic arguments are inside the flag's accepted charset). Registering both makes them two rows publishing one `schema_name()` with different `std::any::type_name`s, which the ledger reports; registering only the instantiation that LOST the bare name makes the kept-its-own-name check report the `<name>2` it was assigned. So the rows-plus-preclaims guard is opt-in-able for exactly the opaque shape it cannot see on its own. (Reasoned from `static/json_schema_gen.rs`'s `add_schema` and `parse_json_schema_root`'s charset — not run.) Reopening signal for building anything more: a public schemars accessor for the assigned-name map, or a consumer reporting a rename their `.d.ts` diff did not catch."
-action_on_fire_md = '''Set testing.schema-name.two-rowless-types-collide to ready and execute only its preserved acceptance/mechanical-layer scope.
-'''
-
-[record.payload.promotion_trigger.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.schema-name.two-rowless-types-collide's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
+admission_ids = ["testing.admission.schema-name-two-rowless-types-collide"]
 
 [[record]]
 id = "testing.signal-shaped-prose-lives-arms-cannot-reopen"
@@ -7301,6 +7388,13 @@ source = "testing.emitter-drops-overloadable-parameter-building-fresh-config-inv
 kind = "file_heading"
 path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
+
+[[reference]]
+id = "testing-consumer-report-cml-schema-name-two-rowless"
+source = "testing.evidence.schema-name-two-rowless-types-collide.cml-report"
+kind = "consumer_report"
+consumer = "CML"
+report_reference = "AssetBundle/AssetBundle2 two-rowless JSON Schema assigned-name collision reported to maintainers"
 
 [[reference]]
 id = "testing-roadmap-operational-watches"

@@ -983,14 +983,14 @@ impl GroupChoice {
 }
 
 #[derive(Clone, Debug)]
-pub struct Hash(pub(crate) Vec<u8>);
+pub struct Hash(Vec<u8>);
 
 impl Hash {
     pub fn get(&self) -> &Vec<u8> {
         &self.0
     }
 
-    pub fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
+    fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
         if inner.len() > 8 {
             return Err(DeserializeError::new(
                 "Hash",
@@ -1227,14 +1227,14 @@ impl NevWire {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct NintGeNewtype(pub(crate) u64);
+pub struct NintGeNewtype(u64);
 
 impl NintGeNewtype {
     pub fn get(&self) -> u64 {
         self.0
     }
 
-    pub fn new(inner: u64) -> Result<Self, DeserializeError> {
+    fn new(inner: u64) -> Result<Self, DeserializeError> {
         if inner > 4 {
             return Err(DeserializeError::new(
                 "NintGeNewtype",
@@ -1258,14 +1258,14 @@ impl TryFrom<u64> for NintGeNewtype {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct NintLeNewtype(pub(crate) u64);
+pub struct NintLeNewtype(u64);
 
 impl NintLeNewtype {
     pub fn get(&self) -> u64 {
         self.0
     }
 
-    pub fn new(inner: u64) -> Result<Self, DeserializeError> {
+    fn new(inner: u64) -> Result<Self, DeserializeError> {
         if inner < 4 {
             return Err(DeserializeError::new(
                 "NintLeNewtype",
@@ -2198,14 +2198,14 @@ impl Three {
 pub type TopLevelArray = Vec<u64>;
 
 #[derive(Clone, Debug, Copy)]
-pub struct TopLevelNegRange(pub(crate) i64);
+pub struct TopLevelNegRange(i64);
 
 impl TopLevelNegRange {
     pub fn get(&self) -> i64 {
         self.0
     }
 
-    pub fn new(inner: i64) -> Result<Self, DeserializeError> {
+    fn new(inner: i64) -> Result<Self, DeserializeError> {
         if inner < -10 || inner > -3 {
             return Err(DeserializeError::new(
                 "TopLevelNegRange",
@@ -2229,14 +2229,14 @@ impl TryFrom<i64> for TopLevelNegRange {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct TopLevelPosRange(pub(crate) u64);
+pub struct TopLevelPosRange(u64);
 
 impl TopLevelPosRange {
     pub fn get(&self) -> u64 {
         self.0
     }
 
-    pub fn new(inner: u64) -> Result<Self, DeserializeError> {
+    fn new(inner: u64) -> Result<Self, DeserializeError> {
         if inner < 3 || inner > 10 {
             return Err(DeserializeError::new(
                 "TopLevelPosRange",
@@ -2271,14 +2271,14 @@ impl TopLevelSingleElem {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct TopLevelTaggedRange(pub(crate) u64);
+pub struct TopLevelTaggedRange(u64);
 
 impl TopLevelTaggedRange {
     pub fn get(&self) -> u64 {
         self.0
     }
 
-    pub fn new(inner: u64) -> Result<Self, DeserializeError> {
+    fn new(inner: u64) -> Result<Self, DeserializeError> {
         if inner < 3 || inner > 10 {
             return Err(DeserializeError::new(
                 "TopLevelTaggedRange",

@@ -43,6 +43,11 @@ pub(super) fn generate_wrapper_struct(
     if min_max.is_some() || float_min_max.is_some() {
         assert!(types.can_new_fail(type_name));
     }
+    // A rule-declared scalar window is a nominal invariant, not a convenience range check at
+    // whichever caller happened to receive the loose primitive.  All public boundary faces use
+    // this one fact to select `TryFrom`; anonymous/member-local windows never reach this wrapper
+    // emitter and retain their containing constructor's checks.
+    let checked_scalar = types.requires_checked_try_from(type_name);
     // The inner-value getter name: an explicit `@newtype <name>` renames it, otherwise every
     // wrapper (bare tag, plain `@newtype`, bounded/range) exposes the inner value under `get`.
     let getter_name = match struct_config.newtype_getter.as_ref() {
@@ -87,8 +92,9 @@ pub(super) fn generate_wrapper_struct(
         // (wasm→native inner, then native inner→native wrapper) with an uninferable middle type.
         let from_wasm_expr = field_type.from_wasm_boundary_clone(types, "inner", false);
         let ctor = format!(
-            "{}::new({})",
+            "{}::{}({})",
             rust_crate_struct_from_wasm(types, type_name, cli),
+            if checked_scalar { "try_from" } else { "new" },
             ToWasmBoundaryOperations::format(from_wasm_expr.into_iter())
         );
         if types.can_new_fail(type_name) {
@@ -389,6 +395,26 @@ pub(super) fn generate_wrapper_struct(
     // absent from JSON, so the natural walk of the inner value is the whole JSON surface).
     let json_natural_any = matches!(field_type.resolve_alias_shallow(), ConceptualRustType::Any);
     let any_cbor_mod = format!("{}::any_cbor", cli.common_import_rust());
+    // Newtypes own manual JSON impls rather than field annotations. Reuse the same recursive
+    // descriptor as records and newtype enum arms so an authored wrapper cannot hide a sequence
+    // carrier between JSON and a wide/natural exact array.
+    let json_static_array_descriptor =
+        super::recursive_exact_array_descriptor(types, field_type, false, false, cli);
+    let static_array_mod = format!("{}::static_array", cli.common_import_rust());
+    let json_direct_typed_static_array = match field_type.conceptual_type.resolve_alias_shallow() {
+        ConceptualRustType::Array(element)
+            if !field_type.contains_exact_natural_any_static_array() =>
+        {
+            field_type
+                .exact_homogeneous_array_len_checked()
+                // Arrays through the pinned serde/schemars trait limit retain the pre-Cycle-36
+                // manual wrapper derive path. This fallback exists solely for a direct wide typed
+                // wrapper, which otherwise asks those derives for unavailable array traits.
+                .filter(|len| *len > 32)
+                .map(|len| (element.for_rust_member(types, false, cli), len))
+        }
+        _ => None,
+    };
     let json_schema_type = if json_hex_bytes {
         Cow::Borrowed("String")
     } else {
@@ -434,7 +460,7 @@ pub(super) fn generate_wrapper_struct(
                 if types.can_new_fail(type_name) {
                     serde_deser_fn
                         .line(format!(
-                            ".ok().and_then(|bytes| {type_name}::new(bytes).ok())"
+                            ".ok().and_then(|bytes| {type_name}::try_from(bytes).ok())"
                         ))
                         .line(format!(".ok_or_else(|| {err_body})"));
                 } else {
@@ -452,6 +478,29 @@ pub(super) fn generate_wrapper_struct(
                     ))
                     // `any` is never a can_new_fail wrapper, so construction is infallible.
                     .line("Ok(Self::new(inner))");
+            } else if let Some((descriptor, _member_type)) = &json_static_array_descriptor {
+                serde_ser_fn.line(format!(
+                    "{static_array_mod}::serialize_recursive::<{descriptor}, _, _>(&{self_var}, serializer)"
+                ));
+                serde_deser_fn.line(format!(
+                    "let inner = {static_array_mod}::deserialize_recursive::<{descriptor}, _, _>(deserializer)?;"
+                ));
+                if types.can_new_fail(type_name) {
+                    serde_deser_fn.line(format!(
+                        "Self::{}(inner).map_err(|_e| serde::de::Error::custom(\"invalid {type_name}\"))",
+                        if checked_scalar { "try_from" } else { "new" }
+                    ));
+                } else {
+                    serde_deser_fn.line("Ok(Self::new(inner))");
+                }
+            } else if json_direct_typed_static_array.is_some() {
+                serde_ser_fn.line(format!(
+                    "{static_array_mod}::static_array::serialize(&{self_var}, serializer)"
+                ));
+                serde_deser_fn.line(format!(
+                    "let inner = {static_array_mod}::static_array::deserialize(deserializer)?;"
+                ));
+                serde_deser_fn.line("Ok(Self::new(inner))");
             } else {
                 serde_ser_fn.line(format!("{self_var}.serialize(serializer)"));
                 serde_deser_fn
@@ -509,7 +558,7 @@ pub(super) fn generate_wrapper_struct(
                         "inner"
                     };
                     serde_deser_fn
-                        .line(format!("Self::new({new_arg})"))
+                        .line(format!("Self::{}({new_arg})", if checked_scalar { "try_from" } else { "new" }))
                         .line(format!(".map_err(|_e| {{ serde::de::Error::invalid_value(serde::de::Unexpected::{unexpected}, &\"invalid {type_name}\") }})"));
                 } else {
                     serde_deser_fn.line("Ok(Self::new(inner))");
@@ -560,6 +609,16 @@ pub(super) fn generate_wrapper_struct(
                     ))
                     .line("out");
                 inline_schema.line("String::inline_schema()");
+            } else if let Some((descriptor, member_type)) = &json_static_array_descriptor {
+                json_schema_fn.line(format!(
+                    "{static_array_mod}::recursive_schema::<{descriptor}, {member_type}>(generator)"
+                ));
+                inline_schema.line("false");
+            } else if let Some((element, len)) = &json_direct_typed_static_array {
+                json_schema_fn.line(format!(
+                    "{static_array_mod}::static_array_schema::<{element}, {len}>(generator)"
+                ));
+                inline_schema.line("false");
             } else {
                 // qualified-path form: `json_schema_type` is a type-position spelling, so a generic
                 // backing type (map/array @newtype) needs `<T as Trait>::method`, not `T::method`
@@ -595,19 +654,19 @@ pub(super) fn generate_wrapper_struct(
     };
     let encoding_name = RustIdent::new(CDDLIdent::new(format!("{type_name}Encoding")));
     let enc_fields = if cli.preserve_encodings {
-        // `pub(crate)`, matching the default profile's tuple field: the bound-check boundary that
-        // matters is the CRATE boundary — external crates still cannot literal-construct or mutate
-        // the wrapper (bypassing the `new()` bound check), so the invariant holds where it's
-        // observable. Within the crate, hand-written modules — which under the thin-root layout live
-        // OUTSIDE the always-clobbered generated subtree — legitimately need field access (e.g. a
-        // `RawBytesEncoding` impl on a bounded newtype). In-crate privacy was already bypassable by
-        // dropping a hand file inside the scope subtree, so it protected nothing real.
+        // Ordinary wrappers retain `pub(crate)`, matching the default profile's tuple field: hand-written
+        // modules outside the generated subtree can legitimately need their carrier. B5-404 scalar
+        // windows differ: their private field makes `TryFrom` the only public construction door.
         // (Named-field shape, so it is NOT routed through `push_overwidth_guarded_tuple_field`: the
         // rustfmt#5703 hazard that helper guards needs a visibility token on a TUPLE field, and a
         // named field of any width is unaffected. The default profile's tuple shape below does go
         // through it, as do the wasm-crate wrappers.)
         s.field(
-            "pub(crate) inner",
+            if checked_scalar {
+                "inner"
+            } else {
+                "pub(crate) inner"
+            },
             field_type.for_rust_member(types, false, cli),
         );
         // DECLARED type (see `EncodingField::type_name`): these become the wrapper's encoding-struct
@@ -653,14 +712,14 @@ pub(super) fn generate_wrapper_struct(
         }
         Some(enc_fields)
     } else {
-        // Same `pub(crate)` reasoning as the preserve-encodings named field above, but emitted as a
-        // single-field tuple struct — the shape that trips rust-lang/rustfmt#5703 once the field
-        // line passes rustfmt's max_width. `push_overwidth_guarded_tuple_field` (mod.rs) owns both
-        // the visibility literal and that workaround for this site and for the wasm wrappers.
-        push_overwidth_guarded_tuple_field(
-            &mut s,
-            codegen::Type::new(field_type.for_rust_member(types, false, cli)),
-        );
+        // Ordinary wrappers use the shared crate-private tuple policy (including its rustfmt
+        // workaround); B5-404 scalar windows are short primitive/bytes carriers and stay private.
+        let inner_type = codegen::Type::new(field_type.for_rust_member(types, false, cli));
+        if checked_scalar {
+            s.tuple_field(None, inner_type);
+        } else {
+            push_overwidth_guarded_tuple_field(&mut s, inner_type);
+        }
         None
     };
     // TODO: is there a way to know if the encoding object is also copyable?
@@ -696,13 +755,24 @@ pub(super) fn generate_wrapper_struct(
             canonical_param(cli)
         ));
     } else {
+        let serialized_inner = if checked_scalar {
+            format!("self.{getter_name}()")
+        } else {
+            self_var.to_owned()
+        };
+        let mut serialize_config = SerializeConfig::new(&serialized_inner, "inner")
+            .is_end(true)
+            .encoding_var_in_option_struct("self.encodings");
+        if checked_scalar && !field_type.is_copy(types) {
+            // String/byte getters already return a reference. Tell the shared serializer so it
+            // neither adds a second borrow nor treats `.len()` as if it belonged under a deref.
+            serialize_config = serialize_config.expr_is_ref(true);
+        }
         gen_scope.generate_serialize(
             types,
             field_type.into(),
             &mut ser_func,
-            SerializeConfig::new(self_var, "inner")
-                .is_end(true)
-                .encoding_var_in_option_struct("self.encodings"),
+            serialize_config,
             cli,
         );
     }
@@ -723,9 +793,10 @@ pub(super) fn generate_wrapper_struct(
         );
     }
     let mut new_func = codegen::Function::new("new");
-    new_func
-        .arg("inner", field_type.for_rust_move(types, cli))
-        .vis("pub");
+    new_func.arg("inner", field_type.for_rust_move(types, cli));
+    if !checked_scalar {
+        new_func.vis("pub");
+    }
     let exact_byte_array_len = field_type.exact_byte_array_len_checked();
     let optional_exact_byte_array_len = match field_type.conceptual_type.resolve_alias_shallow() {
         ConceptualRustType::Optional(inner) => inner.exact_byte_array_len_checked(),
@@ -768,10 +839,17 @@ pub(super) fn generate_wrapper_struct(
         } else {
             (format!("let {var_names_str} = "), ";")
         };
+        // Exact byte arrays keep their structural `[u8; N]` storage, but their public loose input
+        // is `Vec<u8>` and the single Vec→array handover belongs to `TryFrom`. Decode the raw Vec
+        // here so CBOR takes that same door instead of performing a sibling conversion.
+        let mut deserialize_type = field_type.clone();
+        if checked_scalar && exact_byte_array_len.is_some() {
+            deserialize_type.config.bounds = None;
+        }
         gen_scope
             .generate_deserialize(
                 types,
-                field_type.into(),
+                (&deserialize_type).into(),
                 DeserializeBeforeAfter::new(&before, after, false),
                 DeserializeConfig::new("inner"),
                 cli,
@@ -849,7 +927,7 @@ pub(super) fn generate_wrapper_struct(
             new_func.line(format!(
                 "let inner: Option<[u8; {len}]> = inner.map(|bytes| bytes.try_into().map_err(|bytes: Vec<u8>| DeserializeError::new(\"{type_name}\", DeserializeFailure::RangeCheck{{ found: bytes.len() as i128, min: Some({len}), max: Some({len}) }} ))).transpose()?;"
             ));
-        } else {
+        } else if !checked_scalar {
             deser_body.line(&render_check(cli.annotate_fields));
         }
         new_func.ret("Result<Self, DeserializeError>");
@@ -857,28 +935,64 @@ pub(super) fn generate_wrapper_struct(
             new_func.line(render_check(false));
         }
         if let Some(enc_fields) = &enc_fields {
-            let mut deser_ctor = Block::new("Ok(Self");
-            deser_ctor.line("inner,");
-            if !enc_fields.is_empty() {
-                let mut encoding_ctor = Block::new(format!("encodings: Some({encoding_name}"));
-                for field_enc in enc_fields {
-                    encoding_ctor.line(format!("{},", field_enc.field_name));
+            if checked_scalar {
+                deser_body.line(if cli.annotate_fields {
+                    "let mut value = Self::try_from(inner).map_err(DeserializeError::without_location)?;"
+                } else {
+                    "let mut value = Self::try_from(inner)?;"
+                });
+                if !enc_fields.is_empty() {
+                    let mut encoding_assignment =
+                        Block::new(format!("value.encodings = Some({encoding_name}"));
+                    for field_enc in enc_fields {
+                        encoding_assignment.line(format!("{},", field_enc.field_name));
+                    }
+                    encoding_assignment.after(");");
+                    deser_body.push_block(encoding_assignment);
                 }
-                encoding_ctor.after("),");
-                deser_ctor.push_block(encoding_ctor);
-            }
-            deser_ctor.after(")");
-            deser_body.push_block(deser_ctor);
+                deser_body.line("Ok(value)");
 
-            let mut ctor_block = Block::new("Ok(Self");
-            ctor_block.line("inner,");
-            if !enc_fields.is_empty() {
-                ctor_block.line("encodings: None,");
+                // `new` runs in this type's own module, so it alone may materialize the private
+                // carrier. The sibling CBOR module above must use `TryFrom` instead.
+                let mut ctor_block = Block::new("Ok(Self");
+                ctor_block.line("inner,");
+                if !enc_fields.is_empty() {
+                    ctor_block.line("encodings: None,");
+                }
+                ctor_block.after(")");
+                new_func.push_block(ctor_block);
+            } else {
+                let mut deser_ctor = Block::new("Ok(Self");
+                deser_ctor.line("inner,");
+                if !enc_fields.is_empty() {
+                    let mut encoding_ctor = Block::new(format!("encodings: Some({encoding_name}"));
+                    for field_enc in enc_fields {
+                        encoding_ctor.line(format!("{},", field_enc.field_name));
+                    }
+                    encoding_ctor.after("),");
+                    deser_ctor.push_block(encoding_ctor);
+                }
+                deser_ctor.after(")");
+                deser_body.push_block(deser_ctor);
+
+                let mut ctor_block = Block::new("Ok(Self");
+                ctor_block.line("inner,");
+                if !enc_fields.is_empty() {
+                    ctor_block.line("encodings: None,");
+                }
+                ctor_block.after(")");
+                new_func.push_block(ctor_block);
             }
-            ctor_block.after(")");
-            new_func.push_block(ctor_block);
         } else {
-            deser_body.line("Ok(Self(inner))");
+            if checked_scalar {
+                deser_body.line(if cli.annotate_fields {
+                    "Self::try_from(inner).map_err(DeserializeError::without_location)"
+                } else {
+                    "Self::try_from(inner)"
+                });
+            } else {
+                deser_body.line("Ok(Self(inner))");
+            }
             new_func.line("Ok(Self(inner))");
         }
         let mut try_from = codegen::Impl::new(type_name.to_string());

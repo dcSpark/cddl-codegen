@@ -3,7 +3,7 @@
   "private": true,
   "description": "Dev-only tooling deps for the cddl-matrix Bun/TypeScript scripts. The RUNTIME is dependency-free — nothing here is imported at run time; these exist solely so `tsc --noEmit` can typecheck the scripts (the `matrix_typecheck` check.ts gate).",
   "devDependencies": {
-    "@types/bun": "^1.3.14",
+    "@types/bun": "^1.4.0",
     "typescript": "^5.9.3"
   }
 }

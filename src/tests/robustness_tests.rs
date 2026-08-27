@@ -6905,68 +6905,379 @@ fn open_array_front_end() {
         "a plain group must not become a nested static-array element: {}",
         src(&named_plain_group_once)
     );
-    // Wide native exact arrays have JSON adapters only at direct/optional field, newtype-choice,
-    // and loose Vec-element doors. Every other containing shape must reject BEFORE generation;
-    // otherwise the pinned serde/schemars traits fail later while compiling a generated crate.
+    // Wide native exact arrays have JSON adapters at direct/optional field, newtype-choice, and
+    // every loose, nonempty, or bounded sequence door, including duplicate-reject sets. Maps and
+    // dynamic rows still reject BEFORE generation; otherwise the pinned serde/schemars traits fail
+    // later while compiling a generated crate.
     let json_flags = &["--json-serde-derives=true", "--json-schema-export=true"];
-    gen_flags(
+    let direct_typed_sequence = gen_flags(
         "wide = [64*64 uint]\nh = [direct: wide, ? optional: wide, loose: [* wide]]\n",
         json_flags,
     )
     .expect("the directly adapted wide-static-array JSON shapes must keep generating");
+    let direct_typed_sequence_src = &direct_typed_sequence["rust/src/generated/mod.rs"];
+    assert!(
+        direct_typed_sequence_src.contains("static_array::static_array_seq")
+            && !direct_typed_sequence_src.contains("serialize_recursive"),
+        "a required direct typed Vec<[T; N]> field must retain its established callback spelling: \
+         {direct_typed_sequence_src}"
+    );
+    let short_newtype = gen_flags("short = [2*2 uint] ; @newtype\n", json_flags)
+        .expect("a short typed exact-array newtype keeps its established ordinary derive path");
+    let short_newtype_src = &short_newtype["rust/src/generated/mod.rs"];
+    assert!(
+        short_newtype_src.contains("self.0.serialize(serializer)")
+            && short_newtype_src
+                .contains("<[u64; 2] as serde::de::Deserialize>::deserialize(deserializer)?")
+            && short_newtype_src
+                .contains("<[u64; 2] as schemars::JsonSchema>::json_schema(generator)")
+            && !short_newtype_src.contains("static_array::static_array")
+            && !short_newtype_src.contains("static_array_schema"),
+        "a short typed exact-array wrapper must retain its pre-adapter serde/schemars spelling: \
+         {short_newtype_src}"
+    );
+    let legacy_map_sequence = gen_flags(
+        "maps = {* uint => uint}\nh = [xs: [* [64*64 maps]]]\n",
+        json_flags,
+    )
+    .expect("a direct typed Vec<[map; 64]> keeps the legacy exact-element callback");
+    let legacy_map_sequence_src = &legacy_map_sequence["rust/src/generated/mod.rs"];
+    assert!(
+        legacy_map_sequence_src.contains("static_array::static_array_seq")
+            && !legacy_map_sequence_src.contains("serialize_recursive"),
+        "a direct typed map-element sequence must not migrate into the map-refusing descriptor: \
+         {legacy_map_sequence_src}"
+    );
     run("wide = [64*64 uint]\nopen = [prefix: uint, * wide]\n")
         .expect("a wide exact array in an open tail remains supported without the JSON derives");
     run("wide_any = [64*64 any]\nh = [prefix: uint, xs: [* wide_any]]\n")
         .expect("a nested exact-any array remains supported without the JSON derives");
+    // Captured open-array segments are derive-owned struct fields even though they bypass the
+    // declared-RustField loop. They therefore use the same ordered selector: direct `any` keeps
+    // its established natural adapter, while every exact-array descendant reaches one recursive
+    // (or legacy direct typed-sequence) callback. This covers final loose/nonempty/bounded/exact,
+    // a safe middle segment, alias resolution, and a nested reject collection without changing
+    // their valid no-JSON CBOR shape.
+    for (shape, spec, legacy_direct_sequence, expected_descriptor) in [
+        (
+            "final loose typed sequence",
+            "wide = [64*64 uint]\nopen = [prefix: uint, * wide]\n",
+            true,
+            "static_array::static_array_seq",
+        ),
+        (
+            "final nonempty typed sequence",
+            "wide = [64*64 uint]\nopen = [prefix: uint, + wide]\n",
+            false,
+            "static_array::NonEmpty<",
+        ),
+        (
+            "final bounded typed sequence",
+            "wide = [64*64 uint]\nopen = [prefix: uint, 2*3 wide]\n",
+            false,
+            "static_array::Bounded<",
+        ),
+        (
+            "final exact typed sequence",
+            "wide = [64*64 uint]\nopen = [prefix: uint, 2*2 wide]\n",
+            false,
+            "static_array::Exact<",
+        ),
+        (
+            "safe middle typed sequence",
+            "wide = [64*64 uint]\nopen = [prefix: uint, * wide, suffix: tstr]\n",
+            true,
+            "static_array::static_array_seq",
+        ),
+        (
+            "alias-hidden typed sequence",
+            "wide = [64*64 uint]\nwide_alias = wide\nopen = [prefix: uint, * wide_alias]\n",
+            true,
+            "static_array::static_array_seq",
+        ),
+        (
+            "nested reject sequence",
+            "wide = [64*64 uint]\nreject = [* wide] ; @duplicates reject\nopen = [prefix: uint, * reject]\n",
+            false,
+            "static_array::RejectSet<",
+        ),
+        (
+            "short exact natural-any sequence",
+            "inner = [2*2 any]\nouter = [* inner]\nopen = [prefix: uint, * outer]\n",
+            false,
+            "static_array::Loose<",
+        ),
+    ] {
+        run(spec).unwrap_or_else(|err| {
+            panic!("{shape}: the dynamic exact-array tail remains valid without JSON: {err}")
+        });
+        for json_flag in ["--json-serde-derives=true", "--json-schema-export=true"] {
+            let generated = gen_flags(spec, &[json_flag]).unwrap_or_else(|err| {
+                panic!("{shape} ({json_flag}) must compose through the dynamic-row adapter: {err}")
+            });
+            let source = &generated["rust/src/generated/mod.rs"];
+            let rest_pos = source.find("pub rest:").expect("open row rest field");
+            let field = &source[source[..rest_pos]
+                .rfind("pub struct ")
+                .expect("rest field's owning struct")..rest_pos];
+            let callback = if legacy_direct_sequence {
+                if json_flag == "--json-serde-derives=true" {
+                    "static_array::static_array_seq\")]"
+                } else {
+                    "static_array::static_array_seq_schema"
+                }
+            } else if json_flag == "--json-serde-derives=true" {
+                "static_array::serialize_recursive"
+            } else {
+                "static_array::recursive_schema"
+            };
+            assert!(
+                field.contains(callback),
+                "{shape} ({json_flag}): the dynamic row must select exactly one `{callback}`: {source}"
+            );
+            assert!(
+                field.contains(expected_descriptor),
+                "{shape} ({json_flag}): expected dynamic-row descriptor/callback `{expected_descriptor}`: {source}"
+            );
+            assert_eq!(
+                field.matches(callback).count(),
+                1,
+                "{shape} ({json_flag}): one dynamic row must select exactly one `{callback}`: {field}"
+            );
+        }
+    }
+    gen_flags(
+        "wide = [64*64 uint]\nexact = [2*2 wide]\nh = [prefix: uint, xs: exact]\n",
+        json_flags,
+    )
+    .expect("an all-exact nested wide array must route through the recursive JSON adapter");
+    gen_flags(
+        "wide_any = [64*64 any]\nexact = [2*2 wide_any]\nh = [prefix: uint, xs: exact]\n",
+        json_flags,
+    )
+    .expect("an all-exact nested natural-any array must route through the recursive JSON adapter");
     for (shape, spec) in [
         (
             "optional loose sequence",
             "wide = [64*64 uint]\nh = [prefix: uint, ? xs: [* wide]]\n",
         ),
         (
+            "nonempty sequence",
+            "wide = [64*64 uint]\nh = [prefix: uint, xs: [+ wide]]\n",
+        ),
+        (
             "bounded sequence",
             "wide = [64*64 uint]\nh = [prefix: uint, xs: [2*3 wide]]\n",
         ),
+        (
+            "duplicate-preserving loose sequence",
+            "wide = [64*64 uint]\npreserve = [* wide] ; @duplicates preserve\nh = [prefix: uint, xs: preserve]\n",
+        ),
+        (
+            "duplicate-preserving nonempty sequence",
+            "wide = [64*64 uint]\npreserve = [+ wide] ; @duplicates preserve\nh = [prefix: uint, xs: preserve]\n",
+        ),
+        (
+            "duplicate-preserving bounded sequence",
+            "wide = [64*64 uint]\npreserve = [2*3 wide] ; @duplicates preserve\nh = [prefix: uint, xs: preserve]\n",
+        ),
+        (
+            "mixed-depth sequence",
+            "wide = [64*64 uint]\nh = [prefix: uint, xs: [* [+ [2*3 wide]]]]\n",
+        ),
+        (
+            "nested exact-any sequence",
+            "wide_any = [64*64 any]\nh = [prefix: uint, xs: [* wide_any]]\n",
+        ),
+        (
+            "natural-any bounded sequence",
+            "wide_any = [64*64 any]\nh = [prefix: uint, xs: [1*2 wide_any]]\n",
+        ),
+        (
+            "exact nullable-any sequence",
+            "nullable_any = any / null\nexact = [2*2 nullable_any]\nh = [prefix: uint, xs: [* exact]]\n",
+        ),
+        (
+            "type-choice sequence payload",
+            "wide = [64*64 uint]\nchoice = [* wide] / tstr\n",
+        ),
+        (
+            "alias-hidden sequence",
+            "wide = [64*64 uint]\nxs = [* wide]\nh = [prefix: uint, value: xs]\n",
+        ),
+        (
+            "duplicate-reject loose sequence",
+            "wide = [64*64 uint]\nreject = [* wide] ; @duplicates reject\nh = [prefix: uint, xs: reject]\n",
+        ),
+        (
+            "duplicate-reject nonempty sequence",
+            "wide = [64*64 uint]\nreject = [+ wide] ; @duplicates reject\nh = [prefix: uint, xs: reject]\n",
+        ),
+        (
+            "duplicate-reject bounded sequence",
+            "wide = [64*64 uint]\nreject = [2*3 wide] ; @duplicates reject\nh = [prefix: uint, xs: reject]\n",
+        ),
+        (
+            "duplicate-reject exact sequence",
+            "wide = [64*64 uint]\nreject = [2*2 wide] ; @duplicates reject\nh = [prefix: uint, xs: reject]\n",
+        ),
+        (
+            "duplicate-reject alias-hidden sequence",
+            "wide = [64*64 uint]\nreject = [* wide] ; @duplicates reject\nreject_alias = reject\nh = [prefix: uint, xs: reject_alias]\n",
+        ),
+        (
+            "duplicate-reject natural-any sequence",
+            "wide_any = [64*64 any]\nreject = [* wide_any] ; @duplicates reject\nh = [prefix: uint, xs: reject]\n",
+        ),
+        (
+            "duplicate-reject type-choice payload",
+            "wide = [64*64 uint]\nreject = [* wide] ; @duplicates reject\nchoice = reject / tstr\n",
+        ),
+    ] {
+        for json_flag in ["--json-serde-derives=true", "--json-schema-export=true"] {
+            gen_flags(spec, &[json_flag])
+                .unwrap_or_else(|err| panic!("{shape} must generate under {json_flag}: {err}"));
+        }
+    }
+    let reject_source = gen_flags(
+        "wide = [64*64 uint]\nloose = [* wide] ; @duplicates reject\nnonempty = [+ wide] ; @duplicates reject\nbounded = [2*3 wide] ; @duplicates reject\nexact = [2*2 wide] ; @duplicates reject\nh = [l: loose, n: nonempty, b: bounded, e: exact]\n",
+        json_flags,
+    )
+    .expect("every reject-set carrier must select the recursive JSON descriptor");
+    let reject_source = &reject_source["rust/src/generated/mod.rs"];
+    for descriptor in [
+        "static_array::RejectSet<",
+        "static_array::RejectSetNonEmpty<",
+        "static_array::RejectSetBounded<",
+    ] {
+        assert!(
+            reject_source.contains(descriptor),
+            "the matching reject-set descriptor must be emitted: {descriptor}\n{reject_source}"
+        );
+    }
+    assert_eq!(
+        reject_source
+            .matches("static_array::serialize_recursive")
+            .count(),
+        4,
+        "every reject-set field owns exactly one recursive serde callback: {reject_source}"
+    );
+    let reject_wrapper_choice = gen_flags(
+        "wide = [64*64 uint]\nreject = [* wide] ; @duplicates reject\nwrapped = reject ; @newtype\nchoice = reject / tstr\n",
+        json_flags,
+    )
+    .expect("reject-set wrappers and type-choice payloads must select the same descriptor");
+    let reject_wrapper_choice = &reject_wrapper_choice["rust/src/generated/mod.rs"];
+    assert!(
+        reject_wrapper_choice
+            .matches("static_array::RejectSet<")
+            .count()
+            >= 2
+            && reject_wrapper_choice
+                .matches("static_array::serialize_recursive")
+                .count()
+                >= 2,
+        "newtype and choice sites must each retain one reject-set recursive callback:\n{reject_wrapper_choice}"
+    );
+    run("wide = [64*64 uint]\nreject = [* wide] ; @duplicates reject\nh = [xs: reject]\n")
+        .expect("the duplicate-reject carrier remains valid without JSON derives");
+    // `? f: (T / null)` is a separately nullable, three-state field. Its composed callback owns
+    // the outer presence Option while the recursive descriptor owns the inner nullable value, so
+    // every exact sequence tree now generates under each JSON face without stacking the legacy
+    // double_option callback. Retain the native/CBOR shape without JSON too.
+    for (shape, spec) in [
+        (
+            "typed wide exact array",
+            "wide = [64*64 uint]\nh = [prefix: uint, ? xs: (wide / null)]\n",
+        ),
+        (
+            "typed nested exact array",
+            "wide = [64*64 uint]\nnested = [2*2 wide]\nh = [prefix: uint, ? xs: (nested / null)]\n",
+        ),
+        (
+            "direct short natural-any exact array",
+            "inner_any = [2*2 any]\nh = [prefix: uint, ? xs: (inner_any / null)]\n",
+        ),
+        (
+            "nested natural-any exact array",
+            "inner_any = [2*2 any]\nnested_any = [2*2 inner_any]\nh = [prefix: uint, ? xs: (nested_any / null)]\n",
+        ),
+    ] {
+        run(spec).expect("the three-state exact-array shape must remain valid without JSON");
+        for json_flag in ["--json-serde-derives=true", "--json-schema-export=true"] {
+            let generated = gen_flags(spec, &[json_flag]).unwrap_or_else(|err| {
+                panic!("{shape} ({json_flag}) must compose through the three-state adapter: {err}")
+            });
+            let source = &generated["rust/src/generated/mod.rs"];
+            let callback = if json_flag == "--json-serde-derives=true" {
+                "static_array::serialize_optional_recursive"
+            } else {
+                "static_array::recursive_schema"
+            };
+            assert_eq!(
+                source.matches(callback).count(),
+                1,
+                "{shape} ({json_flag}): the exact-array three-state field must select exactly one composed callback `{callback}`: {source}"
+            );
+            assert!(
+                source
+                    .matches("#[serde(with = \"crate::generated::double_option\")]")
+                    .count()
+                    == 0,
+                "{shape} ({json_flag}): composed fields must not retain the legacy double_option callback: {source}"
+            );
+        }
+    }
+    for (shape, spec) in [
         (
             "map value",
             "wide = [64*64 uint]\nh = [prefix: uint, m: {* uint => wide}]\n",
         ),
         (
-            "deeper nesting",
-            "wide = [64*64 uint]\nh = [prefix: uint, xs: [* [* wide]]]\n",
+            "map key",
+            "wide = [64*64 uint]\nh = [prefix: uint, m: {* wide => uint}]\n",
         ),
         (
-            "exact array of wide elements",
-            "wide = [64*64 uint]\nh = [prefix: uint, xs: [2*2 wide]]\n",
+            "map alias with natural-any exact descendant",
+            "wide_any = [64*64 any]\nmapped = {* uint => wide_any}\nh = [prefix: uint, m: mapped]\n",
         ),
         (
-            "open-array tail",
-            "wide = [64*64 uint]\nopen = [prefix: uint, * wide]\n",
+            "open-struct map rest row",
+            "wide = [64*64 uint]\nopen = { fixed: uint, * uint => wide }\n",
         ),
         (
-            "nested exact-any array",
-            "wide_any = [64*64 any]\nh = [prefix: uint, xs: [* wide_any]]\n",
+            "dynamic open-table row",
+            "wide = [64*64 uint]\nopen = { * uint => wide, * tstr => uint }\n",
         ),
     ] {
-        let err = gen_flags(spec, json_flags)
-            .expect_err("unadapted wide-static-array JSON nesting must reject before codegen");
-        assert!(
-            (err.contains("wide exact homogeneous array") || err.contains("natural JSON"))
-                && err.contains("--json-serde-derives/--json-schema-export"),
-            "{shape}: rejection must name the JSON boundary and flag remedy, got: {err}"
-        );
+        for json_flag in ["--json-serde-derives=true", "--json-schema-export=true"] {
+            let err = gen_flags(spec, &[json_flag])
+                .expect_err("unadapted wide-static-array JSON nesting must reject before codegen");
+            assert!(
+                (err.contains("wide exact homogeneous array") || err.contains("natural JSON"))
+                    && err.contains("map")
+                    && err.contains("--json-serde-derives/--json-schema-export"),
+                "{shape} ({json_flag}): rejection must name the JSON boundary and flag remedy, got: {err}"
+            );
+        }
     }
-    let small_nested_any = gen_flags(
+    gen_flags(
         "small_any = [2*2 any]\nh = [prefix: uint, xs: [* small_any]]\n",
         json_flags,
     )
-    .expect_err("nested exact-any arrays must reject even below serde's length-32 trait limit");
-    assert!(
-        small_nested_any.contains("natural JSON")
-            && small_nested_any.contains("tagged AnyCbor")
-            && small_nested_any.contains("direct field or newtype payload"),
-        "the semantic exact-any refusal must not masquerade as a wide-array trait failure: {small_nested_any}"
-    );
+    .expect("small natural-any exact arrays compose through a sequence semantically, not by width");
+    let exact_map_any = "nullable_any = any / null\nmapped = {* uint => nullable_any}\nexact = [2*2 mapped]\nh = [prefix: uint, xs: exact]\n";
+    for json_flag in ["--json-serde-derives=true", "--json-schema-export=true"] {
+        let err = gen_flags(exact_map_any, &[json_flag]).expect_err(
+            "an exact array containing a nullable-any map must retain the map boundary",
+        );
+        assert!(
+            err.contains("natural JSON")
+                && err.contains("map")
+                && err.contains("--json-serde-derives/--json-schema-export"),
+            "{json_flag}: map-contained natural any must name the truthful boundary, got: {err}"
+        );
+    }
     let out_of_range = run("a = [uint, 18446744073709551616* bytes]\n")
         .expect_err("an occurrence endpoint beyond u64 must reject gracefully");
     assert!(

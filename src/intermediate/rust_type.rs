@@ -273,93 +273,67 @@ impl RustType {
 
     /// Whether this JSON-derived type would require serde/schemars traits on a wide (`> 32`)
     /// native exact array at a position our generated adapters do not yet own. The adapters cover
-    /// a direct static array, its optional field form, and a loose `Vec<[T; N]>`; every other
-    /// container would otherwise emit a crate that fails only when rustc asks its derived impl for
-    /// the pinned libraries' missing wide-array trait. Keep this shape predicate in the IR, beside
-    /// the carrier recognition, so a graceful parser/finalize refusal and the roadmap describe the
-    /// same boundary.
+    /// a direct static array plus every loose, nonempty, or bounded sequence/set tree. Maps still
+    /// refuse: their native carriers are not owned by the recursive descriptor. Keep this shape
+    /// predicate in the IR, beside the carrier recognition,
+    /// so a graceful parser/finalize refusal and the roadmap describe the same boundary.
     pub fn has_unadapted_wide_static_array_json_shape(&self) -> bool {
-        const PINNED_ARRAY_TRAIT_MAX: usize = 32;
-
-        fn contains_wide_static_array_below(ty: &RustType) -> bool {
+        fn supported_sequence_tree(ty: &RustType) -> bool {
             match ty.conceptual_type.resolve_alias_shallow() {
-                ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
-                    inner.contains_wide_static_array()
-                }
-                ConceptualRustType::Map(key, value) => {
-                    key.contains_wide_static_array() || value.contains_wide_static_array()
-                }
-                _ => false,
+                ConceptualRustType::Array(inner) => supported_sequence_tree(inner),
+                ConceptualRustType::Optional(inner) => supported_sequence_tree(inner),
+                ConceptualRustType::Map(_, _) => false,
+                _ => true,
             }
         }
 
         if !self.contains_wide_static_array() {
             return false;
         }
-        let resolved = self.conceptual_type.resolve_alias_shallow();
-        // A direct `[T; N]` is precisely what `static_array` adapts, provided its element does not
-        // itself contain an unsupported wide static array.
-        if self
-            .exact_homogeneous_array_len_checked()
-            .is_some_and(|len| len > PINNED_ARRAY_TRAIT_MAX)
-        {
-            return contains_wide_static_array_below(self);
-        }
-        match resolved {
-            // The optional field adapter owns `Option<[T; N]>`, but no deeper optional shape.
-            ConceptualRustType::Optional(inner)
-                if inner
-                    .exact_homogeneous_array_len_checked()
-                    .is_some_and(|len| len > PINNED_ARRAY_TRAIT_MAX)
-                    && !contains_wide_static_array_below(inner) =>
-            {
-                false
+        !supported_sequence_tree(self)
+    }
+
+    /// Whether this type contains an exact static array whose leaf element is CDDL `any`. Such an
+    /// array always needs a natural-JSON adapter: the typed serde/schema impl for `AnyCbor` is
+    /// deliberately tagged instead. Keep the recognition in the IR so the adapter selection and
+    /// its pre-codegen refusal boundary cannot drift.
+    pub fn contains_exact_natural_any_static_array(&self) -> bool {
+        fn walk(ty: &RustType, under_exact: bool) -> bool {
+            match ty.conceptual_type.resolve_alias_shallow() {
+                ConceptualRustType::Any => under_exact,
+                ConceptualRustType::Array(inner) => walk(
+                    inner,
+                    under_exact || ty.exact_homogeneous_array_len_checked().is_some(),
+                ),
+                ConceptualRustType::Optional(inner) => walk(inner, under_exact),
+                // Maps are deliberately traversed for DETECTION: a natural-any descendant under an
+                // exact ancestor must reach the map/set JSON boundary refusal, not silently fall
+                // through to AnyCbor's tagged codec.
+                ConceptualRustType::Map(key, value) => {
+                    walk(key, under_exact) || walk(value, under_exact)
+                }
+                _ => false,
             }
-            // The sequence adapter owns exactly loose `Vec<[T; N]>`, not bounded/non-empty or
-            // recursively nested array carriers.
-            ConceptualRustType::Array(inner)
-                if matches!(self.config.bounds, None | Some((None, None)))
-                    && inner
-                        .exact_homogeneous_array_len_checked()
-                        .is_some_and(|len| len > PINNED_ARRAY_TRAIT_MAX)
-                    && !contains_wide_static_array_below(inner) =>
-            {
-                false
-            }
-            _ => true,
         }
+
+        walk(self, false)
     }
 
     /// Natural JSON has a separate adapter family for an exact static array whose ELEMENT is CDDL
-    /// `any`. A direct `[any; N]` is owned by that family, but putting it inside another container
-    /// would route through the typed static-array adapter and serialize `AnyCbor` with its tagged
-    /// codec. Refuse that nested shape until a compositional natural-any adapter exists.
+    /// `any`. A direct `[any; N]` and every sequence/set tree are owned by the recursive
+    /// descriptor. Maps still refuse rather than falling back to
+    /// `AnyCbor`'s tagged serde/schema implementation.
     pub fn has_unadapted_natural_any_static_array_json_shape(&self) -> bool {
-        fn is_direct_static_any(ty: &RustType) -> bool {
-            ty.exact_homogeneous_array_len_checked().is_some()
-                && matches!(
-                    ty.conceptual_type.resolve_alias_shallow(),
-                    ConceptualRustType::Array(inner)
-                        if matches!(
-                            inner.conceptual_type.resolve_alias_shallow(),
-                            ConceptualRustType::Any
-                        )
-                )
-        }
-        fn contains_direct_static_any(ty: &RustType) -> bool {
-            is_direct_static_any(ty)
-                || match ty.conceptual_type.resolve_alias_shallow() {
-                    ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
-                        contains_direct_static_any(inner)
-                    }
-                    ConceptualRustType::Map(key, value) => {
-                        contains_direct_static_any(key) || contains_direct_static_any(value)
-                    }
-                    _ => false,
-                }
+        fn supported_sequence_tree(ty: &RustType) -> bool {
+            match ty.conceptual_type.resolve_alias_shallow() {
+                ConceptualRustType::Array(inner) => supported_sequence_tree(inner),
+                ConceptualRustType::Optional(inner) => supported_sequence_tree(inner),
+                ConceptualRustType::Map(_, _) => false,
+                _ => true,
+            }
         }
 
-        contains_direct_static_any(self) && !is_direct_static_any(self)
+        self.contains_exact_natural_any_static_array() && !supported_sequence_tree(self)
     }
 
     /// Exact-array endpoints in the legacy occurrence-wrapper vocabulary. This is only for

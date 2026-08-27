@@ -195,16 +195,46 @@ fn composed_runtime_static_files(
     // blanket array derives stop at 32. Keep this own module so typed exact arrays do not depend on
     // the AnyCbor runtime, and compose each half only under the dependency flag that provides it.
     if include_static_array_json && (cli.json_serde_derives || cli.json_schema_export) {
-        let mut content = String::new();
+        let mut content = std::fs::read_to_string(cli.static_dir.join("static_array_shape.rs"))?;
         if cli.json_serde_derives {
             content.push_str(&std::fs::read_to_string(
                 cli.static_dir.join("static_array_json.rs"),
             )?);
+            if include_non_empty_vec {
+                content.push_str(&std::fs::read_to_string(
+                    cli.static_dir.join("static_array_non_empty_json.rs"),
+                )?);
+            }
+            if include_bounded_vec {
+                content.push_str(&std::fs::read_to_string(
+                    cli.static_dir.join("static_array_bounded_json.rs"),
+                )?);
+            }
+            if include_ordered_set {
+                content.push_str(&std::fs::read_to_string(
+                    cli.static_dir.join("static_array_ordered_set_json.rs"),
+                )?);
+            }
         }
         if cli.json_schema_export {
             content.push_str(&std::fs::read_to_string(
                 cli.static_dir.join("static_array_schemars.rs"),
             )?);
+            if include_non_empty_vec {
+                content.push_str(&std::fs::read_to_string(
+                    cli.static_dir.join("static_array_non_empty_schemars.rs"),
+                )?);
+            }
+            if include_bounded_vec {
+                content.push_str(&std::fs::read_to_string(
+                    cli.static_dir.join("static_array_bounded_schemars.rs"),
+                )?);
+            }
+            if include_ordered_set {
+                content.push_str(&std::fs::read_to_string(
+                    cli.static_dir.join("static_array_ordered_set_schemars.rs"),
+                )?);
+            }
         }
         out.push((
             "static_array.rs".to_owned(),
@@ -511,6 +541,11 @@ fn composed_runtime_static_files(
             any_cbor_rs.push_str(&std::fs::read_to_string(
                 cli.static_dir.join("any_cbor_static_json.rs"),
             )?);
+            if include_static_array_json {
+                any_cbor_rs.push_str(&std::fs::read_to_string(
+                    cli.static_dir.join("any_cbor_recursive_static_json.rs"),
+                )?);
+            }
             if include_ordered_set {
                 any_cbor_rs.push_str(&std::fs::read_to_string(
                     cli.static_dir.join("any_cbor_bounded_ordered_set_json.rs"),
@@ -544,6 +579,11 @@ fn composed_runtime_static_files(
             any_cbor_rs.push_str(&std::fs::read_to_string(
                 cli.static_dir.join("any_cbor_static_schemars.rs"),
             )?);
+            if include_static_array_json {
+                any_cbor_rs.push_str(&std::fs::read_to_string(
+                    cli.static_dir.join("any_cbor_recursive_static_schemars.rs"),
+                )?);
+            }
             if include_ordered_set {
                 any_cbor_rs.push_str(&std::fs::read_to_string(
                     cli.static_dir

@@ -45,7 +45,7 @@ It's a dependency-free Bun script built around a gate **registry** — one entry
 
 | Tier | Command | What it runs | Wall time (warm) |
 |------|---------|--------------|------------------|
-| `fast` | `bun run check.ts fast` | what CI runs: fmt + clippy + snapshot tests + the drift gates | <!-- gen:sh:tests-tier-fast -->~43s<!-- /gen:sh:tests-tier-fast --> |
+| `fast` | `bun run check.ts fast` | what CI runs: fmt + clippy + snapshot tests + the drift gates | <!-- gen:sh:tests-tier-fast -->~53s<!-- /gen:sh:tests-tier-fast --> |
 | `local` (default) | `bun run check.ts` | `fast` + workspace build + the full `cargo test` suite | <!-- gen:sh:tests-tier-local -->~15 min<!-- /gen:sh:tests-tier-local --> |
 | `full` | `bun run check.ts full` | `local` + every manual-only gate | <!-- gen:sh:tests-tier-full -->~66 min<!-- /gen:sh:tests-tier-full --> |
 
@@ -295,7 +295,9 @@ compile half of what a slot holds.
 
 **The per-run memory sampler (report-only, asserted by NOTHING).** Every run samples its own
 descendant process tree at 1 s ticks and reports at the end — peak Σ RSS (test processes included),
-peak concurrent `rustc`, the largest single process, and the machine-wide `MemAvailable` floor —
+peak concurrent `rustc`, the largest single process, the machine-wide `MemAvailable` floor, and a
+count of OS memory-pressure notifications (`process.on("memoryPressure")`, Bun 1.4+; zero on a Bun
+without the event) with a bounded list of when each fired —
 printed above the summary table and appended to the gitignored `draft/memory-peaks.jsonl`
 (`CHECK_MEM_SAMPLER=0` disables). Peaks and floors are nondeterministic, so no gate ever fails on
 one; what the numbers buy is replacing the assumed constants above with measured ones (the 4 GiB
@@ -432,7 +434,8 @@ artifacts, three lifetimes:
   message/commit/doc; the log is a working artifact for the session that produced it.
 - `draft/timings.jsonl` — the local ledger, one JSON object per gate-run. Gitignored.
 - `draft/memory-peaks.jsonl` — the memory sampler's ledger, one JSON object per RUN (peak Σ RSS,
-  peak concurrent `rustc`, largest single process, MemAvailable floor), kept to the last 200 rows.
+  peak concurrent `rustc`, largest single process, MemAvailable floor, OS memory-pressure event
+  count plus a bounded event list), kept to the last 200 rows.
   Gitignored, and asserted by nothing — see "Gate-level concurrency" above for what the numbers
   are for.
 - `tests/timings.json` — the committed digest, one row per registry gate plus one per tier. It is
@@ -553,10 +556,10 @@ carry a host-side cell beside it:
 | Profile | Flags | Surface it exists for |
 |---|---|---|
 | `preserve_canonical` | `--preserve-encodings --canonical-form` | `OrderedHashMap`/`MapHashBuilder`, the derivative-derived key traits in all four `@used_as_key` flavors, a bytes wrapper, and a float member — its preserve head-width path reaches the `write_float` runtime helper, a `core`-only fn that has to stay no_std-clean |
-| `raw_bytes` | `--preserve-encodings` + a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule | `RawBytesEncoding`, the `decode_canonical_hex` door its `from_raw_hex` reads through, and both `hex::` call sites — all concatenated into `generated/serialization.rs`, and none of it reachable from the snapshot corpus. Also the only cell that compiles the `hex` key's package (`const-hex`) for a bare-metal target |
-| `json_schema` | `--preserve-encodings --json-serde-derives --json-schema-export` | `json_schema_gen.rs` (the Registrar runtime, the exported macro), `json_value_ser.rs`, serde/schemars derives — plus the `any` × `--json-serde-derives` composition, which no flag list alone reaches: `any_cbor.rs` is emitted only when the finalized IR holds `any`, and only then is the whole of `static/any_cbor_json.rs` appended to it. Its spec therefore carries an `any_members` rule with one member of every nested `natural_any_cbor_*` adapter shape (plain, optional, seq, optional seq, table, optional table), because those nested inline modules carry their alloc imports BY HAND and a missed one is invisible under `std` |
+| `raw_bytes` | `--preserve-encodings` + a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule | `RawBytesEncoding`, the `decode_canonical_hex` door its `from_raw_hex` reads through, and both `hex::` call sites — all concatenated into `generated/serialization.rs`, and none of it reachable from the snapshot corpus. Also the only cell that compiles the `hex` key's package (`const-hex`) for a bare-metal target. Its spec deliberately mints no bounded nominal: a structural assertion keeps `DeserializeError::without_location` unused here, and the clean-warning verdict therefore catches that always-emitted runtime helper becoming dead private API. |
+| `json_schema` | `--preserve-encodings --json-serde-derives --json-schema-export` | `json_schema_gen.rs` (the Registrar runtime, the exported macro), `json_value_ser.rs`, serde/schemars derives — plus the `any` × `--json-serde-derives` composition, which no flag list alone reaches: `any_cbor.rs` is emitted only when the finalized IR holds `any`, and only then is the whole of `static/any_cbor_json.rs` appended to it. Its spec therefore carries an `any_members` rule with one member of every nested `natural_any_cbor_*` adapter shape (plain, optional, seq, optional seq, table, optional table); those nested modules hand-carry their alloc imports, which is invisible under `std`. Wide exact arrays under nonempty/bounded sequence and bounded duplicate-reject-set carriers, an optional+nullable wide exact-array field, and a captured dynamic open-array row make every conditional `static_array` runtime fragment and annotation position reachable in the same thumb compile. |
 | `depth_limit` | `--deserialize-depth-limit 64` + a recursive rule | The one flag whose output is deliberately **not** `no_std`-capable (`thread_local!` guard). Its shim cell INVERTS: expected FAIL carrying the pinned ``--deserialize-depth-limit output requires the `std` feature`` substring (LOCKSTEP with `generation::export::DEPTH_LIMIT_REQUIRES_STD`); a `host_default_check` `cargo check` beside it proves the refusal is confined to `not(std)` |
-| `split_config` | a `--config` tree: two crates joined by a `deps` edge over a shared `[runtime]` runtime crate | The only profile where `default-features = false` has more than one package to reach. The `std` feature has to FORWARD across each hop — consumer → dependency → runtime — or it stops at the first, and on a target with no `std` at all a leaked `std` feature anywhere in the chain is a compile error. It is therefore the reachability proof for the runtime crate's `not(std)` hasher arm through a real topology, and it covers both forwarding derivations at once (`deps` and `[runtime].lib-name`). Its `host_std_arm` cell is the tripwire below, pointed at the runtime crate, which owns the cfg pair in this layout |
+| `split_config` | a `--config` tree: two crates joined by a `deps` edge over a shared `[runtime]` runtime crate | The only profile where `default-features = false` has more than one package to reach. The `std` feature has to FORWARD across each hop — consumer → dependency → runtime — or it stops at the first, and on a target with no `std` at all a leaked `std` feature anywhere in the chain is a compile error. It is therefore the reachability proof for the runtime crate's `not(std)` hasher arm through a real topology, and it covers both forwarding derivations at once (`deps` and `[runtime].lib-name`). Its bounded `hash28` nominal also makes generated serialization call the runtime's `DeserializeError::without_location` across a real package boundary; the gate structurally pins that use and the helper's public generated-code ABI before compiling. Its `host_std_arm` cell is the tripwire below, pointed at the runtime crate, which owns the cfg pair in this layout. |
 | `emit_tests` | `--emit-tests --preserve-encodings` | The emitted `#[cfg(test)]` module, which no shim cell can see (test code is not compiled when a crate is built as a dependency): `host_test_nostd` runs `cargo test --no-default-features --lib` on the generated crate, compiling and RUNNING the module — including its module-local `std` restore and the nested fidelity mod's hand-carried copy — under the `not(std)` root; the shim cell beside it guards restore-leakage into crate scope |
 
 Profile `preserve_canonical` also gets a **host**-target cell: a consumer crate carrying
@@ -1796,6 +1799,13 @@ encoding-fields sibling `error_annotation_wrapper_and_plain_group_single_name` i
 locationless resident being the `from_cbor_bytes` `TrailingData` path (pinned by
 `error_display_formatting`'s TrailingData no-location case).
 
+For B5-404's named bounded integer/byte/text carriers, decode no longer emits a second range check:
+it calls the wrapper's public `TryFrom` door. `integration_bounded_scalar_newtypes_have_private_checked_carriers`
+pins both diagnostic polarities at the generated-source seam: with field annotations the handoff
+clears the constructor location before the outer closure supplies it once; with
+`--annotate-fields=false` the `TryFrom` error is returned intact so the nominal type is not lost.
+The same test pins private native storage and the absence of a public `new()` bypass.
+
 `cargo_manifest_disk_round_trip` and `cargo_manifest_rejects_unparseable_existing` pin the
 manifest merge contract on real disk (the only place generation reads prior output — see
 `cargo_manifest.rs` and AGENTS.md's determinism note): user edits outside tool-owned keys survive a
@@ -2196,16 +2206,22 @@ serialize-only unless mandatory outer tag/`.cbor` framing proves the distinction
 `+ t` / `1* t` uses `NonEmptyVec<T>` and its first-element construction ABI; every other window uses
 a complete checked `BoundedVec<T, MIN, MAX>` constructor argument for variable windows; exact
 ordinary windows are `[T; N]` and their CBOR/component list inputs make one checked `Vec`
-handover. JSON adapters cover direct/optional fields and newtype choices (including natural exact
-`any` arrays), plus loose `Vec<[T; N]>` elements when `T` is not `any`; unadapted containing shapes
-are refused before codegen and remain explicitly roadmapped. Exact reject windows remain
+handover. JSON adapters recursively cover every ordinary/`@duplicates preserve`/`@duplicates reject`
+loose, nonempty, bounded, nullable, and exact collection tree containing a wide exact array or an
+exact natural-`any` position, including aliases/newtypes, ordinary optional fields, type-choice
+payloads, optional+nullable three-state fields, and captured open-array segments; every node remains
+a JSON list and keeps its authored bounds, while reject schemas add `uniqueItems: true` and reject
+carriers re-enter their checked set construction door. Map/table entries, open-struct map rest rows,
+and dynamic map rows remain refused before codegen and explicitly roadmapped. Exact reject windows remain
 `BoundedOrderedSet<T, N, N>`. The middle boundary deliberately
 honors RFC 8610 greedy non-backtracking decoding: general same-major/value-discriminator suffixes
 beyond finite fixed domains need a future design rather than a guessed decoder. User docs: `docs/docs/output_format.mdx` § "Open arrays",
 `docs/docs/comment_dsl.mdx` § "@ignore". It is verified across the layers:
 
 - **Front end + guards** — `robustness_tests::open_array_front_end` recognizes final loose,
-  min-one, finite, max-only, min-only, and exact-zero forms. The polarity and carrier assertions in
+  min-one, finite, max-only, min-only, and exact-zero forms. Its JSON-finalization vectors prove the
+  shared recursive/legacy selector for ordinary and duplicate-reject dynamic tails with exact typed
+  and natural-`any` descendants, while retaining map-containing residue as a row-local refusal. The polarity and carrier assertions in
   `robustness_tests::occurrence_on_array_record_field_rejects_gracefully` cover leading/middle
   loose/min-one success plus exact same-major/zero success without a suffix wire-head discriminator,
   and multiple named exact-count segments (including adjacent/same-major and exact-zero boundaries)
@@ -2228,8 +2244,14 @@ beyond finite fixed domains need a future design rather than a guessed decoder. 
   element, exact same-major segment, and finite fixed-domain retry re-emit byte-exactly and normalize canonically without moving their suffix, beside the
   final-tail positional-sidecar, self-carried `any`, and nested-stream vectors.
 - **JSON e2e** — `tests/open-array-json-e2e` (`integration_tests::open_array_json_e2e`, compiled)
-  checks bounded and exact same-major middle carriers' JSON/schema bounds and constructor doors, beside the loose,
-  required, and natural-fallible `any` tail surfaces.
+  checks loose, nonempty, finite/min-only/max-only bounded, exact, middle, and mixed-depth sequence trees around
+  typed and natural-`any` wide exact arrays; every JSON/schema bound and checked constructor door;
+  duplicate-reject loose/nonempty/bounded/exact sets (including insertion order and duplicate
+  rejection); nullable elements; aliases/newtypes; required/optional fields; type-choice payloads;
+  and the full absent/present-null/present-value table for direct/restricted optional+nullable exact
+  arrays. It also executes dynamic loose/nonempty/bounded/exact/middle rows, nested reject carriers,
+  and natural exact-`any` descendants. Map/table entries, open-struct map rest rows, and dynamic map
+  rows remain deliberate front-end refusals under either JSON face.
 - **Snapshots / cross-face** — `open_array_default` / `open_array_json` / `open_array_wasm` profile
   rows retain final-tail byte/API compatibility; `open_array_preserve` snapshots the middle capture
   input. The shared component build fixture wires the declared-major helper fragment and, together
@@ -3177,7 +3199,10 @@ flags rather than `--json-serde-derives` alone: under the schema flag the rust c
 derives `serde::Serialize`. Narrowing the condition back makes the crate an `E0433`, which only a
 real compile sees — hence a nested `cargo run` rather than a manifest assertion alone. Its
 `--export-static-crate` twin is generation-level only, a leg of
-`export_static_crate_writes_composed_runtime_and_manifest`.
+`export_static_crate_writes_composed_runtime_and_manifest`. The same real schema-only document pins
+captured array-row requiredness without relying on serde metadata: a loose row's `rest` property is
+omittable/default-empty, an exact row's remains required, and both retain the nested exact-64 item
+bounds.
 
 `--json-schema-root`'s input contract is pinned separately and without cargo by
 `json_schema_root_input_contract`: the flag requires `--json-schema-export`, a repeated value is a

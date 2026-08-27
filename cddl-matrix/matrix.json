@@ -5816,7 +5816,7 @@
     {
       "alt": "@name",
       "desc": "Overrides the generated name of a map field, array element, or choice variant (e.g. integer-keyed map fields become readable names).",
-      "example": "\nnamed = [\n  bytes, ; @name address\n  uint ; @name checksum\n]",
+      "example": "named = [\n  bytes, ; @name address\n  uint ; @name checksum\n]",
       "id": "dsl.name",
       "production": "comment_dsl",
       "profile": "CDDL_CODEGEN",
@@ -5826,8 +5826,8 @@
     {
       "alt": "@rust_name",
       "desc": "On a rule in an extern-deps scope (a stub or an extern-interface export), pins the FINAL Rust name the dependency's own codegen version derived, so the consumer reads the name instead of re-deriving it — killing cross-version naming skew. Rejected gracefully on exported rules (the consumer IS the deriving version there); a pin equal to today's derivation changes nothing (plain grouped import), so faithful-stub migration stays byte-identical.",
-      "example": "\nthing = [x: foo, y: uint]",
-      "example_extern_stub": "\nfoo = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name RenamedFoo",
+      "example": "thing = [x: foo, y: uint]",
+      "example_extern_stub": "foo = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name RenamedFoo",
       "id": "dsl.rust_name",
       "production": "comment_dsl",
       "profile": "CDDL_CODEGEN",
@@ -5837,7 +5837,7 @@
     {
       "alt": "@doc",
       "desc": "Attaches a rust doc-comment at field, struct, variant, or rule level (plain alias and @newtype rules). Cannot contain '@'.",
-      "example": "\ndocumented = [\n  foo: text, ; @doc a field comment\n  bar: uint\n] ; @doc struct doc\ndocumented_alias = uint ; @doc an alias rule doc",
+      "example": "documented = [\n  foo: text, ; @doc a field comment\n  bar: uint\n] ; @doc struct doc\ndocumented_alias = uint ; @doc an alias rule doc",
       "id": "dsl.doc",
       "production": "comment_dsl",
       "profile": "CDDL_CODEGEN",
@@ -5857,7 +5857,7 @@
     {
       "alt": "@ignore",
       "desc": "The tolerate-and-drop flavor of an open struct-map rest row (`* k => v` after fixed keys) or an open-array occurrence segment (`* t` final, or a safe middle `* t` before one mandatory major-disjoint suffix). Unknown map entries / repeated array elements are typed-deserialized (for maps, key AND value, so the stream advances past nested containers) and then DROPPED: no `rest` field is emitted, serialize re-emits only the declared members, and JSON/schemars/wasm are a closed struct's. This is the documented-lossy counterpart to the default capture flavor (byte round-trips do not hold for wire data carrying unknown entries / ignored array elements). Valid ONLY on a recognized loose `* k => v` rest row or loose final/safe-middle `* t` segment — every other placement (rule/alias/union/table/whole-array/field, unsafe non-final placement, or restricted window) is a graceful rejection — and rejected together with --preserve-encodings (a preserve crate's byte-exact contract can't hold for a lossy type), with @duplicates (no captured container / no keys for a policy to govern), and with @name (no field to name). The directive is bare and argument-less.",
-      "example": "\nlabel_map = {\n  1: uint, 2: text,\n  * uint => any ; @ignore\n}",
+      "example": "label_map = {\n  1: uint, 2: text,\n  * uint => any ; @ignore\n}",
       "id": "dsl.ignore",
       "production": "comment_dsl",
       "profile": "CDDL_CODEGEN",
@@ -5867,7 +5867,7 @@
     {
       "alt": "@no_alias",
       "desc": "Skips generating a named alias for the type; uses the underlying type directly at every use site.",
-      "example": "\ninner_alias = uint ; @no_alias\nuses = [field: inner_alias]",
+      "example": "inner_alias = uint ; @no_alias\nuses = [field: inner_alias]",
       "id": "dsl.no_alias",
       "production": "comment_dsl",
       "profile": "CDDL_CODEGEN",
@@ -5987,7 +5987,7 @@
     {
       "alt": "@custom_serialize",
       "desc": "Replaces generated serialization with a named user function (type-level or field-level).",
-      "example": "\ncb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: cb]",
+      "example": "cb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: cb]",
       "id": "dsl.custom_serialize",
       "production": "comment_dsl",
       "profile": "CDDL_CODEGEN",
@@ -5997,7 +5997,7 @@
     {
       "alt": "@custom_deserialize",
       "desc": "Replaces generated deserialization with a named user function (type-level or field-level).",
-      "example": "\ncb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: cb]",
+      "example": "cb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser\nholder = [f: cb]",
       "id": "dsl.custom_deserialize",
       "production": "comment_dsl",
       "profile": "CDDL_CODEGEN",
@@ -6007,7 +6007,7 @@
     {
       "alt": "@custom_encodings",
       "desc": "Beside a complete @custom_serialize/@custom_deserialize pair, declares the codec-visible encoding variables of the wire THAT CODEC writes and reads, so the preserve-encodings signature and the *Encoding sidecar slots follow the declaration instead of the REPLACED type's inferred demand. A comma-separated list (no whitespace) over sz (Option<cbor_event::Sz>), str (StringEncoding) and len (LenEncoding), positional — serialize takes them as trailing arguments in declared order, deserialize returns (value, declared…) — or the keyword none, the explicit empty list for a wire with no framing. Without it, a pair over a SELF-CARRYING type (an extern, a record, bool, any) infers no variables at all and the custom wire's framing is recorded nowhere, so the round trip silently normalizes it; under --preserve-encodings that undeclared spelling is now a graceful rejection. Requires BOTH halves in the same position (rule or field) and binds to the pair beside it, so a field-level pair never inherits a shadowed alias's declaration. Inert without --preserve-encodings. Aggregate (per-element Vec/BTreeMap) and tag-presence encodings are deliberately not declarable.",
-      "example": "\ncb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser @custom_encodings sz,str\nholder = [f: cb]",
+      "example": "cb = bytes ; @custom_serialize my_ser @custom_deserialize my_deser @custom_encodings sz,str\nholder = [f: cb]",
       "id": "dsl.custom_encodings",
       "production": "comment_dsl",
       "profile": "CDDL_CODEGEN",
@@ -6017,7 +6017,7 @@
     {
       "alt": "@custom_wire_major",
       "desc": "The second member of the wire-facts declaration family beside @custom_encodings. Written beside a complete @custom_serialize/@custom_deserialize pair, declares which of the eight CBOR major types the wire THAT CODEC writes begins with, as exactly one of uint / nint / bytes / text / array / map / tag / simple (an unknown token is a loud parse failure naming the set). Its consumers are an open table's typed row (t = { * K_t => V_t, * K_r => V_r }) and either boundary of a variable middle open array (m = [prefix, * elem, suffix]). The table dispatch must peek the declared major before any key deserializer runs; middle validation needs both effective boundary majors, and the emitted greedy loop peeks the repeated side only before the ordinary suffix reader runs. There the generator's own cbor_types() answers about the type the codec REPLACED, so a codec writing hex TEXT over a raw-bytes marker would dispatch major 2 and never match its own keys. REQUIRED when either reader must see the codec-owned head (its absence is a graceful rejection naming the directive); mandatory generated outer tag/.cbor framing supplies its own head and does not consume the declaration. A graceful rejection where nothing consumes it, where the pair is incomplete or absent, and on a rule that mints a struct (the declaration is read through the rule's transparent alias entry, which a struct-minting rule has none of). Final/exact middle placements and optional-prefix lookahead do not consume it; field-local declarations remain refused. Consumed somewhere is enough, so one alias may key an open table, prove a middle boundary, AND appear at a field. Unlike @custom_encodings it is not gated on --preserve-encodings.",
-      "example": "\nrb = _CDDL_CODEGEN_RAW_BYTES_TYPE_\nrb_v1 = rb ; @custom_serialize my_ser @custom_deserialize my_deser @custom_wire_major text\nt = { * rb_v1 => uint, * uint => uint }",
+      "example": "rb = _CDDL_CODEGEN_RAW_BYTES_TYPE_\nrb_v1 = rb ; @custom_serialize my_ser @custom_deserialize my_deser @custom_wire_major text\nt = { * rb_v1 => uint, * uint => uint }",
       "id": "dsl.custom_wire_major",
       "production": "comment_dsl",
       "profile": "CDDL_CODEGEN",
@@ -6027,7 +6027,7 @@
     {
       "alt": "@extern_companions",
       "desc": "On a LOCALLY-declared, non-generic _CDDL_CODEGEN_EXTERN_TYPE_ or _CDDL_CODEGEN_RAW_BYTES_TYPE_ rule, declares that the named STRUCTURAL wasm companion classes of that type (its <Name>List, Map<Name>To…, …) already exist in a sibling wasm crate: the generator emits `use <path>::<Class>;` and mints no local #[wasm_bindgen] class of that name, so both crates can link into one cdylib without a duplicate __wbg_<class>_free symbol. Both markers qualify because both name a type this crate does not define while the generator still mints that type's companions under its ident. Argument is `<use_path_prefix>=<Class>[,<Class>…]`, whitespace-free; only LISTED classes defer, so an unlisted companion of the same type still mints locally. The dependency-keyed --extern-wrapper-index / --workspace-dep cannot serve this case (both key on a constituent's owning DEPENDENCY, and a local marker has no dep edge; an index also lists only what generation minted, never a hand-written class), so a dep-scoped rule carrying it is rejected naming those flags. Inert without --wasm.",
-      "example": "\ntm = _CDDL_CODEGEN_EXTERN_TYPE_ ; @extern_companions dep_wasm=TmList\nholder = [items: [* tm]]",
+      "example": "tm = _CDDL_CODEGEN_EXTERN_TYPE_ ; @extern_companions dep_wasm=TmList\nholder = [items: [* tm]]",
       "id": "dsl.extern_companions",
       "production": "comment_dsl",
       "profile": "CDDL_CODEGEN",
@@ -6037,7 +6037,7 @@
     {
       "alt": "_CDDL_CODEGEN_EXTERN_TYPE_",
       "desc": "Treats the rule as an externally-defined type implementing Serialize/Deserialize; no code is generated for it. (ruby/rust reject the undefined typename — expected for a vendor extension.)",
-      "example": "\nfoo = _CDDL_CODEGEN_EXTERN_TYPE_\nbar = [x: uint, y: foo]",
+      "example": "foo = _CDDL_CODEGEN_EXTERN_TYPE_\nbar = [x: uint, y: foo]",
       "id": "ext.extern",
       "production": "sentinel",
       "profile": "CDDL_CODEGEN",
@@ -6047,7 +6047,7 @@
     {
       "alt": "_CDDL_CODEGEN_RAW_BYTES_TYPE_",
       "desc": "Encodes as bytes but defers to an external type implementing the RawBytesEncoding trait. (ruby/rust reject the undefined typename — expected.)",
-      "example": "\nrb = _CDDL_CODEGEN_RAW_BYTES_TYPE_\nbar = [rb]",
+      "example": "rb = _CDDL_CODEGEN_RAW_BYTES_TYPE_\nbar = [rb]",
       "id": "ext.raw_bytes",
       "production": "sentinel",
       "profile": "CDDL_CODEGEN",
@@ -6057,7 +6057,7 @@
     {
       "alt": "_CDDL_CODEGEN_EXTERN_TYPE_",
       "desc": "A generic extern base the spec never instantiates. Nothing is emitted for it beyond the re-export glue naming the bare base (`pub use crate::<Base>;`) in both faces: it names no concrete type, so the extern-interface self-check and the json-gen schema registrar must both SKIP it — a row spelling a bare `<Base>` would be E0107 against the parameterized type the marker declares.",
-      "example": "\next_gen<T> = _CDDL_CODEGEN_EXTERN_TYPE_\nplain = [x: uint]",
+      "example": "ext_gen<T> = _CDDL_CODEGEN_EXTERN_TYPE_\nplain = [x: uint]",
       "id": "ext.extern.generic",
       "production": "sentinel",
       "profile": "CDDL_CODEGEN",
@@ -6067,7 +6067,7 @@
     {
       "alt": "_CDDL_CODEGEN_EXTERN_TYPE_",
       "desc": "A generic extern base the spec binds (`ext_gen<uint>`). The rust crate aliases the instance itself (`pub type ExtGenU64 = ExtGen<u64>;`) and re-exports only the BASE, so one hand-written generic definition serves every instance; the wasm crate, which has no generics, instead requires a user-provided concrete `ExtGenU64` wrapper and re-exports THAT name.",
-      "example": "\next_gen<T> = _CDDL_CODEGEN_EXTERN_TYPE_\nholder = [y: ext_gen<uint>]",
+      "example": "ext_gen<T> = _CDDL_CODEGEN_EXTERN_TYPE_\nholder = [y: ext_gen<uint>]",
       "id": "ext.extern.generic_instance",
       "production": "sentinel",
       "profile": "CDDL_CODEGEN",
@@ -6077,7 +6077,7 @@
     {
       "alt": "_CDDL_CODEGEN_RAW_BYTES_TYPE_",
       "desc": "The raw-bytes marker's answer to the same generic-base axis the two extern rows above enumerate, and the opposite one: an extern base may legitimately be parameterized (it is an arbitrary hand-written type), but a raw-bytes type IS its own bytes and carries no element type for a parameter to name, so a generic base is refused by name at parse time rather than generating self-check and schema rows spelling a bare base that cannot compile against the parameterized type the marker declares. The remedy the message names is to declare it non-generic. Refused with and without instances, under --wasm=true and --wasm=false alike.",
-      "example": "\nrb_gen<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_\nbar = [x: rb_gen<uint>]",
+      "example": "rb_gen<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_\nbar = [x: rb_gen<uint>]",
       "id": "ext.raw_bytes.generic",
       "production": "sentinel",
       "profile": "CDDL_CODEGEN",

@@ -96,14 +96,14 @@ impl Holder {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct TaggedCtlNe(pub(crate) i64);
+pub struct TaggedCtlNe(i64);
 
 impl TaggedCtlNe {
     pub fn get(&self) -> i64 {
         self.0
     }
 
-    pub fn new(inner: i64) -> Result<Self, DeserializeError> {
+    fn new(inner: i64) -> Result<Self, DeserializeError> {
         if inner == 1 {
             return Err(DeserializeError::new(
                 "TaggedCtlNe",
@@ -127,14 +127,14 @@ impl TryFrom<i64> for TaggedCtlNe {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct TaggedRangeExcl(pub(crate) i64);
+pub struct TaggedRangeExcl(i64);
 
 impl TaggedRangeExcl {
     pub fn get(&self) -> i64 {
         self.0
     }
 
-    pub fn new(inner: i64) -> Result<Self, DeserializeError> {
+    fn new(inner: i64) -> Result<Self, DeserializeError> {
         if inner < -10 || inner > 9 {
             return Err(DeserializeError::new(
                 "TaggedRangeExcl",
@@ -158,14 +158,14 @@ impl TryFrom<i64> for TaggedRangeExcl {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct TaggedRangeIncl(pub(crate) i64);
+pub struct TaggedRangeIncl(i64);
 
 impl TaggedRangeIncl {
     pub fn get(&self) -> i64 {
         self.0
     }
 
-    pub fn new(inner: i64) -> Result<Self, DeserializeError> {
+    fn new(inner: i64) -> Result<Self, DeserializeError> {
         if inner < -10 || inner > 10 {
             return Err(DeserializeError::new(
                 "TaggedRangeIncl",
@@ -189,14 +189,14 @@ impl TryFrom<i64> for TaggedRangeIncl {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct TaggedRangeNint(pub(crate) i64);
+pub struct TaggedRangeNint(i64);
 
 impl TaggedRangeNint {
     pub fn get(&self) -> i64 {
         self.0
     }
 
-    pub fn new(inner: i64) -> Result<Self, DeserializeError> {
+    fn new(inner: i64) -> Result<Self, DeserializeError> {
         if inner < -10 || inner > -4 {
             return Err(DeserializeError::new(
                 "TaggedRangeNint",
@@ -220,14 +220,14 @@ impl TryFrom<i64> for TaggedRangeNint {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub struct TaggedRangeUint(pub(crate) u64);
+pub struct TaggedRangeUint(u64);
 
 impl TaggedRangeUint {
     pub fn get(&self) -> u64 {
         self.0
     }
 
-    pub fn new(inner: u64) -> Result<Self, DeserializeError> {
+    fn new(inner: u64) -> Result<Self, DeserializeError> {
         if inner < 3 || inner > 9 {
             return Err(DeserializeError::new(
                 "TaggedRangeUint",

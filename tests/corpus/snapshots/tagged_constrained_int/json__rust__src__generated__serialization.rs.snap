@@ -264,10 +264,10 @@ impl cbor_event::se::Serialize for TaggedCtlNe {
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag(11u64)?;
-        if self.0 >= 0 {
-            serializer.write_unsigned_integer(self.0 as u64)
+        if self.get() >= 0 {
+            serializer.write_unsigned_integer(self.get() as u64)
         } else {
-            serializer.write_negative_integer(self.0 as i64)
+            serializer.write_negative_integer(self.get() as i64)
         }
     }
 }
@@ -317,15 +317,7 @@ impl Deserialize for TaggedCtlNe {
                     .into());
                 }
             };
-            if inner == 1 {
-                return Err(DeserializeFailure::RangeCheck {
-                    found: inner as i128,
-                    min: Some(2),
-                    max: Some(0),
-                }
-                .into());
-            }
-            Ok(Self(inner))
+            Self::try_from(inner).map_err(DeserializeError::without_location)
         })()
         .map_err(|e| e.annotate("TaggedCtlNe"))
     }
@@ -337,10 +329,10 @@ impl cbor_event::se::Serialize for TaggedRangeExcl {
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag(11u64)?;
-        if self.0 >= 0 {
-            serializer.write_unsigned_integer(self.0 as u64)
+        if self.get() >= 0 {
+            serializer.write_unsigned_integer(self.get() as u64)
         } else {
-            serializer.write_negative_integer(self.0 as i64)
+            serializer.write_negative_integer(self.get() as i64)
         }
     }
 }
@@ -390,15 +382,7 @@ impl Deserialize for TaggedRangeExcl {
                     .into());
                 }
             };
-            if inner < -10 || inner > 9 {
-                return Err(DeserializeFailure::RangeCheck {
-                    found: inner as i128,
-                    min: Some(-10),
-                    max: Some(9),
-                }
-                .into());
-            }
-            Ok(Self(inner))
+            Self::try_from(inner).map_err(DeserializeError::without_location)
         })()
         .map_err(|e| e.annotate("TaggedRangeExcl"))
     }
@@ -410,10 +394,10 @@ impl cbor_event::se::Serialize for TaggedRangeIncl {
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag(11u64)?;
-        if self.0 >= 0 {
-            serializer.write_unsigned_integer(self.0 as u64)
+        if self.get() >= 0 {
+            serializer.write_unsigned_integer(self.get() as u64)
         } else {
-            serializer.write_negative_integer(self.0 as i64)
+            serializer.write_negative_integer(self.get() as i64)
         }
     }
 }
@@ -463,15 +447,7 @@ impl Deserialize for TaggedRangeIncl {
                     .into());
                 }
             };
-            if inner < -10 || inner > 10 {
-                return Err(DeserializeFailure::RangeCheck {
-                    found: inner as i128,
-                    min: Some(-10),
-                    max: Some(10),
-                }
-                .into());
-            }
-            Ok(Self(inner))
+            Self::try_from(inner).map_err(DeserializeError::without_location)
         })()
         .map_err(|e| e.annotate("TaggedRangeIncl"))
     }
@@ -483,10 +459,10 @@ impl cbor_event::se::Serialize for TaggedRangeNint {
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag(11u64)?;
-        if self.0 >= 0 {
-            serializer.write_unsigned_integer(self.0 as u64)
+        if self.get() >= 0 {
+            serializer.write_unsigned_integer(self.get() as u64)
         } else {
-            serializer.write_negative_integer(self.0 as i64)
+            serializer.write_negative_integer(self.get() as i64)
         }
     }
 }
@@ -536,15 +512,7 @@ impl Deserialize for TaggedRangeNint {
                     .into());
                 }
             };
-            if inner < -10 || inner > -4 {
-                return Err(DeserializeFailure::RangeCheck {
-                    found: inner as i128,
-                    min: Some(-10),
-                    max: Some(-4),
-                }
-                .into());
-            }
-            Ok(Self(inner))
+            Self::try_from(inner).map_err(DeserializeError::without_location)
         })()
         .map_err(|e| e.annotate("TaggedRangeNint"))
     }
@@ -556,7 +524,7 @@ impl cbor_event::se::Serialize for TaggedRangeUint {
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_tag(11u64)?;
-        serializer.write_unsigned_integer(self.0)
+        serializer.write_unsigned_integer(self.get())
     }
 }
 
@@ -573,15 +541,7 @@ impl Deserialize for TaggedRangeUint {
                     .into());
                 }
             };
-            if inner < 3 || inner > 9 {
-                return Err(DeserializeFailure::RangeCheck {
-                    found: inner as i128,
-                    min: Some(3),
-                    max: Some(9),
-                }
-                .into());
-            }
-            Ok(Self(inner))
+            Self::try_from(inner).map_err(DeserializeError::without_location)
         })()
         .map_err(|e| e.annotate("TaggedRangeUint"))
     }

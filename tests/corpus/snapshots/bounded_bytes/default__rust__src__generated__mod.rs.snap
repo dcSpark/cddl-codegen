@@ -20,14 +20,14 @@ pub mod serialization;
 use crate::generated::error::*;
 
 #[derive(Clone, Debug)]
-pub struct Hash(pub(crate) Vec<u8>);
+pub struct Hash(Vec<u8>);
 
 impl Hash {
     pub fn get(&self) -> &Vec<u8> {
         &self.0
     }
 
-    pub fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
+    fn new(inner: Vec<u8>) -> Result<Self, DeserializeError> {
         if inner.len() > 32 {
             return Err(DeserializeError::new(
                 "Hash",

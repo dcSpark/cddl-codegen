@@ -183,7 +183,8 @@ pub struct WitTaggedCtlNe(pub RefCell<cddl_lib::TaggedCtlNe>);
 
 impl wit_types::GuestTaggedCtlNe for WitTaggedCtlNe {
     fn new(inner: i64) -> Result<Self, String> {
-        let inner = cddl_lib::TaggedCtlNe::new(inner).map_err(err)?;
+        let inner: i64 = inner;
+        let inner = cddl_lib::TaggedCtlNe::try_from(inner).map_err(err)?;
         Ok(WitTaggedCtlNe(RefCell::new(inner)))
     }
 
@@ -210,7 +211,8 @@ pub struct WitTaggedRangeExcl(pub RefCell<cddl_lib::TaggedRangeExcl>);
 
 impl wit_types::GuestTaggedRangeExcl for WitTaggedRangeExcl {
     fn new(inner: i64) -> Result<Self, String> {
-        let inner = cddl_lib::TaggedRangeExcl::new(inner).map_err(err)?;
+        let inner: i64 = inner;
+        let inner = cddl_lib::TaggedRangeExcl::try_from(inner).map_err(err)?;
         Ok(WitTaggedRangeExcl(RefCell::new(inner)))
     }
 
@@ -237,7 +239,8 @@ pub struct WitTaggedRangeIncl(pub RefCell<cddl_lib::TaggedRangeIncl>);
 
 impl wit_types::GuestTaggedRangeIncl for WitTaggedRangeIncl {
     fn new(inner: i64) -> Result<Self, String> {
-        let inner = cddl_lib::TaggedRangeIncl::new(inner).map_err(err)?;
+        let inner: i64 = inner;
+        let inner = cddl_lib::TaggedRangeIncl::try_from(inner).map_err(err)?;
         Ok(WitTaggedRangeIncl(RefCell::new(inner)))
     }
 
@@ -264,7 +267,8 @@ pub struct WitTaggedRangeNint(pub RefCell<cddl_lib::TaggedRangeNint>);
 
 impl wit_types::GuestTaggedRangeNint for WitTaggedRangeNint {
     fn new(inner: i64) -> Result<Self, String> {
-        let inner = cddl_lib::TaggedRangeNint::new(inner).map_err(err)?;
+        let inner: i64 = inner;
+        let inner = cddl_lib::TaggedRangeNint::try_from(inner).map_err(err)?;
         Ok(WitTaggedRangeNint(RefCell::new(inner)))
     }
 
@@ -291,7 +295,8 @@ pub struct WitTaggedRangeUint(pub RefCell<cddl_lib::TaggedRangeUint>);
 
 impl wit_types::GuestTaggedRangeUint for WitTaggedRangeUint {
     fn new(inner: u64) -> Result<Self, String> {
-        let inner = cddl_lib::TaggedRangeUint::new(inner).map_err(err)?;
+        let inner: u64 = inner;
+        let inner = cddl_lib::TaggedRangeUint::try_from(inner).map_err(err)?;
         Ok(WitTaggedRangeUint(RefCell::new(inner)))
     }
 

@@ -17,12 +17,12 @@ impl cbor_event::se::Serialize for Hash {
         serializer: &'se mut Serializer,
     ) -> cbor_event::Result<&'se mut Serializer> {
         serializer.write_bytes_sz(
-            &self.inner,
+            self.get(),
             self.encodings
                 .as_ref()
                 .map(|encs| encs.inner_encoding.clone())
                 .unwrap_or_default()
-                .to_str_len_sz(self.inner.len() as u64),
+                .to_str_len_sz(self.get().len() as u64),
         )
     }
 }
@@ -33,18 +33,9 @@ impl Deserialize for Hash {
             let (inner, inner_encoding) = raw
                 .bytes_sz()
                 .map(|(bytes, enc)| (bytes, StringEncoding::from(enc)))?;
-            if inner.len() > 32 {
-                return Err(DeserializeFailure::RangeCheck {
-                    found: inner.len() as i128,
-                    min: None,
-                    max: Some(32),
-                }
-                .into());
-            }
-            Ok(Self {
-                inner,
-                encodings: Some(HashEncoding { inner_encoding }),
-            })
+            let mut value = Self::try_from(inner).map_err(DeserializeError::without_location)?;
+            value.encodings = Some(HashEncoding { inner_encoding });
+            Ok(value)
         })()
         .map_err(|e| e.annotate("Hash"))
     }

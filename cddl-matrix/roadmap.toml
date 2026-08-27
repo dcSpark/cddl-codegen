@@ -148,7 +148,6 @@ entries = [
   "matrix.incremental-group-choice-extension",
   "matrix.heterogeneous-array.occurrence-bounds",
   "matrix.open-array.optional-adjacency",
-  "matrix.heterogeneous-array.atomic-bounds-handover",
   "matrix.fixed-array.static-representation",
   "shared-carrier-delivery-requirements",
   "matrix.inline-group-occurrence-carrier",
@@ -637,20 +636,33 @@ body_md = '''### Compose exact static-array JSON support through containing shap
 
 Exact ordinary/preserve `n*n T` occurrences now use `[T; n]` across Rust, CBOR, wasm, component,
 cross-crate projection, matrix classification, and boundary vectors. The pinned serde/schemars
-versions only derive arrays through length 32, so the generated `static_array` runtime presently
-adapts a direct field/newtype payload and a loose `Vec<[T; N]>` occurrence when `T` is not CDDL
-`any`. Direct/optional exact `any` arrays use the natural-JSON static adapter. That is not a general
-solution: an optional loose sequence, bounded sequence, map value, nested exact array, or another
-containing shape would still require `Serialize`/`Deserialize`/`JsonSchema` directly on a wide
-`[T; N]`. With either JSON flag, the generator now rejects those shapes loudly before codegen rather
-than emitting a crate that fails to compile.
+versions only derive arrays through length 32. The generated `static_array` runtime recursively
+adapts an ordinary, `@duplicates preserve`, or `@duplicates reject` loose, nonempty, bounded,
+nullable, or exact collection tree containing a wide exact array or an exact natural-`any` position.
+Every node stays a JSON list;
+JSON stages loose data and restricted nodes re-enter their native checked `TryFrom<Vec<_>>` doors,
+while schemas retain each node's authored bounds. The shared descriptor covers direct field/newtype
+payloads, optional fields, aliases, and type-choice payloads, including a natural rather than tagged
+AnyCbor leaf.
+
+It is not a general container solution: map/table entries, open-struct map rest rows, and dynamic
+map rows remain outside the recursive descriptor. Captured open-array occurrence segments now use it
+at their derive-owned field seam, retaining the established named list shape, loose omission/defaulting,
+and restricted-carrier door. Duplicate-reject loose/nonempty/bounded/exact set carriers
+now enter their existing `OrderedSet` / `NonEmptyOrderedSet` / `BoundedOrderedSet`
+`TryFrom<Vec<_>>` door, preserve insertion order, and publish `uniqueItems: true` in list schemas.
+Optional+nullable
+(`? field: (exact-array / null)`) fields now compose their outer presence option with the recursive
+descriptor for the inner nullable value, preserving absent/present-null/present-value JSON and the
+optional nullable schema. With either JSON flag, the generator still rejects the remaining containers
+before codegen rather than emitting a crate that fails to compile.
 
 '''
 work_state = "ready"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "wrong_public_api"
-acceptance_md = '''Make JSON derives and schema generation compositional for every supported position that contains a wide exact ordinary/preserve array, including optional/loose/bounded sequences, map values, nested exact arrays, records, aliases, and type choices; preserve the ordinary JSON list surface and exact inner minItems/maxItems. Preserve CDDL `any`'s natural JSON rendering rather than falling back to AnyCbor's tagged codec, including nested exact-any arrays. Add execution coverage for representative nesting families. Until then, reject every unadapted containing shape under either JSON flag before codegen; do not claim complete JSON support while any containing shape still relies on serde/schemars' length-32 array traits.'''
+acceptance_md = '''Extend the JSON derives and schema handover through the remaining map-containing containers that hold a wide ordinary/preserve or duplicate-reject array: map/table entries, open-struct map rest rows, and dynamic map rows. Each newly admitted restricted carrier must stage loose data and enter its existing checked construction door; schemas must retain the outer bounds as well as each exact inner `minItems`/`maxItems`. Preserve CDDL `any`'s natural JSON rendering rather than falling back to AnyCbor's tagged codec. Add execution coverage for every newly admitted carrier and keep every residue rejected under either JSON flag until its generated crate compiles without serde/schemars' length-32 array traits.'''
 priority_band = "normal"
 priority_rationale_md = '''The native carrier is shipped, but JSON flags must not turn otherwise-supported CDDL nesting into a generated-crate compile failure. The remaining work is an adapter-composition design, not a reason to revert the representation.'''
 
@@ -922,29 +934,6 @@ action_on_fire_md = '''derive the grammar denominator
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
 event_md = '''a valid-CDDL generation defect is reported in a blank cell
-'''
-
-[[record]]
-id = "matrix.heterogeneous-array.atomic-bounds-handover"
-title = "Atomically hand over bounded scalar and byte/text values to private-field newtypes"
-
-[record.payload]
-kind = "work"
-body_md = '''### Atomically hand over bounded scalar and byte/text values to private-field newtypes
-
-Value windows (`uint .le N`, `.size` ranges on bytes/text) need private-field newtypes whose
-`TryFrom` door replaces today's ctor/deserialize checks (the `value_bounds_check_line` emission
-sites).
-
-'''
-work_state = "ready"
-work_intent = "optimize"
-work_kind = "optimization"
-risk = "wrong_public_api"
-acceptance_md = '''Represent bounded scalar and byte/text values with private-field newtypes and make TryFrom the construction door that replaces both constructor-time and deserializer-only value_bounds_check_line enforcement.
-'''
-priority_band = "normal"
-priority_rationale_md = '''The invariant currently has multiple enforcement sites; an atomic private carrier removes invalid construction without depending on the separate heterogeneous-occurrence decoder design.
 '''
 
 [[record]]
@@ -2584,11 +2573,6 @@ target = "matrix.float-table-key-domain"
 source = "matrix.fixed-map-key-kinds"
 kind = "related"
 target = "matrix.nint-capability"
-
-[[relation]]
-source = "matrix.heterogeneous-array.occurrence-bounds"
-kind = "parent_of"
-target = "matrix.heterogeneous-array.atomic-bounds-handover"
 
 [[relation]]
 source = "matrix.incremental-group-choice-extension"

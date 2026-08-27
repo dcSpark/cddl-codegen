@@ -1321,7 +1321,7 @@ fn generate_enum(
             && let EnumVariantData::RustType(ty) = &variant.data
         {
             let annotations = super::natural_any_position(ty, false, cli).map_or_else(
-                || super::static_array_serde_annotations(types, ty, false, cli),
+                || super::static_array_serde_annotations(types, ty, false, false, cli),
                 |position| super::natural_any_serde_annotations(cli, position),
             );
             for annotation in annotations {

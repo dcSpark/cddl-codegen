@@ -3448,6 +3448,58 @@ fn json_schema_reachable_claims(
         visited: &mut BTreeSet<RustIdent>,
         generic_bases: &BTreeSet<RustIdent>,
     ) {
+        // A recursive static-array descriptor supplies this whole schema body itself. In
+        // particular, a nullable alias can lower to `Option<[T; N]>`, which has no standalone
+        // JsonSchema implementation on the pinned array-trait versions; following it here would
+        // register an impossible `claim_reachable` despite the enclosing callback never asking for
+        // that trait.
+        if recursive_exact_array_descriptor(types, ty, false, false, cli).is_some() {
+            fn walk_descriptor_leaf(
+                types: &IntermediateTypes<'_>,
+                ty: &RustType,
+                cli: &Cli,
+                claims: &mut BTreeSet<String>,
+                visited: &mut BTreeSet<RustIdent>,
+                generic_bases: &BTreeSet<RustIdent>,
+            ) {
+                match &ty.conceptual_type {
+                    // A named transparent alias is only a carrier spelling here. Unfold it so a
+                    // `Vec<Alias<Option<[T; N]>>>` reaches a real terminal leaf without claiming
+                    // the alias's impossible pinned-array JsonSchema implementation.
+                    ConceptualRustType::Rust(ident) => {
+                        if let Some(alias) = types.resolve_alias(&AliasIdent::Rust(ident.clone())) {
+                            if types.scope(ident).export() {
+                                walk_descriptor_leaf(
+                                    types,
+                                    &alias,
+                                    cli,
+                                    claims,
+                                    visited,
+                                    generic_bases,
+                                );
+                            }
+                        } else {
+                            claim_named(types, ident, cli, claims, visited, generic_bases, true);
+                        }
+                    }
+                    ConceptualRustType::Alias(_, inner) => {
+                        let mut target = ty.clone();
+                        target.conceptual_type = (**inner).clone();
+                        walk_descriptor_leaf(types, &target, cli, claims, visited, generic_bases);
+                    }
+                    ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
+                        walk_descriptor_leaf(types, inner, cli, claims, visited, generic_bases)
+                    }
+                    // NaturalAny owns a permissive schema directly, so it has no JsonSchema edge.
+                    ConceptualRustType::Any
+                    | ConceptualRustType::Map(_, _)
+                    | ConceptualRustType::Fixed(_)
+                    | ConceptualRustType::Primitive(_) => {}
+                }
+            }
+            walk_descriptor_leaf(types, ty, cli, claims, visited, generic_bases);
+            return;
+        }
         match &ty.conceptual_type {
             ConceptualRustType::Rust(ident) => {
                 claim_named(types, ident, cli, claims, visited, generic_bases, true)
@@ -3594,15 +3646,14 @@ pub fn rust_crate_struct_scope_from_wasm(
 
 /// Push a single-field tuple struct's inner field as `pub(crate)`, guarding the over-width case
 /// that would otherwise abort generation. This is the ONE owner of that visibility literal and of
-/// the `#[rustfmt::skip]` workaround, for BOTH single-field tuple-struct emission sites: every wasm
-/// wrapper (via `WasmWrapper::push_inner_field`) and the rust-crate newtype wrapper under the
-/// default profile (`wrappers.rs`). The two are different crates and different callers, but the
-/// emitted shape — `pub struct <N>(pub(crate) <Type>);` — and therefore the rustfmt hazard are
-/// identical, so the predicate and the fallback shape have one home.
+/// the `#[rustfmt::skip]` workaround, for BOTH ordinary tuple-struct emission sites: every wasm
+/// wrapper (via `WasmWrapper::push_inner_field`) and the rust-crate wrapper under the default
+/// profile (`wrappers.rs`). B5-404 scalar windows bypass this helper to remain private. The two
+/// callers here are different crates, but the emitted shape — `pub struct <N>(pub(crate) <Type>);`
+/// — and therefore the rustfmt hazard are identical, so the predicate and fallback shape have one home.
 ///
 /// `pub(crate)`, not private: on the wasm side wasm_bindgen ignores non-pub fields so the ABI/API
-/// surface is unchanged, and on both sides hand files (living outside the always-clobbered
-/// generated subtree under the thin-root layout) can reach the wrapped value via `self.0`.
+/// surface is unchanged, and ordinary hand-owned wrappers may expose their carrier via `self.0`.
 fn push_overwidth_guarded_tuple_field(s: &mut codegen::Struct, ty: codegen::Type) {
     // Render the type exactly as it will be emitted, to measure the one-line width of the tuple
     // field. rustfmt's default max_width is 100; a field line wider than that trips
@@ -5228,16 +5279,221 @@ pub fn natural_any_serde_annotations(cli: &Cli, pos: NaturalAnyPosition) -> Vec<
     out
 }
 
-/// JSON annotations for a typed exact static array. The pinned serde/schemars only implement their
-/// array traits through length 32, so these route `[T; N]` through the generated generic adapter
-/// without changing its ordinary JSON-array surface. `any` positions use their natural adapter
-/// instead; callers apply this only when `natural_any_position` returned `None`.
+/// JSON annotations for a recursive static-array sequence tree. The pinned serde/schemars only
+/// implement array traits through length 32, so the descriptor owns every sequence carrier between
+/// a field/payload and an exact array. Restricted carriers decode through their native `TryFrom`
+/// door; `any` leaves use their natural adapter rather than `AnyCbor`'s tagged codec.
+fn recursive_exact_array_descriptor(
+    types: &IntermediateTypes,
+    ty: &RustType,
+    field_optional: bool,
+    prefer_legacy_direct_typed_sequence: bool,
+    cli: &Cli,
+) -> Option<(String, String)> {
+    fn alias_base<'a>(types: &'a IntermediateTypes, ty: &'a RustType) -> Option<&'a RustType> {
+        match ty.conceptual_type.resolve_alias_shallow() {
+            ConceptualRustType::Rust(ident) => types
+                .type_aliases()
+                .get(&AliasIdent::Rust(ident.clone()))
+                .map(|alias| &alias.base_type),
+            _ => None,
+        }
+    }
+
+    fn contains_exact_natural_any(
+        types: &IntermediateTypes,
+        ty: &RustType,
+        under_exact: bool,
+    ) -> bool {
+        if let Some(base) = alias_base(types, ty) {
+            return contains_exact_natural_any(types, base, under_exact);
+        }
+        match ty.conceptual_type.resolve_alias_shallow() {
+            ConceptualRustType::Any => under_exact,
+            ConceptualRustType::Array(inner) => contains_exact_natural_any(
+                types,
+                inner,
+                under_exact || ty.exact_homogeneous_array_len_checked().is_some(),
+            ),
+            ConceptualRustType::Optional(inner) => {
+                contains_exact_natural_any(types, inner, under_exact)
+            }
+            ConceptualRustType::Map(key, value) => {
+                contains_exact_natural_any(types, key, under_exact)
+                    || contains_exact_natural_any(types, value, under_exact)
+            }
+            _ => false,
+        }
+    }
+
+    fn contains_wide_static_array(types: &IntermediateTypes, ty: &RustType) -> bool {
+        if let Some(base) = alias_base(types, ty) {
+            return contains_wide_static_array(types, base);
+        }
+        ty.exact_homogeneous_array_len_checked()
+            .is_some_and(|len| len > 32)
+            || match ty.conceptual_type.resolve_alias_shallow() {
+                ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
+                    contains_wide_static_array(types, inner)
+                }
+                ConceptualRustType::Map(key, value) => {
+                    contains_wide_static_array(types, key)
+                        || contains_wide_static_array(types, value)
+                }
+                _ => false,
+            }
+    }
+
+    fn contains_exact_node(types: &IntermediateTypes, ty: &RustType) -> bool {
+        if let Some(base) = alias_base(types, ty) {
+            return contains_exact_node(types, base);
+        }
+        if ty.exact_homogeneous_array_len_checked().is_some() {
+            return true;
+        }
+        match ty.conceptual_type.resolve_alias_shallow() {
+            ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
+                contains_exact_node(types, inner)
+            }
+            _ => false,
+        }
+    }
+
+    // Preserve the long-standing direct typed `Vec<[T; N]>` callback. It is narrower than the
+    // recursive descriptor: the outer carrier is an ordinary required Vec, its immediate exact
+    // element is typed, and anything beneath that element still has ordinary serde/schemars traits.
+    // In particular, `T` may be a map — `static_array_seq` adapts only the exact-array handover and
+    // never tries to model the map itself. Optional/direct-any/deeper wide-or-natural-exact shapes
+    // need the descriptor instead.
+    fn is_legacy_direct_typed_static_array_sequence(
+        types: &IntermediateTypes,
+        ty: &RustType,
+        field_optional: bool,
+    ) -> bool {
+        if field_optional
+            || ty.duplicates_reject()
+            || !matches!(ty.config.bounds, None | Some((None, None)))
+        {
+            return false;
+        }
+        let ConceptualRustType::Array(element) = ty.conceptual_type.resolve_alias_shallow() else {
+            return false;
+        };
+        let ConceptualRustType::Array(inner) = element.conceptual_type.resolve_alias_shallow()
+        else {
+            return false;
+        };
+        element.exact_homogeneous_array_len_checked().is_some()
+            && !contains_wide_static_array(types, inner)
+            && !contains_exact_natural_any(types, ty, false)
+    }
+
+    fn shape(types: &IntermediateTypes, ty: &RustType, base: &str) -> Option<String> {
+        if let Some(alias) = alias_base(types, ty) {
+            return shape(types, alias, base);
+        }
+        match ty.conceptual_type.resolve_alias_shallow() {
+            ConceptualRustType::Any => Some(format!("{base}::NaturalAny")),
+            ConceptualRustType::Array(inner) => {
+                // Exact recognition must precede the restricted-sequence cases: `1*1` is the
+                // native `[T; 1]`, never `NonEmptyVec<T>`. Exact reject sets intentionally fall
+                // through to their bounded ordered-set descriptor: `[T; N]` cannot be unique.
+                if let Some(len) = ty.exact_homogeneous_array_len_checked() {
+                    Some(format!(
+                        "{base}::Exact<{}, {len}>",
+                        shape(types, inner, base)?
+                    ))
+                } else if ty.duplicates_reject() {
+                    let inner = shape(types, inner, base)?;
+                    match ty.config.bounds {
+                        None | Some((None, None)) => Some(format!("{base}::RejectSet<{inner}>")),
+                        Some((Some(1), None)) => {
+                            Some(format!("{base}::RejectSetNonEmpty<{inner}>"))
+                        }
+                        Some((min, max)) => Some(format!(
+                            "{base}::RejectSetBounded<{inner}, {}, {}>",
+                            min.unwrap_or(0),
+                            max.unwrap_or(i128::from(u64::MAX))
+                        )),
+                    }
+                } else {
+                    let inner = shape(types, inner, base)?;
+                    match ty.config.bounds {
+                        None | Some((None, None)) => Some(format!("{base}::Loose<{inner}>")),
+                        Some((Some(1), None)) => Some(format!("{base}::NonEmpty<{inner}>")),
+                        Some((min, max)) => Some(format!(
+                            "{base}::Bounded<{inner}, {}, {}>",
+                            min.unwrap_or(0),
+                            max.unwrap_or(i128::from(u64::MAX))
+                        )),
+                    }
+                }
+            }
+            ConceptualRustType::Optional(inner) => {
+                Some(format!("{base}::Optional<{}>", shape(types, inner, base)?))
+            }
+            ConceptualRustType::Map(_, _) => None,
+            _ => Some(format!("{base}::Leaf")),
+        }
+    }
+
+    let root_is_direct_exact = match ty.conceptual_type.resolve_alias_shallow() {
+        ConceptualRustType::Array(inner) => {
+            ty.exact_homogeneous_array_len_checked().is_some()
+                && !contains_exact_node(types, inner)
+                && !contains_exact_natural_any(types, ty, false)
+        }
+        _ => false,
+    };
+    if root_is_direct_exact
+        || (prefer_legacy_direct_typed_sequence
+            && is_legacy_direct_typed_static_array_sequence(types, ty, field_optional))
+        || !contains_exact_node(types, ty)
+        || (!contains_wide_static_array(types, ty) && !contains_exact_natural_any(types, ty, false))
+    {
+        return None;
+    }
+    let base = format!("{}::static_array", cli.common_import_rust());
+    let mut descriptor = shape(types, ty, &base)?;
+    let mut member_type = ty.for_rust_member(types, false, cli);
+    if field_optional {
+        descriptor = format!("{base}::Optional<{descriptor}>");
+        member_type = format!("Option<{member_type}>");
+    }
+    Some((descriptor, member_type))
+}
+
 pub fn static_array_serde_annotations(
     types: &IntermediateTypes,
     ty: &RustType,
     optional: bool,
+    prefer_legacy_direct_typed_sequence: bool,
     cli: &Cli,
 ) -> Vec<String> {
+    if let Some((descriptor, member_type)) = recursive_exact_array_descriptor(
+        types,
+        ty,
+        optional,
+        prefer_legacy_direct_typed_sequence,
+        cli,
+    ) {
+        let base = format!("{}::static_array", cli.common_import_rust());
+        let mut out = Vec::new();
+        if cli.json_serde_derives {
+            out.push(format!(
+                "#[serde(serialize_with = \"{base}::serialize_recursive::<{descriptor}, _, _>\", deserialize_with = \"{base}::deserialize_recursive::<{descriptor}, _, _>\")]"
+            ));
+            if optional {
+                out.push("#[serde(default)]".to_owned());
+            }
+        }
+        if cli.json_schema_export {
+            out.push(format!(
+                "#[schemars(schema_with = \"{base}::recursive_schema::<{descriptor}, {member_type}>\")]"
+            ));
+        }
+        return out;
+    }
     let Some(len) = ty.exact_homogeneous_array_len_checked() else {
         return Vec::new();
     };
@@ -5271,14 +5527,54 @@ pub fn static_array_serde_annotations(
     out
 }
 
+/// JSON annotations for the one field shape that combines two independent `Option` meanings:
+/// `? f: (T / null)` stores `Option<Option<T>>`. The recursive descriptor already describes the
+/// INNER nullable `Option<T>`; this callback owns only the OUTER presence option. It deliberately
+/// replaces, rather than accompanies, the ordinary `double_option` callback because serde allows
+/// one field callback. The schema callback likewise describes the inner member type, leaving
+/// optional-property requiredness to the field's default/skip shape.
+pub fn static_array_double_option_serde_annotations(
+    types: &IntermediateTypes,
+    ty: &RustType,
+    cli: &Cli,
+) -> Vec<String> {
+    let Some((descriptor, member_type)) =
+        recursive_exact_array_descriptor(types, ty, false, true, cli)
+    else {
+        return Vec::new();
+    };
+    let base = format!("{}::static_array", cli.common_import_rust());
+    let mut out = Vec::new();
+    if cli.json_serde_derives {
+        out.push(format!(
+            "#[serde(serialize_with = \"{base}::serialize_optional_recursive::<{descriptor}, _, _>\", deserialize_with = \"{base}::deserialize_optional_recursive::<{descriptor}, _, _>\")]"
+        ));
+        out.push("#[serde(default)]".to_owned());
+        out.push("#[serde(skip_serializing_if = \"Option::is_none\")]".to_owned());
+    }
+    if cli.json_schema_export {
+        out.push(format!(
+            "#[schemars(schema_with = \"{base}::recursive_schema::<{descriptor}, {member_type}>\")]"
+        ));
+    }
+    out
+}
+
 /// JSON annotations for a loose homogeneous collection whose elements are exact static arrays.
 /// A derive for `Vec<[T; N]>` still asks serde/schemars for traits on the wide inner array, so the
 /// sequence adapter owns each element's list-to-array handover instead.
 pub fn static_array_sequence_serde_annotations(
     types: &IntermediateTypes,
     ty: &RustType,
+    optional: bool,
     cli: &Cli,
 ) -> Vec<String> {
+    // A recursive descriptor owns every non-legacy sequence tree. Required direct typed
+    // `Vec<[T; N]>` fields retain their established callback, so the sequence helper is the sole
+    // serde/schemars annotation on that narrow surface.
+    if recursive_exact_array_descriptor(types, ty, optional, true, cli).is_some() {
+        return Vec::new();
+    }
     let ConceptualRustType::Array(element) = ty.conceptual_type.resolve_alias_shallow() else {
         return Vec::new();
     };
