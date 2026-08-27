@@ -42,6 +42,7 @@ pub(crate) mod regen_over_prior_tests;
 pub(crate) mod registration_reference_tests;
 pub(crate) mod robustness_tests;
 pub(crate) mod rust_name_tests;
+pub(crate) mod scoped_symbol_provenance_tests;
 pub(crate) mod snapshot_tests;
 pub(crate) mod synthesized_name_registry_tests;
 pub(crate) mod timing_cells;

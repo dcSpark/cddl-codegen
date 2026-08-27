@@ -1232,13 +1232,15 @@ wasm once. It deliberately does not multiply preserve/JSON/component profiles: t
 plain-group occurrence, tag-payload, table/member, and group-choice-arm tests retain their
 profile-sensitive wire, remedy, and guard-order assertions.
 
-The homogeneous-occurrence focused test also carries one correct-kind control for a scoped generic
-parameter inside the tag-set idiom. It prevents the internal synthesized arm `A` from making generic
-parameter `a` inherit a plain-group refusal. That one control is deliberately not presented as a
-scope/provenance denominator: an unrelated *authored* outer group `A` still causes the same false
-rejection today. `matrix.scoped-symbol-provenance-grid` in `cddl-matrix/roadmap.toml` owns the pending
-normalization-derived product (scoped parameter × outer authored/synthesized claimant × semantic
-group guard × source order), including the current red authored-group cell.
+`scoped_symbol_provenance_tests::scoped_symbol_provenance_grid` is the local-tier denominator for
+generic source binding. It derives the case, hyphen/underscore, and camel-boundary collisions from
+`convert_to_camel_case`, crosses authored TYPE/plain-GROUP/synthesized-arm claimants and source order
+through the homogeneous occurrence, tag-payload, and table key/value seams, and compares each
+parameter target projection with its no-claimant control. Its IR companion pins that exact `a` binds
+parameter `a` while outer `A` remains outer `A`, then verifies the provenance is gone after concrete
+substitution. The remaining boundary is TYPE-choice *generation*: an inline choice containing a
+scoped parameter is deliberately a graceful refusal until a concrete instantiation-time union model
+exists; the grid retains both that refusal and the real plain-group TYPE-choice diagnostic.
 
 `rust_wasm_bindgen_feature_gated_crate_compiles_standalone` guards the rust crate's
 `--rust-wasm-feature` gate from the one direction no other build can witness: every

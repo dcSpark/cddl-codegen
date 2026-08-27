@@ -7,9 +7,9 @@ use crate::comment_ast::{DuplicatesPolicy, RuleMetadata, merge_metadata, metadat
 use crate::intermediate::{
     AliasIdent, AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant,
     EnumVariantData, FixedValue, FloatWindow, ForbiddenField, GenericDef, GenericInstance,
-    IntermediateTypes, ModuleScope, PlainGroupInfo, Primitive, Representation, RestKind, RestRow,
-    RestSemantics, RustField, RustIdent, RustRecord, RustStruct, RustStructType, RustType,
-    VariantIdent, reserved_pin_rejection,
+    GenericParamBinding, IntermediateTypes, ModuleScope, PlainGroupInfo, Primitive, Representation,
+    RestKind, RestRow, RestSemantics, RustField, RustIdent, RustRecord, RustStruct, RustStructType,
+    RustType, VariantIdent, reserved_pin_rejection,
 };
 use crate::utils::{
     append_number_if_duplicate, convert_to_camel_case, convert_to_snake_case,
@@ -87,34 +87,50 @@ pub fn parse_rule(
                 //     `repeated_rule_definition_rejections`), so no repeated name reaches here.
                 // (2) ignores control operators - only used in shelley spec to limit string length for application metadata
 
-                let generic_params = rule.generic_params.as_ref().map(|gp| {
+                let generic_param_scope = rule.generic_params.as_ref().map(|gp| {
                     gp.params
                         .iter()
-                        .map(|id| RustIdent::new(CDDLIdent::new(id.param.to_string())))
+                        .enumerate()
+                        .map(|(ordinal, id)| {
+                            (id.param.to_string(), GenericParamBinding::new(ordinal))
+                        })
                         .collect::<Vec<_>>()
                 });
-                if rule.value.type_choices.len() == 1 {
-                    let choice = &rule.value.type_choices.first().unwrap();
-                    parse_type(
-                        types,
-                        parent_visitor,
-                        &rust_ident,
-                        choice,
-                        None,
-                        generic_params,
-                        &RuleMetadata::default(),
-                        cli,
-                    );
+                let generic_params = generic_param_scope.as_ref().map(|scope| {
+                    scope
+                        .iter()
+                        .map(|(_, binding)| *binding)
+                        .collect::<Vec<_>>()
+                });
+                let parse_body = |types: &mut IntermediateTypes| {
+                    if rule.value.type_choices.len() == 1 {
+                        let choice = &rule.value.type_choices.first().unwrap();
+                        parse_type(
+                            types,
+                            parent_visitor,
+                            &rust_ident,
+                            choice,
+                            None,
+                            generic_params.clone(),
+                            &RuleMetadata::default(),
+                            cli,
+                        );
+                    } else {
+                        parse_type_choices(
+                            types,
+                            parent_visitor,
+                            &rust_ident,
+                            &rule.value.type_choices,
+                            None,
+                            generic_params.clone(),
+                            cli,
+                        );
+                    }
+                };
+                if let Some(params) = generic_param_scope {
+                    types.with_generic_param_scope(params.clone(), parse_body);
                 } else {
-                    parse_type_choices(
-                        types,
-                        parent_visitor,
-                        &rust_ident,
-                        &rule.value.type_choices,
-                        None,
-                        generic_params,
-                        cli,
-                    );
+                    parse_body(types);
                 }
             }
         }
@@ -1800,7 +1816,7 @@ fn register_fixed_singleton(
     fixed_type: RustType,
     tag: Option<usize>,
     rule_metadata: Option<&RuleMetadata>,
-    generic_params: Option<&[RustIdent]>,
+    generic_params: Option<&[GenericParamBinding]>,
     cli: &Cli,
     synthesized: bool,
 ) -> RustType {
@@ -2045,7 +2061,7 @@ fn parse_type_choices(
     name: &RustIdent,
     type_choices: &[TypeChoice],
     tag: Option<usize>,
-    generic_params: Option<Vec<RustIdent>>,
+    generic_params: Option<Vec<GenericParamBinding>>,
     cli: &Cli,
 ) {
     let optional_inner_type = if type_choices.len() == 2 {
@@ -3472,7 +3488,7 @@ fn parse_type(
     type_name: &RustIdent,
     type_choice: &TypeChoice,
     outer_tag: Option<usize>,
-    generic_params: Option<Vec<RustIdent>>,
+    generic_params: Option<Vec<GenericParamBinding>>,
     // Metadata carried in from an enclosing single-type wrapper of the SAME rule (a `#6.n(...)` tag
     // head or a parenthesized type). The cddl AST attaches the rule's trailing comment DSL (e.g.
     // `@newtype`) to the OUTER type1, so recursing into the inner type without threading this would
@@ -5366,9 +5382,11 @@ fn parse_group_type<'a>(
                     None => {
                         // if the only element is a basic group we don't need to create a new group but can just
                         // change how it is (de)serialized
-                        if let ConceptualRustType::Rust(elem_ident) =
-                            elem_type.conceptual_type.resolve_alias_shallow()
-                            && types.is_plain_group(elem_ident)
+                        if elem_type.is_basic(types)
+                            && matches!(
+                                elem_type.conceptual_type.resolve_alias_shallow(),
+                                ConceptualRustType::Rust(_)
+                            )
                         {
                             return GroupParsingType::WrappedBasicGroup(elem_type.not_basic());
                         }
@@ -5388,9 +5406,11 @@ fn parse_group_type<'a>(
                             ConceptualRustType::Fixed(_)
                         ) {
                             // Fall through to the one-member record lowering below.
-                        } else if let ConceptualRustType::Rust(elem_ident) =
-                            elem_type.conceptual_type.resolve_alias_shallow()
-                            && types.is_plain_group(elem_ident)
+                        } else if elem_type.is_basic(types)
+                            && matches!(
+                                elem_type.conceptual_type.resolve_alias_shallow(),
+                                ConceptualRustType::Rust(_)
+                            )
                         {
                             return GroupParsingType::WrappedBasicGroup(elem_type.not_basic());
                         } else {
@@ -6233,8 +6253,9 @@ fn rust_type_from_type2(
                             // `Rust(ident)` only would leave the group unregistered and the emitted
                             // alias chain dangling on a struct that was never defined. Same pattern
                             // as the `WrappedBasicGroup` sibling below.
-                            if let ConceptualRustType::Rust(element_ident) =
-                                element_type.conceptual_type.resolve_alias_shallow()
+                            if element_type.generic_param_binding.is_none()
+                                && let ConceptualRustType::Rust(element_ident) =
+                                    element_type.conceptual_type.resolve_alias_shallow()
                             {
                                 types.set_rep_if_plain_group(
                                     parent_visitor,
@@ -6311,8 +6332,9 @@ fn rust_type_from_type2(
                             // the referenced plain group to an Array-rep Record struct, exactly like
                             // the `HomogenousArray` sibling above. Without this the group is never
                             // emitted and the returned type dangles on a bare, non-existent struct.
-                            if let ConceptualRustType::Rust(element_ident) =
-                                basic_type.conceptual_type.resolve_alias_shallow()
+                            if basic_type.generic_param_binding.is_none()
+                                && let ConceptualRustType::Rust(element_ident) =
+                                    basic_type.conceptual_type.resolve_alias_shallow()
                             {
                                 types.set_rep_if_plain_group(
                                     parent_visitor,
@@ -6622,6 +6644,23 @@ fn rust_type(
                 return ConceptualRustType::Optional(Box::new(inner_rust_type)).into();
             }
         }
+        // A record-bodied generic can reach this MEMBER-position anonymous union even though a
+        // choice-bodied generic definition is rejected earlier.  There is no owner into which an
+        // instance can substitute the arm types: the anonymous enum is registered immediately,
+        // outside the generic definition's `RustStruct`, and later `cbor_types` sees unresolved
+        // `Rust(P)` and panics.  Refuse at the first point that still knows this is an inline
+        // choice under a scoped parameter.  Exact source lookup matters here too: outer `A` beside
+        // parameter `a` is an ordinary authored reference and must continue to reach the existing
+        // plain-group/type-choice diagnostic.
+        if let Some(parameter) = inline_choice_scoped_parameter(types, t) {
+            types.record_rejection(format!(
+                "an inline type choice containing scoped generic parameter `{parameter}` is unsupported — \
+                 this choice has no instantiation-time union substitution model, so its anonymous \
+                 enum cannot replace the parameter with each concrete argument. Move the choice to \
+                 the concrete use site, or make each concrete arm a supported named shape."
+            ));
+            return ConceptualRustType::Fixed(FixedValue::Null).into();
+        }
         let variants =
             create_variants_from_type_choices(types, parent_visitor, &t.type_choices, None, cli);
         let mut combined_name = String::new();
@@ -6686,6 +6725,116 @@ fn rust_type(
         );
         types.new_type(&CDDLIdent::new(combined_ident.to_string()), cli)
     }
+}
+
+/// Return an exact-source generic parameter used anywhere beneath an inline choice.  Every AST
+/// child is walked here rather than waiting for generation to encounter an unresolved `Rust(P)`:
+/// collection and generic-argument arms need the same graceful refusal as a bare parameter arm.
+/// The lookup itself remains exact-source so an outer `A` beside parameter `a` is never swept into
+/// the refusal merely because their emitted Rust identifiers collide.
+fn inline_choice_scoped_parameter(types: &IntermediateTypes, ty: &Type) -> Option<String> {
+    fn exact_parameter(types: &IntermediateTypes, raw: &str) -> Option<String> {
+        types
+            .active_generic_param_binding(raw)
+            .map(|_| raw.to_owned())
+    }
+
+    fn generic_args_parameter(
+        types: &IntermediateTypes,
+        args: Option<&GenericArgs>,
+    ) -> Option<String> {
+        args?
+            .args
+            .iter()
+            .find_map(|arg| type1_parameter(types, &arg.arg))
+    }
+
+    fn member_key_parameter(types: &IntermediateTypes, key: &MemberKey) -> Option<String> {
+        match key {
+            MemberKey::Type1 { t1, .. } => type1_parameter(types, t1),
+            // Bareword/value keys cannot bind a type parameter. `NonMemberKey` is parser-internal
+            // recovery state whose children are intentionally private to the upstream AST crate.
+            _ => None,
+        }
+    }
+
+    fn group_entry_parameter(types: &IntermediateTypes, entry: &GroupEntry) -> Option<String> {
+        match entry {
+            GroupEntry::ValueMemberKey { ge, .. } => ge
+                .member_key
+                .as_ref()
+                .and_then(|key| member_key_parameter(types, key))
+                .or_else(|| type_parameter(types, &ge.entry_type)),
+            GroupEntry::TypeGroupname { ge, .. } => exact_parameter(types, &ge.name.to_string())
+                .or_else(|| generic_args_parameter(types, ge.generic_args.as_ref())),
+            GroupEntry::InlineGroup { group, .. } => group_parameter(types, group),
+        }
+    }
+
+    fn group_parameter(types: &IntermediateTypes, group: &Group) -> Option<String> {
+        group.group_choices.iter().find_map(|choice| {
+            choice
+                .group_entries
+                .iter()
+                .find_map(|(entry, _)| group_entry_parameter(types, entry))
+        })
+    }
+
+    fn type2_parameter(types: &IntermediateTypes, type2: &Type2) -> Option<String> {
+        match type2 {
+            Type2::Typename {
+                ident,
+                generic_args,
+                ..
+            }
+            | Type2::Unwrap {
+                ident,
+                generic_args,
+                ..
+            }
+            | Type2::ChoiceFromGroup {
+                ident,
+                generic_args,
+                ..
+            } => exact_parameter(types, &ident.to_string())
+                .or_else(|| generic_args_parameter(types, generic_args.as_ref())),
+            Type2::TaggedData { tag, t, .. } => tag
+                .as_ref()
+                .and_then(|constraint| match constraint {
+                    token::TagConstraint::Type(raw) => exact_parameter(types, raw),
+                    token::TagConstraint::Literal(_) => None,
+                })
+                .or_else(|| type_parameter(types, t)),
+            Type2::DataMajorType { constraint, .. } => {
+                constraint.as_ref().and_then(|constraint| match constraint {
+                    token::TagConstraint::Type(raw) => exact_parameter(types, raw),
+                    token::TagConstraint::Literal(_) => None,
+                })
+            }
+            Type2::ParenthesizedType { pt, .. } => type_parameter(types, pt),
+            Type2::Map { group, .. }
+            | Type2::Array { group, .. }
+            | Type2::ChoiceFromInlineGroup { group, .. } => group_parameter(types, group),
+            _ => None,
+        }
+    }
+
+    fn type1_parameter(types: &IntermediateTypes, type1: &Type1) -> Option<String> {
+        type2_parameter(types, &type1.type2).or_else(|| {
+            type1
+                .operator
+                .as_ref()
+                .and_then(|operator| type2_parameter(types, &operator.type2))
+        })
+    }
+
+    fn type_parameter(types: &IntermediateTypes, ty: &Type) -> Option<String> {
+        ty.type_choices
+            .iter()
+            .find_map(|choice| type1_parameter(types, &choice.type1))
+    }
+
+    type_parameter(types, ty)
 }
 
 fn group_entry_optional(entry: &GroupEntry) -> bool {
@@ -7400,7 +7549,8 @@ fn parse_record_from_group_choice(
             // shallow-resolve — still selected the splicing emission downstream, so the run aborted
             // on a struct that was never defined. Same pattern as the `WrappedBasicGroup` arm in
             // `rust_type_from_type2`.
-            if let ConceptualRustType::Rust(ident) =
+            if field_type.generic_param_binding.is_none()
+                && let ConceptualRustType::Rust(ident) =
                 field_type.conceptual_type.resolve_alias_shallow()
             {
                 types.set_rep_if_plain_group(parent_visitor, ident, rep, cli);
@@ -8987,7 +9137,7 @@ fn parse_group_choice(
     name: &RustIdent,
     rep: Representation,
     tag: Option<usize>,
-    generic_params: Option<Vec<RustIdent>>,
+    generic_params: Option<Vec<GenericParamBinding>>,
     parent_rule_metadata: Option<&RuleMetadata>,
     // Whether this group choice is one arm of a multi-arm choice (`{ a } // { b }`) — threaded to
     // rest-row recognition (a rest row is rejected in a choice arm in v1).
@@ -9020,8 +9170,9 @@ fn parse_group_choice(
                 // Aliases resolve first — an alias is transparent, so `a = [* kv_alias]` materializes
                 // the group exactly like `a = [* kv]`. Without the resolution the run exited 0 having
                 // emitted `pub type KvAlias = Kv;` with no `Kv` anywhere: a crate that does not compile.
-                if let ConceptualRustType::Rust(element_ident) =
-                    element_type.conceptual_type.resolve_alias_shallow()
+                if element_type.generic_param_binding.is_none()
+                    && let ConceptualRustType::Rust(element_ident) =
+                        element_type.conceptual_type.resolve_alias_shallow()
                 {
                     types.set_rep_if_plain_group(
                         parent_visitor,
@@ -9184,7 +9335,9 @@ fn parse_group_choice(
                 // already commits to. Without this the ident stays an unregistered plain group and
                 // `is_enum` trips its "must be a struct or a generic instance" assert at generation time.
                 for member in [&key_type, &value_type] {
-                    if let ConceptualRustType::Rust(member_ident) = &member.conceptual_type {
+                    if member.generic_param_binding.is_none()
+                        && let ConceptualRustType::Rust(member_ident) = &member.conceptual_type
+                    {
                         types.set_rep_if_plain_group(
                             parent_visitor,
                             member_ident,
@@ -9279,7 +9432,7 @@ pub fn parse_group(
     name: &RustIdent,
     rep: Representation,
     tag: Option<usize>,
-    generic_params: Option<Vec<RustIdent>>,
+    generic_params: Option<Vec<GenericParamBinding>>,
     parent_rule_metadata: &RuleMetadata,
     cli: &Cli,
 ) {
@@ -9401,7 +9554,8 @@ pub fn parse_group(
                     // keyless arm — a supported shape whose referenced struct owns its own keys —
                     // into the no-key rejection.
                     let serialize_as_embedded =
-                        if let ConceptualRustType::Rust(ident) =
+                        if ty.generic_param_binding.is_none()
+                            && let ConceptualRustType::Rust(ident) =
                             ty.conceptual_type.resolve_alias_shallow()
                         {
                             // we might need to generate it if not used elsewhere

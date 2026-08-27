@@ -326,6 +326,7 @@ fn render_rust_type(rule: &str, ty: &RustType, types: &IntermediateTypes) -> Ren
             conceptual_type: ty.conceptual_type.clone(),
             encodings: rest.to_vec(),
             config: ty.config.clone(),
+            generic_param_binding: ty.generic_param_binding,
         };
         let inner_s = render_rust_type(rule, &inner, types)?;
         return Ok(match last {

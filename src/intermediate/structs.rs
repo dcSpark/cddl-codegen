@@ -140,10 +140,7 @@ impl EnumVariant {
             Representation::Map => {
                 let mut ret = vec![];
                 for field in record.fields.iter() {
-                    match &field.key {
-                        Some(key) => ret.push(fixed_value_cbor_type(key)),
-                        None => return None,
-                    }
+                    ret.push(fixed_value_cbor_type(field.key.as_ref()?));
                 }
                 Some(ret)
             }
@@ -1802,16 +1799,22 @@ impl RustRecord {
 // definition of a generic type e.g. foo<T, U> = [x: T, y: U]
 #[derive(Debug)]
 pub struct GenericDef {
-    generic_params: Vec<RustIdent>,
+    generic_params: Vec<GenericParamBinding>,
     pub(super) orig: RustStruct,
 }
 
 impl GenericDef {
-    pub fn new(generic_params: Vec<RustIdent>, orig: RustStruct) -> Self {
+    pub fn new(generic_params: Vec<GenericParamBinding>, orig: RustStruct) -> Self {
         Self {
             generic_params,
             orig,
         }
+    }
+
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub(crate) fn original(&self) -> &RustStruct {
+        &self.orig
     }
 }
 
@@ -1944,7 +1947,7 @@ impl GenericInstance {
             .generic_params
             .iter()
             .zip(self.generic_args.iter())
-            .collect::<BTreeMap<&RustIdent, &RustType>>();
+            .collect::<BTreeMap<&GenericParamBinding, &RustType>>();
         let mut instance = def.orig.clone();
         instance.ident = self.instance_ident.clone();
 
@@ -1956,21 +1959,21 @@ impl GenericInstance {
         match &mut instance.variant {
             RustStructType::Record(record) => {
                 for field in record.fields.iter_mut() {
-                    field.rust_type = Self::resolve_type(&resolved_args, &field.rust_type);
+                    field.rust_type = Self::resolve_type(&resolved_args, &field.rust_type)?;
                 }
             }
             RustStructType::Table { domain, range, .. } => {
-                *domain = Self::resolve_type(&resolved_args, domain);
-                *range = Self::resolve_type(&resolved_args, range);
+                *domain = Self::resolve_type(&resolved_args, domain)?;
+                *range = Self::resolve_type(&resolved_args, range)?;
             }
             RustStructType::Array { element_type, .. } => {
-                *element_type = Self::resolve_type(&resolved_args, element_type);
+                *element_type = Self::resolve_type(&resolved_args, element_type)?;
             }
             RustStructType::TypeChoice { variants } | RustStructType::CStyleEnum { variants } => {
                 for variant in variants.iter_mut() {
                     match &mut variant.data {
                         EnumVariantData::RustType(ty) => {
-                            *ty = Self::resolve_type(&resolved_args, ty);
+                            *ty = Self::resolve_type(&resolved_args, ty)?;
                         }
                         EnumVariantData::Inlined(_) => unreachable!(),
                     }
@@ -1990,11 +1993,11 @@ impl GenericInstance {
                 // operations and bounds stay on `wrapped`, exactly as the Array/Table arms above.
                 match &mut wrapped.conceptual_type {
                     ConceptualRustType::Array(element) => {
-                        **element = Self::resolve_type(&resolved_args, element);
+                        **element = Self::resolve_type(&resolved_args, element)?;
                     }
                     ConceptualRustType::Map(domain, range) => {
-                        **domain = Self::resolve_type(&resolved_args, domain);
-                        **range = Self::resolve_type(&resolved_args, range);
+                        **domain = Self::resolve_type(&resolved_args, domain)?;
+                        **range = Self::resolve_type(&resolved_args, range)?;
                     }
                     _ if set_nominal => unreachable!(
                         "a generic set nominal always wraps a homogeneous occurrence array"
@@ -2061,13 +2064,32 @@ impl GenericInstance {
         }
     }
 
-    fn resolve_type(args: &BTreeMap<&RustIdent, &RustType>, orig: &RustType) -> RustType {
-        if let ConceptualRustType::Rust(ident) = &orig.conceptual_type
-            && let Some(resolved_type) = args.get(ident)
+    fn resolve_type(
+        args: &BTreeMap<&GenericParamBinding, &RustType>,
+        orig: &RustType,
+    ) -> Result<RustType, Box<dyn std::error::Error>> {
+        if let Some(binding) = &orig.generic_param_binding
+            && let Some(resolved_type) = args.get(binding)
         {
-            return (*resolved_type).clone();
+            // An argument's operations are INNER; operations around the parameter occurrence are
+            // OUTER.  `SerializingRustType` wraps in vector order, so append the occurrence chain
+            // after the argument chain (`#6.10(#6.20(uint))` is `[20, 10]`). A control such as
+            // `p .size 3` is lowered before substitution, while its actual meaning depends on the
+            // concrete argument's CDDL kind (bytes/string length vs an integer value range). Until
+            // controls are represented through instantiation, refuse that occurrence-local config
+            // rather than asserting or silently applying the wrong semantics.
+            if orig.config != RustTypeSerializeConfig::default() {
+                return Err(
+                    "generic parameter occurrence has unsupported configuration; move its control/directive to the concrete argument or use site until generic control substitution is modeled"
+                        .into(),
+                );
+            }
+            let mut resolved = (*resolved_type).clone();
+            resolved.encodings.extend(orig.encodings.iter().cloned());
+            resolved.generic_param_binding = None;
+            return Ok(resolved);
         }
-        orig.clone()
+        Ok(orig.clone())
     }
 
     /// Whether a generic argument ultimately names a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` struct. Follows

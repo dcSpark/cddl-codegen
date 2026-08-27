@@ -7,6 +7,7 @@
 //! as the boundary's documented leaks rather than being "fixed" here.
 use super::*;
 use crate::{generation::table_type, parsing::RUST_KEYWORDS, utils::is_valid_rust_ident};
+use std::num::NonZeroU32;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Representation {
@@ -814,7 +815,7 @@ pub struct RustTypeSerializeConfig {
 }
 
 /// A complete rust type, including serialization options that don't impact other areas
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct RustType {
     /// Conceptual type i.e. how it's used in non-serialization contexts
     pub conceptual_type: ConceptualRustType,
@@ -822,6 +823,46 @@ pub struct RustType {
     pub encodings: Vec<CBOREncodingOperation>,
     /// Further type configuration that aren't encoding operation
     pub config: RustTypeSerializeConfig,
+    /// The exact lexical generic-parameter binding this occurrence resolved to.  It is deliberately
+    /// independent of the emitted `RustIdent`: source spellings such as `a` and `A` can normalize
+    /// to one Rust name while denoting different declarations.  Generic resolution consumes this
+    /// marker and clears it from the concrete result, so it is parse/IR provenance rather than an
+    /// emitted type property.
+    pub generic_param_binding: Option<GenericParamBinding>,
+}
+
+// IR snapshots intentionally describe the generated-type surface rather than parser-only binding
+// provenance. Keep their established output stable while the binding remains directly inspectable
+// by targeted IR tests.
+impl std::fmt::Debug for RustType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RustType")
+            .field("conceptual_type", &self.conceptual_type)
+            .field("encodings", &self.encodings)
+            .field("config", &self.config)
+            .finish()
+    }
+}
+
+/// Compact identity of one parameter declaration in a generic rule. Exact CDDL source spellings
+/// stay only in the active parser scope; this token travels with the IR occurrence and selects the
+/// corresponding generic argument during substitution. Never resolve a parameter by `RustIdent`:
+/// that normalization is not a lexical binding rule.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct GenericParamBinding(NonZeroU32);
+
+impl GenericParamBinding {
+    pub fn new(ordinal: usize) -> Self {
+        Self(
+            NonZeroU32::new(
+                u32::try_from(ordinal)
+                    .expect("generic parameter ordinal must fit u32")
+                    .checked_add(1)
+                    .expect("generic parameter ordinal must fit u32"),
+            )
+            .expect("generic parameter binding must be nonzero"),
+        )
+    }
 }
 
 impl std::ops::Deref for RustType {
@@ -838,7 +879,13 @@ impl RustType {
             conceptual_type,
             encodings: Vec::new(),
             config: RustTypeSerializeConfig::default(),
+            generic_param_binding: None,
         }
+    }
+
+    pub fn with_generic_param_binding(mut self, binding: GenericParamBinding) -> Self {
+        self.generic_param_binding = Some(binding);
+        self
     }
 
     #[allow(clippy::wrong_self_convention)]
@@ -917,6 +964,7 @@ impl RustType {
             conceptual_type: self.conceptual_type.resolve_aliases(),
             encodings: self.encodings,
             config: self.config,
+            generic_param_binding: self.generic_param_binding,
         }
     }
 
@@ -951,6 +999,7 @@ impl RustType {
                 basic_override: self.config.basic_override,
                 duplicates: self.config.duplicates,
             },
+            generic_param_binding: self.generic_param_binding,
         }
     }
 
@@ -989,12 +1038,20 @@ impl RustType {
                 basic_override: true,
                 duplicates: self.config.duplicates,
             },
+            generic_param_binding: self.generic_param_binding,
         }
     }
 
     /// Checks whether FROM THIS CONTEXT the type is a basic group.
     /// Only relevant to rust structs.
     pub fn is_basic(&self, types: &IntermediateTypes) -> bool {
+        // A scoped parameter can normalize to a plain-group ident, but it denotes the parameter's
+        // eventual one-item argument, never a group splice.  This provenance check must precede
+        // registry membership: the binding is the lexical resolution result and survives until
+        // generic substitution clears it.
+        if self.generic_param_binding.is_some() {
+            return false;
+        }
         if let ConceptualRustType::Rust(ident) = self.conceptual_type.resolve_alias_shallow() {
             !self.config.basic_override && types.is_plain_group(ident)
         } else {

@@ -296,7 +296,7 @@ title = "Admission for matrix.scoped-symbol-provenance-grid."
 [record.payload]
 kind = "testing_system_admission"
 admission_kind = "independent_recurrence"
-claim_md = '''Two distinct normalized-registry claimants — an internal synthesized arm and an unrelated authored outer group — made the same scoped generic parameter inherit plain-group semantics. The proposed provenance grid would detect both instances and systematically extend their denominator across normalization pairs, source order, claimant provenance, and semantic seams.
+claim_md = '''Two distinct normalized-registry claimants — an internal synthesized arm and an unrelated authored outer group — made the same scoped generic parameter inherit plain-group semantics. The delivered local provenance grid now detects both across normalization pairs, source order, claimant provenance, and the supported semantic seams; the remaining matrix work is generic TYPE-choice generation, not admission of this binding class.
 '''
 evidence_ids = ["testing.incident-observation.scoped-symbol-provenance-grid.authored-group-proof", "testing.incident-observation.scoped-symbol-provenance-grid.synthesized-arm-proof"]
 incident_ids = ["testing.incident-observation.scoped-symbol-provenance-grid.authored-group", "testing.incident-observation.scoped-symbol-provenance-grid.synthesized-arm"]
@@ -3795,13 +3795,14 @@ title = "Authored-group claimant independently reproduced the scoped-symbol prov
 
 [record.payload]
 kind = "testing_incident"
-incident_posture = "attributed"
-signature_md = '''An unrelated authored plain group `A` makes the valid scoped generic parameter `a` in `xs<a> = [* a]` fail as if it referenced that group.
+incident_posture = "historical"
+signature_md = '''An unrelated authored plain group `A` made the valid scoped generic parameter `a` in `xs<a> = [* a]` fail as if it referenced that group.
 '''
 evidence_ids = ["testing.incident-observation.scoped-symbol-provenance-grid.authored-group-proof"]
-attribution_md = '''The homogeneous-occurrence guard substitutes membership in a Rust-ident-keyed global group registry for the resolved source binding. The authored claimant survives the synthesized-source filter that fixed the first incident, so this is an independent recurrence rather than a second observation of the same synthesized row.
+attribution_md = '''The homogeneous-occurrence guard substituted membership in a Rust-ident-keyed global group registry for the resolved source binding. Exact lexical binding provenance now prevents the authored claimant from being classified as the parameter, and the local grid retains this recurrence as a regression control.
 '''
 operating_rule_reference_id = "testing-current-capacities-types-scoped-provenance"
+retirement_reference_id = "testing-scoped-symbol-provenance-authored-group-regression"
 
 [[record]]
 id = "testing.incident-observation.scoped-symbol-provenance-grid.authored-group-proof"
@@ -3829,7 +3830,7 @@ result_md = '''The command exits 1 and reports `rule 'xs': a homogeneous array o
 '''
 at_commit = "56de1db1bc18834eafc6d88769d2e26ce5a4529b"
 observed_at = "2026-08-17"
-unprobed_remainder_md = '''This probe proves the authored `A`/parameter `a` homogeneous-occurrence cell. It does not enumerate other normalization pairs, source orders, claimant kinds, or semantic seams; that denominator is the admitted work.
+unprobed_remainder_md = '''This historical probe proves only the authored `A`/parameter `a` homogeneous-occurrence cell at the pre-fix commit. The delivered local provenance grid now owns the broader normalization-pair, source-order, claimant-kind, and supported-semantic-seam denominator.
 '''
 
 [record.payload.scope]
@@ -7593,6 +7594,13 @@ source = "testing.incident-observation.scoped-symbol-provenance-grid.authored-gr
 kind = "file_heading"
 path = "docs/docs/current_capacities.mdx"
 heading = "Types"
+
+[[reference]]
+id = "testing-scoped-symbol-provenance-authored-group-regression"
+source = "testing.incident-observation.scoped-symbol-provenance-grid.authored-group"
+kind = "test_symbol"
+test_id = "rust-test:cddl-codegen#tests::scoped_symbol_provenance_tests::scoped_symbol_provenance_grid"
+symbol = "tests::scoped_symbol_provenance_tests::scoped_symbol_provenance_grid"
 
 [[reference]]
 id = "testing-scoped-symbol-provenance-grid-work"

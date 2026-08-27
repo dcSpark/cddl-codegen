@@ -234,6 +234,10 @@ pub struct IntermediateTypes<'a> {
     // Some(group) = directly defined in .cddl (must call set_plain_group_representatio() later)
     // None = indirectly generated due to a group choice (no reason to call set_rep_if_plain_group() later but it won't crash)
     plain_groups: BTreeMap<RustIdent, PlainGroupInfo<'a>>,
+    /// Lexical generic scopes active while a generic definition body is parsed.  The resulting
+    /// `RustType` keeps the selected binding, so this is only resolution context, never the sole
+    /// provenance record.
+    generic_param_scopes: Vec<Vec<(String, GenericParamBinding)>>,
     type_aliases: BTreeMap<AliasIdent, AliasInfo>,
     rust_structs: BTreeMap<RustIdent, RustStruct>,
     prelude_to_emit: BTreeSet<String>,
@@ -470,6 +474,7 @@ impl<'a> IntermediateTypes<'a> {
         );
         Self {
             plain_groups: BTreeMap::new(),
+            generic_param_scopes: Vec::new(),
             type_aliases: Self::aliases(),
             rust_structs,
             prelude_to_emit: BTreeSet::new(),
@@ -887,6 +892,12 @@ impl<'a> IntermediateTypes<'a> {
 
     pub fn rust_structs(&self) -> &BTreeMap<RustIdent, RustStruct> {
         &self.rust_structs
+    }
+
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub(crate) fn generic_def(&self, ident: &RustIdent) -> Option<&GenericDef> {
+        self.generic_defs.get(ident)
     }
 
     /// The NAMED `{+ k => v}` table rule that owns the wasm surface for an inline `{+ k => v}` of the
@@ -2847,6 +2858,20 @@ impl<'a> IntermediateTypes<'a> {
     // are in the CDDL prelude so we don't generate code for all of them, potentially
     // bloating generated code a bit
     pub fn new_type(&mut self, raw: &CDDLIdent, cli: &Cli) -> RustType {
+        // Parameters shadow every registered claimant, but only when the BODY token has the exact
+        // source spelling declared by the parameter.  `RustIdent` normalization deliberately
+        // happens after this lookup: an outer `A` beside parameter `a` must remain the outer rule.
+        if let Some(binding) = self
+            .generic_param_scopes
+            .iter()
+            .rev()
+            .flat_map(|scope| scope.iter())
+            .find(|(source, _)| source == &raw.to_string())
+            .map(|(_, binding)| *binding)
+        {
+            return RustType::new(ConceptualRustType::Rust(RustIdent::new(raw.clone())))
+                .with_generic_param_binding(binding);
+        }
         let alias_ident = AliasIdent::new(raw.clone());
         let resolved = match self.resolve_alias(&alias_ident) {
             Some(ty) => ty,
@@ -2928,6 +2953,34 @@ impl<'a> IntermediateTypes<'a> {
         // homogeneous_array / special_map_key corpus round-trips and the golden_hex_preserve KATs)
         // — not something an assert here needs to guard.
         resolved
+    }
+
+    /// Parse one generic body with an exact-source lexical parameter scope.  The scope is stack
+    /// shaped because parsing a prelude expansion can re-enter normal type parsing; on return the
+    /// surrounding definition's bindings are again the only active ones.
+    pub fn with_generic_param_scope<R>(
+        &mut self,
+        bindings: Vec<(String, GenericParamBinding)>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        self.generic_param_scopes.push(bindings);
+        let result = f(self);
+        self.generic_param_scopes
+            .pop()
+            .expect("generic parameter scope must balance its parser entry");
+        result
+    }
+
+    /// The innermost lexical binding for this exact source token, if generic parsing is active.
+    /// This is intentionally not a `RustIdent` query: case/separator normalization is an emitted
+    /// spelling concern and must not alter CDDL lexical resolution.
+    pub fn active_generic_param_binding(&self, raw: &str) -> Option<GenericParamBinding> {
+        self.generic_param_scopes
+            .iter()
+            .rev()
+            .flat_map(|scope| scope.iter())
+            .find(|(source, _)| source == raw)
+            .map(|(_, binding)| *binding)
     }
 
     pub fn register_type_alias(&mut self, alias: RustIdent, mut info: AliasInfo) {
@@ -7871,6 +7924,7 @@ fn rewrite_inline_sets_in_type(rt: &mut RustType, minted: &mut BTreeMap<RustIden
         conceptual_type: ConceptualRustType::Rust(ident),
         encodings: outer_encodings,
         config: RustTypeSerializeConfig::default(),
+        generic_param_binding: None,
     };
 }
 

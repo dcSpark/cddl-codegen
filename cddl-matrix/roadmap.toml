@@ -2004,42 +2004,28 @@ title = "Scoped source-symbol provenance versus normalized IR registries"
 
 [record.payload]
 kind = "work"
-body_md = '''- **Scoped source-symbol provenance versus normalized IR registries.** Cycle 25 added semantic
-  plain-group guards after name resolution. Its first implementation asked the provenance-blind
-  `plain_groups` registry whether a resolved `RustIdent` was a group. A generic tag-set body
-  temporarily registers an internal arm named `A`, so the scoped generic parameter `a` was falsely
-  rejected as a repeated plain group. The delivered `is_directly_defined_plain_group` filter and
-  the `generic_parameter` control in
-  `homogeneous_plain_group_occurrences_reject_the_nested_wire_rewrite` cover that exact synthesized
-  row.
+body_md = '''- **Complete generic TYPE-choice substitution after the scoped-source binding delivery.** Exact
+  lexical source binding now keeps generic parameter occurrences distinct from authored and
+  synthesized claimants that normalize to the same `RustIdent`; the local
+  `scoped_symbol_provenance_tests::scoped_symbol_provenance_grid` covers case,
+  hyphen/underscore and camel-boundary pairs across claimant kinds, source order, homogeneous
+  occurrence, tag payload, and table key/value seams, with an IR pin for binding and post-substitution
+  cleanup. Real plain-group references retain their semantic rejections.
 
-  That control is not the denominator. A closeout probe found the authored-outer-scope twin still
-  red: `A = (x: uint, y: tstr)`, `xs<a> = [* a]`, `xs-uint = xs<uint>` parses, but cddl-codegen
-  rejects the scoped parameter as the unrelated global plain group `A`, because both source names
-  normalize to the same Rust identifier and the direct-authorship bit is true. No existing
-  identifier-hazard or synthesized-wrapper sweep reaches this class: those cross user names with
-  emitted Rust names, while this failure happens before emission when a semantic guard substitutes
-  registry membership for source binding identity.
-
-  Build one table-driven scope/provenance grid. Derive colliding source-name pairs from the real
-  CDDL-to-`RustIdent` normalization (at minimum case, hyphen/underscore and camel-boundary
-  convergence), then cross: scoped generic parameter versus no outer claimant, an authored TYPE
-  rule, an authored plain GROUP rule, and an internal synthesized group-choice arm; both claimant
-  source orders; and each resolved-type semantic seam that distinguishes groups (homogeneous
-  occurrence, tag payload, table domain and TYPE-choice arm). Valid parameter references must match
-  the no-claimant control byte-for-byte after instantiation, while actual references to the group
-  claimant must retain the delivered semantic rejection. Assert the resolved source binding and
-  provenance, not only the normalized Rust identifier or final generation outcome, so a future
-  registry can neither false-reject the parameter nor silently let a real group bypass the guard.
+  The remaining TYPE-choice parameter cell is deliberately refused: an inline record-body choice
+  such as `choice<T> = [value: T / tstr]` mints an anonymous union outside the generic definition's
+  substitution owner. Build an explicit instantiation-time union representation, then extend the
+  same grid so a parameter arm generates while a real plain-group arm still rejects. Do not infer
+  the binding from a normalized registry when that work begins.
 '''
 work_state = "ready"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "valid_rejection"
-acceptance_md = '''Add the normalization-derived scope/provenance product described above; pin the current `A`/`a` authored-group collision as a known red cell until fixed; make every valid generic-parameter cell generate identically to its no-outer-claimant control; keep real group references red at all four semantic seams; and register the grid in the ordinary local test tier with a completeness assertion over every axis.
+acceptance_md = '''Add an explicit instantiation-time union representation for inline generic TYPE choices; extend the existing provenance grid with a generating parameter-arm cell, while retaining its real-group TYPE-choice rejection control and exact-source binding assertions.
 '''
 priority_band = "high"
-priority_rationale_md = '''A valid generic program has a harness-free current failure, and the exact synthesized-row regression pin demonstrably did not cover its authored outer-scope twin.
+priority_rationale_md = '''Inline generic TYPE choices remain a valid, currently refused construct whose concrete substitution model is absent. The delivered provenance grid establishes the lexical-binding denominator this future work must preserve, including the authored and synthesized outer-scope regressions.
 '''
 admission_ids = ["testing.admission-path.scoped-symbol-provenance-grid"]
 
