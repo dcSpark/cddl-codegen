@@ -81,7 +81,6 @@ entries = [
   "testing.duplicates.member-position-extension",
   "part-md-mdmap",
   "testing.rustfmt-seam-error-leg-still-witness-needs-subprocess",
-  "testing.cross-version-preserve-vectors-beyond-std-alloc-rewrite",
   "testing.container-construct-conceptual-type-visitor-walks-flat-combinatorial",
   "part-what-hand-per-construct-buy-established-escape-produced",
   "part-cheap-system-matrix-shape-pairs-compiled-wasm-side",
@@ -963,51 +962,6 @@ action_on_fire_md = '''Set testing.crate-generates-json-schema-document-aggregat
 [record.payload.reopening_signal.predicate]
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.crate-generates-json-schema-document-aggregate-package's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
-
-[[record]]
-id = "testing.cross-version-preserve-vectors-beyond-std-alloc-rewrite"
-title = "Cross-version preserve vectors beyond the std→alloc rewrite."
-legacy_aliases = ["Next work 6"]
-
-[record.payload]
-kind = "work"
-body_md = '''6. **Cross-version preserve vectors beyond the std→alloc rewrite.** The preserve corpus is a
-   SAME-VERSION suite by construction: every case's `old.rs` and `new.rs` agree on generated code
-   bytes except where the fixture deliberately drifts one item, which is the shape a re-run of one
-   tool version produces. A tool UPGRADE is the other shape — it adds tokens and rewrites others
-   across a whole file at once, so every anchor shifts and each item the rewrite touched drifts —
-   and no vector expressed it until the no_std false positive arrived from a consumer with a
-   `compile_error!` sitting three lines above the comment it claimed was lost
-   (`cross_version_std_to_alloc_rewrite_self_cancels` /
-   `cross_version_rewrite_traps_only_the_reworded_line`). Those two cover the rewrite class the
-   upgrade actually performed; what has no witness is the same whole-file-shift shape crossing the
-   overlay's other units — an insert block, a replace block's needle, and a `keep` run whose
-   anchoring statement the upgrade rewrote — where the recorded original is matched by TOKENS and
-   no text-presence escape hatch exists. Authored as ordinary preserve fixtures, so the corpus and
-   its rustfmt-cycle sweep absorb them with zero harness change. '''
-signal_md = '''Reopening signal, measurable by a
-   consumer that already has the problem with two runs and a diff: an upgrade regen emits
-   `cddl-codegen:unpreserved-comment` or a trapped block that a second, otherwise-unchanged regen
-   does NOT reproduce — a block that self-clears is a false positive by construction, which is
-   exactly how the no_std one was identified.
-
-'''
-work_state = "deferred"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "silent_wrong_bytes"
-
-[record.payload.reopening_signal]
-observer = "fresh-evidence submitter for testing.cross-version-preserve-vectors-beyond-std-alloc-rewrite"
-dimension = "Cross-version preserve vectors beyond the std→alloc rewrite."
-observable = "An upgrade regeneration emits cddl-codegen:unpreserved-comment or traps an insert/replace/keep block and a second otherwise-unchanged regeneration does not reproduce it."
-action_on_fire_md = '''Set testing.cross-version-preserve-vectors-beyond-std-alloc-rewrite to ready and execute only its preserved acceptance/mechanical-layer scope.
-'''
-
-[record.payload.reopening_signal.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.cross-version-preserve-vectors-beyond-std-alloc-rewrite's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 '''
 
 [[record]]

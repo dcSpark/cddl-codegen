@@ -999,7 +999,10 @@ brace, and impl closing brace, alongside the folded match-tail family. The curre
 keeps the six new fixed-point geometries own-line (the raw comma-less unit-enum probe can fold, but
 is not the preserved fixed-point geometry); they are version-bump/re-ownership tripwires. It never
 pins a specific folded spelling, so the property remains a regression net over the corpus's actual
-fold/format classes, not a discovery instrument for formatter behavior outside it.
+fold/format classes, not a discovery instrument for formatter behavior outside it. The ordinary
+fixture corpus also spans whole-file tool-upgrade drift for comments plus `keep` runs, insert
+blocks, and replace blocks: these embody the rewrite shapes we have seen, not every possible future
+generator rewrite.
 
 Bless with `BLESS_PRESERVE_FIXTURES=1 cargo test --bin cddl-codegen preserve_fixtures`, then
 review the diff like a snapshot. Blessing never creates `error.txt` cases. The rustfmt-cycle sweep

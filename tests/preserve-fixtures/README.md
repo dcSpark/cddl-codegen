@@ -65,7 +65,7 @@ comment" leaves it unmarked and asserts it is dropped, self-cancelled, or trappe
 Every other case here regenerates at the SAME tool version, so `old.rs` and `new.rs` agree on
 generated code bytes except where the fixture deliberately drifts one item. A tool UPGRADE is a
 different shape — it adds code tokens and rewrites others across the whole file at once, shifting
-every anchor and drifting the items the rewrite touched — and that shape is what the two cases
+every anchor and drifting the items the rewrite touched — and that shape is what the five cases
 below cover. The class exists because the anchored suppressions (positional self-cancel, insertion-
 point dedup) cancel a generator comment only where the two sides agree on position: under an
 upgrade they cannot fire, and only the text-presence check keeps a comment the fresh emission
@@ -80,6 +80,15 @@ carries verbatim out of a `compile_error!`.
 - `cross_version_rewrite_traps_only_the_reworded_line` — the same file with one of the three
   comment lines reworded upstream. Only that line traps; the two `new` still carries suppress. Pins
   both that the trap is not weakened and that suppression is per LINE, not per run.
+- `cross_version_insert_reanchors_under_whole_file_drift` — an upgrade adds a crate prelude,
+  changes the record layout, and rewrites the serializer body, but leaves the insert block's
+  following statement unique. The block re-anchors by tokens inside that drifted `impl`.
+- `cross_version_replace_reanchors_under_whole_file_drift` — the same broad upgrade shape around a
+  replace block. Its recorded-original statement remains unique, so the custom code splices over
+  that statement rather than relying on the old positional location.
+- `cross_version_keep_rewritten_anchor_fails_loudly` — broad drift also rewrites the keep run's
+  anchoring statement. With no safe token anchor, the run is deliberately trapped in the generated
+  `compile_error!` sentinel; the glob's fixed-point checks ensure it cannot self-clear next regen.
 
 ## Insert-block cases
 
