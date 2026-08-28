@@ -39,3 +39,16 @@ schemars = { version = "1.2.1", features = ["derive"] }
 hex = { package = "const-hex", version = "1.19.1", features = ["alloc", "core-error"] }
 wasm-bindgen = "0.2"
 serde-wasm-bindgen = "0.6.5"
+# The generated component guest declares this directly. Keeping its emitted version here makes the
+# manifest-op drift gate fetch the same guest graph, including `wit-bindgen-rust-macro`; that macro
+# is transitive and must not be duplicated as an independently-versioned warm-up root.
+wit-bindgen = "0.57"
+# These are direct dependencies of the hand-written component gate hosts, which are outside the
+# generated-manifest-op universe: both wasmtime hosts use the first two; the composition host also
+# names the composer and decodes its output with the two WIT crates. Their own transitive crates are
+# intentionally reached through these roots, so this remains a compact direct-dependency superset.
+wasmtime = "47"
+wasmtime-wasi = "47"
+wac-graph = "0.10"
+wit-component = "0.247"
+wit-parser = "0.247"

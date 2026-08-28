@@ -5263,7 +5263,12 @@ body_md = '''- **Registry-fetch transients in nested-cargo cells.** Nested-cargo
   dep-universe lock then warm-fetch once (as one retried unit) and force `CARGO_NET_OFFLINE=true`
   for every gate, so no cell touches the network
   (`tests/README.md` § "Offline-after-warmup"; the warm-up dep-universe manifest is drift-gated by
-  `warmup_manifest_covers_registry_dep_universe`). What remains under watch:
+  `warmup_manifest_covers_registry_dep_universe`). The 2026-08-27 component-undercoverage sighting
+  is delivered: the generated guest's `wit-bindgen` now participates in that drift-gated op
+  universe, and the hand-written component hosts' direct `wasmtime`/`wasmtime-wasi`, `wac-graph`,
+  `wit-component`, and `wit-parser` roots are explicit warm-up entries. The observed
+  `wit-bindgen-rust-macro` miss is covered transitively by the `wit-bindgen` root, rather than as a
+  separately-versioned manifest entry. What remains under watch:
 '''
 watch_state = "watching"
 signature_md = '''A shifting nested-cargo cell fails with `unable to update registry crates-io` or `curl [56] Proxy CONNECT aborted`, or an offline cell attempts network access after warm-up.

@@ -525,11 +525,15 @@ drops the per-cell `Updating crates.io index` latency as a side effect. The fast
 untouched.
 
 The warm-up manifest is drift-gated: `warmup_manifest_covers_registry_dep_universe`
-(`src/cargo_manifest.rs`) asserts every dep the manifest ops can emit appears there with the same
-version req and features (features gate optional transitive deps, which `cargo fetch` only pulls
-when enabled). Fixture crates under `tests/` with hand-written manifests are the manual tail: a
-fixture-only dep missing from the warm-up manifest fails offline cells loudly with
-`no matching package named <dep>` — add it to `tests/warmup/Cargo.toml`. Escape hatches:
+(`src/cargo_manifest.rs`) asserts every dep the manifest ops can emit — including the component
+guest's `wit-bindgen` — appears there with the same version req and features (features gate optional
+transitive deps, which `cargo fetch` only pulls when enabled). Fixture crates under `tests/` with
+hand-written manifests are the manual tail. The component hosts' direct `wasmtime`/`wasmtime-wasi`,
+`wac-graph`, `wit-component`, and `wit-parser` roots are listed explicitly. The direct roots,
+including `wit-bindgen` for its `wit-bindgen-rust-macro` transitive, fetch the rest of their
+resolved graphs. Any newly fixture-only dep missing from the warm-up manifest fails offline cells
+loudly with `no matching package named <dep>` — add its direct root to `tests/warmup/Cargo.toml`.
+Escape hatches:
 `CHECK_ONLINE=1` keeps the run online (no offline forcing); a pre-set `CARGO_NET_OFFLINE=true`
 skips the fetch and trusts the cache. The warm-up is the ONE place a network retry is honest (pure
 cache-population/update work, with no assertions behind it); if it fails all attempts the run stops

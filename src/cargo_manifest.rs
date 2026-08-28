@@ -3443,11 +3443,25 @@ anyhow = \"1\"
             "true",
             "--json-schema-export",
             "true",
+            "--component",
+            "true",
         ]);
         let types = IntermediateTypes::new();
         let mut ops = ops_for_rust(&types, true, &cli).unwrap();
         ops.extend(ops_for_wasm(&cli).unwrap());
         ops.extend(ops_for_json_gen(&cli).unwrap());
+        let component_ops = ops_for_component(&cli).unwrap();
+        ops.extend(component_ops);
+        // This is the direct emitted guest dep. Keeping the pin against the FINAL op union means
+        // an accidental removal of the component face is red even if a stale warm-up entry happens
+        // to remain; version/feature drift is checked by the generic loop below.
+        let component_guest_dep_path = vec!["dependencies".to_owned(), "wit-bindgen".to_owned()];
+        assert!(
+            ops.iter().any(|(path, op)| {
+                path == &component_guest_dep_path && matches!(op, ManifestOp::Set { .. })
+            }),
+            "component dependency `dependencies.wit-bindgen` fell out of the warm-up op union"
+        );
         ops.extend(ops_for_static_runtime(&cli).unwrap());
 
         let warmup_path = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/warmup/Cargo.toml");
