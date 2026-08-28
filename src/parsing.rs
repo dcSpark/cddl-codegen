@@ -6300,12 +6300,11 @@ fn rust_type_from_type2(
                                     types.record_rejection_once_at(
                                         type2,
                                         "anonymous-inline-array",
-                                        format!(
-                                            "Anonymous groups not allowed: the inline array `[{group}]` \
-                                             is used where a type is required. Either create an explicit \
-                                             rule (`foo = [0, bytes]`, then reference `foo`) or give it \
-                                             a name using the `@name` notation."
-                                        ),
+                                        "Anonymous groups not allowed: an inline array is used where a \
+                                         type is required. Either create an explicit \
+                                         rule (`foo = [0, bytes]`, then reference `foo`) or give it \
+                                         a name using the `@name` notation."
+                                            .to_string(),
                                     );
                                     return ConceptualRustType::Fixed(FixedValue::Null).into();
                                 }

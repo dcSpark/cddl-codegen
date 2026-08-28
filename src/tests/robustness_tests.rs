@@ -1775,6 +1775,14 @@ fn anonymous_nested_array_rejects_gracefully() {
         ("anon_arr_mapkey", "m = { [int] => tstr }\n"),
         ("anon_arr_mapval", "m = { k: [int], j: uint }\n"),
         ("anon_arr_occur", "a = [* [int]]\n"),
+        // A generic argument is another TYPE-required position. The anonymous array remains an
+        // intentional rejection there; this vector guards the error path itself from formatting
+        // the `Group` AST through its fallible Display implementation (which used to turn the
+        // intended Err into a panic before the generic instance could be rejected).
+        (
+            "anon_arr_generic_arg",
+            "gen<T> = [T]\na = gen<[a: uint, h'CAFE', b: tstr]>\n",
+        ),
     ];
     for (tag, spec) in vectors {
         for extra in [&[][..], &["--preserve-encodings", "true"][..]] {

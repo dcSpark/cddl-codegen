@@ -108,6 +108,69 @@ process.env.RUSTUP_TOOLCHAIN = REPOSITORY_TOOLCHAIN;
 // through every verifier subprocess funnel as well as assigning process.env for lib.ts callers.
 const VERIFY_SUBPROCESS_ENV = { ...process.env, RUSTUP_TOOLCHAIN: REPOSITORY_TOOLCHAIN };
 
+/** The only process result facts the scratch-CWD pin comparison classifies. */
+interface ToolchainComparisonCommand {
+  exitCode?: number | null;
+  stdout?: { toString(): string } | null;
+  stderr?: { toString(): string } | null;
+}
+
+function toolchainComparisonFailure(
+  scratchRustc: ToolchainComparisonCommand,
+  explicitPin: ToolchainComparisonCommand | undefined,
+  toolchain: string,
+): string | undefined {
+  if (!explicitPin)
+    return `could not find \`rustup\` to compare scratch-cwd rustc with \`rustup run ${toolchain} rustc -vV\``;
+  const got = (scratchRustc.stdout?.toString() ?? "") + (scratchRustc.stderr?.toString() ?? "");
+  const expected = (explicitPin.stdout?.toString() ?? "") + (explicitPin.stderr?.toString() ?? "");
+  if (scratchRustc.exitCode !== 0 || explicitPin.exitCode !== 0 || got !== expected)
+    return `scratch-cwd rustc did not match \`rustup run ${toolchain} rustc -vV\` (scratch exit ${scratchRustc.exitCode}, explicit-pin exit ${explicitPin.exitCode})`;
+  return undefined;
+}
+
+function toolchainComparisonSelfTest(): void {
+  const output = (text: string): ToolchainComparisonCommand => ({ exitCode: 0, stdout: { toString: () => text } });
+  const same = output("rustc 1.2.3\n");
+  const cases: [ToolchainComparisonCommand, ToolchainComparisonCommand | undefined, boolean, string][] = [
+    [same, output("rustc 1.2.3\n"), true, "matching explicit pin"],
+    [same, undefined, false, "absent rustup"],
+    [same, { exitCode: 1 }, false, "failed explicit pin"],
+    [{ exitCode: 1 }, output("rustc 1.2.3\n"), false, "failed scratch compiler"],
+    [same, output("rustc 9.9.9\n"), false, "mismatched compiler identity"],
+  ];
+  for (const [scratchRustc, explicitPin, expectedPass, label] of cases) {
+    const passed = toolchainComparisonFailure(scratchRustc, explicitPin, "pinned") === undefined;
+    if (passed !== expectedPass)
+      throw new Error(`toolchain comparison self-test: ${label} classified ${passed ? "PASS" : "FAIL"}, expected ${expectedPass ? "PASS" : "FAIL"}`);
+  }
+}
+
+function assertScratchCwdToolchainPin(): void {
+  const scratch = mkdtempSync(join(tmpdir(), "cddl_verify_toolchain_selftest_"));
+  let toolchainFailure: string | undefined;
+  try {
+    const rustc = Bun.spawnSync(["rustc", "-vV"], {
+      cwd: scratch, env: VERIFY_SUBPROCESS_ENV, stdout: "pipe", stderr: "pipe",
+    });
+    const rustup = Bun.which("rustup");
+    const pinned = rustup
+      ? Bun.spawnSync([rustup, "run", REPOSITORY_TOOLCHAIN, "rustc", "-vV"], {
+        cwd: scratch, env: VERIFY_SUBPROCESS_ENV, stdout: "pipe", stderr: "pipe",
+      })
+      : undefined;
+    toolchainFailure = toolchainComparisonFailure(rustc, pinned, REPOSITORY_TOOLCHAIN);
+  } catch (error) {
+    toolchainFailure = `could not run the scratch-cwd compiler comparison (${error instanceof Error ? error.message : String(error)})`;
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+  if (toolchainFailure) {
+    console.error(`HARNESS FAILURE: ${toolchainFailure}; refusing to run.`);
+    process.exit(2);
+  }
+}
+
 function startupToolHonestySelfTests(): void {
   // This is deliberately a real child invocation, not only a predicate test: it pins the process
   // boundary where the historical --mint-decode typo used to start an ordinary verification run.
@@ -122,33 +185,11 @@ function startupToolHonestySelfTests(): void {
     process.exit(2);
   }
 
-  const scratch = mkdtempSync(join(tmpdir(), "cddl_verify_toolchain_selftest_"));
-  let toolchainFailure: string | undefined;
-  try {
-    const rustc = Bun.spawnSync(["rustc", "-vV"], {
-      cwd: scratch, env: VERIFY_SUBPROCESS_ENV, stdout: "pipe", stderr: "pipe",
-    });
-    const pinned = Bun.spawnSync(["rustup", "run", REPOSITORY_TOOLCHAIN, "rustc", "-vV"], {
-      cwd: scratch, env: VERIFY_SUBPROCESS_ENV, stdout: "pipe", stderr: "pipe",
-    });
-    const got = (rustc.stdout?.toString() ?? "") + (rustc.stderr?.toString() ?? "");
-    const expected = (pinned.stdout?.toString() ?? "") + (pinned.stderr?.toString() ?? "");
-    if (rustc.exitCode !== 0 || pinned.exitCode !== 0 || got !== expected)
-      toolchainFailure = `scratch-cwd rustc did not match \`rustup run ${REPOSITORY_TOOLCHAIN} rustc -vV\` (scratch exit ${rustc.exitCode}, explicit-pin exit ${pinned.exitCode})`;
-  } catch (error) {
-    toolchainFailure = `could not run the scratch-cwd compiler comparison (${error instanceof Error ? error.message : String(error)})`;
-  } finally {
-    rmSync(scratch, { recursive: true, force: true });
-  }
-  if (toolchainFailure) {
-    console.error(`HARNESS FAILURE: ${toolchainFailure}; refusing to run.`);
-    process.exit(2);
-  }
-
   if (SELFTEST) {
+    toolchainComparisonSelfTest();
     console.log("unknown-flag process self-test OK (--mint-decode exits 2 without ordinary verification)");
-    console.log(`scratch-cwd toolchain self-test OK (rustc ${REPOSITORY_TOOLCHAIN})`);
-  }
+    console.log("toolchain-comparison self-test OK (matching, absent-rustup, failed, and mismatched verdicts)");
+  } else assertScratchCwdToolchainPin();
 }
 startupToolHonestySelfTests();
 

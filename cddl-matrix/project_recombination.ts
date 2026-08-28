@@ -18,6 +18,10 @@
  *   - `disallowed`: the `(role, feature)` pairs the matrix marks `spec = "disallowed"` — the blacklist
  *     the composer obeys (it composes any (role, filler) EXCEPT these; the matrix omits trivial
  *     primitive-as-member cells as implicitly allowed, so an allow-list would erase most breadth).
+ *   - `directives`: the bounded comment-DSL axis whose features cannot be reusable expressions, but
+ *     whose canonical spellings do compose with particular emitter-triggering hosts. This is NOT a
+ *     second `no_silent_directive` product: it deliberately carries only the directives and legal
+ *     host families which make the recombination sweep/layer-2 gates exercise directive × shape.
  *
  * The "primary rule" heuristic: the ROOT rule (the one no OTHER rule references) is the reusable one —
  * its RHS is the expression, every other rule is auxiliary. Examples that don't reduce cleanly (generic-
@@ -35,7 +39,7 @@ const OUT_DIR = `${ROOT}/../tests/recomb`;
 const OUT = `${OUT_DIR}/ingredients.json`;
 const CHECK = process.argv.includes("--check");
 
-interface Ex { id: string; example: string; example_extern_stub?: string }
+interface Ex { id: string; alt?: string; example: string; example_extern_stub?: string }
 const matrix = JSON.parse(readFileSync(`${ROOT}/matrix.json`, "utf8")) as {
   features: Ex[];
   containment: (Ex & { role: string; feature: string; spec?: string })[];
@@ -87,13 +91,55 @@ function referencedBy(name: string, others: ParsedRule[]): boolean {
 
 interface Filler { feature: string; expr: string; aux: string[] }
 interface Skip { feature: string; reason: string }
+interface Directive { feature: string; spelling: string; hosts: string[] }
+
+// These are deliberately host-bound rather than a generic comment inventory. `@ignore` is only a
+// loose open-struct-map rest-row directive; `@duplicates` has both its map-rest-row policy and
+// named collection-rule policy; and `@name` reaches emitted fields on record members/rest rows.
+// The full directive×parse-shape reachability product belongs to no_silent_directive.ts.
+const DIRECTIVE_RECIPES: Record<string, { canonical: string; spelling: string; hosts: string[] }> = {
+  "dsl.ignore": {
+    canonical: "@ignore",
+    spelling: "@ignore",
+    hosts: ["map_rest_row"],
+  },
+  "dsl.duplicates.reject": {
+    canonical: "@duplicates reject",
+    spelling: "@duplicates reject",
+    hosts: ["map_rest_row", "array_rule", "table_rule"],
+  },
+  "dsl.duplicates.preserve": {
+    canonical: "@duplicates preserve",
+    spelling: "@duplicates preserve",
+    hosts: ["map_rest_row", "array_rule", "table_rule"],
+  },
+  "dsl.name": {
+    canonical: "@name",
+    // `@name` needs an identifier; the fixed suffix is rendered collision-free by the Rust
+    // composer, which retains the canonical directive token here as the matrix owns it.
+    spelling: "@name recomb_name",
+    hosts: ["map_member", "array_member", "map_rest_row"],
+  },
+};
 
 const fillers: Filler[] = [];
 const skipped: Skip[] = [];
+const directives: Directive[] = [];
 
 for (const f of matrix.features) {
   const ex = (f.example ?? "").trim();
   const skip = (reason: string) => skipped.push({ feature: f.id, reason });
+  const directive = DIRECTIVE_RECIPES[f.id];
+  if (directive !== undefined) {
+    if (f.alt !== directive.canonical) {
+      throw new Error(
+        `recombination directive ${f.id}: matrix canonical spelling ${JSON.stringify(f.alt)} ` +
+        `does not match recipe ${JSON.stringify(directive.canonical)}`,
+      );
+    }
+    directives.push({ feature: f.id, spelling: directive.spelling, hosts: directive.hosts });
+    continue;
+  }
   if (ex === "") { skip("empty example"); continue; }
   if (f.id.startsWith("ext.")) { skip("extern/raw-bytes placeholder needs a user-provided type, not a self-contained filler"); continue; }
   // An extern-scope directive's example depends on its `example_extern_stub` (a DIRECTORY input the
@@ -147,11 +193,12 @@ const disallowed = toPairs(disallowedSet);
 
 fillers.sort((a, b) => (a.feature < b.feature ? -1 : a.feature > b.feature ? 1 : 0));
 skipped.sort((a, b) => (a.feature < b.feature ? -1 : a.feature > b.feature ? 1 : 0));
+directives.sort((a, b) => (a.feature < b.feature ? -1 : a.feature > b.feature ? 1 : 0));
 
-const artifact = stableJson({ disallowed, fillers, legal, skipped });
+const artifact = stableJson({ directives, disallowed, fillers, legal, skipped });
 
 console.log(
-  `recombination ingredients: ${fillers.length} filler(s), ${legal.length} legal + ${disallowed.length} disallowed (role,feature) pair(s), ${skipped.length} skipped feature(s)`,
+  `recombination ingredients: ${fillers.length} filler(s), ${directives.length} directive ingredient(s), ${legal.length} legal + ${disallowed.length} disallowed (role,feature) pair(s), ${skipped.length} skipped feature(s)`,
 );
 
 if (CHECK) {

@@ -1713,6 +1713,68 @@ fn decode_schema_ref_name(encoded: &str) -> String {
         .replace("~0", "~")
 }
 
+/// Reset regenerated crate metadata while retaining build artifacts in a reused fixture export.
+///
+/// Both manifests and locks are inputs to Cargo resolution: preserving either lets an earlier test
+/// select a graph that the tier's freshly-warmed dependency universe did not fetch.
+fn reset_run_test_export_metadata(test_path: &std::path::Path, export_path: &str) {
+    for metadata in [
+        "rust/Cargo.toml",
+        "rust/Cargo.lock",
+        "wasm/Cargo.toml",
+        "wasm/Cargo.lock",
+        "wasm/json-gen/Cargo.toml",
+        "wasm/json-gen/Cargo.lock",
+    ] {
+        let _ = std::fs::remove_file(test_path.join(format!("{export_path}/{metadata}")));
+    }
+}
+
+#[test]
+fn run_test_resets_reused_export_locks_with_manifests() {
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_run_test_lock_reset_{}",
+        std::process::id()
+    ));
+    let export = root.join("export");
+    for path in [
+        "rust/Cargo.toml",
+        "rust/Cargo.lock",
+        "wasm/Cargo.toml",
+        "wasm/Cargo.lock",
+        "wasm/json-gen/Cargo.toml",
+        "wasm/json-gen/Cargo.lock",
+    ] {
+        let path = export.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, "stale metadata").unwrap();
+    }
+    let target_marker = export.join("rust/target/keep");
+    std::fs::create_dir_all(target_marker.parent().unwrap()).unwrap();
+    std::fs::write(&target_marker, "keep").unwrap();
+
+    reset_run_test_export_metadata(&root, "export");
+
+    for path in [
+        "rust/Cargo.toml",
+        "rust/Cargo.lock",
+        "wasm/Cargo.toml",
+        "wasm/Cargo.lock",
+        "wasm/json-gen/Cargo.toml",
+        "wasm/json-gen/Cargo.lock",
+    ] {
+        assert!(
+            !export.join(path).exists(),
+            "reused export metadata `{path}` survived reset"
+        );
+    }
+    assert!(
+        target_marker.exists(),
+        "reset must retain the reusable target directory"
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}
+
 fn run_test(
     dir: &str,
     options: &[&str],
@@ -1730,19 +1792,11 @@ fn run_test(
     let test_path = std::path::PathBuf::from_str("tests").unwrap().join(dir);
     println!("--------- running test: {dir} ---------");
     // These export dirs are throwaway regen targets (not user-owned manifests), reused across runs
-    // only to amortize each crate's `target/`. Generation now MERGES the manifest instead of
-    // clobbering it, so the raw `test_deps` appended into these manifests below would otherwise
-    // accumulate (duplicate keys) across runs. Reset the manifests to a clean slate before
-    // regenerating so the harness's append model still holds; `target/` is left intact. (The
-    // user-facing manifest merge/preservation contract is exercised by
-    // `cargo_manifest_disk_round_trip`, not here.)
-    for manifest in [
-        "rust/Cargo.toml",
-        "wasm/Cargo.toml",
-        "wasm/json-gen/Cargo.toml",
-    ] {
-        let _ = std::fs::remove_file(test_path.join(format!("{export_path}/{manifest}")));
-    }
+    // only to amortize each crate's `target/`. Generation now MERGES manifests, and Cargo honors
+    // existing locks, so raw `test_deps` and a prior fixture's stale resolution would otherwise
+    // survive. Reset both before regenerating; `target/` is left intact. (The user-facing manifest
+    // merge/preservation contract is exercised by `cargo_manifest_disk_round_trip`, not here.)
+    reset_run_test_export_metadata(&test_path, &export_path);
     // Each crate root `lib.rs` (rust, wasm, json-gen) is now a seed-once thin root the tool never
     // clobbers. The committed fixture exports still carry the pre-split monolithic `lib.rs` (full
     // generated content); left in place, seed-once would preserve it and it would collide with the
@@ -10639,6 +10693,90 @@ fn group_choice_fixed_value_arm_emits_fieldless_variant() {
     }
 }
 
+/// An optional fixed field in an inlined group-choice array arm is a `bool` presence field,
+/// unlike the fieldless mandatory fixed-value arms.
+///
+/// This exercises all enum projections of that field: declaration, Rust constructor and
+/// deserializer, serialization pattern, and the WASM constructor. It is deliberately separate
+/// from [`group_choice_fixed_value_arm_emits_fieldless_variant`], whose contract is the opposite.
+#[test]
+fn group_choice_optional_fixed_arm_emits_bool_presence_field() {
+    use clap::Parser;
+
+    // Unlike the fieldless fixed-value arms, an OPTIONAL fixed value has one bit of data:
+    // its presence. A group-choice array arm is inlined into the enum, so this exercises every
+    // enum-side projection of the `bool` field (declaration, constructors, deserialize, wasm
+    // helpers) rather than only the records emitter's already-pinned `optional_fixed_member` path.
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_gc_optional_fixed_{}.cddl",
+        std::process::id()
+    ));
+    // The arm has a mandatory discriminator/member before the optional fixed field: a
+    // single-entry `?` group-choice arm is correctly refused because an enum variant cannot carry
+    // its zero-occurrence case. This is the legal inlined-record shape the recombination table
+    // reaches (`[x: uint, ? a: 0 // b: tstr]`).
+    std::fs::write(&path, "t = [ x: uint, ? a: 0 // b: tstr ]\n").unwrap();
+    for (profile, extra) in [
+        ("default", &[][..]),
+        ("preserve", &["--preserve-encodings", "true"][..]),
+        (
+            "json",
+            &[
+                "--json-serde-derives",
+                "true",
+                "--json-schema-export",
+                "true",
+            ][..],
+        ),
+    ] {
+        let mut argv = vec![
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "unused_in_memory_generation",
+            "--wasm=true",
+        ];
+        argv.extend_from_slice(extra);
+        let generated = crate::api::generated_strings(&crate::cli::Cli::parse_from(argv))
+            .unwrap_or_else(|e| {
+                panic!("optional-fixed group choice {profile}: generation failed: {e}")
+            });
+        let rust = generated
+            .get("rust/src/generated/serialization.rs")
+            .unwrap_or_else(|| {
+                panic!("optional-fixed group choice {profile}: no rust serialization emitted")
+            });
+        assert!(
+            rust.contains("Ok(Self::T0 {"),
+            "optional-fixed group choice {profile}: deserialize must construct the bool-presence arm:\n{rust}"
+        );
+        assert!(
+            rust.contains("T::T0 {") && rust.contains("if a {"),
+            "optional-fixed group choice {profile}: serialize must pattern-match the bool-presence arm:\n{rust}"
+        );
+        let rust_mod = generated
+            .get("rust/src/generated/mod.rs")
+            .unwrap_or_else(|| {
+                panic!("optional-fixed group choice {profile}: no rust mod emitted")
+            });
+        assert!(
+            rust_mod.contains("a: bool") && rust_mod.contains("pub fn new_t0"),
+            "optional-fixed group choice {profile}: the enum arm declaration or Rust constructor lost its bool-presence field:\n{rust_mod}"
+        );
+        let wasm = generated
+            .get("wasm/src/generated/mod.rs")
+            .unwrap_or_else(|| {
+                panic!("optional-fixed group choice {profile}: no wasm mod emitted")
+            });
+        assert!(
+            wasm.contains("new_t0") && wasm.contains("a: bool"),
+            "optional-fixed group choice {profile}: wasm constructor omitted the bool-presence arm:\n{wasm}"
+        );
+    }
+    std::fs::remove_file(&path).ok();
+}
+
 /// The BRUTE-FORCE group-choice deserialize CONSTRUCTS its variant, so a same-major arm pairing
 /// compiles under `--preserve-encodings`.
 ///
@@ -15715,6 +15853,27 @@ fn check_ts_warmup_refresh_plan_selftest() {
     assert!(
         String::from_utf8_lossy(&out.stdout).contains("warm-up refresh/fetch command order"),
         "the focused check.ts self-test must receipt the command-order assertion"
+    );
+}
+
+/// The no-std gate must treat a non-rustup compiler as an unavailable prerequisite, not let Bun's
+/// ENOENT from spawning `rustup` abort the local tier before its deliberate loud-SKIP/full-FAIL
+/// policy can apply. The script self-test is pure: it exercises no target or cargo command.
+#[test]
+fn no_std_check_target_availability_selftest() {
+    let out = std::process::Command::new("bun")
+        .args(["run", "cddl-matrix/no_std_check.ts", "--selftest"])
+        .output()
+        .expect("bun must run the no-std target-availability self-test");
+    assert!(
+        out.status.success(),
+        "no-std target-availability self-test failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stdout).contains("absent rustup + target-list verdicts"),
+        "the no-std self-test must receipt its absent-rustup regression assertion"
     );
 }
 

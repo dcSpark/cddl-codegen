@@ -10,7 +10,8 @@
 //!
 //! Ingredients come from the committed `tests/recomb/ingredients.json` (projected from the matrix
 //! by `cddl-matrix/project_recombination.ts`; drift-gated by check.ts `project_recombination_check`):
-//! per-feature filler expressions + the containment legality data. LEGALITY SEMANTICS: the
+//! per-feature filler expressions, a bounded directive × host axis, and the containment legality
+//! data. LEGALITY SEMANTICS: the
 //! containment matrix enumerates only structurally interesting cells and omits trivial
 //! primitive-as-member cells as implicitly allowed, so the composer treats it as a BLACKLIST — any
 //! (role, filler-feature) pair composes unless projected `disallowed`; the `legal` (spec="allowed")
@@ -61,6 +62,10 @@ const SEED: u64 = 0xCDD1_2026_0709_0001;
 const TRIPLE_SAMPLES_PER_SHAPE: usize = 25;
 /// Seeded leaf fillers per (outer template × inner template) depth-2 pair.
 const NEST_FILLER_SAMPLES: usize = 2;
+/// Existing filler expressions sampled beside each directive host's always-simple control. The
+/// directive axis is deliberately bounded: no_silent_directive owns the full directive × parse-shape
+/// reachability product, while this corpus owns emitter-triggering directive × composed-shape cases.
+const DIRECTIVE_FILLER_SAMPLES: usize = 2;
 /// One field name in every N-th member-kind draw is taken from the hazard table (low-weight axis:
 /// the hazard sweep already covers name×position systematically; here it's realistic noise).
 const HAZARD_EVERY: u64 = 16;
@@ -91,7 +96,15 @@ struct Filler {
     aux: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Directive {
+    feature: String,
+    spelling: String,
+    hosts: BTreeSet<String>,
+}
+
 struct Ingredients {
+    directives: Vec<Directive>,
     fillers: Vec<Filler>,
     legal_roles: BTreeSet<String>,
     disallowed: BTreeSet<(String, String)>, // (role, feature)
@@ -101,6 +114,21 @@ fn load_ingredients() -> Ingredients {
     let text = std::fs::read_to_string("tests/recomb/ingredients.json")
         .expect("tests/recomb/ingredients.json missing — run `bun run project_recombination.ts` in cddl-matrix/");
     let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let directives: Vec<Directive> = v["directives"]
+        .as_array()
+        .expect("ingredients.json has no directive ingredients")
+        .iter()
+        .map(|d| Directive {
+            feature: d["feature"].as_str().unwrap().to_owned(),
+            spelling: d["spelling"].as_str().unwrap().to_owned(),
+            hosts: d["hosts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|h| h.as_str().unwrap().to_owned())
+                .collect(),
+        })
+        .collect();
     let fillers: Vec<Filler> = v["fillers"]
         .as_array()
         .unwrap()
@@ -138,7 +166,36 @@ fn load_ingredients() -> Ingredients {
         !fillers.is_empty(),
         "ingredients.json has zero fillers — vacuous"
     );
+    let projected_hosts: BTreeSet<(String, String)> = directives
+        .iter()
+        .flat_map(|directive| {
+            directive
+                .hosts
+                .iter()
+                .map(|host| (directive.feature.clone(), host.clone()))
+        })
+        .collect();
+    let required_hosts: BTreeSet<(String, String)> = [
+        ("dsl.ignore", "map_rest_row"),
+        ("dsl.duplicates.reject", "map_rest_row"),
+        ("dsl.duplicates.reject", "array_rule"),
+        ("dsl.duplicates.reject", "table_rule"),
+        ("dsl.duplicates.preserve", "map_rest_row"),
+        ("dsl.duplicates.preserve", "array_rule"),
+        ("dsl.duplicates.preserve", "table_rule"),
+        ("dsl.name", "map_member"),
+        ("dsl.name", "array_member"),
+        ("dsl.name", "map_rest_row"),
+    ]
+    .into_iter()
+    .map(|(feature, host)| (feature.to_owned(), host.to_owned()))
+    .collect();
+    assert_eq!(
+        projected_hosts, required_hosts,
+        "directive ingredient axis changed: update the bounded host inventory and composer together"
+    );
     Ingredients {
+        directives,
         fillers,
         legal_roles,
         disallowed,
@@ -342,6 +399,7 @@ const MEMBER_KINDS: &[(&str, &str, &str)] = &[
     ("fixed_null", "%K%: null", ""),
     ("scalar", "%K%: uint", ""),
     ("optional", "? %K%: uint", ""),
+    ("optional_fixed", "? %K%: 5", ""),
     ("zero_star", "* %K%: uint", ""),
     ("inline_group", "(%K%: uint, %K2%: tstr)", ""),
     ("filler", "%K%: %F%", ""),
@@ -960,6 +1018,84 @@ fn compositions() -> Vec<Composition> {
             );
         }
     }
+
+    // -- axis 5: bounded directive × emitter-triggering host compositions -------------------------
+    // The directive feature examples contain comments and therefore cannot become ordinary fillers.
+    // They instead arrive through Stage A with their legal host family. Each host gets one simple
+    // control (so an unlucky complex filler cannot make the host family vacuous) plus a tiny,
+    // separately-seeded selection of the existing filler axis. This is intentionally NOT the full
+    // directive × parse-shape product: cddl-matrix/no_silent_directive.ts owns that reachability net.
+    let mut directive_rng = SEED ^ 0xD1CE_C71C_EA5E_0005;
+    let mut directive_host_cases: BTreeMap<(String, String), usize> = BTreeMap::new();
+    for directive in &ing.directives {
+        for host in &directive.hosts {
+            let samples: Vec<Option<&Filler>> = std::iter::once(None)
+                .chain((0..DIRECTIVE_FILLER_SAMPLES).map(|_| {
+                    Some(
+                        &ing.fillers[(splitmix64(&mut directive_rng) as usize) % ing.fillers.len()],
+                    )
+                }))
+                .collect();
+            for (sample, filler) in samples.into_iter().enumerate() {
+                let prefix = format!("rc{n:04}");
+                let mut aux = Vec::new();
+                let (fexpr, mut fa, mut features) = match filler {
+                    Some(f) => {
+                        let (expr, aux) = filler_instance(f, &prefix);
+                        (expr, aux, vec![f.feature.clone()])
+                    }
+                    None => ("uint".to_owned(), Vec::new(), Vec::new()),
+                };
+                aux.append(&mut fa);
+                features.push(directive.feature.clone());
+                let spelling = directive
+                    .spelling
+                    .replace("recomb_name", &format!("recomb_{n}_{sample}"));
+                let root = match host.as_str() {
+                    // All mandatory fixed fields is deliberate: it reaches the `@ignore` zero
+                    // conditional-term seam that motivated this axis, while the same row also
+                    // carries the capture-policy (`@duplicates`) and captured-field (`@name`) cases.
+                    "map_rest_row" => {
+                        format!("{{ fixed: {fexpr}, * uint => {fexpr} ; {spelling} }}")
+                    }
+                    "map_member" => format!("{{ field: {fexpr} ; {spelling} }}"),
+                    "array_member" => format!("[ field: {fexpr} ; {spelling} ]"),
+                    "array_rule" => format!("[ * {fexpr} ] ; {spelling}"),
+                    "table_rule" => format!("{{ * uint => {fexpr} }} ; {spelling}"),
+                    _ => panic!(
+                        "directive `{}` projected unsupported host `{host}`",
+                        directive.feature
+                    ),
+                };
+                *directive_host_cases
+                    .entry((directive.feature.clone(), host.clone()))
+                    .or_default() += 1;
+                push(
+                    &mut out,
+                    &mut n,
+                    format!(
+                        "directive={} host={} sample={sample}",
+                        directive.feature, host
+                    ),
+                    root,
+                    aux,
+                    features,
+                );
+            }
+        }
+    }
+    let expected_directive_cases = 1 + DIRECTIVE_FILLER_SAMPLES;
+    assert!(
+        directive_host_cases
+            .values()
+            .all(|count| *count == expected_directive_cases),
+        "a directive host family was filtered or duplicated before composition: {directive_host_cases:?}"
+    );
+    assert_eq!(
+        directive_host_cases.len(),
+        ing.directives.iter().map(|d| d.hosts.len()).sum::<usize>(),
+        "a projected directive host family produced no compositions"
+    );
 
     out
 }

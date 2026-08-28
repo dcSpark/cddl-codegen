@@ -146,7 +146,9 @@ pub(super) fn codegen_group_choices(
                     record
                         .fields
                         .iter()
-                        .filter(|f| !f.rust_type.is_fixed_value())
+                        // A mandatory fixed value is fieldless, but an optional fixed value
+                        // materializes as its bool presence field and must cross every enum face.
+                        .filter(|f| !f.rust_type.is_fixed_value() || f.optional)
                         .collect(),
                 ),
             };
@@ -185,24 +187,30 @@ pub(super) fn codegen_group_choices(
                                 } else {
                                     output_comma = true;
                                 }
-                                // optional only reaches here on the Inlined arm (the named-Record
-                                // arm filters `!f.optional`), where it wraps as Option via
-                                // `to_embedded_rust_type`
-                                let wasm_param_type = field.to_embedded_rust_type();
-                                new_func.arg(
-                                    &field.name,
-                                    gen_scope.wasm_param_type(
-                                        types,
-                                        &wasm_param_type,
-                                        name,
-                                        "group-choice constructor field parameter",
-                                    ),
-                                );
-                                ctor.push_str(&ToWasmBoundaryOperations::format(
-                                    wasm_param_type
-                                        .from_wasm_boundary_clone(types, &field.name, false)
-                                        .into_iter(),
-                                ));
+                                // The inlined enum arm has no record struct to give an optional
+                                // fixed value its usual special bool field. Spell that presence bit
+                                // directly here; every other optional inlined field remains an
+                                // `Option<T>` through the normal embedded-type path.
+                                if field.optional && field.rust_type.is_fixed_value() {
+                                    new_func.arg(&field.name, "bool");
+                                    ctor.push_str(&field.name);
+                                } else {
+                                    let wasm_param_type = field.to_embedded_rust_type();
+                                    new_func.arg(
+                                        &field.name,
+                                        gen_scope.wasm_param_type(
+                                            types,
+                                            &wasm_param_type,
+                                            name,
+                                            "group-choice constructor field parameter",
+                                        ),
+                                    );
+                                    ctor.push_str(&ToWasmBoundaryOperations::format(
+                                        wasm_param_type
+                                            .from_wasm_boundary_clone(types, &field.name, false)
+                                            .into_iter(),
+                                    ));
+                                }
                             }
                             ctor.push(')');
                             if can_fail {
@@ -565,13 +573,17 @@ impl EnumVariantInRust {
                     }
                 }
                 for field in record.fields.iter() {
-                    if !field.rust_type.is_fixed_value() {
+                    // Mandatory fixed values have no data, while optional fixed values store bool
+                    // presence. Keep this aligned with records.rs' deserialize constructor list.
+                    if !field.rust_type.is_fixed_value() || field.optional {
                         names.push(field.name.clone());
-                        enum_types.push(
+                        enum_types.push(if field.optional && field.rust_type.is_fixed_value() {
+                            "bool".to_owned()
+                        } else {
                             field
                                 .to_embedded_rust_type()
-                                .for_rust_member(types, false, cli),
-                        );
+                                .for_rust_member(types, false, cli)
+                        });
                     }
                 }
                 for enc_field in &enc_fields {
@@ -1383,12 +1395,16 @@ fn generate_enum(
                 let init_fields = record
                     .fields
                     .iter()
-                    .filter(|field| !field.rust_type.is_fixed_value())
+                    // Optional fixed values are represented by a bool presence field, unlike the
+                    // fieldless mandatory fixed-value arm.
+                    .filter(|field| !field.rust_type.is_fixed_value() || field.optional)
                     .map(|field| {
-                        new_func.arg(
-                            &field.name,
-                            field.to_embedded_rust_type().for_rust_move(types, cli),
-                        );
+                        let field_type = if field.optional && field.rust_type.is_fixed_value() {
+                            "bool".to_owned()
+                        } else {
+                            field.to_embedded_rust_type().for_rust_move(types, cli)
+                        };
+                        new_func.arg(&field.name, field_type);
                         field.name.clone()
                     })
                     .collect();

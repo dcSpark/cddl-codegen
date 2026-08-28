@@ -1,4 +1,40 @@
 {
+  "directives": [
+    {
+      "feature": "dsl.duplicates.preserve",
+      "hosts": [
+        "map_rest_row",
+        "array_rule",
+        "table_rule"
+      ],
+      "spelling": "@duplicates preserve"
+    },
+    {
+      "feature": "dsl.duplicates.reject",
+      "hosts": [
+        "map_rest_row",
+        "array_rule",
+        "table_rule"
+      ],
+      "spelling": "@duplicates reject"
+    },
+    {
+      "feature": "dsl.ignore",
+      "hosts": [
+        "map_rest_row"
+      ],
+      "spelling": "@ignore"
+    },
+    {
+      "feature": "dsl.name",
+      "hosts": [
+        "map_member",
+        "array_member",
+        "map_rest_row"
+      ],
+      "spelling": "@name recomb_name"
+    }
+  ],
   "disallowed": [
     {
       "feature": "type.choice",
@@ -802,24 +838,8 @@
       "reason": "expected exactly one root rule, found 2"
     },
     {
-      "feature": "dsl.duplicates.preserve",
-      "reason": "DSL comment in root RHS; not a clean reusable expression"
-    },
-    {
-      "feature": "dsl.duplicates.reject",
-      "reason": "DSL comment in root RHS; not a clean reusable expression"
-    },
-    {
       "feature": "dsl.extern_companions",
       "reason": "DSL comment in an auxiliary rule (may reference user-supplied code); not self-contained"
-    },
-    {
-      "feature": "dsl.ignore",
-      "reason": "DSL comment in root RHS; not a clean reusable expression"
-    },
-    {
-      "feature": "dsl.name",
-      "reason": "DSL comment in root RHS; not a clean reusable expression"
     },
     {
       "feature": "dsl.newtype",

@@ -154,9 +154,7 @@ entries = [
   "testing.alloc-imports-nested-inline-modules-hand-carried-design",
   "testing.gate-cache-closure-audit-structurally-blind-gate-authored",
   "testing.comment-residue-false-matches-text-scans-over-emitted",
-  "testing.directive-dependent-emitter-edge-case-triggering-shape-hand",
   "testing.hand-enumerated-ban-pattern-list-authority-lives-gitignored",
-  "testing.extend-recombination-member-kind-table-optional-fixed-shape",
   "testing.referencing-context-measured-wrapping-deep-honored-base-shape",
   "testing.arm-position-s-classifier-compile-time-forcing-function",
   "testing.schema-document-s-name-injectivity-enforced-row-side",
@@ -1058,50 +1056,6 @@ event_md = '''A semver-compatible cbor_event release makes an unchanged generate
 '''
 
 [[record]]
-id = "testing.directive-dependent-emitter-edge-case-triggering-shape-hand"
-title = "A directive-dependent emitter edge case whose triggering SHAPE is in no hand fixture is invisible to every combinatorial layer — the recombination fuzzer skips ALL `dsl.*` features wholesale (\"DSL comment in root RHS; not a clean reusable expression\"), so no fuzz composition ever carries a directive."
-
-[record.payload]
-kind = "work"
-body_md = '''- **A directive-dependent emitter edge case whose triggering SHAPE is in no hand fixture is
-  invisible to every combinatorial layer — the recombination fuzzer skips ALL `dsl.*` features
-  wholesale ("DSL comment in root RHS; not a clean reusable expression"), so no fuzz composition
-  ever carries a directive.** Proven instance (probe-caught in review, then independently
-  confirmed by reading — never a gate failure): the `definite_info` additive-length combine
-  emitted a malformed `"{n} + "` expression when the conditional expression is EMPTY, a branch
-  reachable only by an all-mandatory-fields open struct-map whose rest row is `@ignore`
-  (tolerate-and-drop: no optionals, no captured-rest term) — no pre-existing spec could reach it,
-  and only the delivery's own hand-enumerated fixtures (`details_map` in the
-  `open_struct_map_ignore` snapshot, `baz` in the compiled e2e) happened to cover the degenerate
-  combination. The standing discipline that catches the SHIPPED form is exactly that
-  hand-enumeration: a new directive's spec must fixture the degenerate shape combos
-  (all-mandatory, zero-field, empty-collection) alongside the happy paths — reviewers should
-  demand the degenerate rows in the fixture list. Mechanical layer on the SECOND
-  fuzzer-invisible directive-emitter instance: a directive AXIS for the recombination fuzzer —
-  instead of skipping `dsl.*` ingredients, mint directive-BEARING variants of the applicable
-  shape templates (rest-row `@ignore`/`@duplicates`/`@name` on map-record templates, rule-level
-  `@duplicates` on collection templates), letting the existing generation sweep + layer-2
-  compile gates see directive × shape products no hand fixture enumerates.
-'''
-work_state = "armed"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "compile_failure"
-control_ids = ["testing.guard.directive-dependent-emitter-edge-case-triggering-shape-hand"]
-
-[record.payload.promotion_trigger]
-observer = "fresh-evidence submitter for testing.directive-dependent-emitter-edge-case-triggering-shape-hand"
-dimension = "A directive-dependent emitter edge case whose triggering SHAPE is in no hand fixture is invisible to every combinatorial layer — the recombination fuzzer skips ALL `dsl.*` features wholesale (\"DSL comment in root RHS; not a clean reusable expression\"), so no fuzz composition ever carries a directive."
-observable = "- **A directive-dependent emitter edge case whose triggering SHAPE is in no hand fixture is invisible to every combinatorial layer — the recombination fuzzer skips ALL `dsl.*` features wholesale (\"DSL comment in root RHS; not a clean reusable expression\"), so no fuzz composition ever carries a directive.** Proven instance (probe-caught in review, then independently confirmed by reading — never a gate failure): the `definite_info` additive-length combine emitted a malformed `\"{n} + \"` expression when the conditional expression is EMPTY, a branch reachable only by an all-mandatory-fields open struct-map whose rest row is `@ignore` (tolerate-and-drop: no optionals, no captured-rest term) — no pre-existing spec could reach it, and only the delivery's own hand-enumerated fixtures (`details_map` in the `open_struct_map_ignore` snapshot, `baz` in the compiled e2e) happened to cover the degenerate combination. The standing discipline that catches the SHIPPED form is exactly that hand-enumeration: a new directive's spec must fixture the degenerate shape combos (all-mandatory, zero-field, empty-collection) alongside the happy paths — reviewers should demand the degenerate rows in the fixture list. Mechanical layer on the SECOND fuzzer-invisible directive-emitter instance: a directive AXIS for the recombination fuzzer — instead of skipping `dsl.*` ingredients, mint directive-BEARING variants of the applicable shape templates (rest-row `@ignore`/`@duplicates`/`@name` on map-record templates, rule-level `@duplicates` on collection templates), letting the existing generation sweep + layer-2 compile gates see directive × shape products no hand fixture enumerates."
-action_on_fire_md = '''Set testing.directive-dependent-emitter-edge-case-triggering-shape-hand to ready and execute only its preserved acceptance/mechanical-layer scope.
-'''
-
-[record.payload.promotion_trigger.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.directive-dependent-emitter-edge-case-triggering-shape-hand's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
-
-[[record]]
 id = "testing.directive-s-documented-sentence-stay-true-consumer-visible"
 title = "A directive's documented sentence can stay true while its consumer-visible MEANING changes underneath it, because the artifact it controls changed shape."
 
@@ -1711,49 +1665,6 @@ rationale_md = '''The decided boundary and its reasons are the exact preserved d
 '''
 authority_reference_id = "readme-extern-interface-export-extern-import-the-machine"
 permanence = "permanent"
-
-[[record]]
-id = "testing.extend-recombination-member-kind-table-optional-fixed-shape"
-title = "Extend the recombination member-kind table to the OPTIONAL-FIXED shape."
-
-[record.payload]
-kind = "work"
-body_md = '''- **Extend the recombination member-kind table to the OPTIONAL-FIXED shape.** `MEMBER_KINDS` now
-  carries a per-kind aux-rule slot (`%A%`), so a kind that needs a named rule of its own is a one-row
-  edit rather than a mechanism change — the `tagged_optional` row (`%K%: #6.10(%A%)` over
-  `uint / null`) is the worked example, and `optional_fixed_member.cddl` /
-  `optional_fixed_float.cddl` name the shape the table still cannot compose: `? %K%: 5`, an optional
-  member whose type is a fixed value, which mints a `bool` presence field instead of a value and so
-  reaches a deserialize seam the `optional` and `fixed_*` kinds each only half touch.
-  It is one row, and the reason it is not simply built is that a kind addition is not free: it
-  RESHUFFLES every seeded draw downstream of the table, so each one re-samples the triples and
-  depth-2 fillers onto different compositions and can surface unrelated pre-existing defects that
-  must be fixed or promoted before the row can land. Adding `tagged_optional` cost two emitter fixes
-  and one promoted panic class; budget the next row the same way rather than as a table edit.
-'''
-signal_md = '''  Reopening signal, on the axis the deferred cost grows along: a SECOND exit-0
-  uncompilable-or-wrong-bytes crate in a supported composition the member-kind table does not span
-  (each instance is a loud build or round-trip failure for whoever generates the shape, so the
-  reporter exists by construction).
-
-'''
-work_state = "armed"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "false_pass_or_red"
-control_ids = ["testing.guard.extend-recombination-member-kind-table-optional-fixed-shape"]
-
-[record.payload.promotion_trigger]
-observer = "fresh-evidence submitter for testing.extend-recombination-member-kind-table-optional-fixed-shape"
-dimension = "Extend the recombination member-kind table to the OPTIONAL-FIXED shape."
-observable = "- **Extend the recombination member-kind table to the OPTIONAL-FIXED shape.** `MEMBER_KINDS` now carries a per-kind aux-rule slot (`%A%`), so a kind that needs a named rule of its own is a one-row edit rather than a mechanism change — the `tagged_optional` row (`%K%: #6.10(%A%)` over `uint / null`) is the worked example, and `optional_fixed_member.cddl` / `optional_fixed_float.cddl` name the shape the table still cannot compose: `? %K%: 5`, an optional member whose type is a fixed value, which mints a `bool` presence field instead of a value and so reaches a deserialize seam the `optional` and `fixed_*` kinds each only half touch. It is one row, and the reason it is not simply built is that a kind addition is not free: it RESHUFFLES every seeded draw downstream of the table, so each one re-samples the triples and depth-2 fillers onto different compositions and can surface unrelated pre-existing defects that must be fixed or promoted before the row can land. Adding `tagged_optional` cost two emitter fixes and one promoted panic class; budget the next row the same way rather than as a table edit. Reopening signal, on the axis the deferred cost grows along: a SECOND exit-0 uncompilable-or-wrong-bytes crate in a supported composition the member-kind table does not span (each instance is a loud build or round-trip failure for whoever generates the shape, so the reporter exists by construction)."
-action_on_fire_md = '''Set testing.extend-recombination-member-kind-table-optional-fixed-shape to ready and execute only its preserved acceptance/mechanical-layer scope.
-'''
-
-[record.payload.promotion_trigger.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.extend-recombination-member-kind-table-optional-fixed-shape's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
 
 [[record]]
 id = "testing.extern-deps-wasm-boundary-surface-packaging-json-gen"
@@ -2811,20 +2722,6 @@ boundary_md = '''This control owns current containment only. It does not claim t
 '''
 
 [[record]]
-id = "testing.guard.directive-dependent-emitter-edge-case-triggering-shape-hand"
-title = "Current control for testing.directive-dependent-emitter-edge-case-triggering-shape-hand."
-
-[record.payload]
-kind = "control"
-control_kind = "review_rule"
-control_state = "live"
-reference_ids = ["testing-roadmap-next-work-n4"]
-claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.directive-dependent-emitter-edge-case-triggering-shape-hand's preserved detail.
-'''
-boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
-'''
-
-[[record]]
 id = "testing.guard.directive-s-documented-sentence-stay-true-consumer-visible"
 title = "Current control for testing.directive-s-documented-sentence-stay-true-consumer-visible."
 
@@ -2960,20 +2857,6 @@ control_kind = "review_rule"
 control_state = "live"
 reference_ids = ["testing-roadmap-operational-watches"]
 claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.exclusion-reasons-informational-interchange's preserved detail.
-'''
-boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
-'''
-
-[[record]]
-id = "testing.guard.extend-recombination-member-kind-table-optional-fixed-shape"
-title = "Current control for testing.extend-recombination-member-kind-table-optional-fixed-shape."
-
-[record.payload]
-kind = "control"
-control_kind = "review_rule"
-control_state = "live"
-reference_ids = ["testing-roadmap-next-work-n11"]
-claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.extend-recombination-member-kind-table-optional-fixed-shape's preserved detail.
 '''
 boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
 '''
@@ -6676,11 +6559,6 @@ kind = "parent_of"
 target = "testing.guard.dependency-swap-pass-compile-parity-existing-gate-silently"
 
 [[relation]]
-source = "testing.directive-dependent-emitter-edge-case-triggering-shape-hand"
-kind = "parent_of"
-target = "testing.guard.directive-dependent-emitter-edge-case-triggering-shape-hand"
-
-[[relation]]
 source = "testing.directive-s-documented-sentence-stay-true-consumer-visible"
 kind = "parent_of"
 target = "testing.guard.directive-s-documented-sentence-stay-true-consumer-visible"
@@ -6744,11 +6622,6 @@ target = "testing.guard.emitter-drops-overloadable-parameter-building-fresh-conf
 source = "testing.exclusion-reasons-informational-interchange"
 kind = "parent_of"
 target = "testing.guard.exclusion-reasons-informational-interchange"
-
-[[relation]]
-source = "testing.extend-recombination-member-kind-table-optional-fixed-shape"
-kind = "parent_of"
-target = "testing.guard.extend-recombination-member-kind-table-optional-fixed-shape"
 
 [[relation]]
 source = "testing.extern-deps-wasm-boundary-surface-packaging-json-gen"
@@ -7164,13 +7037,6 @@ path = "draft/roadmaps/testing-roadmap.md"
 heading = "Next work"
 
 [[reference]]
-id = "testing-roadmap-next-work-n4"
-source = "testing.directive-dependent-emitter-edge-case-triggering-shape-hand"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
-
-[[reference]]
 id = "testing-roadmap-next-work-n5"
 source = "testing.directive-s-documented-sentence-stay-true-consumer-visible"
 kind = "file_heading"
@@ -7287,13 +7153,6 @@ source = "testing.exclusion-reasons-informational-interchange"
 kind = "file_heading"
 path = "tests/README.md"
 heading = "Extern-interface export & `--extern-import` (the machine-generated stub channel)"
-
-[[reference]]
-id = "testing-roadmap-next-work-n11"
-source = "testing.extend-recombination-member-kind-table-optional-fixed-shape"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
 
 [[reference]]
 id = "test-extern-wrapper-index-defers-to-dep"

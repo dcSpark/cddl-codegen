@@ -1966,7 +1966,8 @@ own files carry this caveat too, next to the attribution sentence.
   there.
 - **A no-std *target* is required, not just the feature.** Host targets always link `std`, so a host
   `cargo check` cannot prove anything here; `thumbv7m-none-eabi` is a bare-metal target with no `std`
-  at all. Install it once with `rustup target add thumbv7m-none-eabi`.
+  at all. On a rustup-managed toolchain install it with `rustup target add thumbv7m-none-eabi`; with
+  another compiler (for example Nix), provision that target through the compiler's package/environment.
 - **Deliberately standalone**, via an empty `[workspace]` table in its manifest. That keeps it out of
   a surrounding cargo workspace, which matters for correctness and not just tidiness: cargo unifies
   features across a whole dependency graph, so one other workspace member turning `std` back on for a

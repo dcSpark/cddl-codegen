@@ -41,8 +41,9 @@
  * for. A real consumer is a `--config` tree of several packages over one shared runtime crate, where
  * the feature has to FORWARD across every hop or it stops at the first — see `generateSplitProfile`.
  *
- * Standalone-invocable — `check.ts` has no single-gate selector, so the way to run this alone is
- * `bun run cddl-matrix/no_std_check.ts [fast|local|full]` (default `local`).
+ * Standalone-invocable as `bun run cddl-matrix/no_std_check.ts [fast|local|full]` (default `local`);
+ * this avoids a tier warm-up when diagnosing the gate, while `check.ts --only no_std_check` remains
+ * available when a registry-shaped partial-run receipt is useful.
  */
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, utimesSync, readdirSync, statSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
@@ -56,7 +57,7 @@ const ROOT = import.meta.dir;
 const CODEGEN_DIR = resolve(ROOT, ".."); // the cddl-codegen repo this script lives in
 const TARGET = "thumbv7m-none-eabi";
 const GATE = "no_std_check";
-/** Bump on any change to the VERDICT logic (not to the profiles' bytes, which the tree hash covers). */
+/** Bump on any change to a cached CELL verdict (not pre-cell target provisioning or profile bytes). */
 const VERDICT_MARKER = "no-std-check-v3";
 const CARGO_TIMEOUT_S = 900;
 
@@ -591,28 +592,49 @@ function runSplitProfile(cargoTarget: string): boolean {
 }
 
 // ---- target guard -------------------------------------------------------------------------------
+/** Pure target-list classifier: `undefined` is the explicit no-rustup outcome. */
+export function targetInstalledFromRustupListing(r: Pick<Ran, "exit" | "stdout"> | undefined): boolean {
+  return r?.exit === 0 && r.stdout.split("\n").some(l => l.trim() === TARGET);
+}
+
 function targetInstalled(): boolean {
   // cwd = repo root so `rust-toolchain.toml` selects the pinned toolchain — targets are installed
   // PER TOOLCHAIN, so asking any other one answers a different question.
-  const r = run(["rustup", "target", "list", "--installed"], CODEGEN_DIR, undefined, 120);
-  return r.exit === 0 && r.stdout.split("\n").some(l => l.trim() === TARGET);
+  // Bun.spawnSync throws ENOENT for an absent executable, so discover rustup first rather than
+  // treating a non-rustup toolchain as a harness crash. It is the same unavailable prerequisite as
+  // an absent target: local must loud-SKIP and full must hard-FAIL.
+  const rustup = Bun.which("rustup");
+  return targetInstalledFromRustupListing(
+    rustup ? run([rustup, "target", "list", "--installed"], CODEGEN_DIR, undefined, 120) : undefined,
+  );
+}
+
+function targetAvailabilitySelftest(): void {
+  const assert = (condition: boolean, message: string) => {
+    if (!condition) throw new Error(`target availability self-test: ${message}`);
+  };
+  assert(!targetInstalledFromRustupListing(undefined), "absent rustup must be unavailable, not a spawn exception");
+  assert(!targetInstalledFromRustupListing({ exit: 1, stdout: TARGET }), "failed rustup must be unavailable");
+  assert(!targetInstalledFromRustupListing({ exit: 0, stdout: "x86_64-unknown-linux-gnu\n" }), "other installed target must be unavailable");
+  assert(targetInstalledFromRustupListing({ exit: 0, stdout: `${TARGET}\n` }), "listed target must be available");
 }
 
 function loudSkipMessage(): string[] {
   return [
     "",
     "  ============================================================================",
-    `  ${GATE}: SKIPPED — the '${TARGET}' target is not installed`,
+    `  ${GATE}: SKIPPED — the '${TARGET}' target is unavailable (not installed or rustup is absent)`,
     "",
     "  This gate is the repo-side half of the documented no_std attribution guarantee:",
     "  it proves the generated crate builds without `std`, so that a red no-std-check in",
     "  a consumer's tree attributes to their hand-written code. Skipping it means nothing",
     "  in this run checked that.",
     "",
-    "  Fix (rustup-managed checkouts): the target is declared in rust-toolchain.toml and",
-    "  installs itself — if it is missing here, run `rustup toolchain install` for the",
-    "  pinned toolchain, or simply:",
+    "  Fix: provision the target for the active compiler. In a rustup-managed checkout it is",
+    "  declared in rust-toolchain.toml; if still missing, run:",
     `      rustup target add ${TARGET}`,
+    "  With a non-rustup compiler (for example Nix), install its target through that toolchain's",
+    "  package/environment instead; a rustup command is not available there.",
     "",
     "  This is a SKIP in the local tier and a hard FAIL in full: a silent skip would void",
     "  the guarantee with nothing else positioned to notice.",
@@ -711,8 +733,8 @@ export function runNoStdCheckGate(tier: string): NoStdOutcome {
   if (!targetInstalled()) {
     for (const l of loudSkipMessage()) console.log(l);
     if (tier === "full")
-      return { status: "FAIL", reason: `${TARGET} not installed (a silent skip voids the attribution guarantee)` };
-    return { status: "SKIPPED", reason: `${TARGET} not installed` };
+      return { status: "FAIL", reason: `${TARGET} unavailable (a silent skip voids the attribution guarantee)` };
+    return { status: "SKIPPED", reason: `${TARGET} unavailable (not installed or rustup absent)` };
   }
 
   const cargoTarget = scratch("target");
@@ -792,6 +814,11 @@ export function runNoStdCheckGate(tier: string): NoStdOutcome {
 
 // ---- standalone entry point ----------------------------------------------------------------------
 if (import.meta.main) {
+  if (process.argv.includes("--selftest")) {
+    targetAvailabilitySelftest();
+    console.log(`${GATE}: target availability self-test OK (absent rustup + target-list verdicts)`);
+    process.exit(0);
+  }
   // Same rule check.ts's `main()` uses: first non-`--` argv token is the tier, default `local`.
   const tier = process.argv.slice(2).find(a => !a.startsWith("--")) ?? "local";
   const outcome = runNoStdCheckGate(tier);

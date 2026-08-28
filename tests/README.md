@@ -563,7 +563,8 @@ check without ever compiling what it is about (the emitted shim's own two files 
 This gate is what makes the promise true of tool output.
 
 `cddl-matrix/no_std_check.ts`, driven by a `fn` registry entry and also invocable on its own as
-`bun run cddl-matrix/no_std_check.ts [tier]` (`check.ts` has no single-gate selector). It generates
+`bun run cddl-matrix/no_std_check.ts [tier]` (or through `check.ts --only no_std_check` when a
+registry-shaped partial-run receipt is useful). It generates
 five single-crate profiles plus one multi-crate `--config` tree **fresh** into `mkdtemp` scratch —
 the `tests/<dir>/export*` trees are unusable here because the integration harness splices
 module-scope `println!` helpers into them outside `#[cfg(test)]`, so they would fail for reasons
@@ -633,8 +634,10 @@ re-keyed and failed).
 
 **Fresh-checkout setup:** `thumbv7m-none-eabi` is declared in `rust-toolchain.toml`, so a
 rustup-managed checkout (and CI's `setup-rust-toolchain`, which reads that file) provisions it
-automatically. `rustup target add thumbv7m-none-eabi` is the backstop for everything else — note
-targets install *per toolchain*, so it must land on the pinned one.
+automatically. For that toolchain, `rustup target add thumbv7m-none-eabi` is the backstop; targets
+install *per toolchain*, so it must land on the pinned one. With a non-rustup compiler (for example
+Nix), provision the target through that compiler's package/environment instead — the gate loud-SKIPs
+locally and hard-fails at `full` when either rustup or the target is unavailable.
 
 ### The gate cache (memoize-and-skip for nested cargo)
 
@@ -1858,8 +1861,10 @@ manifest merge contract on real disk (the only place generation reads prior outp
 regen, the seeded `package.version` stays bumped, tool-owned keys (incl. the version stamp) are
 restored, a further regen is a byte-identical fixed point, and an unparseable existing manifest is a
 hard error naming the file rather than a clobber. Note for harness authors: because manifests merge
-rather than clobber, `run_test` deletes the three manifests in its reused export dirs before
-regenerating — its raw-appended `test_deps` would otherwise accumulate across runs.
+rather than clobber and Cargo honors existing locks, `run_test` deletes the three manifests **and
+their sibling locks** in its reused export dirs before regenerating — raw-appended `test_deps` and a
+previous fixture's stale dependency resolution would otherwise survive the fresh warm-up. It keeps
+only each crate's `target/` to amortize compilation.
 
 The names those manifests carry are checked against the SURROUNDING workspace — an input read, not a
 prior-output one — by `workspace_package_name_collision_warning_names_both_manifests` (integration,
@@ -5385,7 +5390,10 @@ scalars, optional / zero-permitting occurrences, inline groups, filler-typed mem
 tagged-optional kind — a tag head over a named `T / null` rule, minted through the table's
 per-kind aux-rule slot (`%A%`, a deterministic per-(composition, member-index) rule name) —
 composed 1–3
-at a time into struct maps, array records, and both group-choice representations), depth-2 nesting
+at a time into struct maps, array records, and both group-choice representations). The member table
+also includes `optional_fixed` (`? %K%: 5`): unlike a mandatory fixed value, it materializes as a
+`bool` presence field, so it reaches the fixed and optional emitter/deserializer seams together.
+The other axes are depth-2 nesting
 of constructs in container roles (a role-template table: array element, map key/value, choice
 member, group-choice arm, occurrence target, tag content, `.cbor` payload, generic arg, top level),
 and — low-weight — identifier choice drawn from `identifier_hazard_tests::hazards()` (never
@@ -5395,7 +5403,13 @@ Stage A is a TypeScript projection, `cddl-matrix/project_recombination.ts`: it r
 feature's `example` to a reusable hole-fillable expression (primary-rule RHS + auxiliary rules;
 irreducible examples are recorded in a `skipped` list with reasons) and projects the containment
 legality data, writing the committed `tests/recomb/ingredients.json` (`--check` is the
-`project_recombination_check` drift gate, check.ts local tier). Legality semantics: the containment
+`project_recombination_check` drift gate, check.ts fast tier). The same projection separately
+projects structured comment-DSL ingredients from the `dsl.*` matrix identities: this deliberately
+bounded axis carries `@ignore` on map rest rows, `@duplicates reject` / `preserve` on map rest rows
+and collection rules, and `@name` on map/array members and map rest rows. It is not a substitute
+for the exhaustive directive × parse-shape reachability product in `no_silent_directive.ts`; it
+composes directives with the emitter-triggering shapes and sends every successful case onward to
+the layer-2 compile tests. Legality semantics: the containment
 matrix enumerates only structurally interesting cells and deliberately omits trivial
 primitive-as-member cells as implicitly allowed, so the composer treats the projected `disallowed`
 pairs as a BLACKLIST (anything unlisted composes) and uses the `legal` (spec="allowed") pairs only
@@ -5441,7 +5455,13 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   cddl-codegen recombination_generation_sweep`, in the same commit as the change that moved the
   numbers and with the reason in that commit's message; the failure message names the command and
   prints what it measured. The datum is trustworthy because the sweep asserts its own enumeration is
-  deterministic — the same property that lets the floors be read off the executed artifact.
+  deterministic — the same property that lets the floors be read off the executed artifact. The
+  current reviewed movement is `1624/1198/411/15` → `1742/1270/457/15`
+  (swept/ok/graceful/panic): +88 systematic member-table cases from `optional_fixed` and +30
+  bounded directive-host cases. The enlarged sweep exposed two product defects; their fixes moved
+  17 panics to ok (optional fixed fields in inlined group-choice enum arms) and one to a graceful
+  rejection (anonymous heterogeneous inline arrays used as generic arguments). The two known panic
+  class counts remain unchanged.
 - `recombination_crates_execute` (`#[ignore]`, check.ts full tier — the `recombination_crates_execute`
   gate): executes the sweep's `ok` compositions under TWO deterministic, decorrelated greedy plans
   (~40 rules/batch; the budget is a ceiling except that an intrinsically oversized composition is

@@ -41,10 +41,10 @@ bidirectional lint as spec features — so "not pure RFC" does not mean "unancho
 > status-header prose (feature/annotation/op/divergence/constraint counts) as spans in this README
 > and `tests/README.md` (the matrix roadmap's counts render as generated slots when its projection
 > is written). A fifth projection feeds a consumer that is not a hand doc:
-> `project_recombination.ts` distils every feature `example` + the containment legality data into
-> `tests/recomb/ingredients.json` (drift-gated by check.ts `project_recombination_check`), the
-> ingredient set the shape-recombination fuzzer composes from (`tests/README.md`
-> § "Shape-recombination fuzzer"). **Every consumer query Q1–Q6 is answered by a standing script**
+> `project_recombination.ts` distils reusable feature `example`s, containment legality, and a
+> bounded directive-to-host projection into `tests/recomb/ingredients.json` (drift-gated by check.ts
+> `project_recombination_check`), the ingredient set the shape-recombination fuzzer composes from
+> (`tests/README.md` § "Shape-recombination fuzzer"). **Every consumer query Q1–Q6 is answered by a standing script**
 > (`QUERIES.md` § "Definition of done").
 
 ## What is a feature?
@@ -830,8 +830,10 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   a verdict from `generate` for those ops (classified statically by controller op-name —
   `lib.ts` `rubyGenerateIsBernoulli`, self-tested at startup, gated by `verify_selftest`;
   `bun run verify.ts --selftest` runs that check, its wasm-evidence sibling, the policy-mint
-  classifier, the unknown-flag process boundary, and the scratch-cwd toolchain pin standalone in
-  tens of milliseconds). The
+  classifier, the unknown-flag process boundary, and a pure toolchain-comparison classifier
+  (including absent `rustup`) standalone in tens of milliseconds. Ordinary verifier modes still
+  execute the scratch-cwd toolchain-pin comparison and fail closed when `rustup` is absent or the
+  compiler identity differs. The
   clause reports one of three deterministic tokens, all preserving the `; ruby=` delimiter downstream
   splitters key on: `ruby=ok|fail` from `generate` for NON-narrowing examples; `ruby=ok(validate)|
   fail(validate)` for a narrowing op WITH committed spec-valid accept vectors — ruby `validate` over
