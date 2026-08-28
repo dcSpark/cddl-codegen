@@ -348,6 +348,7 @@ function applyDefSplice(out: string, opts: { wasm: boolean; json: boolean; prese
   }
   if (rustDefs) appendFileSync(join(out, "rust", "src", "lib.rs"), rustDefs);
   if (reexports.length)
+    // cddl-codegen:generated-append reason=crate-root-reexport
     appendFileSync(join(out, "rust", "src", "generated", "mod.rs"), `\npub use crate::{${reexports.join(", ")}};\n`);
   if (!opts.wasm || activeSplice.wasm.length === 0) return;
   // The wasm crate root doesn't see the `wasm_bindgen` macro `generated/mod.rs` privately `use`s.

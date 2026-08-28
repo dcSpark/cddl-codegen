@@ -129,7 +129,6 @@ entries = [
   "testing.ruling-premise-gate-x-stays-green-must-probed",
   "testing.observed-baseline-comments-beside-gate-floors-rot-silently",
   "testing.extreme-value-boundary-correctness-generation-time-encode-paths",
-  "testing.fixture-models-obsolete-user-contract-stays-green-real",
   "testing.panic-site-un-shadowing-converting-shallow-panic-graceful",
   "testing.three-defect-classes-process-test-see-sharing-remedy",
   "testing.process-boundary.rustc-after-panic-fix",
@@ -2036,71 +2035,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.fixture-models-obsolete-user-contract-stays-green-real"
-title = "A fixture that models an OBSOLETE user contract stays green while the real contract path is broken — the wrong-shape member of the fixture-blindness family headed by \"An emission branch whose generated OUTPUT no fixture exercises is invisible to every gate\"."
-
-[record.payload]
-kind = "work"
-body_md = '''- **A fixture that models an OBSOLETE user contract stays green while the real contract path is
-  broken — the wrong-shape member of the fixture-blindness family headed by "An emission branch
-  whose generated OUTPUT no fixture exercises is invisible to every gate".** Proven instance
-  (consumer-reported, not by any gate): every raw-bytes fixture appended
-  the user-supplied `_CDDL_CODEGEN_RAW_BYTES_TYPE_` definition INTO `rust/src/generated/mod.rs` —
-  the pre-thin-root layout no real user can have (that subtree is clobbered every regen) — so bare
-  references resolved locally and all raw-bytes gates stayed green while the extern re-export glue
-  (`pub use crate::Name;`) covered only `RustStructType::Extern`, not `RawBytesType`; regenerating
-  CML's cip36 (`public_key = _CDDL_CODEGEN_RAW_BYTES_TYPE_` referenced only through `pub type`
-  aliases, which have no other resolution path) failed E0412 at five sites. Standing coverage now:
-  the fix routes raw-bytes defs through the real contract (appended to the user-owned thin
-  `lib.rs`, same as extern-type defs), and the glue's own `pub use crate::<Name>;` line makes any
-  regression to the masked routing fail loudly (E0255 duplicate definition) rather than silently
-  re-masking. The WASM half of the incident was the class's second occurrence, caught by
-  interrogating this entry's own first write-up rather than by any gate: the wasm glue covered
-  only `Extern` wrappers while the fixture appended the wasm raw-bytes def into
-  `wasm/src/generated/mod.rs` (the same no-real-user-contract residence), proven by a
-  cip36-shaped scratch repro — rust crate compiled via the landed rust glue, wasm crate failed 3×
-  E0425 `PubKey` (the consumer's rust E0412 had masked the wasm failure, since the regen never got
-  past the rust crate). Both halves
-  are now standing coverage: glue covers `Extern | RawBytesType` in BOTH crates, both def
-  routings model the real crate-root contract (thin `lib.rs`), and regression to the masked
-  residence collides E0255 with the glue's own re-export in either crate. The formerly-latent alias-walk sibling
-  (`scope_references` walked `rust_structs` only, never `type_aliases`, so a CROSS-scope alias to
-  a non-extern type under-imported its target — E0412) got its failing case on a production
-  project and is fixed: the type-alias walk marks each emitted alias's `base_type` (and, wasm-side,
-  the `resolved_wasm_alias_target` wrapper — a helper shared with the wasm alias emitter so the
-  emitted target and its import cannot drift), with standing coverage from the placement matrix's
-  `aliased` reference mode (every INCLUDED shape × `bal = <ty>` in module `b`; the extern-shape
-  exclusion's alias-position residue — the generic-extern-instance `Base<Args>` class, feature
-  request 07 — is hand-pinned by `tests/extern-generic-scoped`, see "Multifile reference-POSITION
-  coverage" below). Working rule meanwhile: a
-  fixture that injects hand-written code into
-  `generated/**` carries a comment justifying the residence — and the justification must name a
-  contract a real user can follow, or explicitly flag itself as a modeled-obsolete shape citing
-  this entry (the `use super::*;` serializer-helper appends qualify). Mechanical layer on the
-  NEXT instance: an audit sweep enumerating every test append-site that writes into a
-  `generated/**` path and failing any not on a justified allowlist — the wasm half already being
-  the class's second occurrence is the argument for building it on any further sighting rather
-  than deferring again.
-'''
-work_state = "armed"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "false_pass_or_red"
-control_ids = ["testing.guard.fixture-models-obsolete-user-contract-stays-green-real"]
-
-[record.payload.promotion_trigger]
-observer = "fresh-evidence submitter for testing.fixture-models-obsolete-user-contract-stays-green-real"
-dimension = "A fixture that models an OBSOLETE user contract stays green while the real contract path is broken — the wrong-shape member of the fixture-blindness family headed by \"An emission branch whose generated OUTPUT no fixture exercises is invisible to every gate\"."
-observable = "- **A fixture that models an OBSOLETE user contract stays green while the real contract path is broken — the wrong-shape member of the fixture-blindness family headed by \"An emission branch whose generated OUTPUT no fixture exercises is invisible to every gate\".** Proven instance (consumer-reported, not by any gate): every raw-bytes fixture appended the user-supplied `_CDDL_CODEGEN_RAW_BYTES_TYPE_` definition INTO `rust/src/generated/mod.rs` — the pre-thin-root layout no real user can have (that subtree is clobbered every regen) — so bare references resolved locally and all raw-bytes gates stayed green while the extern re-export glue (`pub use crate::Name;`) covered only `RustStructType::Extern`, not `RawBytesType`; regenerating CML's cip36 (`public_key = _CDDL_CODEGEN_RAW_BYTES_TYPE_` referenced only through `pub type` aliases, which have no other resolution path) failed E0412 at five sites. Standing coverage now: the fix routes raw-bytes defs through the real contract (appended to the user-owned thin `lib.rs`, same as extern-type defs), and the glue's own `pub use crate::<Name>;` line makes any regression to the masked routing fail loudly (E0255 duplicate definition) rather than silently re-masking. The WASM half of the incident was the class's second occurrence, caught by interrogating this entry's own first write-up rather than by any gate: the wasm glue covered only `Extern` wrappers while the fixture appended the wasm raw-bytes def into `wasm/src/generated/mod.rs` (the same no-real-user-contract residence), proven by a cip36-shaped scratch repro — rust crate compiled via the landed rust glue, wasm crate failed 3× E0425 `PubKey` (the consumer's rust E0412 had masked the wasm failure, since the regen never got past the rust crate). Both halves are now standing coverage: glue covers `Extern | RawBytesType` in BOTH crates, both def routings model the real crate-root contract (thin `lib.rs`), and regression to the masked residence collides E0255 with the glue's own re-export in either crate. The formerly-latent alias-walk sibling (`scope_references` walked `rust_structs` only, never `type_aliases`, so a CROSS-scope alias to a non-extern type under-imported its target — E0412) got its failing case on a production project and is fixed: the type-alias walk marks each emitted alias's `base_type` (and, wasm-side, the `resolved_wasm_alias_target` wrapper — a helper shared with the wasm alias emitter so the emitted target and its import cannot drift), with standing coverage from the placement matrix's `aliased` reference mode (every INCLUDED shape × `bal = <ty>` in module `b`; the extern-shape exclusion's alias-position residue — the generic-extern-instance `Base<Args>` class, feature request 07 — is hand-pinned by `tests/extern-generic-scoped`, see \"Multifile reference-POSITION coverage\" below). Working rule meanwhile: a fixture that injects hand-written code into `generated/**` carries a comment justifying the residence — and the justification must name a contract a real user can follow, or explicitly flag itself as a modeled-obsolete shape citing this entry (the `use super::*;` serializer-helper appends qualify). Mechanical layer on the NEXT instance: an audit sweep enumerating every test append-site that writes into a `generated/**` path and failing any not on a justified allowlist — the wasm half already being the class's second occurrence is the argument for building it on any further sighting rather than deferring again."
-action_on_fire_md = '''Set testing.fixture-models-obsolete-user-contract-stays-green-real to ready and execute only its preserved acceptance/mechanical-layer scope.
-'''
-
-[record.payload.promotion_trigger.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.fixture-models-obsolete-user-contract-stays-green-real's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
-
-[[record]]
 id = "testing.fixture-s-verdict-accident-cargo-feature-unification-harness"
 title = "A fixture cell's verdict can be an accident of cargo feature unification: harness-spliced hand code needing a feature a dep reshape disabled stays green whenever a SIBLING dep in the same fixture graph re-enables that feature — so the red arrives on a later graph change, not on the change that broke the code."
 
@@ -3082,20 +3016,6 @@ control_kind = "gate"
 control_state = "live"
 reference_ids = ["gate-corpus-decode-replay"]
 claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.finding-s-defect-side-attribution-recorded-narrative-plausibility's preserved detail.
-'''
-boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
-'''
-
-[[record]]
-id = "testing.guard.fixture-models-obsolete-user-contract-stays-green-real"
-title = "Current control for testing.fixture-models-obsolete-user-contract-stays-green-real."
-
-[record.payload]
-kind = "control"
-control_kind = "review_rule"
-control_state = "live"
-reference_ids = ["testing-roadmap-next-work-n12"]
-claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.fixture-models-obsolete-user-contract-stays-green-real's preserved detail.
 '''
 boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
 '''
@@ -6843,11 +6763,6 @@ kind = "parent_of"
 target = "testing.guard.finding-s-defect-side-attribution-recorded-narrative-plausibility"
 
 [[relation]]
-source = "testing.fixture-models-obsolete-user-contract-stays-green-real"
-kind = "parent_of"
-target = "testing.guard.fixture-models-obsolete-user-contract-stays-green-real"
-
-[[relation]]
 source = "testing.fixture-s-verdict-accident-cargo-feature-unification-harness"
 kind = "parent_of"
 target = "testing.guard.fixture-s-verdict-accident-cargo-feature-unification-harness"
@@ -7410,13 +7325,6 @@ id = "gate-corpus-decode-replay"
 source = "testing.finding-s-defect-side-attribution-recorded-narrative-plausibility"
 kind = "gate"
 gate_id = "corpus_decode_replay"
-
-[[reference]]
-id = "testing-roadmap-next-work-n12"
-source = "testing.fixture-models-obsolete-user-contract-stays-green-real"
-kind = "file_heading"
-path = "draft/roadmaps/testing-roadmap.md"
-heading = "Next work"
 
 [[reference]]
 id = "test-core-no-wasm"

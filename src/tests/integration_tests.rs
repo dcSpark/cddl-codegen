@@ -1446,6 +1446,7 @@ fn append_corpus_defs(out: &std::path::Path, defs: &CorpusDefs, json: bool, pres
         // remedy `docs/docs/comment_dsl.mdx` names for exactly this spelling. It re-exports the
         // definition that lives in the crate root; it is not a definition itself.
         let mut generated_mod = std::fs::OpenOptions::new()
+            // cddl-codegen:generated-append reason=crate-root-reexport
             .append(true)
             .open(out.join("rust/src/generated/mod.rs"))
             .unwrap();
@@ -1702,6 +1703,7 @@ fn run_test(
     let generated_mod_path = test_path.join(format!("{export_path}/rust/src/generated/mod.rs"));
     ownership.record_append_boundary(&generated_mod_path);
     let mut generated_mod = std::fs::OpenOptions::new()
+        // cddl-codegen:generated-append reason=generated-module-test-body
         .append(true)
         .open(&generated_mod_path)
         .unwrap();
@@ -1893,6 +1895,7 @@ fn run_test(
             test_path.join(format!("{export_path}/wasm/src/generated/mod.rs"));
         ownership.record_append_boundary(&wasm_generated_mod_path);
         let mut wasm_lib_rs = std::fs::OpenOptions::new()
+            // cddl-codegen:generated-append reason=generated-sibling-helper
             .append(true)
             .open(&wasm_generated_mod_path)
             .unwrap();
@@ -1908,6 +1911,7 @@ fn run_test(
             test_path.join(format!("{export_path}/wasm/src/generated/mod.rs"));
         ownership.record_append_boundary(&wasm_generated_mod_path);
         let mut wasm_lib_rs = std::fs::OpenOptions::new()
+            // cddl-codegen:generated-append reason=generated-module-test-body
             .append(true)
             .open(&wasm_generated_mod_path)
             .unwrap();
@@ -12044,6 +12048,7 @@ fn custom_pair_shared_codec_across_positions_fails_to_compile() {
     // One codec pair, written with the RECORD-FIELD signature — the spelling a consumer reaches for
     // when they do not yet know the two positions differ.
     let mut generated_mod = std::fs::OpenOptions::new()
+        // cddl-codegen:generated-append reason=generated-sibling-helper
         .append(true)
         .open(out_dir.join("rust/src/generated/mod.rs"))
         .unwrap();
@@ -13092,6 +13097,7 @@ fn emit_tests_open_array_execute() {
         .expect("open-array custom codec helper");
     let append_custom_codecs = |out: &std::path::Path| {
         let mut generated_mod = std::fs::OpenOptions::new()
+            // cddl-codegen:generated-append reason=generated-sibling-helper
             .append(true)
             .open(out.join("rust/src/generated/mod.rs"))
             .expect("generated open-array mod.rs");
@@ -13480,6 +13486,7 @@ fn emit_wasm_tests_execute() {
         .unwrap();
     std::mem::drop(root_lib);
     let mut rust_lib = std::fs::OpenOptions::new()
+        // cddl-codegen:generated-append reason=generated-sibling-helper
         .append(true)
         .open(export_path.join("rust/src/generated/mod.rs"))
         .unwrap();
@@ -13518,6 +13525,7 @@ fn emit_wasm_tests_execute() {
     std::mem::drop(wasm_root_lib);
     let wasm_lib_path = export_path.join("wasm/src/generated/mod.rs");
     let mut wasm_lib = std::fs::OpenOptions::new()
+        // cddl-codegen:generated-append reason=generated-module-test-body
         .append(true)
         .open(&wasm_lib_path)
         .unwrap();
@@ -18016,6 +18024,7 @@ fn extern_wrapper_index_defers_to_dep() {
     {
         use std::io::Write;
         let mut wasm_gen_mod = std::fs::OpenOptions::new()
+            // cddl-codegen:generated-append reason=generated-module-test-body
             .append(true)
             .open(export.join("wasm/src/generated/mod.rs"))
             .unwrap();

@@ -1164,6 +1164,25 @@ when the `hex` key moved to the `const-hex` package, while the mechanism stands 
 manifests name identically), the same unification caveat
 `rust_wasm_bindgen_feature_gated_crate_compiles_standalone` guards against below — full class
 ledger in `testing.fixture-s-verdict-accident-cargo-feature-unification-harness`.
+
+**Generated-tree append audit.** A hand-authored definition belongs in the seed-once crate-root
+`src/lib.rs`, never `src/generated/**`, which a real regeneration clobbers. The exception is
+mechanically audited by `generated_append_audit_tests`: it recursively scans repository-owned Rust
+test harnesses, `cddl-matrix` TypeScript, and fuzz shell sources for Rust `OpenOptions` appends,
+`appendFileSync`, and `>>` redirects targeting `src/generated/**`. Every hit must have a marker on
+the immediately preceding line — `cddl-codegen:generated-append reason=<reason>` — and the marker
+must be live and use exactly one of these closed reasons:
+
+- `crate-root-reexport`: a generated module re-exports a definition seeded at the crate root so a
+  generated sibling can resolve its documented bare name.
+- `generated-sibling-helper`: a custom codec/helper must compile beside the generated sibling that
+  reaches it through `use super::*` or same-module resolution.
+- `generated-module-test-body`: a test fragment deliberately executes in the generated module scope.
+
+Unknown, stale, and unmarked sites fail. The unit vectors cover direct and variable Rust paths plus
+TypeScript and shell candidates, so changing the append spelling or adding a source file requires a
+reviewed residence decision rather than extending a line-number allowlist.
+
 `tests/core/tests_wasm.rs` (default profile) and
 `tests/canonical/tests_wasm.rs` (preserve-encodings/canonical, whose map wrappers wrap
 `OrderedHashMap`) execute a representative sample of the wasm-ABI shape axis (the

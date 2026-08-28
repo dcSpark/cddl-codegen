@@ -31,7 +31,9 @@ cargo run --release -- --input=tests/preserve-encodings/input.cddl --output=fuzz
 # The generated `serialization.rs` calls these custom-serialization free functions via `use super::*;`,
 # so they must land in the generated-module scope. `generated/mod.rs` is clobbered every regeneration,
 # so appends don't accumulate across reruns.
+# cddl-codegen:generated-append reason=generated-sibling-helper
 printf '\nuse serialization::*;\n\n' >> fuzz/generated/rust/src/generated/mod.rs
+# cddl-codegen:generated-append reason=generated-sibling-helper
 cat tests/custom_serialization_preserve >> fuzz/generated/rust/src/generated/mod.rs
 
 # --- recursive crate (with the depth guard) -----------------------------------------------------
