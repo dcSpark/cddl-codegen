@@ -527,8 +527,12 @@ untouched.
 The warm-up manifest is drift-gated: `warmup_manifest_covers_registry_dep_universe`
 (`src/cargo_manifest.rs`) asserts every dep the manifest ops can emit — including the component
 guest's `wit-bindgen` — appears there with the same version req and features (features gate optional
-transitive deps, which `cargo fetch` only pulls when enabled). Fixture crates under `tests/` with
-hand-written manifests are the manual tail. The component hosts' direct `wasmtime`/`wasmtime-wasi`,
+transitive deps, which `cargo fetch` only pulls when enabled). Its bin-only sibling,
+`integration_tests::warmup_manifest_covers_harness_injected_dependency_roots`, pins the two direct
+harness-injected roots that are outside manifest ops: JSON fixtures' `jsonschema` with
+`default-features = false`, and the same rev-pinned `cddl` conformance oracle fresh scratch crates
+receive (whose graph reaches `data-encoding`). Fixture crates under `tests/` with hand-written
+manifests are otherwise the manual tail. The component hosts' direct `wasmtime`/`wasmtime-wasi`,
 `wac-graph`, `wit-component`, and `wit-parser` roots are listed explicitly. The direct roots,
 including `wit-bindgen` for its `wit-bindgen-rust-macro` transitive, fetch the rest of their
 resolved graphs. Any newly fixture-only dep missing from the warm-up manifest fails offline cells
@@ -538,6 +542,16 @@ Escape hatches:
 skips the fetch and trusts the cache. The warm-up is the ONE place a network retry is honest (pure
 cache-population/update work, with no assertions behind it); if it fails all attempts the run stops
 before any gate.
+
+### Persistent ignored fixture outputs copy bytes only
+
+Some integration fixtures regenerate ignored `tests/**/export*` trees in place. A destination can
+legitimately be writable through an ACL while owned by another user; `std::fs::copy` then writes the
+contents but fails while trying to apply the source mode. The integration harness therefore uses its
+content-only copy helper for these fixture overlays: it creates parents and replaces bytes, while
+preserving an existing destination's metadata. The Unix regression pin starts from a deliberately
+different destination mode. This is test-harness behavior only; production file-copy semantics are
+unchanged.
 
 ### The no_std drift gate (`no_std_check`, local tier)
 
@@ -4768,6 +4782,14 @@ trees so a new emission surface fails loudly instead of escaping the differentia
 
 ### component behavior (`component_host_tests::component_host_behavior`, gate `component_host`)
 
+**`wasm32-wasip2` prerequisite.** Every component guest-build family shares one policy. A missing
+target is a loud `SKIPPED` outcome in a routine local run, but `check.ts full` exports
+`CDDL_COMPONENT_TARGET_REQUIRED=1`, making it a hard failure: the full tier cannot claim the shipped
+component face without building it. On a rustup-managed toolchain, provision it with
+`rustup target add wasm32-wasip2`; when the active compiler is not rustup-managed (for example a
+Nix-provided toolchain), provision that external toolchain with `wasm32-wasip2` instead. The
+diagnostic selects only a remedy that applies to the active compiler.
+
 The only gate that **runs** the component face. Its two siblings judge emitted bytes; a `.wit` that
 resolves, encodes and validates over glue that compiles is still silent about every claim the
 boundary actually makes at runtime — so this gate builds a real `wasm32-wasip2` component, loads it
@@ -4927,9 +4949,9 @@ guest builds run), **4 s warm** (gate-cache hit — which still pays the six-man
 cheapest gate in the component group: no wasmtime, no composer crate, no native host crate.
 
 It sits at `local` on both counts a placement has to answer — cost (above) and **provisioning**. node,
-npm and a cold run's npm-registry access are more fragile than a rustup target, so the outcome is
-tier-dependent: a loud SKIP at `local`, a hard FAIL at `full` via `CDDL_JCO_REQUIRED=1`, which the
-`fn`-shaped registry row sets when the tier is `full`. Same mechanism and same reason as
+npm and a cold run's npm-registry access are independently tier-dependent: a loud SKIP at `local`, a
+hard FAIL at `full` via `CDDL_JCO_REQUIRED=1`, which the `fn`-shaped registry row sets when the tier
+is `full`. The guest target follows the shared prerequisite policy above. Same mechanism and reason as
 `no_std_check`'s absent-target outcome: a silent skip in the tier that *ships* the feature would void
 the guarantee that tier exists to give. It reuses `component_host`'s scratch and memory floors.
 

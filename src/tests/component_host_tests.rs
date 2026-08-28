@@ -147,6 +147,10 @@ fn component_host_behavior() {
         println!("component_host: SKIPPED — {reason}");
         return;
     }
+    if !crate::tests::component_target::installed() {
+        crate::tests::component_target::missing_target("component_host");
+        return;
+    }
 
     let scratch_name = format!("cddl_codegen_component_host_{:016x}", checkout_hash());
     let _scratch_lock = acquire_scratch_lock(&scratch_name); // serialize same-checkout runs
@@ -156,6 +160,7 @@ fn component_host_behavior() {
     std::fs::create_dir_all(&target_dir).unwrap();
 
     let mut failures = Vec::new();
+    let mut missing_target = false;
     let mut cache_run = 0usize;
     let mut cache_hit = 0usize;
 
@@ -244,15 +249,8 @@ fn component_host_behavior() {
                     .unwrap();
                 if !build.status.success() {
                     let stderr = String::from_utf8_lossy(&build.stderr);
-                    // The target is declared in `rust-toolchain.toml`, so a rustup-managed checkout
-                    // has it; anywhere else this is a provisioning problem, not a code failure.
-                    if stderr.contains("can't find crate for `core`")
-                        || stderr.contains("target may not be installed")
-                    {
-                        failures.push(format!(
-                            "{label}: the wasm32-wasip2 target is not installed under the pinned \
-                             toolchain — `rustup target add wasm32-wasip2`"
-                        ));
+                    if crate::tests::component_target::is_missing_target(&stderr) {
+                        missing_target = true;
                     } else {
                         failures.push(format!("{label}: the guest build failed\n{stderr}"));
                     }
@@ -312,6 +310,11 @@ fn component_host_behavior() {
         );
         cache_run += outcome.ran();
         cache_hit += outcome.cached();
+        if missing_target {
+            let _ = std::fs::remove_dir_all(&out);
+            crate::tests::component_target::missing_target("component_host");
+            return;
+        }
         // The per-cell tree is freed; `target/` (a sibling, not a child) is what survives.
         let _ = std::fs::remove_dir_all(&out);
     }

@@ -6,6 +6,109 @@
 use crate::tests::gate_cache;
 use std::io::Write;
 
+/// The exact JSON-schema validator dependency appended to generated integration fixtures. Kept
+/// shared with the warm-up drift pin, because those fresh manifests are resolved after check.ts
+/// has forced Cargo offline.
+const JSONSCHEMA_DEP: &str = "jsonschema = { version = \"0.46\", default-features = false }";
+
+/// Copy fixture contents without applying the source file's metadata to an existing destination.
+///
+/// Several integration fixtures live in ignored persistent directories and can be writable through
+/// an ACL while still owned by another user. `std::fs::copy` writes their bytes and then attempts to
+/// chmod them to the source mode, which fails in that legitimate setup. These test fixtures need
+/// bytes only; production copying keeps its metadata semantics.
+fn copy_fixture_contents(
+    source: &std::path::Path,
+    destination: &std::path::Path,
+) -> std::io::Result<u64> {
+    if let Some(parent) = destination.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let contents = std::fs::read(source)?;
+    std::fs::write(destination, &contents)?;
+    Ok(contents.len() as u64)
+}
+
+#[cfg(unix)]
+#[test]
+fn fixture_content_copy_preserves_an_existing_destination_mode() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_fixture_content_copy_{}_{}",
+        std::process::id(),
+        std::thread::current().name().unwrap_or("unnamed")
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let source = root.join("source");
+    let destination = root.join("nested/destination");
+    std::fs::write(&source, b"fresh fixture bytes").unwrap();
+    std::fs::create_dir_all(destination.parent().unwrap()).unwrap();
+    std::fs::write(&destination, b"old bytes").unwrap();
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o600)).unwrap();
+    std::fs::set_permissions(&destination, std::fs::Permissions::from_mode(0o640)).unwrap();
+
+    copy_fixture_contents(&source, &destination).unwrap();
+
+    assert_eq!(std::fs::read(&destination).unwrap(), b"fresh fixture bytes");
+    assert_eq!(
+        std::fs::metadata(&destination)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o640,
+        "fixture-content copies replace bytes but must preserve a destination's existing mode"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// The generated-manifest ops have their own cross-target drift gate in `cargo_manifest.rs`; this
+/// is its bin-only companion for dependency specs injected by the test harness. The cddl oracle's
+/// fresh graph currently reaches `data-encoding` beyond the workspace lock, so merely warming the
+/// workspace does not cover it.
+#[test]
+fn warmup_manifest_covers_harness_injected_dependency_roots() {
+    use toml::Value;
+
+    let parse_dep = |snippet: &str| -> Value {
+        toml::from_str(&format!("[dependencies]\n{snippet}\n"))
+            .expect("harness dependency snippet must parse")
+    };
+    let expected_json = parse_dep(JSONSCHEMA_DEP);
+    let expected_oracle = parse_dep(CDDL_ORACLE_DEP);
+    let warmup: Value = toml::from_str(
+        &std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/warmup/Cargo.toml"
+        ))
+        .unwrap(),
+    )
+    .unwrap();
+    let warmup = warmup
+        .get("dependencies")
+        .and_then(Value::as_table)
+        .expect("warmup manifest has a [dependencies] table");
+
+    let exact = |name: &str, expected: &Value| {
+        let expected = expected
+            .get("dependencies")
+            .and_then(Value::as_table)
+            .and_then(|deps| deps.get(name))
+            .expect("harness dependency must be table-style");
+        let actual = warmup
+            .get(name)
+            .unwrap_or_else(|| panic!("tests/warmup/Cargo.toml is missing `{name}`"));
+        assert_eq!(
+            actual, expected,
+            "warmup `{name}` entry drifted from its harness injection (keys and values must match exactly)"
+        );
+    };
+    exact("jsonschema", &expected_json);
+    exact("cddl", &expected_oracle);
+}
+
 /// Fixture-appended tests compile only inside generated crates, outside the workspace clippy
 /// `assertions_on_result_states` deny. Positive Result assertions must unwrap/expect so a red
 /// generated-crate run carries the error payload; `is_err()` stays allowed because `unwrap_err()`
@@ -8447,14 +8550,17 @@ fn facade_composition_compiles() {
 
     // Overlay the documented consumer composition: the facade thin root, the per-scope hand module
     // at `src/assets/utils.rs`, and the extern definition at `src/addr_impl.rs`.
-    std::fs::copy(hand.join("lib.rs"), out.join("rust/src/lib.rs")).unwrap();
-    std::fs::create_dir_all(out.join("rust/src/assets")).unwrap();
-    std::fs::copy(
-        hand.join("assets_utils.rs"),
-        out.join("rust/src/assets/utils.rs"),
+    copy_fixture_contents(&hand.join("lib.rs"), &out.join("rust/src/lib.rs")).unwrap();
+    copy_fixture_contents(
+        &hand.join("assets_utils.rs"),
+        &out.join("rust/src/assets/utils.rs"),
     )
     .unwrap();
-    std::fs::copy(hand.join("addr_impl.rs"), out.join("rust/src/addr_impl.rs")).unwrap();
+    copy_fixture_contents(
+        &hand.join("addr_impl.rs"),
+        &out.join("rust/src/addr_impl.rs"),
+    )
+    .unwrap();
 
     if tool_exists("cargo") {
         let target_dir =
@@ -12156,7 +12262,7 @@ fn open_table_json_e2e() {
         &[],
         &[],
         false,
-        &["jsonschema = { version = \"0.46\", default-features = false }"],
+        &[JSONSCHEMA_DEP],
     );
     // The fixture's one registry lives in tests.rs, so both default and preserve JSON execute the
     // identical position/schema/runtime grid. Keep the document/TypeScript assertions below on the
@@ -12173,7 +12279,7 @@ fn open_table_json_e2e() {
         &[],
         &[],
         false,
-        &["jsonschema = { version = \"0.46\", default-features = false }"],
+        &[JSONSCHEMA_DEP],
     );
     // The published SCHEMA of the minted struct — a genuine ADDITION to the schema surface (a
     // CLOSED table is a transparent `pub type` alias and publishes nothing). One open object over
@@ -14117,7 +14223,7 @@ fn ir_conformance_corpus() {
             std::mem::drop(lib_rs);
             // the emitted validate() reads the spec from `cddl_conformance_source.cddl` next to the
             // crate's Cargo.toml (CARGO_MANIFEST_DIR) — copy the fixture there.
-            std::fs::copy(input, rust_dir.join("cddl_conformance_source.cddl")).unwrap();
+            copy_fixture_contents(input, &rust_dir.join("cddl_conformance_source.cddl")).unwrap();
             // add the cddl dep (rev-pinned, synced with Cargo.toml by cddl_oracle_dep_rev_matches_cargo_toml)
             append_manifest_deps(&rust_dir.join("Cargo.toml"), &[CDDL_ORACLE_DEP]);
         }
@@ -14842,7 +14948,7 @@ fn json() {
         &[],
         false,
         // schemas_validate_serialization (tests.rs) checks emitted output against emitted schema
-        &["jsonschema = { version = \"0.46\", default-features = false }"],
+        &[JSONSCHEMA_DEP],
     );
 }
 
@@ -15399,14 +15505,14 @@ fn custom_schema_impl_writes_a_closing_document() {
     // of both the module and the extern re-export the generated glue requires.
     let rust_src = export_path.join("rust/src");
     std::fs::create_dir_all(rust_src.join("custom_schemas")).unwrap();
-    std::fs::copy(
-        test_path.join("hand/custom_ext.rs"),
-        rust_src.join("custom_ext.rs"),
+    copy_fixture_contents(
+        &test_path.join("hand/custom_ext.rs"),
+        &rust_src.join("custom_ext.rs"),
     )
     .unwrap();
-    std::fs::copy(
-        test_path.join("hand/custom_schemas/CustomExt.json"),
-        rust_src.join("custom_schemas/CustomExt.json"),
+    copy_fixture_contents(
+        &test_path.join("hand/custom_schemas/CustomExt.json"),
+        &rust_src.join("custom_schemas/CustomExt.json"),
     )
     .unwrap();
     let lib_rs_path = rust_src.join("lib.rs");
@@ -15477,7 +15583,7 @@ fn json_float() {
         &[],
         &[],
         false,
-        &["jsonschema = { version = \"0.46\", default-features = false }"],
+        &[JSONSCHEMA_DEP],
     );
 }
 
@@ -15787,12 +15893,12 @@ fn assert_schema_projects_to_legal_ts(fixture_dir: &str, export_path: &str) -> O
     let schemas_out = work.join("rust/wasm/json-gen/schemas");
     std::fs::create_dir_all(work.join("scripts")).unwrap();
     std::fs::create_dir_all(&schemas_out).unwrap();
-    std::fs::copy(
-        static_dir.join("run-json2ts.js"),
-        work.join("scripts/run-json2ts.js"),
+    copy_fixture_contents(
+        &static_dir.join("run-json2ts.js"),
+        &work.join("scripts/run-json2ts.js"),
     )
     .unwrap();
-    std::fs::copy(schemas_in.join(&document), schemas_out.join(&document)).unwrap();
+    copy_fixture_contents(&schemas_in.join(&document), &schemas_out.join(&document)).unwrap();
     link_shared_node_modules(&work);
 
     let node = std::process::Command::new("node")
@@ -15897,9 +16003,9 @@ fn js_schema_to_ts() {
     let schemas_out = work.join("rust/wasm/json-gen/schemas");
     std::fs::create_dir_all(work.join("scripts")).unwrap();
     std::fs::create_dir_all(&schemas_out).unwrap();
-    std::fs::copy(
-        static_dir.join("run-json2ts.js"),
-        work.join("scripts/run-json2ts.js"),
+    copy_fixture_contents(
+        &static_dir.join("run-json2ts.js"),
+        &work.join("scripts/run-json2ts.js"),
     )
     .unwrap();
     // The dependencies come from the shared install, which is the SHIPPED manifest verbatim except
@@ -15912,7 +16018,7 @@ fn js_schema_to_ts() {
     for entry in std::fs::read_dir(&fixtures).unwrap() {
         let path = entry.unwrap().path();
         if path.extension().and_then(|e| e.to_str()) == Some("json") {
-            std::fs::copy(&path, schemas_out.join(path.file_name().unwrap())).unwrap();
+            copy_fixture_contents(&path, &schemas_out.join(path.file_name().unwrap())).unwrap();
         }
     }
 
@@ -16163,9 +16269,9 @@ fn js_schema_to_ts() {
     // rewrites in place. (No wasm-pack run — `package_json_pipeline` stays the one wasm-pack e2e.)
     let pkg = work.join("rust/wasm/pkg");
     std::fs::create_dir_all(&pkg).unwrap();
-    std::fs::copy(
-        static_dir.join("json-ts-types.js"),
-        work.join("scripts/json-ts-types.js"),
+    copy_fixture_contents(
+        &static_dir.join("json-ts-types.js"),
+        &work.join("scripts/json-ts-types.js"),
     )
     .unwrap();
     let bindings = pkg.join("cddl_lib_wasm.d.ts");
@@ -16340,9 +16446,9 @@ fn js_d_ts_merge() {
         std::fs::create_dir_all(root.join("scripts")).unwrap();
         std::fs::create_dir_all(&pkg).unwrap();
         std::fs::create_dir_all(&out).unwrap();
-        std::fs::copy(
-            static_dir.join("json-ts-types.js"),
-            root.join("scripts/json-ts-types.js"),
+        copy_fixture_contents(
+            &static_dir.join("json-ts-types.js"),
+            &root.join("scripts/json-ts-types.js"),
         )
         .unwrap();
         std::fs::write(pkg.join(format!("{dts_stem}.d.ts")), dts).unwrap();
@@ -17515,7 +17621,7 @@ fn json_preserve() {
         &[],
         false,
         // schemas_validate_serialization (tests.rs) checks emitted output against emitted schema
-        &["jsonschema = { version = \"0.46\", default-features = false }"],
+        &[JSONSCHEMA_DEP],
     );
 }
 

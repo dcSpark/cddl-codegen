@@ -3422,8 +3422,8 @@ anyhow = \"1\"
     /// drifted version/feature spec) would fail nested-cargo cells offline. Union taken with
     /// every flag/type-conditional dep enabled; path deps (`cddl-lib`) are never fetched from
     /// the registry and are excluded. Fixture crates under tests/ with hand-written manifests
-    /// are outside the ops universe — a fixture-only dep fails offline loudly by name (see the
-    /// warmup manifest's header).
+    /// are outside the ops universe; their test-harness tail is checked from the bin-only test
+    /// suite, because this module is shared by the bin and library targets.
     #[test]
     fn warmup_manifest_covers_registry_dep_universe() {
         use clap::Parser;

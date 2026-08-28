@@ -6546,9 +6546,12 @@ part_id = "part-sighting-offline-gate-run-new-class"
 parent_record_id = "testing.registry-fetch-transients-nested-cargo-cells"
 title = "A sighting under an offline gate run is a NEW class"
 body_md = '''  - **A sighting under an offline gate run is a NEW class**, not this one — an offline cell
-    cannot hit the registry; investigate it, don't re-ledger it here. Two manual tails are now
-  known: `no matching package named <dep>` — a tests/ fixture crate grew a dep outside the
-    warm-up manifest; add it to `tests/warmup/Cargo.toml`. The former second tail, `failed to
+    cannot hit the registry; investigate it, don't re-ledger it here. The manual-tail incident on
+    2026-08-28 was two harness-injected roots omitted from the warm-up (`jsonschema` and the pinned
+    `cddl` oracle, whose fresh graph resolved `data-encoding 2.11.1`); both are now exact
+    drift-checked alongside manifest-op dependencies. A newly fixture-only dep still presents as
+    `no matching package named <dep>` — add its direct root to `tests/warmup/Cargo.toml`. The former
+    second tail, `failed to
     download <dep> vX.Y.Z … --offline was specified` from a fresh scratch crate outrunning
     `tests/warmup/Cargo.lock`, was observed on 2026-08-06 for `zerocopy-derive 0.8.56` and is
     retired: each online warm-up now refreshes that gitignored lock before fetching. The same

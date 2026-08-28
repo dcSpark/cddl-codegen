@@ -83,6 +83,10 @@ fn component_compose_acceptance() {
         println!("component_compose: SKIPPED — {reason}");
         return;
     }
+    if !crate::tests::component_target::installed() {
+        crate::tests::component_target::missing_target("component_compose");
+        return;
+    }
 
     let scratch_name = format!("cddl_codegen_component_compose_{:016x}", checkout_hash());
     let _scratch_lock = acquire_scratch_lock(&scratch_name); // serialize same-checkout runs
@@ -206,6 +210,7 @@ fn component_compose_acceptance() {
         .join(format!("{CONSUMER_LIB}_component.wasm"));
 
     let mut failure = None;
+    let mut missing_target = false;
     let outcome = gate_cache::run_cached(
         "component_compose",
         "chain+wallet",
@@ -246,19 +251,11 @@ fn component_compose_acceptance() {
                 .unwrap();
             if !build.status.success() {
                 let stderr = String::from_utf8_lossy(&build.stderr);
-                // The target is declared in `rust-toolchain.toml`, so a rustup-managed checkout has
-                // it; anywhere else this is a provisioning problem, not a code failure.
-                failure = Some(
-                    if stderr.contains("can't find crate for `core`")
-                        || stderr.contains("target may not be installed")
-                    {
-                        "the wasm32-wasip2 target is not installed under the pinned toolchain — \
-                         `rustup target add wasm32-wasip2`"
-                            .to_owned()
-                    } else {
-                        format!("the two guest builds failed\n{stderr}")
-                    },
-                );
+                if crate::tests::component_target::is_missing_target(&stderr) {
+                    missing_target = true;
+                } else {
+                    failure = Some(format!("the two guest builds failed\n{stderr}"));
+                }
                 return false;
             }
             // A build that produced no COMPONENT would make every assertion below run against the
@@ -320,6 +317,10 @@ fn component_compose_acceptance() {
             true
         },
     );
+    if missing_target {
+        crate::tests::component_target::missing_target("component_compose");
+        return;
+    }
     if gate_cache::enabled() {
         println!(
             "component_compose gate-cache: {} run, {} cached",

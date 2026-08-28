@@ -620,6 +620,10 @@ fn a_wit_path_that_is_not_a_dep_package_is_refused_by_name() {
 /// the build.
 #[test]
 fn the_cross_crate_component_crate_builds_for_wasm32_wasip2() {
+    if !crate::tests::component_target::installed() {
+        crate::tests::component_target::missing_target("component_import");
+        return;
+    }
     let root = scratch("wasip2");
     let dep_out = root.join("dep");
     let target_dir = root.join("target");
@@ -701,6 +705,7 @@ fn the_cross_crate_component_crate_builds_for_wasm32_wasip2() {
     }
 
     let mut failure = None;
+    let mut missing_target = false;
     let outcome = gate_cache::run_cached(
         "component_import_wasip2_build",
         "consumer+collections+dep",
@@ -728,19 +733,11 @@ fn the_cross_crate_component_crate_builds_for_wasm32_wasip2() {
                 .unwrap();
             if !build.status.success() {
                 let stderr = String::from_utf8_lossy(&build.stderr);
-                // The target is declared in `rust-toolchain.toml`, so a rustup-managed checkout has
-                // it; anywhere else this is a provisioning problem, not a code failure.
-                failure = Some(
-                    if stderr.contains("can't find crate for `core`")
-                        || stderr.contains("target may not be installed")
-                    {
-                        "the wasm32-wasip2 target is not installed under the pinned toolchain — \
-                     `rustup target add wasm32-wasip2`"
-                            .to_owned()
-                    } else {
-                        format!("cargo build failed\n{stderr}")
-                    },
-                );
+                if crate::tests::component_target::is_missing_target(&stderr) {
+                    missing_target = true;
+                } else {
+                    failure = Some(format!("cargo build failed\n{stderr}"));
+                }
                 return false;
             }
             // A build that produced no COMPONENT would be a vacuous pass: `wasm32-wasip2` artifacts
@@ -769,6 +766,10 @@ fn the_cross_crate_component_crate_builds_for_wasm32_wasip2() {
             true
         },
     );
+    if missing_target {
+        crate::tests::component_target::missing_target("component_import");
+        return;
+    }
     if gate_cache::enabled() {
         println!(
             "component_import_wasip2_build gate-cache: {} run, {} cached",

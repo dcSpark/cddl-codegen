@@ -52,3 +52,10 @@ wasmtime-wasi = "47"
 wac-graph = "0.10"
 wit-component = "0.247"
 wit-parser = "0.247"
+# These two roots are injected by the Rust integration harness rather than emitted by manifest ops.
+# `jsonschema` is appended to JSON fixture manifests, and the cddl oracle is appended to fresh
+# conformance crates. Keep their exact specs in sync with the assertions in
+# `warmup_manifest_covers_harness_injected_dependency_roots`; the oracle reaches its fresh
+# `data-encoding` resolution transitively.
+jsonschema = { version = "0.46", default-features = false }
+cddl = { git = "https://github.com/dcSpark/cddl", rev = "ac1b98ec07184236517da4511b1bbea239e35190" }

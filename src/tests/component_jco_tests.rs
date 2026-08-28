@@ -168,6 +168,10 @@ fn component_jco_js_host() {
         println!("component_jco: SKIPPED — {reason}");
         return;
     }
+    if !crate::tests::component_target::installed() {
+        crate::tests::component_target::missing_target("component_jco");
+        return;
+    }
     let (Some(node), Some(npm)) = (version_of("node"), version_of("npm")) else {
         missing_provisioning(
             "node and npm are required to drive the transpiled component — install node 22 or \
@@ -331,6 +335,7 @@ fn component_jco_js_host() {
     let transpiled = out.join("transpiled");
 
     let mut failure = None;
+    let mut missing_target = false;
     let outcome = gate_cache::run_cached(
         "component_jco",
         "surface+crosscrate+composed",
@@ -376,19 +381,11 @@ fn component_jco_js_host() {
                 .unwrap();
             if !build.status.success() {
                 let stderr = String::from_utf8_lossy(&build.stderr);
-                // The target is declared in `rust-toolchain.toml`, so a rustup-managed checkout has
-                // it; anywhere else this is a provisioning problem, not a code failure.
-                failure = Some(
-                    if stderr.contains("can't find crate for `core`")
-                        || stderr.contains("target may not be installed")
-                    {
-                        "the wasm32-wasip2 target is not installed under the pinned toolchain — \
-                         `rustup target add wasm32-wasip2`"
-                            .to_owned()
-                    } else {
-                        format!("the three guest builds failed\n{stderr}")
-                    },
-                );
+                if crate::tests::component_target::is_missing_target(&stderr) {
+                    missing_target = true;
+                } else {
+                    failure = Some(format!("the three guest builds failed\n{stderr}"));
+                }
                 return false;
             }
             // A build that produced no COMPONENT would make every assertion below run against the
@@ -520,6 +517,10 @@ fn component_jco_js_host() {
             true
         },
     );
+    if missing_target {
+        crate::tests::component_target::missing_target("component_jco");
+        return;
+    }
     if gate_cache::enabled() {
         println!(
             "component_jco gate-cache: {} run, {} cached",

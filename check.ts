@@ -1755,10 +1755,41 @@ function runNoStdCheck(): Outcome {
 // the feature would void the guarantee `full` exists to give. `CDDL_JCO_REQUIRED=1` is what the Rust
 // test reads to turn its loud skip into a panic; passing it through the env (rather than adding an
 // `env` field to `Gate`) keeps the registry's shape — and its meta-checks — unchanged.
+const COMPONENT_JCO_TEST_CMD = ["cargo", "test", "--bin", "cddl-codegen", "component_jco", "--", "--nocapture"];
+
 function runJcoCheck(): Outcome {
   const env = tierFromArgv(process.argv.slice(2)) === "full" ? { CDDL_JCO_REQUIRED: "1" } : undefined;
-  const exit = sh(["cargo", "test", "--bin", "cddl-codegen", "component_jco"], ROOT, env);
+  const exit = sh(COMPONENT_JCO_TEST_CMD, ROOT, env);
   return exit === 0 ? { status: "PASS" } : { status: "FAIL", reason: `cargo test component_jco exit ${exit}` };
+}
+
+/** The component guest target is optional for routine local work, but mandatory for a full-tier
+ * claim: full is the tier that ships the component face. Kept pure so the tier boundary is pinned
+ * without actually requiring the target in check.ts's self-test. */
+export function componentTargetRequiredForTier(tier: Tier): boolean {
+  return tier === "full";
+}
+
+export function componentTargetRequiredForTierSelftest(): void {
+  if (!componentTargetRequiredForTier("full"))
+    throw new Error("component target policy must require wasm32-wasip2 in the full tier");
+  for (const tier of ["fast", "local"] as const) {
+    if (componentTargetRequiredForTier(tier))
+      throw new Error(`component target policy must leave ${tier} able to loud-skip`);
+  }
+}
+
+/** Component local skips are evidence, not a passing test's captured stdout. The four named cmd
+ * gates and the fn-shaped jco gate must expose them without changing the broad `test` gate. */
+export function componentSkipVisibilitySelftest(): void {
+  const required = ["component_wit", "component_import", "component_host", "component_compose"];
+  for (const id of required) {
+    const cmd = REGISTRY.find(g => g.id === id)?.cmd;
+    if (cmd?.at(-2) !== "--" || cmd.at(-1) !== "--nocapture")
+      throw new Error(`${id} must pass -- --nocapture so its local component-target skip is visible`);
+  }
+  if (COMPONENT_JCO_TEST_CMD.at(-2) !== "--" || COMPONENT_JCO_TEST_CMD.at(-1) !== "--nocapture")
+    throw new Error("component_jco must pass -- --nocapture so its local component-target skip is visible");
 }
 
 // ---- matrix typecheck gate: tsc --noEmit via the pinned local devDependency ----------------------
@@ -1837,7 +1868,7 @@ export const REGISTRY: Gate[] = [
   // validates can still name a trait method that does not exist. A tier log that names this gate is
   // what makes both visible without reading the full test output. The smoke is nested cargo and is
   // memoized per generated-crate content hash by the gate cache, so an unchanged tree re-runs cheap.
-  { id: "component_wit", tier: "local", kind: "cmd", cmd: ["cargo", "test", "--bin", "cddl-codegen", "component_tests"],
+  { id: "component_wit", tier: "local", kind: "cmd", cmd: ["cargo", "test", "--bin", "cddl-codegen", "component_tests", "--", "--nocapture"],
     desc: "component face: WIT validity (resolve/encode/validate), wasm-posture purity, wasip2 build smoke" },
   // The CROSS-CRATE seam, named for the same reason as its siblings: import mode is the one part of
   // this face whose inputs come from ANOTHER crate's committed output, so a failure here means a
@@ -1849,7 +1880,7 @@ export const REGISTRY: Gate[] = [
   // newtype, and a dependency-typed collection parameter lowers ONLY through the accumulator shape.
   // Each is a macro-expansion or type-inference failure, so a package that resolves, encodes and
   // validates says nothing about any of them. That cell is memoized by the gate cache.
-  { id: "component_import", tier: "local", kind: "cmd", cmd: ["cargo", "test", "--bin", "cddl-codegen", "component_import"],
+  { id: "component_import", tier: "local", kind: "cmd", cmd: ["cargo", "test", "--bin", "cddl-codegen", "component_import", "--", "--nocapture"],
     desc: "component face: cross-crate import mode (dep WIT materialization, `with:` map, bytes seam, accumulator, wasip2 build)" },
   // The rust->WIT surface differential, named for the same reason: it is the ONLY gate that asks
   // what the boundary DROPPED. Everything else judges what was emitted against itself — a member
@@ -1871,7 +1902,7 @@ export const REGISTRY: Gate[] = [
   // the gate cache. Measured on the delivering machine: 81 s cold (a fresh scratch root, so
   // wasmtime builds), 3 s warm (cache hit), 9 s on a cache MISS with the scratch root warm — which
   // is why that root is kept between runs rather than deleted.
-  { id: "component_host", tier: "local", kind: "cmd", cmd: ["cargo", "test", "--bin", "cddl-codegen", "component_host"],
+  { id: "component_host", tier: "local", kind: "cmd", cmd: ["cargo", "test", "--bin", "cddl-codegen", "component_host", "--", "--nocapture"],
     desc: "component face: behavioral gate — a real wasip2 component driven through a wasmtime host" },
   // THE acceptance gate for the whole component face: two independently generated crates, built as
   // two components, COMPOSED into one dual-export world, and driven through the flow the feature
@@ -1893,7 +1924,7 @@ export const REGISTRY: Gate[] = [
   // root warm — which is why that root is kept between runs rather than deleted. It is the same cost
   // class as `component_host` above and cheaper on the re-run path, which is what puts it at `local`
   // rather than `full`.
-  { id: "component_compose", tier: "local", kind: "cmd", cmd: ["cargo", "test", "--bin", "cddl-codegen", "component_compose"],
+  { id: "component_compose", tier: "local", kind: "cmd", cmd: ["cargo", "test", "--bin", "cddl-codegen", "component_compose", "--", "--nocapture"],
     desc: "component face: cross-crate acceptance — two generated components composed and driven through wasmtime" },
   // The face as its REAL audience meets it. Every gate above judges the component from Rust; the
   // motivating consumer is a JS dApp, which reaches it through a TRANSPILER (`jco`) rather than a
@@ -2965,6 +2996,7 @@ async function main() {
     }
     tier = positional[0] as Tier;
   }
+  if (componentTargetRequiredForTier(tier)) process.env.CDDL_COMPONENT_TARGET_REQUIRED = "1";
   // Refusals BEFORE anything expensive, and before the ETA/retention chatter: a mistyped selection
   // must cost nothing and must say what the legal spellings are.
   let selected: Set<string> | null = null;
@@ -3205,7 +3237,9 @@ if (import.meta.main) {
     warmupCommandsSelftest();
     registryReadmeIntegritySelftest();
     corpusParityNewFixtureAdvisoriesSelftest();
-    console.log("check.ts self-test OK (warm-up refresh/fetch command order + README-integrity + new-fixture advisory controls)");
+    componentTargetRequiredForTierSelftest();
+    componentSkipVisibilitySelftest();
+    console.log("check.ts self-test OK (warm-up refresh/fetch command order + README-integrity + new-fixture advisory + component-target tier + skip-visibility controls)");
     process.exit(0);
   }
   // --help prints and exits; no evidence to preserve, so no log file for it.

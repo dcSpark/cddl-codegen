@@ -2514,12 +2514,17 @@ const EXTERN_DEFS_CANONICAL: &str = "tests/component-extern/external_rust_defs_c
 /// tree re-runs as a visible cached PASS. `GATE_CACHE=0` forces the build.
 #[test]
 fn component_crate_builds_for_wasm32_wasip2() {
+    if !crate::tests::component_target::installed() {
+        crate::tests::component_target::missing_target("component_wit");
+        return;
+    }
     let scratch = std::env::temp_dir().join(format!(
         "cddl_codegen_component_wasip2_{}",
         std::process::id()
     ));
     let target_dir = scratch.join("target");
     let mut failures = Vec::new();
+    let mut missing_target = false;
     let mut cache_run = 0usize;
     let mut cache_hit = 0usize;
 
@@ -2629,16 +2634,8 @@ fn component_crate_builds_for_wasm32_wasip2() {
                     .unwrap();
                 if !build.status.success() {
                     let stderr = String::from_utf8_lossy(&build.stderr);
-                    // The target is declared in `rust-toolchain.toml`, so a rustup-managed checkout
-                    // has it; anywhere else this is a provisioning problem, not a code failure, and
-                    // it has to say so rather than read as a broken emitter.
-                    if stderr.contains("can't find crate for `core`")
-                        || stderr.contains("target may not be installed")
-                    {
-                        failures.push(format!(
-                            "{label}: the wasm32-wasip2 target is not installed under the pinned \
-                             toolchain — `rustup target add wasm32-wasip2`"
-                        ));
+                    if crate::tests::component_target::is_missing_target(&stderr) {
+                        missing_target = true;
                     } else {
                         failures.push(format!("{label}: cargo build failed\n{stderr}"));
                     }
@@ -2672,6 +2669,11 @@ fn component_crate_builds_for_wasm32_wasip2() {
         );
         cache_run += outcome.ran();
         cache_hit += outcome.cached();
+        if missing_target {
+            std::fs::remove_dir_all(&scratch).ok();
+            crate::tests::component_target::missing_target("component_wit");
+            return;
+        }
     }
 
     if gate_cache::enabled() {
@@ -2729,6 +2731,10 @@ const EXPECTED_COMPILE_FAIL: &[(&str, &str)] = &[];
 #[test]
 #[ignore]
 fn component_corpus_compiles() {
+    if !crate::tests::component_target::installed() {
+        crate::tests::component_target::missing_target("component_corpus_compiles");
+        return;
+    }
     let flags = component_profile_flags();
     let scratch_name = format!(
         "cddl_codegen_component_corpus_{:016x}",
@@ -2753,6 +2759,7 @@ fn component_corpus_compiles() {
     let mut swept = 0usize;
     let mut cache_run = 0usize;
     let mut cache_hit = 0usize;
+    let mut missing_target = false;
 
     // EVERY cell GENERATES IMMEDIATELY BEFORE IT CHECKS, and that ordering is load-bearing rather
     // than incidental. All emitted component crates are `cddl-lib-component v0.1.0`, and cargo
@@ -2867,15 +2874,10 @@ fn component_corpus_compiles() {
                     .unwrap();
                 stderr = String::from_utf8_lossy(&check.stderr).into_owned();
                 if !check.status.success()
-                    && (stderr.contains("can't find crate for `core`")
-                        || stderr.contains("target may not be installed"))
+                    && crate::tests::component_target::is_missing_target(&stderr)
                 {
-                    // A provisioning problem must never read as an emitter failure, and must never
-                    // be absorbed by an expected-fail pin either.
-                    failures.push(format!(
-                        "{stem}: the wasm32-wasip2 target is not installed under the pinned \
-                         toolchain — `rustup target add wasm32-wasip2`"
-                    ));
+                    // A provisioning problem must never be absorbed by an expected-fail pin.
+                    missing_target = true;
                     return false;
                 }
                 check.status.success() != expected_fail
@@ -2883,6 +2885,11 @@ fn component_corpus_compiles() {
         );
         cache_run += outcome.ran();
         cache_hit += outcome.cached();
+        if missing_target {
+            let _ = std::fs::remove_dir_all(&out);
+            crate::tests::component_target::missing_target("component_corpus_compiles");
+            return;
+        }
         if !outcome.success() {
             if expected_fail {
                 resurfaced.push(format!(

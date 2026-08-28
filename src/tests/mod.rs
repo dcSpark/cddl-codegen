@@ -19,6 +19,7 @@ pub(crate) mod component_host_tests;
 pub(crate) mod component_import_tests;
 pub(crate) mod component_jco_tests;
 pub(crate) mod component_parity_tests;
+pub(crate) mod component_target;
 pub(crate) mod component_tests;
 pub(crate) mod config_tests;
 pub(crate) mod declared_spelling_tests;
