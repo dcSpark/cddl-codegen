@@ -69,6 +69,21 @@ export function loadTomlArray(rel: string, key: string): any[] {
 const globSorted = (pattern: string): string[] => [...new Bun.Glob(pattern).scanSync({ cwd: ROOT })].sort();
 export const globRel = globSorted;
 
+// TOML requires the newline immediately following a multiline-string opener to be trimmed, but
+// Bun 1.3.13 retains it. Matrix examples are complete CDDL snippets and deliberately never begin
+// with a blank line, so repair that parser-version skew at the typed boundary instead of letting a
+// Bun upgrade rewrite matrix.json and every probe input. On a compliant parser this is a no-op.
+function normalizeExampleFields<T extends { example?: string; example_extern_stub?: string }>(row: T): T {
+  const trimOpeningNewline = (value: string | undefined) => value?.replace(/^\r?\n/u, "");
+  return {
+    ...row,
+    ...(row.example === undefined ? {} : { example: trimOpeningNewline(row.example) }),
+    ...(row.example_extern_stub === undefined
+      ? {}
+      : { example_extern_stub: trimOpeningNewline(row.example_extern_stub) }),
+  };
+}
+
 // IANA control-op registry, derived from the CSV (id = "ctl." + name without leading dots; rfc =
 // Reference with surrounding []/whitespace stripped). No `profile` here — build adds it. The minimal
 // support-probe `example` per op is joined from the authored control_examples.toml (the CSV is pinned).
@@ -91,16 +106,20 @@ export function loadControlOps(): ControlOp[] {
     if (!/^\.[a-z0-9-]+$/i.test(name) || !/^[A-Za-z0-9-]+$/.test(rfc))
       throw new Error(`cddl-control-operators.csv: unexpected cell shape (name=\`${name}\`, ref=\`${rfc}\`) — quoted/multi-ref cells need a real parser`);
     const id = "ctl." + name.replace(/^\.+/, "");
-    return { id, name, rfc, example: examples.get(id) };
+    return normalizeExampleFields({ id, name, rfc, example: examples.get(id) });
   });
 }
 
 // The authored overlay, loaded the same way by build_matrix.ts and verify.ts.
 export function loadMatrixInputs(): MatrixInputs {
   return {
-    features: globSorted("features/*.toml").flatMap(p => loadTomlArray(p, "feature")),
+    features: globSorted("features/*.toml")
+      .flatMap(p => loadTomlArray(p, "feature"))
+      .map(normalizeExampleFields),
     roles: loadTomlArray("roles.toml", "role"),
-    contain: globSorted("containment/*.toml").flatMap(p => loadTomlArray(p, "contain")),
+    contain: globSorted("containment/*.toml")
+      .flatMap(p => loadTomlArray(p, "contain"))
+      .map(normalizeExampleFields),
     encodings: loadTomlArray("encodings.toml", "encoding"),
     controlOps: loadControlOps(),
   };
