@@ -4925,8 +4925,9 @@ body_md = '''- **Registry-fetch transients in nested-cargo cells.** Nested-cargo
   for every gate, so no cell touches the network
   (`tests/README.md` § "Offline-after-warmup"; the warm-up dep-universe manifest is drift-gated by
   `warmup_manifest_covers_registry_dep_universe`). The 2026-08-27 component-undercoverage sighting
-  is delivered: the generated guest's `wit-bindgen` now participates in that drift-gated op
-  universe, and the hand-written component hosts' direct `wasmtime`/`wasmtime-wasi`, `wac-graph`,
+  is delivered: the generated guest's `wit-bindgen` and the exact emit-tests/JSON/schema triple's
+  dev `jsonschema` now participate in that drift-gated op universe, and the hand-written component
+  hosts' direct `wasmtime`/`wasmtime-wasi`, `wac-graph`,
   `wit-component`, and `wit-parser` roots are explicit warm-up entries. The observed
   `wit-bindgen-rust-macro` miss is covered transitively by the `wit-bindgen` root, rather than as a
   separately-versioned manifest entry. What remains under watch:

@@ -815,7 +815,7 @@ pub fn emit_generated_tests(
             assert!(validator.is_valid(&value), "{rust_type} ({case}): schema rejected a real serialization: {value}");
             for candidate in mutations(&value) {
                 if serde_json::from_value::<T>(candidate.clone()).is_err() {
-                    assert!(!validator.is_valid(&candidate), "{rust_type} ({case}): schema accepted a shape the serializer rejects: {candidate}");
+                    assert!(!validator.is_valid(&candidate), "{rust_type} ({case}): schema accepted a shape the JSON deserializer rejects: {candidate}");
                 }
             }
         }

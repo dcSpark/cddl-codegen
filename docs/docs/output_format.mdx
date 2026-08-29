@@ -2213,11 +2213,15 @@ Every key falls into one of three categories:
   Two things about how a merged entry *reads*. Its inline table is re-spaced to the canonical
   `{ a = 1, b = 2 }` form — merging moves fields around, and the spacing a field carried in its old
   position is wrong in its new one — except in an entry whose braces hold a comment or a line break,
-  which is left exactly as you wrote it. And a dependency the tool **adds** to a `[dependencies]`
-  table that already existed gets a `# cddl-codegen` marker on its line: it can only be appended at
+  which is left exactly as you wrote it. And a dependency the tool **adds** to a dependency table
+  that already existed gets a `# cddl-codegen` marker on its line: it can only be appended at
   the end of the table, which is wherever your last section comment happens to reach, so it says
-  whose it is rather than reading as if that comment scoped it. A manifest the tool writes from
-  scratch is wholly tool-owned and gets no markers, and an entry you wrote yourself is merged into
+  whose it is rather than reading as if that comment scoped it. The exact
+  `--emit-tests` + `--json-serde-derives` + `--json-schema-export` triple also owns
+  `[dev-dependencies].jsonschema`; it follows the same field-level merge, ownership-marker, and
+  conditional-removal contract, but never forwards `jsonschema/std` through the library's
+  `features.std`. A manifest the tool writes from scratch is wholly tool-owned and gets no markers,
+  and an entry you wrote yourself is merged into
   and gets none either.
   One exception to field preservation: a tool spec may assert the dep's *source axis* outright, and
   then source-axis keys the spec does not itself re-specify are **dropped** from your entry rather

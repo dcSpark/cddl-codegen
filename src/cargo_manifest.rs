@@ -144,9 +144,15 @@ pub fn apply(
         })?,
         None => DocumentMut::new(),
     };
-    // Whether `[dependencies]` was in the manifest BEFORE this run touched it — read once, from the
-    // document as parsed, because the ops themselves create it. See [`OWNERSHIP_MARKER`].
-    let dep_table_preexisted = doc.as_table().get("dependencies").is_some();
+    // Which dependency tables were in the manifest BEFORE this run touched them — read once, from
+    // the document as parsed, because the ops themselves create them. See [`OWNERSHIP_MARKER`].
+    let dependency_tables_preexisted = [
+        ("dependencies", doc.as_table().get("dependencies").is_some()),
+        (
+            "dev-dependencies",
+            doc.as_table().get("dev-dependencies").is_some(),
+        ),
+    ];
     for (path, op) in ops {
         match op {
             ManifestOp::Set {
@@ -169,12 +175,13 @@ pub fn apply(
                     }
                     _ => item.clone(),
                 };
-                set_leaf(
-                    &mut doc,
-                    path,
-                    value,
-                    dep_table_preexisted && is_dependency_entry(path),
-                );
+                let mark_new_dep = is_dependency_entry(path)
+                    && dependency_tables_preexisted
+                        .iter()
+                        .any(|(table, preexisted)| {
+                            *preexisted && path.first().is_some_and(|segment| segment == *table)
+                        });
+                set_leaf(&mut doc, path, value, mark_new_dep);
                 // The co-ownership contract, stated in-band above the key it governs. Conditioned on
                 // the op's own path rather than on anything the caller passes, so the four manifests
                 // are told apart by the one thing that actually distinguishes them — whether their
@@ -2385,6 +2392,41 @@ wasm-bindgen = { version = \"0.2.126\", optional = true }
         );
     }
 
+    /// Dependency-table ownership is per table, not a global manifest property: a tool-created
+    /// `[dev-dependencies]` table is already unambiguously ours even when the regular table was
+    /// hand-maintained, while a hand-maintained dev table needs the marker on its new entries.
+    #[test]
+    fn new_dev_dep_marker_follows_its_own_table_preexistence() {
+        let ops = vec![set(
+            &["dev-dependencies", "jsonschema"],
+            "{ version = \"0.46\", default-features = false }",
+        )];
+        for (label, existing, wants_marker) in [
+            (
+                "regular table only",
+                "[dependencies]\ncbor_event = \"2.4.0\"\n",
+                false,
+            ),
+            (
+                "dev table only",
+                "[dev-dependencies]\npretty_assertions = \"1\"\n",
+                true,
+            ),
+        ] {
+            let out = apply(&ops, Some(existing), "rust/Cargo.toml").unwrap();
+            out.parse::<DocumentMut>().unwrap();
+            assert_eq!(
+                out.contains(
+                    "jsonschema = { version = \"0.46\", default-features = false } # cddl-codegen"
+                ),
+                wants_marker,
+                "{label} chose the wrong ownership marker:\n{out}"
+            );
+            let second = apply(&ops, Some(&out), "rust/Cargo.toml").unwrap();
+            assert_eq!(out, second, "{label} must reach a fixed point:\n{out}");
+        }
+    }
+
     /// The documented consequence of the reshape, pinned so it is a decision rather than a surprise:
     /// `default-features` is a field the TOOL sets, so a user who deliberately wrote
     /// `default-features = true` has it overwritten to `false` on the next regeneration (the
@@ -3147,12 +3189,12 @@ set = 'not = valid = toml'
                 "a dev dependency must not be forwarded by the library's std feature:\n{fresh}"
             );
 
-            let customized = "[dev-dependencies]\njsonschema = { version = \"0.46.8\", features = [\"draft202012\"], optional = true }\n";
+            let customized = "[dev-dependencies]\njsonschema = { version = \"0.46.8\", features = [\"draft202012\"], package = \"jsonschema\" }\n";
             let merged = apply(rust, Some(customized), "rust/Cargo.toml").unwrap();
             assert!(
                 merged.contains("version = \"0.46.8\"")
                     && merged.contains("draft202012")
-                    && merged.contains("optional = true")
+                    && merged.contains("package = \"jsonschema\"")
                     && merged.contains("default-features = false"),
                 "the user-customized dev dependency must merge field-wise:\n{merged}"
             );
@@ -3543,6 +3585,8 @@ anyhow = \"1\"
             "--json-serde-derives",
             "true",
             "--json-schema-export",
+            "true",
+            "--emit-tests",
             "true",
             "--component",
             "true",

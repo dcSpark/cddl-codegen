@@ -526,11 +526,12 @@ untouched.
 
 The warm-up manifest is drift-gated: `warmup_manifest_covers_registry_dep_universe`
 (`src/cargo_manifest.rs`) asserts every dep the manifest ops can emit — including the component
-guest's `wit-bindgen` — appears there with the same version req and features (features gate optional
-transitive deps, which `cargo fetch` only pulls when enabled). Its bin-only sibling,
-`integration_tests::warmup_manifest_covers_harness_injected_dependency_roots`, pins the two direct
-harness-injected roots that are outside manifest ops: JSON fixtures' `jsonschema` with
-`default-features = false`, and the same rev-pinned `cddl` conformance oracle fresh scratch crates
+guest's `wit-bindgen` and the exact emit-tests/JSON/schema triple's dev `jsonschema` — appears there
+with the same version req and features (features gate optional transitive deps, which `cargo fetch`
+only pulls when enabled). Its bin-only sibling,
+`integration_tests::warmup_manifest_covers_harness_injected_dependency_roots`, pins the direct
+harness-injected roots outside manifest ops: the same `jsonschema` spec still appended to
+legacy/manual JSON fixtures, and the same rev-pinned `cddl` conformance oracle fresh scratch crates
 receive (whose graph reaches `data-encoding`). Fixture crates under `tests/` with hand-written
 manifests are otherwise the manual tail. The component hosts' direct `wasmtime`/`wasmtime-wasi`,
 `wac-graph`, `wit-component`, and `wit-parser` roots are listed explicitly. The direct roots,
