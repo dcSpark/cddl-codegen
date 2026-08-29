@@ -1029,6 +1029,73 @@ fn wasm_open_map_parent_insert_name_collision_rejects_gracefully() {
     );
 }
 
+/// A multi-value inlined group-choice arm mints `as_<variant>_<field>()` doors. Those names share
+/// the enum wrapper's method namespace with every other arm's legacy `as_<variant>()`: `Alpha`'s
+/// `beta` field and `AlphaBeta`'s base getter both spell `as_alpha_beta()`. Variant-name uniqueness
+/// alone cannot prove this concatenated namespace safe, so the wasm profile rejects with an `@name`
+/// remedy while rust-only generation remains valid.
+#[test]
+fn wasm_group_choice_field_getter_name_collision_rejects_gracefully() {
+    const COLLIDING: &str =
+        "t = [\n  ; @name alpha\n  ? beta: 0, x: tstr //\n  ; @name alpha_beta\n  y: bytes\n]\n";
+    let error = expect_graceful_rejection(
+        "wasm_group_choice_field_getter_collision",
+        COLLIDING,
+        &["--wasm=true"],
+    );
+    assert!(
+        error.contains("as_alpha_beta()")
+            && error.contains("arm `Alpha` field `beta`")
+            && error.contains("@name"),
+        "the collision must name the generated method, both public owners, and the author remedy: {error}"
+    );
+
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_wasm_group_choice_field_getter_collision_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, COLLIDING).unwrap();
+    let rust_only = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "wasm_group_choice_field_getter_collision_unused",
+        "--wasm=false",
+    ]));
+    std::fs::remove_file(&path).ok();
+    assert!(
+        rust_only.is_ok(),
+        "the method namespace collision belongs only to the wasm API: {rust_only:?}"
+    );
+
+    let renamed_path = std::env::temp_dir().join(format!(
+        "cddl_codegen_wasm_group_choice_field_getter_collision_renamed_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(
+        &renamed_path,
+        "t = [\n  ; @name alpha\n  ? beta: 0, x: tstr //\n  ; @name alpha_other\n  y: bytes\n]\n",
+    )
+    .unwrap();
+    let renamed = crate::api::generated_strings(&Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        renamed_path.to_str().unwrap(),
+        "--output",
+        "wasm_group_choice_field_getter_collision_renamed_unused",
+        "--wasm=true",
+    ]))
+    .expect("renaming an arm removes the wasm getter collision");
+    std::fs::remove_file(&renamed_path).ok();
+    let renamed_src = renamed.values().cloned().collect::<Vec<_>>().join("\n");
+    assert!(
+        renamed_src.contains("pub fn as_alpha_beta(&self) -> Option<bool>")
+            && renamed_src.contains("pub fn as_alpha_other(&self) -> Option<Vec<u8>>"),
+        "the renamed shape must retain both distinct public getter doors:\n{renamed_src}"
+    );
+}
+
 /// An anonymous nested MAP outside its narrow member-position naming door remains a graceful
 /// rejection (rather than a panic). The no-name variants below pin that its message advertises both
 /// working remedies: a named rule and the `@name` door where the anonymous map is the member's

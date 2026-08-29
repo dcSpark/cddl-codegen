@@ -295,6 +295,21 @@ Every shape that generates for rust generates for wasm here — the loose `{*}` 
 
 Both type/group choices generate rust-style enums. On the wasm side we can't do that so we directly wrap the rust type, and then provide a `FooKind` c-style enum for each rust enum `Foo` just for checking which variant it is.
 
+Each arm has a `new_<variant>(…)` constructor. Its historic read door is
+`as_<variant>()`: for an inlined arm with one ordinary value it returns that value as an
+`Option`, with `None` on another arm. An inlined arm that materializes **more than one value** also
+gets one stable, field-qualified door per value: `as_<variant>_<field>() -> Option<T>`. For example,
+`t = [ ? a: 0, x: tstr, ? b: 1 // y: bytes ]` exposes
+`new_t0(a, x, b)`, the compatibility `as_t0() -> Option<String>` (the ordinary `x` payload), and
+`as_t0_a() -> Option<bool>`, `as_t0_x() -> Option<String>`, and
+`as_t0_b() -> Option<bool>`. The optional-fixed `bool` reports CBOR presence — `Some(false)` means
+that arm is selected but the fixed item was absent, `Some(true)` means present, and `None` means a
+different arm. A sole optional-fixed value uses the legacy `as_<variant>() -> Option<bool>` door.
+
+These are value doors only. Under `--preserve-encodings`, the rust enum may also carry encoding
+sidecars such as `len_encoding`; they are byte-fidelity metadata defaulted inside the constructor and
+never become constructor parameters or wasm getters.
+
 ## Tag and `@newtype` wrappers
 
 A CBOR tag over a non-struct type (`t = #6.10(uint)`) and a `; @newtype` rule both generate a wrapper

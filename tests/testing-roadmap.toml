@@ -74,6 +74,7 @@ entries = [
   "testing.grammar-fuzzer-escalations",
   "testing.grammar-fuzzer.arbitrary-supported-ast",
   "testing.grammar-fuzzer.real-world-corpus-differential",
+  "testing.component-wit-inlined-enum-arm-signature-parity",
   "testing.duplicates-policy-residuals",
   "part-set-nominalization-residuals-delivery-set-architecture-rethink-d177516",
   "testing.duplicates.same-shape-set-conversion",
@@ -84,7 +85,6 @@ entries = [
   "testing.container-construct-conceptual-type-visitor-walks-flat-combinatorial",
   "part-what-hand-per-construct-buy-established-escape-produced",
   "part-cheap-system-matrix-shape-pairs-compiled-wasm-side",
-  "testing.wasm-api-parity-inlined-enum-materialized-fields",
   "testing.generated-local-collision-class-refused-mangled-refusal-s",
   "testing.generated-local-collision.general-mangling-remedy",
   "testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns",
@@ -747,6 +747,44 @@ rationale_md = '''The decided boundary and its reasons are the exact preserved d
 '''
 authority_reference_id = "testing-guard-complete-cargo-mutants-sweep-will-never"
 permanence = "permanent"
+
+[[record]]
+id = "testing.component-wit-inlined-enum-arm-signature-parity"
+title = "Component/WIT signatures for materialized values of an inlined group-choice enum arm."
+
+[record.payload]
+kind = "work"
+body_md = '''- **Component/WIT signatures for materialized values of an inlined group-choice enum arm.** Before
+  the safety exclusion, `thing = [ ? a: 0, x: tstr, ? b: 1 // y: bytes ]` projected just the
+  non-fixed value: WIT emitted `new-thing0(x: string)` and `as-thing0() -> option<string>`, while
+  native Rust emitted `Thing::new_thing0(a: bool, x: String, b: bool)`. Generated guest glue then
+  called the constructor with one argument (E0061) and bound `a: bool` as `String` (E0308). A
+  scratch component from that exact shape established this as a product defect, not an upstream WIT
+  or wit-bindgen failure. Current state is safe rather than supported: projection excludes any
+  inlined group-choice arm containing an optional fixed member with the standard explicit WIT
+  `unexported` record, so it emits neither that resource nor broken guest glue; the focused
+  projection/validity regression holds the exclusion live. The current `component_api_parity`
+  intentionally checks member names rather than signatures, and its fixtures previously carried no
+  optional-fixed inlined arm, so neither it nor the existing build fixtures could catch the
+  pre-guard mismatch. The parallel wasm API is delivered separately: it has field-qualified read
+  doors for multi-value arms and `Option<bool>` optional-fixed semantics.
+'''
+work_state = "ready"
+work_intent = "repair"
+work_kind = "regression_gap"
+risk = "wrong_public_api"
+acceptance_md = '''Settle and document the component read API for every materialized direct value of
+an inlined group-choice arm, including the sole-value compatibility case. Project every
+optional-fixed presence bit as a WIT `bool` constructor argument and preserve both `false`/`true`
+states and wrong-arm `None` through real component execution. Add a focused fixture that combines
+optional-fixed and non-fixed values in one inlined arm, compiles the generated guest, and verifies
+its WIT signatures and glue bindings against the native Rust constructor/field identities. Extend
+the Rust→WIT differential with a signature/argument-obligation check sufficient to catch an omitted
+materialized value, rather than relying only on names emitted by the projection. Do not reuse the
+wasm getter vocabulary as an unreviewed component API design.'''
+priority_rationale_md = '''Without the safety exclusion this face emitted a noncompiling component
+crate for a supported native input; the current explicit exclusion prevents broken output but leaves
+that native-supported shape unavailable at the component boundary.'''
 
 [[record]]
 id = "testing.composing-registration-rows-across-generation-passes-share-output"
@@ -6120,48 +6158,6 @@ action_on_fire_md = '''Set testing.wac-composed-component-transpiled-jco-loses-c
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.wac-composed-component-transpiled-jco-loses-cross-instance's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 '''
-
-[[record]]
-id = "testing.wasm-api-parity-inlined-enum-materialized-fields"
-title = "Extend rust-to-wasm API parity to materialized fields carried directly by enum variants, and expose optional-fixed presence bits on group-choice arms."
-
-[record.payload]
-kind = "work"
-body_md = '''- **Extend rust-to-wasm API parity to materialized fields carried directly by enum variants, and
-  expose optional-fixed presence bits on group-choice arms.** Cycle 4's recombination extension
-  systematically exposed the initial optional-fixed inlined-arm defect. Its field/constructor
-  repair did not compile the serializer: matching `&self` binds a materialized presence bit as
-  `&bool`, while the shared array length and conditional-write paths emitted it as `bool`. The
-  follow-up fixed that shared contract and made
-  `group_choice_optional_fixed_arm_emits_bool_presence_field` execute default/preserve/JSON
-  generated Rust crates (plus compile their WASM crates) with absent/present serialization and
-  definite/indefinite vectors. The closeout review then found a distinct wrong-public-API residue
-  by reading the wasm getter path and confirmed it with a focused generated-output probe:
-  `t = [ x: uint, ? a: 0 // b: tstr ]` emits rust
-  `T::T0 { x: u64, a: bool }` and wasm `new_t0(x: u64, a: bool)`, but wasm emits only
-  `as_t0() -> Option<u64>`; no getter exposes `a`, so a caller cannot observe the presence bit after
-  decoding. The now-e2e `group_choice_optional_fixed_arm_emits_bool_presence_field` test proves
-  construction and compile-facing projections only; the recombination wasm layer likewise compiles
-  whatever API exists, and `wasm_api_parity` rules 3–4 inspect named struct fields/functions rather
-  than enum variant payloads. None can demand the missing accessor.
-
-  First settle the public surface rather than inventing a name in a test. Viable designs include an
-  arm-qualified presence accessor on the enum wrapper, or stopping this multi-materialized-field arm
-  from inlining and exposing a named arm wrapper; the latter is complete only if wasm construction
-  can still express `present = true` rather than defaulting the optional field away. Then extend
-  `wasm_api_parity` (or a sibling AST-based parity rule) to enumerate every non-encoding value field
-  materialized in a rust enum variant and require an observable wasm read door for each. Add a
-  behavior vector that constructs both `a = false` and `a = true`, CBOR-round-trips them, reads the
-  bit through the chosen API, and checks the wrong-arm result. Keep preserve-only encoding sidecars
-  exempt: they remain rust-only round-trip metadata, exactly as the existing struct-field rule
-  specifies.
-'''
-work_state = "ready"
-work_intent = "repair"
-work_kind = "regression_gap"
-risk = "wrong_public_api"
-acceptance_md = '''Choose and document a stable wasm read API for every materialized field of an inlined enum arm; make the optional-fixed group-choice vector observe both presence states after CBOR round-trip; and extend the AST-based rust-to-wasm parity system so deleting that read door fails independently of the hand vector. Preserve the existing exemption for encoding-only sidecars and prove the chosen representation still permits wasm construction of the present state.'''
-priority_rationale_md = '''This is a confirmed supported-shape public-API loss introduced into the newly generating path, not a hypothetical trigger: generated CBOR behavior is correct while wasm callers cannot observe one rust-stored bit, and all current compile/systematic gates are structurally blind to absence.'''
 
 [[record]]
 id = "testing.wasm32-link-floor-deferred-reject-twin"

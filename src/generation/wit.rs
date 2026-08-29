@@ -2126,6 +2126,22 @@ fn choice_variant_shape(
             Ok((params, payload))
         }
         EnumVariantData::Inlined(record) => {
+            // An optional fixed member materializes as a native `bool`, but this one-payload WIT
+            // shape has neither a constructor parameter nor a field-identity read door for it.
+            // Exclude the whole choice rather than emitting guest glue that calls the native ctor
+            // with too few arguments and reads the wrong field. The eventual multi-value component
+            // API must replace this narrow safety boundary deliberately.
+            if record
+                .fields
+                .iter()
+                .any(|field| field.optional && field.rust_type.is_fixed_value())
+            {
+                return Err(unprojectable(format!(
+                    "the inlined group-choice arm `{}` contains an optional fixed member, whose \
+                     materialized presence bit has no component/WIT constructor and read projection",
+                    variant.name
+                )));
+            }
             let non_fixed: Vec<&RustField> = record
                 .fields
                 .iter()

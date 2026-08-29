@@ -9843,11 +9843,81 @@ pub fn parse_group(
         if rule_metadata.ignore {
             reject_ignore_not_applicable(types, name);
         }
+        reject_wasm_group_choice_getter_collisions(types, cli, name, &variants);
         types.register_rust_struct(
             parent_visitor,
             RustStruct::new_group_choice(name.clone(), tag, Some(&rule_metadata), variants, rep),
             cli,
         );
+    }
+}
+
+/// LOCKSTEP with `generation::enums::add_wasm_enum_getters`: this claim inventory must mirror every
+/// legacy base and materialized field-qualified getter that emitter adds. Field-qualified WASM enum
+/// doors use `as_<variant>_<field>`. Variant names and inlined-field
+/// names are both author-controllable (`@name`), and their normalized concatenations occupy one
+/// inherent-method namespace on the enum wrapper.  Rust's variant-name ledger proves only the
+/// *variant* segment unique; it cannot prove `Foo` + `Bar` differs from `FooBar`'s legacy
+/// `as_foo_bar()`.  Reject that WASM-only API collision before code emission instead of silently
+/// suffixing a public door or leaving wasm-bindgen to report duplicate methods.
+fn reject_wasm_group_choice_getter_collisions(
+    types: &mut IntermediateTypes,
+    cli: &Cli,
+    name: &RustIdent,
+    variants: &[EnumVariant],
+) {
+    if !cli.wasm {
+        return;
+    }
+    let mut claimed: BTreeMap<String, String> = BTreeMap::new();
+    let mut claim = |method: String, owner: String| {
+        if let Some(first) = claimed.insert(method.clone(), owner.clone()) {
+            let source_name = source_rule_name_of(types, name);
+            types.record_rejection(format!(
+                "rule `{source_name}`: group-choice arm getter `{method}()` for {owner} collides \
+                 with the getter for {first}. Rename one arm or member with `; @name <other>`; the \
+                 CBOR wire form is unchanged. The generator does not suffix this public WASM door \
+                 automatically."
+            ));
+        }
+    };
+    for variant in variants {
+        let variant_name = variant.name_as_var();
+        match &variant.data {
+            EnumVariantData::RustType(ty) if !ty.is_fixed_value() => {
+                claim(
+                    format!("as_{variant_name}"),
+                    format!("arm `{}`", variant.name),
+                );
+            }
+            EnumVariantData::Inlined(record) => {
+                let fields = record
+                    .fields
+                    .iter()
+                    .filter(|field| !field.rust_type.is_fixed_value() || field.optional)
+                    .collect::<Vec<_>>();
+                if let Some(field) = fields
+                    .iter()
+                    .copied()
+                    .find(|field| !field.rust_type.is_fixed_value())
+                    .or_else(|| (fields.len() == 1).then(|| fields[0]))
+                {
+                    claim(
+                        format!("as_{variant_name}"),
+                        format!("arm `{}` field `{}`", variant.name, field.name),
+                    );
+                }
+                if fields.len() > 1 {
+                    for field in fields {
+                        claim(
+                            format!("as_{variant_name}_{}", field.name),
+                            format!("arm `{}` field `{}`", variant.name, field.name),
+                        );
+                    }
+                }
+            }
+            EnumVariantData::RustType(_) => {}
+        }
     }
 }
 

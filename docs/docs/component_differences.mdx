@@ -49,6 +49,13 @@ signature that would have referenced it is excluded with the same reason. The ge
 validity is gated by `component_wit_validates` and, at corpus breadth, by
 `component_wit_validates_the_corpus`.
 
+One current exclusion is an inlined group-choice arm carrying an optional fixed member. Native Rust
+stores that member's presence as a `bool`, but the component face's one-payload choice API has
+neither a constructor parameter nor a field-qualified read door for it. The projection therefore
+records the whole choice as unexported instead of emitting a WIT constructor and guest glue that
+disagree with the native constructor. This is a safe temporary boundary, not a public API decision:
+a future component design must project every materialized arm value deliberately.
+
 ## Getters hand back a snapshot
 
 A getter clones the field and returns a fresh owned handle. Mutating what you got does **not**

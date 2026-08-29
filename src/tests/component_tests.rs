@@ -545,6 +545,45 @@ fn a_wit_resource_named_t_is_unexported_with_the_wit_bindgen_reason() {
     );
 }
 
+/// Optional fixed values in an inlined group-choice arm are native `bool` constructor state. Until
+/// the component face has a reviewed multi-value constructor/read API, the projection must exclude
+/// the whole resource rather than emitting valid WIT paired with guest glue that does not compile.
+#[test]
+fn optional_fixed_inlined_group_choice_is_excluded_before_component_glue() {
+    const SPEC: &str = "thing = [ ? a: 0, x: tstr, ? b: 1 // y: bytes ]\n\
+                        sibling = [n: uint]\n";
+    let files = wit_files_for_spec(SPEC, &[]);
+    let wit = files
+        .get("component/wit/world.wit")
+        .expect("component projection must emit its world");
+    assert!(
+        !wit.contains("resource thing {")
+            && wit.contains("// unexported: Thing — the inlined group-choice arm `Thing0` contains an optional fixed member")
+            && wit.contains("component/WIT constructor and read projection"),
+        "the unsafe choice must be explicitly excluded with its projection reason:\n{wit}"
+    );
+    assert!(
+        wit.contains("resource sibling {"),
+        "the local exclusion must not drop unrelated component resources:\n{wit}"
+    );
+    let bytes = resolve_and_encode(&files).unwrap_or_else(|error| {
+        panic!("the exclusion-record package must stay valid: {error}\n{wit}")
+    });
+    validate_component(&bytes).unwrap_or_else(|error| {
+        panic!("the exclusion-record package must validate: {error}\n{wit}")
+    });
+
+    let glue = component_glue_for_spec(SPEC, &[]);
+    assert!(
+        !glue.contains("WitThing") && !glue.contains("new_thing0") && !glue.contains("as_thing0"),
+        "excluded choice leaked its known-broken constructor/read glue:\n{glue}"
+    );
+    assert!(
+        glue.contains("WitSibling"),
+        "the unrelated component resource disappeared from guest glue too:\n{glue}"
+    );
+}
+
 /// The remedy the message names, applied. Same spec, one identifier renamed: the full surface
 /// projects and nothing is excluded — which is what makes the refusal above a NAME refusal rather
 /// than a shape refusal.

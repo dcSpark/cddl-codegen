@@ -313,90 +313,153 @@ fn add_wasm_enum_getters(
     get_kind.push_block(get_kind_match);
     s_impl.push_fn(get_kind);
 
-    // as_{variant} conversions (returns None -> undefined when not the type)
+    // LOCKSTEP with `parsing::reject_wasm_group_choice_getter_collisions`: every base and
+    // field-qualified getter this materialized-value inventory emits must be claimed by that
+    // detector, or a user-controlled `@name` collision can re-open duplicate wasm methods.
+    // `as_{variant}` conversions (return None -> undefined when not the type), plus a field-named
+    // read door for every materialized value in a multi-value inlined arm.  In particular, an
+    // optional fixed member is real `bool` state on the enum variant, not an encoding sidecar.
     for variant in variants.iter() {
-        let mut add_variant_functions = |ty: &RustType| {
-            let enum_gen_info =
-                EnumVariantInRust::new(types, variant, rep, tag, rule_tag_encoding.as_deref(), cli);
-            let mut as_variant = codegen::Function::new(format!("as_{}", variant.name_as_var()));
-            as_variant.arg_ref_self().vis("pub");
-            let mut variant_match = Block::new("match &self.0");
-            // unfortunately wasm_bindgen doesn't support nested options so we must flatten
-            // this is a bit ambiguous but it's better than nothing
-            let supported = if let ConceptualRustType::Optional(inner) = ty.resolve_alias_shallow()
-            {
-                if let ConceptualRustType::Optional(_) = inner.resolve_alias_shallow() {
-                    // An enum variant whose payload resolves to Option<Option<T>> (a
-                    // nullable-of-nullable, e.g. `text / ((uint / null) / null)`, or via an alias
-                    // chain to a nullable) is UNREACHABLE at this getter arm: the wasm enum
-                    // CONSTRUCTOR for such a variant panics earlier, in
-                    // `from_wasm_boundary_clone_optional` ("unsupported or unexpected"), before getter
-                    // emission ever runs. No supported CDDL reaches here, so the former silent
-                    // `println!` skip only advertised a behavior (dropping the getter) that can never
-                    // occur. Fail loudly instead: if a future constructor change lets the shape emit,
-                    // this points at the real work — double-flatten the getter plus an
-                    // `as_<variant>_present()` presence accessor (see docs/docs/wasm_differences.mdx)
-                    // — rather than silently dropping the getter.
-                    unreachable!(
-                        "enum variant {}::{} resolves to Option<Option<T>>, which the wasm enum \
-                         constructor rejects (from_wasm_boundary_clone_optional) before getters are \
-                         emitted — no supported CDDL reaches this arm",
-                        name,
-                        variant.name_as_var()
-                    );
-                } else {
-                    as_variant
-                        .ret(gen_scope.wasm_return_type(types, ty, name, "enum arm getter return"))
-                        .doc(format!("Returns None if not {} variant OR it is but it's set to None\nThis is to get around wasm_bindgen not supporting Option<Option<T>>", variant.name));
+        let mut add_variant_function =
+            |method: String, ty: Option<&RustType>, field_name: &str, optional_fixed: bool| {
+                let enum_gen_info = EnumVariantInRust::new(
+                    types,
+                    variant,
+                    rep,
+                    tag,
+                    rule_tag_encoding.as_deref(),
+                    cli,
+                );
+                let mut as_variant = codegen::Function::new(method);
+                as_variant.arg_ref_self().vis("pub");
+                let mut variant_match = Block::new("match &self.0");
+                let capture = enum_gen_info.capture_field_ignore_encodings(field_name);
+                if optional_fixed {
+                    as_variant.ret("Option<bool>");
                     variant_match.line(format!(
-                        "{}::{}{} => {},",
+                        "{}::{}{} => Some(*{}),",
                         rust_crate_struct_from_wasm(types, name, cli),
                         variant.name,
-                        enum_gen_info.capture_ignore_encodings(),
-                        ty.to_wasm_boundary(types, &enum_gen_info.names[0], true)
+                        capture,
+                        field_name
+                    ));
+                    variant_match.line("_ => None,");
+                    as_variant.push_block(variant_match);
+                    s_impl.push_fn(as_variant);
+                    return;
+                }
+                let ty = ty.expect("every non-fixed enum getter carries its source RustType");
+                // unfortunately wasm_bindgen doesn't support nested options so we must flatten
+                // this is a bit ambiguous but it's better than nothing
+                let supported = if let ConceptualRustType::Optional(inner) =
+                    ty.resolve_alias_shallow()
+                {
+                    if let ConceptualRustType::Optional(_) = inner.resolve_alias_shallow() {
+                        // An enum variant whose payload resolves to Option<Option<T>> (a
+                        // nullable-of-nullable, e.g. `text / ((uint / null) / null)`, or via an alias
+                        // chain to a nullable) is UNREACHABLE at this getter arm: the wasm enum
+                        // CONSTRUCTOR for such a variant panics earlier, in
+                        // `from_wasm_boundary_clone_optional` ("unsupported or unexpected"), before getter
+                        // emission ever runs. No supported CDDL reaches here, so the former silent
+                        // `println!` skip only advertised a behavior (dropping the getter) that can never
+                        // occur. Fail loudly instead: if a future constructor change lets the shape emit,
+                        // this points at the real work — double-flatten the getter plus an
+                        // `as_<variant>_present()` presence accessor (see docs/docs/wasm_differences.mdx)
+                        // — rather than silently dropping the getter.
+                        unreachable!(
+                            "enum variant {}::{} resolves to Option<Option<T>>, which the wasm enum \
+                         constructor rejects (from_wasm_boundary_clone_optional) before getters are \
+                         emitted — no supported CDDL reaches this arm",
+                            name,
+                            variant.name_as_var()
+                        );
+                    } else {
+                        as_variant
+                        .ret(gen_scope.wasm_return_type(types, ty, name, "enum arm getter return"))
+                        .doc(format!("Returns None if not {} variant OR it is but it's set to None\nThis is to get around wasm_bindgen not supporting Option<Option<T>>", variant.name));
+                        variant_match.line(format!(
+                            "{}::{}{} => {},",
+                            rust_crate_struct_from_wasm(types, name, cli),
+                            variant.name,
+                            capture,
+                            ty.to_wasm_boundary(types, field_name, true)
+                        ));
+                        true
+                    }
+                } else {
+                    as_variant.ret(format!(
+                        "Option<{}>",
+                        gen_scope.wasm_return_type(types, ty, name, "enum arm getter return")
+                    ));
+                    variant_match.line(format!(
+                        "{}::{}{} => Some({}),",
+                        rust_crate_struct_from_wasm(types, name, cli),
+                        variant.name,
+                        capture,
+                        ty.to_wasm_boundary(types, field_name, true)
                     ));
                     true
+                };
+                if supported {
+                    variant_match.line("_ => None,");
+                    as_variant.push_block(variant_match);
+                    s_impl.push_fn(as_variant);
                 }
-            } else {
-                as_variant.ret(format!(
-                    "Option<{}>",
-                    gen_scope.wasm_return_type(types, ty, name, "enum arm getter return")
-                ));
-                variant_match.line(format!(
-                    "{}::{}{} => Some({}),",
-                    rust_crate_struct_from_wasm(types, name, cli),
-                    variant.name,
-                    enum_gen_info.capture_ignore_encodings(),
-                    ty.to_wasm_boundary(types, &enum_gen_info.names[0], true)
-                ));
-                true
             };
-            if supported {
-                variant_match.line("_ => None,");
-                as_variant.push_block(variant_match);
-                s_impl.push_fn(as_variant);
-            }
-        };
         match &variant.data {
             EnumVariantData::RustType(ty) => {
                 if !ty.is_fixed_value() {
-                    add_variant_functions(ty);
+                    let field_name = EnumVariantInRust::new(
+                        types,
+                        variant,
+                        rep,
+                        tag,
+                        rule_tag_encoding.as_deref(),
+                        cli,
+                    )
+                    .names[0]
+                        .clone();
+                    add_variant_function(
+                        format!("as_{}", variant.name_as_var()),
+                        Some(ty),
+                        &field_name,
+                        false,
+                    );
                 }
             }
             EnumVariantData::Inlined(record) => {
-                let non_fixed_types = record
+                let materialized_fields = record
                     .fields
                     .iter()
-                    .filter(|field| !field.rust_type.is_fixed_value())
+                    .filter(|field| !field.rust_type.is_fixed_value() || field.optional)
                     .collect::<Vec<_>>();
-                // we don't even embed in this case and instead crate a new variant but this is here in case someone
-                // tries to add that in the future so they hit this assert.
-                assert!(
-                    non_fixed_types.len() <= 1,
-                    "multiple non-fixed not allowed right now for embedding into enums"
-                );
-                if let Some(&field) = non_fixed_types.first() {
-                    add_variant_functions(field.to_embedded_rust_type().as_ref());
+                // The long-standing getter keeps the one non-fixed payload's read API. A sole
+                // optional-fixed field has no non-fixed counterpart, so that bit itself owns the
+                // legacy door. Multi-value arms additionally emit field-qualified doors below.
+                if let Some(field) = materialized_fields
+                    .iter()
+                    .copied()
+                    .find(|field| !field.rust_type.is_fixed_value())
+                    .or_else(|| (materialized_fields.len() == 1).then(|| materialized_fields[0]))
+                {
+                    let embedded = field.to_embedded_rust_type();
+                    add_variant_function(
+                        format!("as_{}", variant.name_as_var()),
+                        (!field.rust_type.is_fixed_value()).then_some(&embedded),
+                        &field.name,
+                        field.optional && field.rust_type.is_fixed_value(),
+                    );
+                }
+                if materialized_fields.len() > 1 {
+                    for field in materialized_fields {
+                        let embedded = field.to_embedded_rust_type();
+                        add_variant_function(
+                            format!("as_{}_{}", variant.name_as_var(), field.name),
+                            (!field.rust_type.is_fixed_value()).then_some(&embedded),
+                            &field.name,
+                            field.optional && field.rust_type.is_fixed_value(),
+                        );
+                    }
                 }
             }
         }
@@ -658,18 +721,25 @@ impl EnumVariantInRust {
         }
     }
 
-    pub(super) fn capture_ignore_encodings(&self) -> String {
+    /// Pattern-match one materialized value by its explicit field identity while ignoring every
+    /// other value and every preserve-only encoding sidecar.  `names[0]` is NOT enough: optional
+    /// fixed members materialize as leading `bool`s in an inlined arm.
+    pub(super) fn capture_field_ignore_encodings(&self, field_name: &str) -> String {
+        assert!(
+            self.names.iter().any(|name| name == field_name),
+            "enum getter requested unknown variant field `{field_name}`"
+        );
         match self.names.len() {
             0 => "".to_owned(),
-            1 if self.enc_fields.is_empty() => format!("({})", self.names[0]),
-            _ => {
-                if self.enc_fields.len() == self.names.len() {
-                    "{ .. }".to_owned()
-                } else {
-                    format!("{{ {}, .. }}", self.names[0])
-                }
-            }
+            1 if self.enc_fields.is_empty() => format!("({field_name})"),
+            _ => format!("{{ {field_name}, .. }}"),
         }
+    }
+
+    /// The component face's pre-existing one-payload projection. The WASM face must use the
+    /// explicit-field helper above because an inlined optional fixed field can precede that payload.
+    pub(super) fn capture_ignore_encodings(&self) -> String {
+        self.capture_field_ignore_encodings(&self.names[0])
     }
 
     /// if init_fields exists, use these for values, otherwise assumes variables exist with same names

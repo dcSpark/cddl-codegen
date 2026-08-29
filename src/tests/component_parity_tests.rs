@@ -17,6 +17,13 @@
 //!    inherent constructors have nowhere to land. That is a pre-declared ledger class rather than a
 //!    structural carve-out, precisely so it stays visible and so the ledger's resurfaced guard has
 //!    something live to reconcile.
+//! 3. *Inlined-arm signatures remain an open boundary.* The name differential deliberately does not
+//!    compare ABI signatures, so an optional-fixed inlined group-choice arm formerly omitted native
+//!    constructor values and bound its read payload to the wrong field. It is now excluded with an
+//!    explicit WIT record before glue is emitted; the reviewed component API that can project it is
+//!    tracked by `testing.component-wit-inlined-enum-arm-signature-parity`, whose focused fixture and
+//!    signature obligation must replace that safe boundary rather than treating a name-parity pass
+//!    as support.
 //!
 //! **Parsed from emitted sources, never from generator metadata.** The rust half is `syn` over the
 //! emitted `.rs`; the WIT half is `wit-parser` over the emitted `.wit`; the exclusion records are

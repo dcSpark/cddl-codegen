@@ -4606,7 +4606,8 @@ pushed it, caught only by reading the generator. `wasm_api_parity` closes that c
 It parses the emitted `rust/src/generated/mod.rs` and `wasm/src/generated/mod.rs` with `syn` (a
 harness-side dev-dep) and asserts a **one-directional rust→wasm** correspondence — only rust members
 impose obligations, so wasm-side extras (`kind`/`as_*`/`has_*`/`set_*`/`len`/`insert`/`keys`/
-`to_cbor_bytes`/…) are unchecked by design. Five rules:
+`to_cbor_bytes`/…) are generally unchecked by design. Rule 5 is the narrow exception: it derives
+the needed `as_*` doors for direct inlined enum-arm values from native constructors. Six rules:
 
 1. Every rust `pub struct`/`enum` has a wasm counterpart (same-named wasm struct/enum, `pub use`
    re-export, or **public** `pub type` alias).
@@ -4622,12 +4623,23 @@ impose obligations, so wasm-side extras (`kind`/`as_*`/`has_*`/`set_*`/`len`/`in
    excluded; return types unchecked — boundary conversions differ by construction). Rules 3–4 run
    only when a same-named wasm struct/enum is *defined*; a `pub use`/alias counterpart is full parity
    under rules 1–2 (a `pub use` *is* the same type; a rust alias has no inherent members).
-5. **JS-name visibility.** wasm_bindgen exports no type aliases, so a rust type whose ONLY wasm
-   counterpart is a `pub type` alias never reaches JS under its CDDL rule name. Rule 5 resolves the
+5. **Materialized inlined enum-arm values.** A named Rust enum variant stores its direct values on
+   the outer enum rather than as `pub` struct fields, so rules 3–4 cannot see them. The Rust
+   `new_<variant>` constructor is the structural inventory: its named parameters are exactly the
+   materialized boundary values, while preserve-only encoding sidecars are defaulted internally and
+   absent. One parameter requires the legacy `as_<variant>()` read door; multiple parameters require
+   `as_<variant>_<field>()` for each parameter. A tuple variant carries one payload and therefore
+   requires the legacy `as_<variant>()` door, including when its convenience constructor flattens a
+   separate record wrapper's fields. The focused native wasm crate regression
+   `wasm_inlined_enum_materialized_fields_have_read_doors` independently proves the
+   optional-fixed bool semantics, constructor order, correct return binding, round trips, and
+   wrong-arm `None` behavior.
+6. **JS-name visibility.** wasm_bindgen exports no type aliases, so a rust type whose ONLY wasm
+   counterpart is a `pub type` alias never reaches JS under its CDDL rule name. Rule 6 resolves the
    alias's target and flags iff the target is a struct/enum *defined* in the wasm mod (a real
    `#[wasm_bindgen]` class) whose name is NOT itself on the rust surface — the (since-fixed)
    usage-dependent JS-class-name class, where a named table rule's wrapper degraded to
-   `pub type Mp = MapU64ToText;` pointing at the generator-invented structural class (rule 5 stays
+   `pub type Mp = MapU64ToText;` pointing at the generator-invented structural class (rule 6 stays
    the live catcher for any recurrence). Carved out (not findings): a target that is
    not wasm-defined (transparent alias to a primitive/std/`Option` type — native in JS); a
    wasm-defined target that IS a rust-surface rule name (a genuine CDDL-level alias on both sides);
@@ -4635,22 +4647,18 @@ impose obligations, so wasm-side extras (`kind`/`as_*`/`has_*`/`set_*`/`len`/`in
    `GcollFoo`, `gcoll<uint>` → `GcollU64`, `gtbl<uint, text>` → `GtblU64Text`) — the user wrote an
    anonymous instance, not a rule, so it correctly crosses as its inline equivalent's STRUCTURAL
    class (`FooList` / bare `Vec` / `MapU64ToText`, the documented lowering) with no rule name at
-   stake. Rules 2 and 5 both skip these. The discriminator is **provenance, not shape**: the
+   stake. Rules 2 and 6 both skip these. The discriminator is **provenance, not shape**: the
    generator emits a doc marker (`generation::SYNTHESIZED_INSTANCE_ALIAS_DOC`) on synthesized instance
    idents only, and the gate reads it from the rust item's rustdoc — a shape heuristic ("aliases a
    std collection") was rejected because a sole-owner named-table alias (`pub type Mp = MapU64ToText;`)
-   is a bare-collection alias too and must STAY gated (else rule 5 goes blind to the degradation bug
+   is a bare-collection alias too and must STAY gated (else rule 6 goes blind to the degradation bug
    it exists to catch). The marker emission is pinned by `synthesized_instance_alias_marker_provenance`.
    `pub use` counterparts stay JS-visible by design (`#[wasm_bindgen]` c-enums re-exported).
 
-One structural boundary is still open: rules 3–4 inventory named struct fields and inherent
-functions, not the materialized fields carried directly by a rust enum variant. Cycle 4's
-optional-fixed recombination extension made the distinction observable: an inlined group-choice arm
-stores both `x: u64` and `a: bool`, and its wasm constructor accepts both, while `as_t0()` returns
-only `x` and no wasm accessor exposes `a`. The focused generator test and every layer-2 wasm compile
-gate stay green because they assert/compile the surface that exists; they cannot demand the missing
-read API. `testing.wasm-api-parity-inlined-enum-materialized-fields` in the testing roadmap owns the
-product decision plus the systematic parity extension.
+The enum-arm rule was added after recombination compile coverage exposed a supported shape where a
+leading optional-fixed `bool` was bound as the legacy getter's non-fixed return type. The generator
+now binds every getter by its explicit field identity, and the parity inventory keeps both the
+field-qualified doors and the preserve-sidecar exemption live independently of the hand vector.
 
 Legitimate rust→wasm asymmetries are baked into those rules, not ledgered: the "`pub use`d Copy
 enums", "rust-only trait impls" (only inherent impls are walked — `From`/`AsRef`/`Serialize`/… are
@@ -4784,14 +4792,23 @@ but reading it would make this an intent check instead of an output check. Three
    name — with the same structural encoding-capture exemption the wasm sibling has
    (`pub encodings: Option<XEncoding>` under `--preserve-encodings` is round-trip metadata).
 3. Every rust inherent `pub fn` on such a type has a WIT member of the kebab name. Signatures are
-   unchecked by design: the two ABIs differ by construction (borrows in, owned handles out, every
-   failure as `result<_, string>`).
+   generally unchecked by design: the two ABIs differ by construction (borrows in, owned handles
+   out, every failure as `result<_, string>`).
 
 A `pub type` alias imposes nothing — a CDDL alias and a named collection are resolved THROUGH at
 their use sites and never surfaced, which is the documented type-mapping row. A counterpart that is a
 WIT **value** type (`enum`, the `int` variant, an alias) has no member namespace, so rules 2–3 have
 nothing to compare — but a rust type with inherent fns *and* a value-type counterpart is reported
 rather than carved out, which is what keeps the `Int` class visible.
+
+**Open signature boundary.** An inlined group-choice arm carrying an optional-fixed member is now
+explicitly excluded from the component face: its prior WIT projected only non-fixed values while
+native Rust required every materialized value, so the guest could fail to compile and its legacy
+`as-<arm>` glue could bind the wrong field. The exclusion record keeps the package valid and emits
+no broken glue. This is tracked by
+`testing.component-wit-inlined-enum-arm-signature-parity`: it needs a reviewed component read API,
+signature-level Rust→WIT obligations, and a real component execution fixture. The delivered wasm
+field-qualified getter API is intentionally not presumed to settle the component design.
 
 Findings reconcile against `COMPONENT_PARITY_EXEMPT` keyed `(label, item, reason)` with the same
 two-way staleness guard: an unexempted finding fails with the remedy; an entry matching no live
@@ -5493,9 +5510,10 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   the inlined enum match borrows its bool presence fields, while the shared dynamic-length and write
   paths had treated them as values. The shared dereference fix is executed across default, preserve,
   and JSON generated Rust crates (and compiles their WASM crates) by
-  `group_choice_optional_fixed_arm_emits_bool_presence_field`; the separate missing WASM getter/API
-  for the materialized presence bit remains tracked independently. The two known panic class counts
-  remain unchanged.
+  `group_choice_optional_fixed_arm_emits_bool_presence_field`. The separate wasm read API is now
+  delivered by `wasm_inlined_enum_materialized_fields_have_read_doors`; its component/WIT signature
+  counterpart remains tracked by `testing.component-wit-inlined-enum-arm-signature-parity`. The two
+  known panic class counts remain unchanged.
 - `recombination_crates_execute` (`#[ignore]`, check.ts full tier — the `recombination_crates_execute`
   gate): executes the sweep's `ok` compositions under TWO deterministic, decorrelated greedy plans
   (~40 rules/batch; the budget is a ceiling except that an intrinsically oversized composition is

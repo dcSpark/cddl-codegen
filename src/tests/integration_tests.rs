@@ -10925,6 +10925,182 @@ fn optional_fixed_presence_bits_compile_and_serialize() {{
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
+/// A materialized inlined enum arm has no named Rust struct whose public fields can be mirrored by
+/// the ordinary wasm field-getter path. Its constructor parameters are therefore the public value
+/// inventory: the legacy `as_t0()` continues to read the sole non-fixed payload, while every value
+/// in the multi-value arm has an arm-qualified read door. Optional fixed values are bool presence
+/// bits, so their getter distinguishes absent (`Some(false)`) from present (`Some(true)`) once
+/// `kind()`/the successful getter has selected the arm; `None` means a different arm.
+///
+/// This is a native `wasm/` crate test (its generated library includes an rlib), not only a source
+/// pin: the original defect put a `bool` binding behind a `String` return type and only failed when
+/// cargo type-checked the generated wasm crate. The default leg round-trips every pair of presence
+/// bits through the wasm API; preserve proves encoding sidecars remain defaulted, constructor-free
+/// metadata rather than accidental getter obligations.
+#[test]
+fn wasm_inlined_enum_materialized_fields_have_read_doors() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_wasm_inlined_enum_fields_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    std::fs::write(&input, "t = [ ? a: 0, x: tstr, ? b: 1 // y: bytes ]\n").unwrap();
+    let target_dir = scratch.join("target");
+    for (profile, extra) in [
+        ("default", &[][..]),
+        ("preserve", &["--preserve-encodings=true"][..]),
+    ] {
+        let out = scratch.join(profile);
+        let mut generate = codegen_cmd();
+        generate
+            .arg(format!("--input={}", input.display()))
+            .arg(format!("--output={}", out.display()))
+            .arg("--wasm=true");
+        generate.args(extra);
+        let generated = generate.output().unwrap();
+        assert!(
+            generated.status.success(),
+            "{profile}: inlined enum materialized-field fixture must generate:\n{}",
+            String::from_utf8_lossy(&generated.stderr)
+        );
+        let wasm_src = std::fs::read_to_string(out.join("wasm/src/generated/mod.rs")).unwrap();
+        for needle in [
+            "pub fn new_t0(a: bool, x: String, b: bool) -> Self",
+            "pub fn as_t0(&self) -> Option<String>",
+            "pub fn as_t0_a(&self) -> Option<bool>",
+            "pub fn as_t0_x(&self) -> Option<String>",
+            "pub fn as_t0_b(&self) -> Option<bool>",
+            "T::T0 { x, .. } => Some(x.clone()),",
+            "T::T0 { a, .. } => Some(*a),",
+            "T::T0 { b, .. } => Some(*b),",
+        ] {
+            assert!(
+                wasm_src.contains(needle),
+                "{profile}: expected exact constructor/getter type and binding `{needle}`:\n{wasm_src}"
+            );
+        }
+        if profile == "preserve" {
+            assert!(
+                !wasm_src.contains("new_t0(a: bool, x: String, b: bool, len_encoding")
+                    && !wasm_src.contains("as_t0_len_encoding"),
+                "preserve sidecars are rust-only codec metadata, never enum constructor/read doors:\n{wasm_src}"
+            );
+            let check = tool_cmd("cargo")
+                .arg("check")
+                .current_dir(out.join("wasm"))
+                .env("CARGO_TARGET_DIR", &target_dir)
+                .output()
+                .unwrap();
+            assert!(
+                check.status.success(),
+                "preserve: generated wasm crate must compile:\n{}\n{}",
+                String::from_utf8_lossy(&check.stdout),
+                String::from_utf8_lossy(&check.stderr)
+            );
+            continue;
+        }
+        std::fs::create_dir_all(out.join("wasm/tests")).unwrap();
+        std::fs::write(
+            out.join("wasm/tests/materialized_enum_fields.rs"),
+            r#"use cddl_lib_wasm::*;
+
+fn round_trip(value: &T) -> T {
+    T::from_cbor_bytes(&value.to_cbor_bytes()).expect("the inlined enum arm has a decoder")
+}
+
+#[test]
+fn materialized_enum_fields_are_observable_after_round_trip() {
+    for (a, b) in [(false, false), (true, false), (false, true), (true, true)] {
+        let value = round_trip(&T::new_t0(a, "x".to_owned(), b));
+        assert_eq!(value.as_t0(), Some("x".to_owned()));
+        assert_eq!(value.as_t0_a(), Some(a));
+        assert_eq!(value.as_t0_x(), Some("x".to_owned()));
+        assert_eq!(value.as_t0_b(), Some(b));
+    }
+
+    let wrong_arm = T::new_y(vec![0xca, 0xfe]);
+    assert_eq!(wrong_arm.as_t0(), None);
+    assert_eq!(wrong_arm.as_t0_a(), None);
+    assert_eq!(wrong_arm.as_t0_x(), None);
+    assert_eq!(wrong_arm.as_t0_b(), None);
+}
+"#,
+        )
+        .unwrap();
+        let test = tool_cmd("cargo")
+            .args(["test", "--test", "materialized_enum_fields"])
+            .current_dir(out.join("wasm"))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        assert!(
+            test.status.success(),
+            "default: generated wasm crate must compile and expose the correct read doors:\n{}\n{}",
+            String::from_utf8_lossy(&test.stdout),
+            String::from_utf8_lossy(&test.stderr)
+        );
+    }
+
+    // The only value on this arm is an optional fixed presence bit: the mandatory fixed
+    // discriminator stores nothing. It takes the legacy one-value getter rather than the
+    // field-qualified multi-value family, so pin and execute that boundary too.
+    let sole_input = scratch.join("sole_optional_fixed.cddl");
+    std::fs::write(&sole_input, "t = [ fixed: 7, ? a: 0 // y: bytes ]\n").unwrap();
+    let sole_out = scratch.join("sole_optional_fixed");
+    let generated = codegen_cmd()
+        .arg(format!("--input={}", sole_input.display()))
+        .arg(format!("--output={}", sole_out.display()))
+        .arg("--wasm=true")
+        .output()
+        .unwrap();
+    assert!(
+        generated.status.success(),
+        "sole optional-fixed arm must generate:\n{}",
+        String::from_utf8_lossy(&generated.stderr)
+    );
+    let sole_wasm = std::fs::read_to_string(sole_out.join("wasm/src/generated/mod.rs")).unwrap();
+    assert!(
+        sole_wasm.contains("pub fn new_t0(a: bool) -> Self")
+            && sole_wasm.contains("pub fn as_t0(&self) -> Option<bool>")
+            && sole_wasm.contains("T::T0(a) => Some(*a),"),
+        "sole optional-fixed field must own the legacy bool getter:\n{sole_wasm}"
+    );
+    std::fs::create_dir_all(sole_out.join("wasm/tests")).unwrap();
+    std::fs::write(
+        sole_out.join("wasm/tests/sole_optional_fixed.rs"),
+        r#"use cddl_lib_wasm::*;
+
+#[test]
+fn sole_optional_fixed_presence_bit_round_trips() {
+    for present in [false, true] {
+        let value = T::from_cbor_bytes(&T::new_t0(present).to_cbor_bytes()).unwrap();
+        assert_eq!(value.as_t0(), Some(present));
+    }
+    assert_eq!(T::new_y(vec![0xca, 0xfe]).as_t0(), None);
+}
+"#,
+    )
+    .unwrap();
+    let sole_test = tool_cmd("cargo")
+        .args(["test", "--test", "sole_optional_fixed"])
+        .current_dir(sole_out.join("wasm"))
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .output()
+        .unwrap();
+    assert!(
+        sole_test.status.success(),
+        "sole optional-fixed wasm getter must compile and round-trip:\n{}\n{}",
+        String::from_utf8_lossy(&sole_test.stdout),
+        String::from_utf8_lossy(&sole_test.stderr)
+    );
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
 /// The BRUTE-FORCE group-choice deserialize CONSTRUCTS its variant, so a same-major arm pairing
 /// compiles under `--preserve-encodings`.
 ///

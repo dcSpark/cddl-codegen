@@ -14,7 +14,9 @@
 //!
 //! **One-directional (rust → wasm).** Only rust-side members impose obligations. Wasm-side extras
 //! (`kind`/`as_*`/`has_*`/`set_*`/`len`/`insert`/`keys`/`to_cbor_bytes`/`from_cbor_bytes`, …) are
-//! deliberately unchecked — the wasm ABI legitimately adds surface the rust type doesn't have.
+//! generally unchecked — the wasm ABI legitimately adds surface the rust type doesn't have. Rule 5
+//! is the narrow exception: it derives the `as_*` doors for direct inlined enum-arm values from the
+//! native constructor, because those values have no top-level rust field or inherent getter.
 //!
 //! **Why each rust→wasm asymmetry class is legitimate (baked into the rules, not the ledger):**
 //! - *`pub use`d / aliased types have no members to check.* When a rust struct/enum surfaces on the
@@ -48,11 +50,11 @@
 //!   collection-API-inheritance class (a transparent `pub type Nums = Vec<u64>` has no enumerable
 //!   members), and the tag-over-struct-folding class all fall out structurally.
 //!
-//! **Rule 5 — JS-name visibility (an ADDITIONAL finding class layered on rules 1–2).** Rules 1–2
+//! **Rule 6 — JS-name visibility (an ADDITIONAL finding class layered on rules 1–2).** Rules 1–2
 //! accept a *public* `pub type` alias as a rust type's wasm counterpart, but that is rust-source-level
 //! parity only: wasm_bindgen exports NO type aliases, so an alias-only counterpart means the CDDL rule
 //! name never reaches JS. For every rust-surface name (rust pub struct/enum ∪ rust `pub type` alias)
-//! whose ONLY wasm counterpart is a `pub type` alias, rule 5 resolves the alias's TARGET (last path
+//! whose ONLY wasm counterpart is a `pub type` alias, rule 6 resolves the alias's TARGET (last path
 //! segment ident) and emits a finding iff (a) the target is a struct/enum DEFINED in the wasm mod (a
 //! real `#[wasm_bindgen]` class) AND (b) that target name is NOT itself on the rust surface. Both
 //! carve-outs are structural, not ledgered:
@@ -70,11 +72,11 @@
 //!   `gcoll<uint>` → `GcollU64` (exposable, inlined to a bare `Vec` on the wasm side — the rule-2
 //!   twin of this carve-out). There is NO CDDL rule name at stake: the user wrote an anonymous
 //!   instance, which crosses the boundary exactly as its inline equivalent's STRUCTURAL class, the
-//!   documented lowering (`docs/docs/wasm_differences.mdx`). Rules 2 AND 5 skip these. The
+//!   documented lowering (`docs/docs/wasm_differences.mdx`). Rules 2 AND 6 skip these. The
 //!   discriminator is PROVENANCE (the doc marker the generator emits on synthesized instance idents
 //!   only, never on a user rule like `gcn = gcoll<foo>`), NOT a source-shape heuristic: a sole-owner
 //!   named-table alias (`pub type Mp = MapU64ToText;`) is rust-side a bare-collection alias too, so a
-//!   "aliases a std collection" test would blind rule 5 to a recurrence of the (fixed) named-table
+//!   "aliases a std collection" test would blind rule 6 to a recurrence of the (fixed) named-table
 //!   degradation bug it exists to catch. Pinned by `synthesized_instance_alias_marker_provenance`.
 //!
 //! What remains — alias to a wasm-defined target whose name is generator-invented (`MapU64ToText`, not
@@ -683,13 +685,26 @@ struct RustSurface {
     /// no top-level named fields). The inner ident unwraps one `Option<..>` so the preserve
     /// encoding-capture exemption (rule 3) can recognise `pub encodings: Option<XEncoding>`.
     fields: BTreeMap<String, BTreeMap<String, Option<String>>>,
+    /// Enum -> variant -> directly materialized named fields. A tuple variant wraps a separate
+    /// named payload type and is intentionally absent from this map: it owes the legacy
+    /// `as_<variant>()` door rather than field-qualified doors.
+    enum_variant_fields: BTreeMap<String, BTreeMap<String, BTreeSet<String>>>,
+    /// `(enum, variant)` for every non-empty tuple variant. Its one payload is observable through
+    /// the legacy `as_<variant>()` door, whether the constructor accepts that payload directly or
+    /// flattens a separate record wrapper's fields for convenience.
+    tuple_enum_variants: BTreeSet<(String, String)>,
+    /// Enum-wrapper type -> `new_<variant>` constructor -> its named materialized value
+    /// parameters. This is the SOURCE inventory for rule 5: it comes from the native public API,
+    /// rather than the wasm API being checked, so a matching omission on both sides is visible.
+    /// Preserve-only encoding sidecars are defaulted internally and therefore absent here.
+    enum_variant_constructors: BTreeMap<String, BTreeMap<String, Vec<String>>>,
     /// type -> inherent `pub fn`s as (name, self-excluded arity).
     inherent_fns: BTreeMap<String, BTreeSet<(String, usize)>>,
     /// `pub type` alias names.
     type_aliases: BTreeSet<String>,
     /// The subset of `type_aliases` whose rustdoc carries `SYNTHESIZED_INSTANCE_ALIAS_DOC` — a
     /// generator-synthesized anonymous generic-collection/table INSTANCE alias (no CDDL rule name).
-    /// Rules 2 and 5 skip these: their rust→wasm asymmetry (the synthesized name is JS-invisible,
+    /// Rules 2 and 6 skip these: their rust→wasm asymmetry (the synthesized name is JS-invisible,
     /// the shape crosses as its inline equivalent's structural class) is legitimate and documented
     /// (`docs/docs/wasm_differences.mdx`), and provenance — not a source-shape heuristic — is what
     /// tells them apart from a real rule alias (see the const's doc in `generation/mod.rs`).
@@ -714,7 +729,7 @@ struct WasmSurface {
     reexports: BTreeSet<String>,
     /// `pub type` alias name -> its TARGET's leaf ident (last path segment, `None` for non-path
     /// targets like tuples). Public visibility only — a PRIVATE alias does not satisfy rule 2. The
-    /// target drives rule 5 (JS-name visibility): an alias-only counterpart whose target is a
+    /// target drives rule 6 (JS-name visibility): an alias-only counterpart whose target is a
     /// wasm-defined struct/enum with a generator-invented name is JS-invisible.
     pub_type_aliases: BTreeMap<String, Option<String>>,
     /// type -> inherent `pub fn`s as (name, self-excluded arity).
@@ -747,7 +762,7 @@ fn doc_contains(attrs: &[syn::Attribute], needle: &str) -> bool {
 /// for the type an `impl` block is *for* and for a `pub type` alias's TARGET. Unlike
 /// `type_inner_ident`, this does NOT unwrap `Option<..>`: `Option<TaggedText>` reports `Option`, so a
 /// transparent-alias target (`pub type OptText = Option<TaggedText>;`) resolves to the std `Option`,
-/// not the wasm-defined inner — exactly what rule 5's "target not wasm-defined" carve-out needs.
+/// not the wasm-defined inner — exactly what rule 6's "target not wasm-defined" carve-out needs.
 fn type_leaf_ident(ty: &syn::Type) -> Option<String> {
     match ty {
         syn::Type::Path(p) => p.path.segments.last().map(|s| s.ident.to_string()),
@@ -778,6 +793,26 @@ fn self_excluded_arity(sig: &syn::Signature) -> usize {
         .iter()
         .filter(|arg| matches!(arg, syn::FnArg::Typed(_)))
         .count()
+}
+
+/// Generated enum constructors use plain identifier patterns for every boundary parameter. A new
+/// pattern is not a reason to silently discard a public read obligation: fail loudly until this
+/// gate learns how to interpret it.
+fn named_constructor_params(sig: &syn::Signature) -> Vec<String> {
+    sig.inputs
+        .iter()
+        .filter_map(|arg| match arg {
+            syn::FnArg::Receiver(_) => None,
+            syn::FnArg::Typed(pat_ty) => match pat_ty.pat.as_ref() {
+                syn::Pat::Ident(ident) => Some(ident.ident.to_string()),
+                _ => panic!(
+                    "generated enum constructor `{}` has unsupported non-identifier parameter \
+                     pattern; extend wasm_api_parity's source inventory",
+                    sig.ident
+                ),
+            },
+        })
+        .collect()
 }
 
 /// Collect every leaf ident a `use` tree binds (final path segment / rename target), so both
@@ -834,7 +869,30 @@ fn parse_rust_surface(src: &str) -> RustSurface {
                 }
             }
             syn::Item::Enum(en) if is_pub(&en.vis) => {
-                s.types.insert(en.ident.to_string());
+                let enum_name = en.ident.to_string();
+                s.types.insert(enum_name.clone());
+                let variants = s.enum_variant_fields.entry(enum_name).or_default();
+                for variant in &en.variants {
+                    match &variant.fields {
+                        syn::Fields::Named(fields) => {
+                            variants.insert(
+                                variant.ident.to_string(),
+                                fields
+                                    .named
+                                    .iter()
+                                    .filter_map(|field| {
+                                        field.ident.as_ref().map(ToString::to_string)
+                                    })
+                                    .collect(),
+                            );
+                        }
+                        syn::Fields::Unnamed(fields) if !fields.unnamed.is_empty() => {
+                            s.tuple_enum_variants
+                                .insert((en.ident.to_string(), variant.ident.to_string()));
+                        }
+                        syn::Fields::Unnamed(_) | syn::Fields::Unit => {}
+                    }
+                }
             }
             syn::Item::Type(ty) if is_pub(&ty.vis) => {
                 let name = ty.ident.to_string();
@@ -845,12 +903,18 @@ fn parse_rust_surface(src: &str) -> RustSurface {
             }
             syn::Item::Impl(im) if im.trait_.is_none() => {
                 if let Some(ty) = type_leaf_ident(&im.self_ty) {
-                    let entry = s.inherent_fns.entry(ty).or_default();
+                    let entry = s.inherent_fns.entry(ty.clone()).or_default();
                     for it in &im.items {
                         if let syn::ImplItem::Fn(f) = it
                             && is_pub(&f.vis)
                         {
                             entry.insert((f.sig.ident.to_string(), self_excluded_arity(&f.sig)));
+                            if let Some(variant) = f.sig.ident.to_string().strip_prefix("new_") {
+                                s.enum_variant_constructors
+                                    .entry(ty.clone())
+                                    .or_default()
+                                    .insert(variant.to_owned(), named_constructor_params(&f.sig));
+                            }
                         }
                     }
                 }
@@ -883,7 +947,7 @@ fn parse_wasm_surface(src: &str) -> WasmSurface {
             }
             syn::Item::Impl(im) if im.trait_.is_none() => {
                 if let Some(ty) = type_leaf_ident(&im.self_ty) {
-                    let entry = s.members.entry(ty).or_default();
+                    let entry = s.members.entry(ty.clone()).or_default();
                     for it in &im.items {
                         if let syn::ImplItem::Fn(f) = it
                             && is_pub(&f.vis)
@@ -922,7 +986,7 @@ struct Finding {
     msg: String,
 }
 
-/// Run the four correspondence rules for one input's parsed surfaces, appending any gaps.
+/// Run the six correspondence rules for one input's parsed surfaces, appending any gaps.
 /// `encoding_structs` are the pub structs defined in the emitted `cbor_encodings.rs` (preserve
 /// profile); a rust pub field of type `Option<X>`/`X` with `X` in that set is exempt from rule 3.
 fn diff_surfaces(
@@ -1035,7 +1099,72 @@ fn diff_surfaces(
         }
     }
 
-    // Rule 5 (JS-name visibility): rules 1–2 accept a PUBLIC `pub type` alias as a rust type's wasm
+    // Rule 5: an inlined enum arm's materialized values are not `pub` fields on the outer Rust
+    // enum, so rules 3–4 cannot see their WASM read surface. The Rust `new_<variant>` constructor
+    // is the canonical SOURCE inventory: its named parameters are exactly the values that cross
+    // the boundary, while preserve-only encoding sidecars are defaulted and absent. A tuple variant
+    // carries one payload and owes the legacy `as_<variant>()` door even when a convenience ctor
+    // flattens that payload's record fields. A named variant with one direct value keeps the same
+    // legacy door; multiple direct values must each expose `as_<variant>_<field>()`. A unit variant,
+    // or a named fixed arm whose ctor has no value parameter, carries no readable value.
+    for (enum_name, constructors) in &rust.enum_variant_constructors {
+        if !wasm.defined_types.contains(enum_name)
+            || !wasm.defined_types.contains(&format!("{enum_name}Kind"))
+        {
+            continue;
+        }
+        let members = wasm.members.get(enum_name);
+        for (variant, params) in constructors {
+            let rust_variant = crate::utils::convert_to_camel_case(variant);
+            let expected = if rust
+                .tuple_enum_variants
+                .contains(&(enum_name.clone(), rust_variant.clone()))
+            {
+                // The tuple payload itself is the one materialized value. A convenience ctor may
+                // flatten a separate record payload into several arguments, but the read door
+                // still returns that one wrapper through the established base getter.
+                vec![format!("as_{variant}")]
+            } else if let Some(direct_fields) = rust
+                .enum_variant_fields
+                .get(enum_name)
+                .and_then(|variants| variants.get(&rust_variant))
+            {
+                if !params.iter().all(|param| direct_fields.contains(param)) {
+                    // Preserve posture can turn a tuple payload into a named variant beside its
+                    // encoding sidecars while its convenience constructor still flattens a record.
+                    // The payload remains one observable value through the base getter.
+                    vec![format!("as_{variant}")]
+                } else {
+                    match params.as_slice() {
+                        [] => continue,
+                        [_] => vec![format!("as_{variant}")],
+                        _ => params
+                            .iter()
+                            .map(|param| format!("as_{variant}_{param}"))
+                            .collect(),
+                    }
+                }
+            } else {
+                continue; // unit variant: no readable value
+            };
+            for getter in expected {
+                if !members.is_some_and(|m| m.contains(&(getter.clone(), 0))) {
+                    out.push(Finding {
+                        profile: profile.to_string(),
+                        label: label.to_string(),
+                        item: format!("{enum_name}::{getter}"),
+                        msg: format!(
+                            "enum constructor `new_{variant}` materializes a value with no WASM \
+                             getter (`{getter}`); preserve-only encoding sidecars are not constructor \
+                             parameters and are exempt"
+                        ),
+                    });
+                }
+            }
+        }
+    }
+
+    // Rule 6 (JS-name visibility): rules 1–2 accept a PUBLIC `pub type` alias as a rust type's wasm
     // counterpart, but that is rust-source-level parity only — wasm_bindgen exports NO type aliases,
     // so an alias-only counterpart means the CDDL rule name never reaches JS. For every rust-surface
     // name (rust pub struct/enum ∪ rust `pub type` alias) whose ONLY wasm counterpart is a `pub type`
@@ -1066,7 +1195,7 @@ fn diff_surfaces(
         // A SYNTHESIZED anonymous generic-collection/table instance alias (doc-marked): its
         // JS-invisibility is BY DESIGN — the user wrote an anonymous instance, which crosses as its
         // inline equivalent's structural class (`FooList` / `MapU64ToText`), never a rule name at
-        // stake, so rule 5's "the CDDL rule name is JS-invisible" premise is vacuous for it. The
+        // stake, so rule 6's "the CDDL rule name is JS-invisible" premise is vacuous for it. The
         // discriminator is provenance (the marker), not shape: a sole-owner named-table alias
         // (`pub type Mp = MapU64ToText;`) is a bare-collection alias too and must STAY gated.
         if rust.synthesized_instance_aliases.contains(name) {
@@ -1574,6 +1703,77 @@ fn synthesized_instance_alias_marker_provenance() {
         !src.contains("pub type GcollFoo"),
         "a NAMED instance rule (`gcn = gcoll<foo>`) becomes its rule alias directly — no separate \
          `GcollFoo` alias should be minted, got:\n{src}"
+    );
+}
+
+/// Rule 5's obligation inventory is the Rust constructor, not the wasm constructor under test.
+/// In particular, deleting both the wasm `new_t0` and one read door must still report that door;
+/// otherwise matching omissions would make the differential silently green.
+#[test]
+fn inlined_enum_read_doors_are_inventory_from_rust_not_wasm() {
+    let rust = parse_rust_surface(
+        "pub enum T { T0 { a: bool, x: String, b: bool } }\n\
+         impl T { pub fn new_t0(a: bool, x: String, b: bool) -> Self { todo!() } }\n",
+    );
+    let wasm = parse_wasm_surface(
+        "pub struct T;\n\
+         pub enum TKind { T0 }\n\
+         impl T {\n\
+             pub fn as_t0_x(&self) {}\n\
+             pub fn as_t0_b(&self) {}\n\
+         }\n",
+    );
+    let mut findings = vec![];
+    diff_surfaces(
+        "test",
+        "rust-source-inventory",
+        &rust,
+        &wasm,
+        &BTreeSet::new(),
+        &mut findings,
+    );
+    assert!(
+        findings.iter().any(|finding| finding.item == "T::as_t0_a"),
+        "the native constructor's `a` parameter must demand its wasm read door even when wasm also \
+         omitted `new_t0`; findings were:\n{}",
+        findings
+            .iter()
+            .map(|finding| format!("{}: {}", finding.item, finding.msg))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+}
+
+/// A sole optional-fixed inlined arm is a tuple variant (`T0(bool)`), not a named variant. It must
+/// stay under the structural parity rule rather than relying only on the generated-crate e2e.
+#[test]
+fn tuple_enum_payload_requires_the_legacy_read_door() {
+    let rust = parse_rust_surface(
+        "pub enum T { T0(bool), Y(Vec<u8>) }\n\
+         impl T { pub fn new_t0(a: bool) -> Self { todo!() } }\n",
+    );
+    let wasm = parse_wasm_surface(
+        "pub struct T;\n\
+         pub enum TKind { T0, Y }\n\
+         impl T { pub fn new_t0(a: bool) -> Self { todo!() } }\n",
+    );
+    let mut findings = vec![];
+    diff_surfaces(
+        "test",
+        "tuple-payload",
+        &rust,
+        &wasm,
+        &BTreeSet::new(),
+        &mut findings,
+    );
+    assert!(
+        findings.iter().any(|finding| finding.item == "T::as_t0"),
+        "the tuple payload must demand its legacy wasm read door; findings were:\n{}",
+        findings
+            .iter()
+            .map(|finding| format!("{}: {}", finding.item, finding.msg))
+            .collect::<Vec<_>>()
+            .join("\n")
     );
 }
 
