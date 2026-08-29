@@ -244,15 +244,11 @@
     },
     {
       "gate": "corpus_decode_replay",
-      "warm_ms": 1625000,
-      "n": 14,
-      "measured": "2026-08-10",
+      "warm_ms": 1194000,
+      "n": 10,
+      "measured": "2026-08-29",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-07-28",
-          "warm_ms": 770000
-        },
         {
           "date": "2026-07-31",
           "warm_ms": 936000
@@ -268,6 +264,10 @@
         {
           "date": "2026-08-10",
           "warm_ms": 1625000
+        },
+        {
+          "date": "2026-08-29",
+          "warm_ms": 1194000
         }
       ]
     },
@@ -299,15 +299,11 @@
     },
     {
       "gate": "decode_conformance_replay",
-      "warm_ms": 1172000,
-      "n": 16,
-      "measured": "2026-08-10",
+      "warm_ms": 821000,
+      "n": 10,
+      "measured": "2026-08-29",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-07-28",
-          "warm_ms": 525000
-        },
         {
           "date": "2026-08-03",
           "warm_ms": 637000
@@ -323,20 +319,20 @@
         {
           "date": "2026-08-10",
           "warm_ms": 1172000
+        },
+        {
+          "date": "2026-08-29",
+          "warm_ms": 821000
         }
       ]
     },
     {
       "gate": "feature_corpus_roundtrips_nondefault_profiles",
-      "warm_ms": 875000,
-      "n": 18,
-      "measured": "2026-08-12",
+      "warm_ms": 589000,
+      "n": 10,
+      "measured": "2026-08-29",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-07-28",
-          "warm_ms": 386000
-        },
         {
           "date": "2026-07-29",
           "warm_ms": 465000
@@ -352,6 +348,10 @@
         {
           "date": "2026-08-12",
           "warm_ms": 875000
+        },
+        {
+          "date": "2026-08-29",
+          "warm_ms": 589000
         }
       ]
     },
