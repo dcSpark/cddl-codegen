@@ -10697,8 +10697,11 @@ fn group_choice_fixed_value_arm_emits_fieldless_variant() {
 /// unlike the fieldless mandatory fixed-value arms.
 ///
 /// This exercises all enum projections of that field: declaration, Rust constructor and
-/// deserializer, serialization pattern, and the WASM constructor. It is deliberately separate
-/// from [`group_choice_fixed_value_arm_emits_fieldless_variant`], whose contract is the opposite.
+/// deserializer, serialization pattern, and the WASM constructor. The e2e leg below additionally
+/// compiles both generated crates and executes absent/present serialization under every relevant
+/// profile; it deliberately does NOT claim the separate WASM getter/API residual is solved. It is
+/// separate from [`group_choice_fixed_value_arm_emits_fieldless_variant`], whose contract is the
+/// opposite.
 #[test]
 fn group_choice_optional_fixed_arm_emits_bool_presence_field() {
     use clap::Parser;
@@ -10715,7 +10718,7 @@ fn group_choice_optional_fixed_arm_emits_bool_presence_field() {
     // single-entry `?` group-choice arm is correctly refused because an enum variant cannot carry
     // its zero-occurrence case. This is the legal inlined-record shape the recombination table
     // reaches (`[x: uint, ? a: 0 // b: tstr]`).
-    std::fs::write(&path, "t = [ x: uint, ? a: 0 // b: tstr ]\n").unwrap();
+    let single_optional_spec = "t = [ x: uint, ? a: 0 // b: tstr ]\n";
     for (profile, extra) in [
         ("default", &[][..]),
         ("preserve", &["--preserve-encodings", "true"][..]),
@@ -10729,6 +10732,7 @@ fn group_choice_optional_fixed_arm_emits_bool_presence_field() {
             ][..],
         ),
     ] {
+        std::fs::write(&path, single_optional_spec).unwrap();
         let mut argv = vec![
             "cddl-codegen",
             "--input",
@@ -10738,7 +10742,7 @@ fn group_choice_optional_fixed_arm_emits_bool_presence_field() {
             "--wasm=true",
         ];
         argv.extend_from_slice(extra);
-        let generated = crate::api::generated_strings(&crate::cli::Cli::parse_from(argv))
+        let generated = crate::api::generated_strings(&crate::cli::Cli::parse_from(argv.clone()))
             .unwrap_or_else(|e| {
                 panic!("optional-fixed group choice {profile}: generation failed: {e}")
             });
@@ -10752,8 +10756,10 @@ fn group_choice_optional_fixed_arm_emits_bool_presence_field() {
             "optional-fixed group choice {profile}: deserialize must construct the bool-presence arm:\n{rust}"
         );
         assert!(
-            rust.contains("T::T0 {") && rust.contains("if a {"),
-            "optional-fixed group choice {profile}: serialize must pattern-match the bool-presence arm:\n{rust}"
+            rust.contains("T::T0 {")
+                && rust.contains("if *a {")
+                && rust.contains("if *a { 1 } else { 0 }"),
+            "optional-fixed group choice {profile}: serialize must dereference the bool-presence arm in both its write guard and length contribution:\n{rust}"
         );
         let rust_mod = generated
             .get("rust/src/generated/mod.rs")
@@ -10773,8 +10779,150 @@ fn group_choice_optional_fixed_arm_emits_bool_presence_field() {
             wasm.contains("new_t0") && wasm.contains("a: bool"),
             "optional-fixed group choice {profile}: wasm constructor omitted the bool-presence arm:\n{wasm}"
         );
+
+        // The single-optional source above retains a decoder assertion.  This two-optional shape
+        // is deliberately serialize-only — both fixed uint values overlap — but makes the source
+        // pin name each independent local `&bool` dereference rather than letting duplicated `a`
+        // output hide a missing `b` guard or length term.
+        std::fs::write(&path, "t = [ x: uint, ? a: 0, ? b: 1 // s: tstr ]\n").unwrap();
+        let multi_generated = crate::api::generated_strings(&crate::cli::Cli::parse_from(argv))
+            .unwrap_or_else(|e| {
+                panic!("multi-optional fixed group choice {profile}: generation failed: {e}")
+            });
+        let multi_rust = multi_generated
+            .get("rust/src/generated/serialization.rs")
+            .unwrap_or_else(|| {
+                panic!("multi-optional fixed group choice {profile}: no rust serialization emitted")
+            });
+        for needle in [
+            "if *a {\n",
+            "if *b {\n",
+            "if *a { 1 } else { 0 }",
+            "if *b { 1 } else { 0 }",
+        ] {
+            assert!(
+                multi_rust.contains(needle),
+                "multi-optional fixed group choice {profile}: serialization lost `{needle}`:\n{multi_rust}"
+            );
+        }
     }
     std::fs::remove_file(&path).ok();
+
+    if !tool_exists("cargo") {
+        return;
+    }
+    // Two optional fixed values make every dynamic-length contribution and conditional write take
+    // the local `&bool` branch. Their enclosing group-choice keeps the arm inlined; the string
+    // sibling is merely what makes this a choice rather than an ordinary record.
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_gc_optional_fixed_e2e_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    let spec = "t = [ x: uint, ? a: 0, ? b: 1 // s: tstr ]\nholder = [ value: t ]\n";
+    for (profile, extra, indefinite_assertion) in [
+        ("default", &[][..], ""),
+        (
+            "preserve",
+            &["--preserve-encodings=true"][..],
+            r#"
+    let mut indefinite_inner = T::new_t0(42, true, true);
+    if let T::T0 { len_encoding, .. } = &mut indefinite_inner {
+        *len_encoding = cddl_lib::serialization::LenEncoding::Indefinite;
+    } else {
+        panic!("new_t0 returned the wrong arm");
+    }
+    assert_eq!(
+        bytes(&Holder::new(indefinite_inner)),
+        [0x81, 0x9f, 0x18, 0x2a, 0x00, 0x01, 0xff],
+    );
+"#,
+        ),
+        (
+            "json",
+            &["--json-serde-derives=true", "--json-schema-export=true"][..],
+            "",
+        ),
+    ] {
+        let case_root = scratch.join(profile);
+        std::fs::create_dir_all(&case_root).unwrap();
+        let input = case_root.join("input.cddl");
+        std::fs::write(&input, spec).unwrap();
+        let out = case_root.join("out");
+        let mut generate = codegen_cmd();
+        generate
+            .arg(format!("--input={}", input.display()))
+            .arg(format!("--output={}", out.display()))
+            .arg("--wasm=true");
+        generate.args(extra);
+        let generated = generate.output().unwrap();
+        assert!(
+            generated.status.success(),
+            "optional-fixed group choice {profile}: generation failed\n{}",
+            String::from_utf8_lossy(&generated.stderr)
+        );
+
+        std::fs::create_dir_all(out.join("rust/tests")).unwrap();
+        std::fs::write(
+            out.join("rust/tests/optional_fixed.rs"),
+            format!(
+                r#"use cbor_event::se::{{Serialize, Serializer}};
+use cddl_lib::{{Holder, T}};
+
+fn bytes(value: &Holder) -> Vec<u8> {{
+    let mut serializer = Serializer::new_vec();
+    value.serialize(&mut serializer).unwrap();
+    serializer.finalize()
+}}
+
+#[test]
+fn optional_fixed_presence_bits_compile_and_serialize() {{
+    let absent = Holder::new(T::new_t0(42, false, false));
+    assert!(matches!(&absent.value, T::T0 {{ a: false, b: false, .. }}));
+    assert_eq!(bytes(&absent), [0x81, 0x81, 0x18, 0x2a]);
+
+    let a_only = Holder::new(T::new_t0(42, true, false));
+    assert!(matches!(&a_only.value, T::T0 {{ a: true, b: false, .. }}));
+    assert_eq!(bytes(&a_only), [0x81, 0x82, 0x18, 0x2a, 0x00]);
+
+    let b_only = Holder::new(T::new_t0(42, false, true));
+    assert!(matches!(&b_only.value, T::T0 {{ a: false, b: true, .. }}));
+    assert_eq!(bytes(&b_only), [0x81, 0x82, 0x18, 0x2a, 0x01]);
+
+    let both = Holder::new(T::new_t0(42, true, true));
+    assert!(matches!(&both.value, T::T0 {{ a: true, b: true, .. }}));
+    assert_eq!(bytes(&both), [0x81, 0x83, 0x18, 0x2a, 0x00, 0x01]);
+
+    {indefinite_assertion}
+}}
+"#
+            ),
+        )
+        .unwrap();
+        let rust = tool_cmd("cargo")
+            .arg("test")
+            .current_dir(out.join("rust"))
+            .output()
+            .unwrap();
+        assert!(
+            rust.status.success(),
+            "optional-fixed group choice {profile}: generated Rust crate failed to compile or serialize\n{}\n{}",
+            String::from_utf8_lossy(&rust.stdout),
+            String::from_utf8_lossy(&rust.stderr)
+        );
+        let wasm = tool_cmd("cargo")
+            .arg("check")
+            .current_dir(out.join("wasm"))
+            .output()
+            .unwrap();
+        assert!(
+            wasm.status.success(),
+            "optional-fixed group choice {profile}: generated WASM crate failed to compile\n{}\n{}",
+            String::from_utf8_lossy(&wasm.stdout),
+            String::from_utf8_lossy(&wasm.stderr)
+        );
+    }
+    let _ = std::fs::remove_dir_all(&scratch);
 }
 
 /// The BRUTE-FORCE group-choice deserialize CONSTRUCTS its variant, so a same-major arm pairing

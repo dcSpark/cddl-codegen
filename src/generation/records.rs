@@ -186,7 +186,16 @@ pub(super) fn generate_array_struct_serialization(
                 // (it writes the literal — for float `write_special(Special::Float(<lit>))`), but
                 // still reads the encoding var under --preserve-encodings (float aborts earlier at
                 // the deserialize float stub before any of this ships).
-                let mut opt_block = Block::new(format!("if {}{}", opt_self, field.name));
+                // In an inlined enum arm serialization matches `&self`, so its destructured local
+                // presence binding is `&bool`; a record's `self.field` is already a `bool` through
+                // field-access autoderef. This helper serves both owners, so keep the reference
+                // boundary explicit rather than teaching every caller a bespoke guard spelling.
+                let presence_expr = if vars_in_self {
+                    field_expr.as_str().to_owned()
+                } else {
+                    format!("*{field_expr}")
+                };
+                let mut opt_block = Block::new(format!("if {presence_expr}"));
                 let mut config = SerializeConfig::for_field(&field_expr, field);
                 if vars_in_self {
                     config = config.encoding_var_in_option_struct("self.encodings")

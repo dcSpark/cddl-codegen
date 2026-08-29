@@ -5485,10 +5485,17 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   deterministic — the same property that lets the floors be read off the executed artifact. The
   current reviewed movement is `1624/1198/411/15` → `1742/1270/457/15`
   (swept/ok/graceful/panic): +88 systematic member-table cases from `optional_fixed` and +30
-  bounded directive-host cases. The enlarged sweep exposed two product defects; their fixes moved
-  17 panics to ok (optional fixed fields in inlined group-choice enum arms) and one to a graceful
-  rejection (anonymous heterogeneous inline arrays used as generic arguments). The two known panic
-  class counts remain unchanged.
+  bounded directive-host cases. The enlarged sweep exposed two product defects; their initial
+  generation-time repairs moved 17 panics into the `ok` classification (optional fixed fields in
+  inlined group-choice enum arms) and one to a graceful rejection (anonymous heterogeneous inline
+  arrays used as generic arguments). A later compile execution over those optional-fixed arms caught
+  a distinct serializer contract defect:
+  the inlined enum match borrows its bool presence fields, while the shared dynamic-length and write
+  paths had treated them as values. The shared dereference fix is executed across default, preserve,
+  and JSON generated Rust crates (and compiles their WASM crates) by
+  `group_choice_optional_fixed_arm_emits_bool_presence_field`; the separate missing WASM getter/API
+  for the materialized presence bit remains tracked independently. The two known panic class counts
+  remain unchanged.
 - `recombination_crates_execute` (`#[ignore]`, check.ts full tier — the `recombination_crates_execute`
   gate): executes the sweep's `ok` compositions under TWO deterministic, decorrelated greedy plans
   (~40 rules/batch; the budget is a ceiling except that an intrinsically oversized composition is

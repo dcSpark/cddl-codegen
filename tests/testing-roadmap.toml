@@ -6129,16 +6129,21 @@ title = "Extend rust-to-wasm API parity to materialized fields carried directly 
 kind = "work"
 body_md = '''- **Extend rust-to-wasm API parity to materialized fields carried directly by enum variants, and
   expose optional-fixed presence bits on group-choice arms.** Cycle 4's recombination extension
-  systematically exposed the GENERATION panic for an optional fixed field in an inlined
-  group-choice arm and fixed every compile-facing enum projection. The closeout review then found a
-  distinct wrong-public-API residue by reading the wasm getter path and confirmed it with a focused
-  generated-output probe: `t = [ x: uint, ? a: 0 // b: tstr ]` emits rust
+  systematically exposed the initial optional-fixed inlined-arm defect. Its field/constructor
+  repair did not compile the serializer: matching `&self` binds a materialized presence bit as
+  `&bool`, while the shared array length and conditional-write paths emitted it as `bool`. The
+  follow-up fixed that shared contract and made
+  `group_choice_optional_fixed_arm_emits_bool_presence_field` execute default/preserve/JSON
+  generated Rust crates (plus compile their WASM crates) with absent/present serialization and
+  definite/indefinite vectors. The closeout review then found a distinct wrong-public-API residue
+  by reading the wasm getter path and confirmed it with a focused generated-output probe:
+  `t = [ x: uint, ? a: 0 // b: tstr ]` emits rust
   `T::T0 { x: u64, a: bool }` and wasm `new_t0(x: u64, a: bool)`, but wasm emits only
   `as_t0() -> Option<u64>`; no getter exposes `a`, so a caller cannot observe the presence bit after
-  decoding. The new `group_choice_optional_fixed_arm_emits_bool_presence_field` test asserts the
-  constructor and compile-facing projections, the recombination wasm layer compiles whatever API
-  exists, and `wasm_api_parity` rules 3–4 inspect named struct fields/functions rather than enum
-  variant payloads. None can demand the missing accessor.
+  decoding. The now-e2e `group_choice_optional_fixed_arm_emits_bool_presence_field` test proves
+  construction and compile-facing projections only; the recombination wasm layer likewise compiles
+  whatever API exists, and `wasm_api_parity` rules 3–4 inspect named struct fields/functions rather
+  than enum variant payloads. None can demand the missing accessor.
 
   First settle the public surface rather than inventing a name in a test. Viable designs include an
   arm-qualified presence accessor on the enum wrapper, or stopping this multi-materialized-field arm

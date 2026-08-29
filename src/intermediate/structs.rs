@@ -1629,8 +1629,17 @@ impl RustRecord {
                             } else {
                                 Cow::Owned(format!("{}.{}", self_expr, field.name))
                             };
+                            // An inlined enum arm's serialize match destructures `&self`, so an
+                            // empty `self_expr` denotes a local `&bool` presence binding. Normal
+                            // record field access (`self.field`) autodereferences its receiver;
+                            // only this local-binding form needs an explicit dereference.
+                            let presence_expr = if self_expr.is_empty() && self_is_ref {
+                                Cow::Owned(format!("*{self_field_expr}"))
+                            } else {
+                                self_field_expr
+                            };
                             conditional_field_expr
-                                .push_str(&format!("if {self_field_expr} {{ 1 }} else {{ 0 }}"));
+                                .push_str(&format!("if {presence_expr} {{ 1 }} else {{ 0 }}"));
                             continue;
                         }
                         if !conditional_field_expr.is_empty() {
