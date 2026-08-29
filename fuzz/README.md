@@ -31,7 +31,11 @@ gates, in registry order, and they answer different questions:
   gate-cached (a randomized exploration is not a pure function of the tree's bytes, so a
   content-hash hit would skip the only thing the gate does), and a missing nightly toolchain or
   cargo-fuzz is a **FAIL naming the install commands**, never a silent skip — a skip in the tier that
-  ships the guarantee voids it.
+  ships the guarantee voids it. One sandbox-only qualification is explicit: if a preflight confirms
+  ptrace is denied, the runner overrides only `detect_leaks=0` within `ASAN_OPTIONS` (preserving every
+  other existing ASan option) because LeakSanitizer cannot inspect threads there. ASan/UBSan, panics,
+  timeouts, signals, cargo-fuzz failures, and every non-ptrace sanitizer error still fail the gate;
+  absent or broken `strace` never weakens it.
 
 A time-boxed walk is a smoke test of the reachable surface, not a search. The unbounded run is what
 actually finds things: run it periodically and whenever touching deserialization.

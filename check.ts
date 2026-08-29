@@ -103,6 +103,7 @@ import {
   KEEP_RUNS_IN_CELLS, type Digest, type GateRow, type Row, type RunRow,
 } from "./cddl-matrix/project_timings.ts";
 import { runNoStdCheckGate } from "./cddl-matrix/no_std_check.ts";
+import { classifyStraceCapability, probeStraceCapability, type StraceCapability } from "./cddl-matrix/audit_gate_cache_closure.ts";
 
 const ROOT = import.meta.dir;
 const MATRIX = join(ROOT, "cddl-matrix");
@@ -1851,6 +1852,65 @@ const FUZZ_TARGETS = ["from_cbor_bytes", "from_cbor_bytes_recursive"] as const;
 const FUZZ_BUDGET_DEFAULT_S = 120;
 const FUZZ_RSS_LIMIT_MB = 2048;
 
+export interface FuzzSanitizerEnvironment {
+  asanOptions?: string;
+  leakDetectionDisabled: boolean;
+}
+
+/**
+ * LSan needs ptrace to inspect live threads. A sandbox that explicitly denies ptrace cannot provide
+ * that one sanitizer capability, but ASan/UBSan and every ordinary cargo-fuzz failure remain
+ * meaningful. No other strace outcome is evidence that LSan is unavailable, so it leaves the
+ * inherited environment completely alone.
+ */
+export function fuzzSanitizerEnvironment(
+  capability: StraceCapability,
+  existingAsanOptions: string | undefined,
+): FuzzSanitizerEnvironment {
+  if (capability.status !== "unavailable" || capability.reason !== "ptrace denied")
+    return { leakDetectionDisabled: false };
+  const retained = (existingAsanOptions ?? "")
+    .split(":")
+    .filter(option => option !== "" && !/^detect_leaks(?:=|$)/.test(option));
+  return { asanOptions: [...retained, "detect_leaks=0"].join(":"), leakDetectionDisabled: true };
+}
+
+/** Pure boundary checks: only the audit's exact ptrace-denied classification may suppress LSan. */
+export function fuzzSanitizerEnvironmentSelftest(): void {
+  const ptraceDenied = classifyStraceCapability(
+    { exitCode: 1, output: "strace: ptrace(PTRACE_SEIZE): Operation not permitted" },
+    "/bin/strace",
+  );
+  const denied = fuzzSanitizerEnvironment(ptraceDenied, "halt_on_error=1:detect_leaks=1:allocator_may_return_null=1");
+  if (!denied.leakDetectionDisabled || denied.asanOptions !== "halt_on_error=1:allocator_may_return_null=1:detect_leaks=0")
+    throw new Error("ptrace-denied fuzz sanitizer environment must preserve every ASAN_OPTIONS setting except detect_leaks");
+
+  const absent: StraceCapability = { status: "unavailable", reason: "strace absent", detail: "not found" };
+  const badOption = classifyStraceCapability(
+    { exitCode: 1, output: "strace: unrecognized option '--seccomp-bpf'" },
+    "/bin/strace",
+  );
+  const warningOnly = classifyStraceCapability(
+    { exitCode: 0, output: "PTRACE_TRACEME: Operation not permitted" },
+    "/bin/strace",
+  );
+  const signalled = classifyStraceCapability(
+    { exitCode: null, output: "strace: ptrace(PTRACE_SEIZE): EPERM", signalCode: "SIGKILL" },
+    "/bin/strace",
+  );
+  for (const [name, capability] of [
+    ["absent strace", absent], ["bad strace option", badOption], ["exit-zero warning", warningOnly],
+    ["signalled probe with ptrace text", signalled],
+  ] as const) {
+    const environment = fuzzSanitizerEnvironment(capability, "detect_leaks=1:strict_string_checks=1");
+    if (environment.leakDetectionDisabled || environment.asanOptions !== undefined)
+      throw new Error(`${name} must leave ASAN_OPTIONS untouched rather than suppressing leak detection`);
+  }
+  const defaultOptions = fuzzSanitizerEnvironment(ptraceDenied, undefined);
+  if (defaultOptions.asanOptions !== "detect_leaks=0")
+    throw new Error("ptrace-denied fuzz sanitizer environment must set detect_leaks=0 when ASAN_OPTIONS was absent");
+}
+
 /** `FUZZ_BUDGET_S` — per-target `-max_total_time`, in seconds. Garbage falls back, loudly. */
 function fuzzBudgetSeconds(raw: string | undefined): { seconds: number; warning?: string } {
   if (raw === undefined || raw.trim() === "") return { seconds: FUZZ_BUDGET_DEFAULT_S };
@@ -1897,6 +1957,18 @@ function runFuzzBoundedRun(o: Opts): Outcome {
     return { status: "FAIL", reason: `missing fuzz tooling: ${missing.length === 2 ? "nightly + cargo-fuzz" : missing[0]!.split("  ")[0]}` };
   }
 
+  // Probe before any fuzz process starts: LSan itself cannot distinguish the sandbox's ptrace
+  // denial from a product finding. The audit's classifier is intentionally narrow; absent or broken
+  // strace does NOT weaken fuzzing, while an explicit ptrace denial disables only leak detection.
+  const straceCapability = probeStraceCapability();
+  const sanitizer = fuzzSanitizerEnvironment(straceCapability, process.env.ASAN_OPTIONS);
+  if (sanitizer.leakDetectionDisabled)
+    console.log("  ptrace denied — running with LeakSanitizer disabled; ASan/UBSan and all cargo-fuzz failures remain fatal.");
+  else if (straceCapability.status === "unavailable")
+    console.log("  strace absent — leaving LeakSanitizer enabled (strace availability is not a fuzz prerequisite).");
+  else if (straceCapability.status === "broken")
+    console.log("  WARN strace capability probe was inconclusive — leaving LeakSanitizer enabled; any sanitizer failure remains fatal.");
+
   const err = ensureFuzzGenerated(o);
   if (err) return { status: "FAIL", reason: err };
 
@@ -1909,6 +1981,7 @@ function runFuzzBoundedRun(o: Opts): Outcome {
       ["cargo", "+nightly", "fuzz", "run", target, "--",
         `-max_total_time=${seconds}`, `-rss_limit_mb=${FUZZ_RSS_LIMIT_MB}`],
       ROOT,
+      sanitizer.asanOptions === undefined ? undefined : { ASAN_OPTIONS: sanitizer.asanOptions },
     );
     if (exit !== 0) {
       const artifact = newestFuzzArtifact(target);
@@ -3429,7 +3502,8 @@ if (import.meta.main) {
     corpusParityNewFixtureAdvisoriesSelftest();
     componentTargetRequiredForTierSelftest();
     componentSkipVisibilitySelftest();
-    console.log("check.ts self-test OK (warm-up refresh/fetch command order + generated dependency resolution + README-integrity + new-fixture advisory + component-target tier + skip-visibility controls)");
+    fuzzSanitizerEnvironmentSelftest();
+    console.log("check.ts self-test OK (warm-up refresh/fetch command order + generated dependency resolution + README-integrity + new-fixture advisory + component-target tier + skip-visibility + fuzz-sanitizer controls)");
     process.exit(0);
   }
   // --help prints and exits; no evidence to preserve, so no log file for it.
