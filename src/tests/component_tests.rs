@@ -545,11 +545,12 @@ fn a_wit_resource_named_t_is_unexported_with_the_wit_bindgen_reason() {
     );
 }
 
-/// Optional fixed values in an inlined group-choice arm are native `bool` constructor state. Until
-/// the component face has a reviewed multi-value constructor/read API, the projection must exclude
-/// the whole resource rather than emitting valid WIT paired with guest glue that does not compile.
+/// Every materialized value of an inlined group-choice arm crosses the component boundary under its
+/// native constructor field identity. Multiple values deliberately get individual `as-<arm>-<field>`
+/// snapshot doors rather than a named WIT record or an identity-losing tuple; a sole value retains
+/// the established `as-<arm>` compatibility door.
 #[test]
-fn optional_fixed_inlined_group_choice_is_excluded_before_component_glue() {
+fn optional_fixed_inlined_group_choice_projects_constructor_and_field_reads() {
     const SPEC: &str = "thing = [ ? a: 0, x: tstr, ? b: 1 // y: bytes ]\n\
                         sibling = [n: uint]\n";
     let files = wit_files_for_spec(SPEC, &[]);
@@ -557,30 +558,61 @@ fn optional_fixed_inlined_group_choice_is_excluded_before_component_glue() {
         .get("component/wit/world.wit")
         .expect("component projection must emit its world");
     assert!(
-        !wit.contains("resource thing {")
-            && wit.contains("// unexported: Thing — the inlined group-choice arm `Thing0` contains an optional fixed member")
-            && wit.contains("component/WIT constructor and read projection"),
-        "the unsafe choice must be explicitly excluded with its projection reason:\n{wit}"
+        wit.contains("resource thing {")
+            && wit.contains("new-thing0: static func(a: bool, x: string, b: bool) -> thing;")
+            && wit.contains("as-thing0-a: func() -> option<bool>;")
+            && wit.contains("as-thing0-x: func() -> option<string>;")
+            && wit.contains("as-thing0-b: func() -> option<bool>;")
+            && wit.contains("as-y: func() -> option<list<u8>>;")
+            && !wit.contains("as-thing0: func()")
+            && !wit.contains("// unexported: Thing"),
+        "the inlined arm must expose every materialized constructor/read field by identity:\n{wit}"
     );
     assert!(
         wit.contains("resource sibling {"),
-        "the local exclusion must not drop unrelated component resources:\n{wit}"
+        "the local projection must not drop unrelated component resources:\n{wit}"
     );
     let bytes = resolve_and_encode(&files).unwrap_or_else(|error| {
-        panic!("the exclusion-record package must stay valid: {error}\n{wit}")
+        panic!("the multi-field package must resolve and encode: {error}\n{wit}")
     });
-    validate_component(&bytes).unwrap_or_else(|error| {
-        panic!("the exclusion-record package must validate: {error}\n{wit}")
-    });
+    validate_component(&bytes)
+        .unwrap_or_else(|error| panic!("the multi-field package must validate: {error}\n{wit}"));
 
     let glue = component_glue_for_spec(SPEC, &[]);
     assert!(
-        !glue.contains("WitThing") && !glue.contains("new_thing0") && !glue.contains("as_thing0"),
-        "excluded choice leaked its known-broken constructor/read glue:\n{glue}"
+        glue.contains("fn new_thing0(a: bool, x: String, b: bool) -> wit_types::Thing")
+            && glue.contains("cddl_lib::Thing::new_thing0(a, x, b)")
+            && glue.contains("fn as_thing0_a(&self) -> Option<bool>")
+            && glue.contains("cddl_lib::Thing::Thing0 { a, .. } => Some(*a)")
+            && glue.contains("fn as_thing0_x(&self) -> Option<String>")
+            && glue.contains("cddl_lib::Thing::Thing0 { x, .. } => Some(x.clone())")
+            && glue.contains("fn as_thing0_b(&self) -> Option<bool>")
+            && glue.contains("cddl_lib::Thing::Thing0 { b, .. } => Some(*b)"),
+        "the guest glue must bind each exact field rather than assuming arm.names[0]:\n{glue}"
     );
     assert!(
         glue.contains("WitSibling"),
-        "the unrelated component resource disappeared from guest glue too:\n{glue}"
+        "the unrelated component resource disappeared from guest glue:\n{glue}"
+    );
+
+    // The compatibility case: a sole optional fixed materialized value is bool in both directions,
+    // still takes the old unqualified member spelling, and a different arm retains the option None
+    // shape rather than needing an invented empty payload type.
+    let sole_spec = "solo = [ ? a: 0, x: 1 // y: bytes ]\n";
+    let sole = wit_for_spec(sole_spec, &[]);
+    assert!(
+        sole.contains("new-solo0: static func(a: bool) -> solo;")
+            && sole.contains("as-solo0: func() -> option<bool>;")
+            && sole.contains("as-y: func() -> option<list<u8>>;")
+            && !sole.contains("as-solo0-a:"),
+        "the sole materialized optional-fixed field must retain the compatibility door:\n{sole}"
+    );
+    let sole_glue = component_glue_for_spec(sole_spec, &[]);
+    assert!(
+        sole_glue.contains("fn as_solo0(&self) -> Option<bool>")
+            && sole_glue.contains("cddl_lib::Solo::Solo0(a) => Some(*a)")
+            && sole_glue.contains("_ => None,"),
+        "the sole optional-fixed getter must preserve bool state and wrong-arm None:\n{sole_glue}"
     );
 }
 

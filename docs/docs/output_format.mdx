@@ -150,9 +150,10 @@ pub struct A {
   sole materialized value keeps the legacy `as_<arm>() -> Option<bool>` door, while an arm with
   multiple values exposes each as `as_<arm>_<field>()`. Its optional-fixed door returns
   `Option<bool>` (`Some(false)` absent, `Some(true)` present, `None` for another arm). The component
-  face currently excludes this inlined-arm shape with an explicit WIT `unexported` record rather
-  than emitting noncompiling constructor/read glue. Its supported component projection is tracked as
-  component/WIT parity work rather than a wasm limitation.
+  face offers the same materialized constructor values as WIT parameters: a sole value keeps
+  `as-<arm>() -> option<bool>`, while multiple values use field-qualified
+  `as-<arm>-<field>() -> option<T>` reads. The component spelling is independently chosen to avoid
+  a new named WIT record/type and collision surface while retaining each source-field identity.
 - **JSON** (serde / schemars) treats it as a plain `bool` — `"v": false` when absent.
 
 `bool` is used rather than `Option<()>` precisely because it crosses the wasm and serde/schemars

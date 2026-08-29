@@ -14,6 +14,8 @@
 ;               NEVER trap, leaving the instance usable afterwards (a trap poisons it).
 ;   color     — a c-style enum crossing the boundary in both directions.
 ;   value     — a type choice: `new-<variant>` statics, the `<name>-kind` discriminant, `as-<variant>`.
+;   thing     — an inlined group-choice arm with two optional fixed presence bits and a text value:
+;               component field-qualified reads preserve all constructor values and wrong-arm None.
 ;   node      — the RE-ENTRANCY case, and the only one with no wasm-face precedent. `children` is
 ;               OPTIONAL, which is what mints a `set-children` taking `list<borrow<node>>` — so
 ;               `x.set-children([x])` is expressible, must return normally, and must store a
@@ -37,6 +39,10 @@ color = 0 / 1 / 2
 ; a type choice -> a resource with NO constructor: `new-<variant>` statics, a `kind` discriminant
 ; and `as-<variant>` getters
 value = uint / text / bytes
+
+; An inlined group-choice arm has three materialized native values. The component face keeps every
+; one in `new-thing0(a, x, b)` and gives each its own `as-thing0-<field>` read door.
+thing = [ ? a: 0, x: tstr, ? b: 1 // y: bytes ]
 
 ; collection-mediated recursion with the collection field OPTIONAL, which is what gives the resource
 ; a `set-children: func(children: list<borrow<node>>)` — the same-handle re-entrancy shape

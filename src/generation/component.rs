@@ -1947,7 +1947,10 @@ impl Emitter<'_, '_> {
             }
             // `as-<variant>`: the payload as a SNAPSHOT (every composite arm of `rust_to_wit`
             // clones), `None` on every other arm.
-            WitMemberOp::AsVariant { rust_variant } => {
+            WitMemberOp::AsVariant {
+                rust_variant,
+                rust_field,
+            } => {
                 let (variants, variant_rep, tag) = self
                     .choice_variants(ident)
                     .expect("an `as-` member is only projected for a choice");
@@ -1968,7 +1971,7 @@ impl Emitter<'_, '_> {
                 let Some(WitType::Option(payload)) = member.result.as_ref() else {
                     unreachable!("an `as-` member always returns an option of its payload");
                 };
-                let conv = self.rust_to_wit(payload, &arm.names[0], alias, true);
+                let conv = self.rust_to_wit(payload, rust_field, alias, true);
                 lines.push("let me = self.0.borrow();".to_owned());
                 // A fallible payload conversion puts the `?` inside the arm and the `Ok` outside the
                 // whole `match`, so both arms still produce the same `Option<…>` and only the
@@ -1981,7 +1984,7 @@ impl Emitter<'_, '_> {
                 lines.push(format!(
                     "    {rust}::{}{} => Some({}),",
                     variant.name,
-                    arm.capture_ignore_encodings(),
+                    arm.capture_field_ignore_encodings(rust_field),
                     conv.unwrapped()
                 ));
                 // Emitted only when there IS another arm: a one-variant choice's `_` arm is

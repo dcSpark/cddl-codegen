@@ -291,6 +291,46 @@ fn byte_roundtrip_is_byte_equal_to_native_serialization() -> Result<()> {
     Ok(())
 }
 
+// --- class 2b: inlined group-choice materialized arm fields ------------------------------------
+
+/// An inlined group-choice arm's optional fixed values are native bool presence bits, not values
+/// that can be reconstructed from the wire after construction. Every `(a, b)` state must therefore
+/// reach the component constructor, survive a CBOR round-trip, and come back through its own
+/// field-qualified snapshot getter. The `y` arm is the wrong-arm control for every read door.
+#[test]
+fn inlined_group_choice_fields_cross_the_component_boundary() -> Result<()> {
+    let mut h = load()?;
+    let (store, api) = h.split();
+    let thing = api.thing();
+
+    for (a, b) in [(false, false), (false, true), (true, false), (true, true)] {
+        let x = format!("a-{a}-b-{b}");
+        let handle = thing.call_new_thing0(&mut *store, a, &x, b)?;
+        assert_eq!(thing.call_as_thing0_a(&mut *store, handle)?, Some(a));
+        assert_eq!(thing.call_as_thing0_x(&mut *store, handle)?, Some(x.clone()));
+        assert_eq!(thing.call_as_thing0_b(&mut *store, handle)?, Some(b));
+
+        let native = cddl_lib::Thing::new_thing0(a, x.clone(), b).to_cbor_bytes();
+        assert_eq!(thing.call_to_cbor_bytes(&mut *store, handle)?, native);
+        let from_bytes = thing
+            .call_from_cbor_bytes(&mut *store, &native)?
+            .expect("native thing bytes must deserialize through the component");
+        assert_eq!(thing.call_as_thing0_a(&mut *store, from_bytes)?, Some(a));
+        assert_eq!(
+            thing.call_as_thing0_x(&mut *store, from_bytes)?,
+            Some(x),
+        );
+        assert_eq!(thing.call_as_thing0_b(&mut *store, from_bytes)?, Some(b));
+        assert_eq!(thing.call_to_cbor_bytes(&mut *store, from_bytes)?, native);
+    }
+
+    let other = thing.call_new_y(&mut *store, &[1, 2, 3])?;
+    assert_eq!(thing.call_as_thing0_a(&mut *store, other)?, None);
+    assert_eq!(thing.call_as_thing0_x(&mut *store, other)?, None);
+    assert_eq!(thing.call_as_thing0_b(&mut *store, other)?, None);
+    Ok(())
+}
+
 // --- class 3: fallible doors return Err, never trap, and leave the instance usable ----------------
 
 #[test]

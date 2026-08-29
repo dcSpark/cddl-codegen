@@ -17,13 +17,12 @@
 //!    inherent constructors have nowhere to land. That is a pre-declared ledger class rather than a
 //!    structural carve-out, precisely so it stays visible and so the ledger's resurfaced guard has
 //!    something live to reconcile.
-//! 3. *Inlined-arm signatures remain an open boundary.* The name differential deliberately does not
-//!    compare ABI signatures, so an optional-fixed inlined group-choice arm formerly omitted native
-//!    constructor values and bound its read payload to the wrong field. It is now excluded with an
-//!    explicit WIT record before glue is emitted; the reviewed component API that can project it is
-//!    tracked by `testing.component-wit-inlined-enum-arm-signature-parity`, whose focused fixture and
-//!    signature obligation must replace that safe boundary rather than treating a name-parity pass
-//!    as support.
+//! 3. *Variant constructors carry a narrow signature obligation.* Most ABI signatures deliberately
+//!    differ, but a choice's `new_<arm>` is a direct bridge to a native constructor. For those
+//!    statics only, this gate compares emitted Rust argument identities with resolved WIT and owes
+//!    each constructor value an arm read: the compatibility `as-<arm>` for one value, or explicit
+//!    `as-<arm>-<field>` reads for multiple values. This catches an omitted optional-fixed presence
+//!    bit without pretending unrelated ABI conversions have identical signatures.
 //!
 //! **Parsed from emitted sources, never from generator metadata.** The rust half is `syn` over the
 //! emitted `.rs`; the WIT half is `wit-parser` over the emitted `.wit`; the exclusion records are
@@ -397,6 +396,15 @@ struct RustSurface {
     fields: BTreeMap<String, BTreeMap<String, Option<String>>>,
     /// type -> its inherent `pub fn` names.
     inherent_fns: BTreeMap<String, BTreeSet<String>>,
+    /// `pub static fn new_<arm>(...)` constructor argument idents, captured from emitted Rust.
+    /// This is deliberately narrower than general function signatures: only these constructors are
+    /// position-for-position bridges to WIT's `new-<arm>` statics.
+    variant_ctors: BTreeMap<String, BTreeMap<String, Vec<String>>>,
+    /// Named data fields on emitted Rust enum variants, keyed by the variant's kebab spelling. An
+    /// inlined group-choice arm stores its direct constructor values here; a named-record arm stores
+    /// one arm-record payload instead. This output-only distinction scopes the signature rule to the
+    /// direct inlined shape without consulting projection metadata.
+    variant_fields: BTreeMap<String, BTreeMap<String, BTreeSet<String>>>,
 }
 
 fn is_pub(vis: &syn::Visibility) -> bool {
@@ -446,16 +454,63 @@ fn parse_rust_surface_into(src: &str, s: &mut RustSurface) {
                 }
             }
             syn::Item::Enum(en) if is_pub(&en.vis) => {
-                s.types.insert(en.ident.to_string());
+                let enum_name = en.ident.to_string();
+                s.types.insert(enum_name.clone());
+                for variant in &en.variants {
+                    if let syn::Fields::Named(fields) = &variant.fields {
+                        s.variant_fields
+                            .entry(enum_name.clone())
+                            .or_default()
+                            .insert(
+                                convert_to_kebab_case(&variant.ident.to_string()),
+                                fields
+                                    .named
+                                    .iter()
+                                    .filter_map(|field| {
+                                        field.ident.as_ref().map(ToString::to_string)
+                                    })
+                                    .collect(),
+                            );
+                    }
+                }
             }
             syn::Item::Impl(im) if im.trait_.is_none() => {
                 if let Some(ty) = type_leaf_ident(&im.self_ty) {
-                    let entry = s.inherent_fns.entry(ty).or_default();
+                    let entry = s.inherent_fns.entry(ty.clone()).or_default();
                     for it in &im.items {
                         if let syn::ImplItem::Fn(f) = it
                             && is_pub(&f.vis)
                         {
                             entry.insert(f.sig.ident.to_string());
+                            if let Some(arm) = f.sig.ident.to_string().strip_prefix("new_")
+                                && !arm.is_empty()
+                                && !f
+                                    .sig
+                                    .inputs
+                                    .iter()
+                                    .any(|arg| matches!(arg, syn::FnArg::Receiver(_)))
+                            {
+                                let params: Vec<String> = f
+                                    .sig
+                                    .inputs
+                                    .iter()
+                                    .map(|arg| match arg {
+                                        syn::FnArg::Typed(pat) => match pat.pat.as_ref() {
+                                            syn::Pat::Ident(id) => id.ident.to_string(),
+                                            _ => panic!(
+                                                "generated variant constructor parameter must be an ident"
+                                            ),
+                                        },
+                                        syn::FnArg::Receiver(_) => unreachable!(
+                                            "the receiver filter above excludes methods"
+                                        ),
+                                    })
+                                    .collect();
+                                s.variant_ctors
+                                    .entry(ty.clone())
+                                    .or_default()
+                                    .insert(arm.to_owned(), params);
+                            }
                         }
                     }
                 }
@@ -498,6 +553,16 @@ struct WitSurface {
     resources: BTreeMap<String, BTreeSet<String>>,
     /// Rust idents the projection recorded as excluded, read from the `// unexported:` rows.
     excluded: BTreeSet<String>,
+    /// `new-<arm>` statics read back from the resolved WIT, including each parameter's resolved
+    /// type kind. The signature differential compares names/counts; retaining kind here means a
+    /// future diagnostic can report exactly what the toolchain resolved without reparsing text.
+    variant_statics: BTreeMap<String, BTreeMap<String, Vec<WitParamSurface>>>,
+}
+
+#[derive(Clone, Debug)]
+struct WitParamSurface {
+    name: String,
+    kind: String,
 }
 
 /// Resolve the emitted `.wit` files through `wit-parser` and read the surface back out.
@@ -563,9 +628,28 @@ fn wit_surface(files: &BTreeMap<String, String>, label: &str) -> WitSurface {
             };
             surface
                 .resources
-                .entry(owner_name)
+                .entry(owner_name.clone())
                 .or_default()
                 .insert(func.item_name().to_owned());
+            if matches!(func.kind, wit_parser::FunctionKind::Static(_))
+                && let Some(arm) = func.item_name().strip_prefix("new-")
+                && !arm.is_empty()
+            {
+                surface
+                    .variant_statics
+                    .entry(owner_name)
+                    .or_default()
+                    .insert(
+                        arm.to_owned(),
+                        func.params
+                            .iter()
+                            .map(|param| WitParamSurface {
+                                name: param.name.clone(),
+                                kind: format!("{:?}", param.ty),
+                            })
+                            .collect(),
+                    );
+            }
         }
     }
     surface
@@ -678,6 +762,103 @@ fn diff_surfaces(
     }
 }
 
+/// The one signature-level parity rule. General component signatures intentionally differ from
+/// Rust (ownership, result strings, despecialization), but a choice's `new_<arm>` static forwards
+/// exactly its native constructor values. Read obligations are derived solely from emitted Rust and
+/// resolved WIT: one value keeps `as-<arm>` compatibility; multiple values use stable
+/// field-qualified reads, avoiding an ambiguous aggregate payload.
+fn diff_variant_ctor_signatures(
+    label: &str,
+    rust: &RustSurface,
+    wit: &WitSurface,
+    out: &mut Vec<Finding>,
+) -> usize {
+    let mut obligations = 0;
+    for (rust_type, ctors) in &rust.variant_ctors {
+        let wit_type = convert_to_kebab_case(rust_type);
+        let Some(statics) = wit.variant_statics.get(&wit_type) else {
+            continue;
+        };
+        let members = wit
+            .resources
+            .get(&wit_type)
+            .expect("a WIT static is owned by a resource");
+        for (arm, rust_params) in ctors {
+            let arm_kebab = convert_to_kebab_case(arm);
+            // A named-record group-choice arm's native enum field is its one record payload even
+            // though its convenience constructor expands that record's fields. It intentionally
+            // retains `as-<arm> -> option<record>`, so only a variant whose emitted direct fields
+            // INCLUDE every constructor parameter is the inlined direct-value shape this rule owns.
+            let Some(arm_fields) = rust
+                .variant_fields
+                .get(rust_type)
+                .and_then(|variants| variants.get(&arm_kebab))
+            else {
+                continue;
+            };
+            if !rust_params.iter().all(|param| arm_fields.contains(param)) {
+                continue;
+            }
+            let Some(wit_params) = statics.get(&arm_kebab) else {
+                continue;
+            };
+            obligations += 1;
+            let expected: Vec<String> = rust_params
+                .iter()
+                .map(|name| convert_to_kebab_case(name))
+                .collect();
+            let actual: Vec<String> = wit_params.iter().map(|param| param.name.clone()).collect();
+            if expected != actual {
+                let kinds = wit_params
+                    .iter()
+                    .map(|param| format!("{}: {}", param.name, param.kind))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                out.push(Finding {
+                    label: label.to_owned(),
+                    item: format!("{rust_type}::new_{arm}"),
+                    msg: format!(
+                        "variant constructor arguments differ after snake→kebab conversion: rust \
+                         {expected:?}, resolved WIT {actual:?} ({kinds})"
+                    ),
+                });
+            }
+            match expected.as_slice() {
+                [] => {}
+                [only] => {
+                    obligations += 1;
+                    let member = format!("as-{arm_kebab}");
+                    if !members.contains(&member) {
+                        out.push(Finding {
+                            label: label.to_owned(),
+                            item: format!("{rust_type}::new_{arm}"),
+                            msg: format!(
+                                "sole constructor value `{only}` has no compatibility read `{member}`"
+                            ),
+                        });
+                    }
+                }
+                many => {
+                    for field in many {
+                        obligations += 1;
+                        let member = format!("as-{arm_kebab}-{field}");
+                        if !members.contains(&member) {
+                            out.push(Finding {
+                                label: label.to_owned(),
+                                item: format!("{rust_type}::new_{arm}"),
+                                msg: format!(
+                                    "constructor value `{field}` has no field-qualified read `{member}`"
+                                ),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    obligations
+}
+
 /// Collect `.rs` basenames under `prefix` outside `allowed`, so a new emission surface fails loudly
 /// instead of escaping the differential.
 fn stray_keys(files: &BTreeMap<String, String>, prefix: &str, allowed: &[&str]) -> Vec<String> {
@@ -751,6 +932,8 @@ fn component_api_parity() {
     // The vacuity guard's counter: a differential that compared nothing would pass on an empty set,
     // which is worse than no gate at all.
     let mut obligations = 0usize;
+    let mut variant_signature_obligations = 0usize;
+    let mut optional_fixed_fixture_pins = 0usize;
 
     for (label, input, extra) in PARITY_CASES {
         let expected_fail = EXPECTED_GENERATION_FAIL.iter().any(|(l, _)| l == label);
@@ -820,10 +1003,29 @@ fn component_api_parity() {
         }
         let encoding_structs = parse_encoding_structs(&files);
         let wit = wit_surface(&files, label);
+        // This is deliberately read from the resolved WIT only. The host fixture's exact arm has
+        // two optional-fixed presence bits around an ordinary value, so losing either turns this
+        // pin false even if a future parser accidentally stops exposing its Rust counterpart.
+        if *label == "component-host"
+            && let Some(params) = wit
+                .variant_statics
+                .get("thing")
+                .and_then(|statics| statics.get("thing0"))
+            && params.len() == 3
+            && params[0].name == "a"
+            && params[0].kind == "Bool"
+            && params[1].name == "x"
+            && params[2].name == "b"
+            && params[2].kind == "Bool"
+        {
+            optional_fixed_fixture_pins += 1;
+        }
         obligations += rust.fields.values().map(BTreeMap::len).sum::<usize>()
             + rust.inherent_fns.values().map(BTreeSet::len).sum::<usize>()
             + rust.types.len();
         diff_surfaces(label, &rust, &wit, &encoding_structs, &mut findings);
+        variant_signature_obligations +=
+            diff_variant_ctor_signatures(label, &rust, &wit, &mut findings);
     }
 
     assert!(
@@ -847,6 +1049,17 @@ fn component_api_parity() {
         obligations >= 60,
         "the differential compared only {obligations} rust-surface obligations — far below what the \
          fixtures declare, so it has gone vacuous (a parse or path filter regressed)"
+    );
+    assert!(
+        variant_signature_obligations >= 28,
+        "the variant-constructor signature differential compared only \
+         {variant_signature_obligations} obligations — its focused fixtures or resolved-WIT walk \
+         went vacuous"
+    );
+    assert_eq!(
+        optional_fixed_fixture_pins, 1,
+        "the component-host optional-fixed inlined-arm WIT signature pin disappeared or changed; \
+         this is the output-only control for every materialized constructor value"
     );
 
     let exempt: BTreeSet<(&str, &str)> = COMPONENT_PARITY_EXEMPT

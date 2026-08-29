@@ -28,7 +28,7 @@ use crate::cli::Cli;
 use crate::component_wit_deps::{DepWitPackage, DepWitPackages};
 use crate::intermediate::{
     AliasIdent, ConceptualRustType, EnumVariant, EnumVariantData, IntermediateTypes, ModuleScope,
-    Primitive, ROOT_SCOPE, Representation, RestKind, RustField, RustIdent, RustRecord, RustStruct,
+    Primitive, ROOT_SCOPE, Representation, RestKind, RustIdent, RustRecord, RustStruct,
     RustStructType, RustType,
 };
 use crate::utils::convert_to_kebab_case;
@@ -580,10 +580,13 @@ pub(crate) enum WitMemberOp {
     /// The rust `<Name>Kind` enum is emitted only under `cli.wasm`, so the guest may never name it;
     /// the arm spelling comes from the same owner the wasm face's `kind()` uses.
     VariantKind,
-    /// A choice's `as-<variant>`: `Some(payload)` on the matching arm, `None` otherwise. Carries the
-    /// RUST variant ident so the emitter looks the variant up rather than un-kebabbing a WIT name.
+    /// A choice's `as-<variant>` (or field-qualified `as-<variant>-<field>`): `Some(payload)` on
+    /// the matching arm, `None` otherwise. Carries the RUST variant and field idents so the emitter
+    /// looks them up rather than un-kebabbing a WIT name or assuming the first arm field is the
+    /// projected value.
     AsVariant {
         rust_variant: String,
+        rust_field: String,
     },
     /// A choice's `new-<variant>` STATIC, bridging the rust enum's own `new_<variant>`.
     ///
@@ -1996,7 +1999,7 @@ fn project_c_style_enum(name: &str, ident: &RustIdent, variants: &[EnumVariant])
 const KIND_TYPE_SUFFIX: &str = "-kind";
 
 /// A type or group choice → a `resource` with no constructor, one `new-<variant>` STATIC per
-/// variant, a `kind` discriminant and one `as-<variant>` per variant that carries data — plus the
+/// variant, a `kind` discriminant and read members per materialized variant field — plus the
 /// `<name>-kind` enum those three families are spelled from.
 ///
 /// A choice has no single constructor (there is nothing to construct *without* picking an arm), so
@@ -2025,16 +2028,16 @@ fn project_choice(
             name: var.clone(),
             rust_variant: variant.name.to_string(),
         });
-        let (params, payload) = choice_variant_shape(ident, variant, rep, ctx)?;
+        let shape = choice_variant_shape(ident, variant, rep, ctx)?;
         let rust_can_fail = variant_ctor_can_fail(ident, variant, rep, ctx.types);
         // The MEMBER is fallible for a second, independent reason the rust ctor knows nothing
         // about: a despecialized parameter (`[+ T]`, `@duplicates reject`) has to re-enter its
         // `TryFrom` door here. So `rust_can_fail` implies member-fallible, never the reverse.
-        let fallible = rust_can_fail || params.iter().any(|p| p.validates);
+        let fallible = rust_can_fail || shape.params.iter().any(|p| p.validates);
         members.push(WitMember {
             name: format!("new-{var}"),
             is_static: true,
-            params,
+            params: shape.params,
             // The `ok` type is the OWNING resource, filled in by the renderer and the emitter for
             // the same reason `from-cbor-bytes`'s is.
             result: None,
@@ -2044,17 +2047,27 @@ fn project_choice(
                 rust_can_fail,
             },
         });
-        // A FIXED-value arm carries no payload, so there is nothing for `as-` to hand back; `kind`
-        // still reports it, which is the whole answer for such an arm.
-        if let Some(payload) = payload {
+        // A FIXED-value arm carries no materialized field, so there is nothing for `as-` to hand
+        // back; `kind` still reports it, which is the whole answer for such an arm. A sole field
+        // keeps the established compatibility member. Multiple fields get explicit field-qualified
+        // reads: a new WIT record would add an owned name/collision surface, while a tuple loses
+        // field identity; each independent option door preserves the existing snapshot semantics.
+        let sole_read = shape.reads.len() == 1;
+        for read in shape.reads {
+            let read_name = if sole_read {
+                format!("as-{var}")
+            } else {
+                format!("as-{var}-{}", convert_to_kebab_case(&read.rust_field))
+            };
             members.push(WitMember {
-                name: format!("as-{var}"),
+                name: read_name,
                 is_static: false,
                 params: Vec::new(),
-                result: Some(WitType::Option(Box::new(payload))),
+                result: Some(WitType::Option(Box::new(read.ty))),
                 fallible: false,
                 op: WitMemberOp::AsVariant {
                     rust_variant: variant.name.to_string(),
+                    rust_field: read.rust_field,
                 },
             });
         }
@@ -2085,19 +2098,36 @@ fn project_choice(
     ])
 }
 
-/// One choice arm's `new-<variant>` PARAMETERS and its `as-<variant>` PAYLOAD type (`None` for a
-/// fixed-value arm, which has neither).
+/// One projected direct field of a choice arm's component read API.
+#[derive(Clone, Debug)]
+struct ChoiceVariantRead {
+    /// The rust arm field selected by the guest pattern, never inferred from its position.
+    rust_field: String,
+    ty: WitType,
+}
+
+/// The WIT-side component shape of one native choice arm.
+struct ChoiceVariantShape {
+    /// `new-<variant>` arguments in the native Rust constructor's order.
+    params: Vec<WitParam>,
+    /// Direct materialized reads. Empty for a fixed-value arm.
+    reads: Vec<ChoiceVariantRead>,
+}
+
+/// One choice arm's `new-<variant>` PARAMETERS and each materialized read field. A fixed-value arm
+/// has neither.
 ///
 /// The parameter list mirrors the rust enum's own `new_<variant>` exactly, because that is what the
 /// guest calls: a group-choice arm naming a RECORD takes the record's mandatory non-fixed FIELDS
-/// (the rust ctor builds the record itself), an INLINED arm takes its non-fixed fields, and every
-/// other arm takes the variant's own type under the variant's name.
+/// (the rust ctor builds the record itself), an INLINED arm takes every materialized field
+/// (including optional-fixed `bool` presence bits), and every other arm takes the variant's own
+/// type under the variant's name.
 fn choice_variant_shape(
     ident: &RustIdent,
     variant: &EnumVariant,
     rep: Option<Representation>,
     ctx: &mut TypeCtx,
-) -> ProjectResult<(Vec<WitParam>, Option<WitType>)> {
+) -> ProjectResult<ChoiceVariantShape> {
     match &variant.data {
         EnumVariantData::RustType(ty) => {
             let ctor_fields = rep.and_then(|_| variant.group_ctor_record_fields(ctx.types, ident));
@@ -2118,58 +2148,49 @@ fn choice_variant_shape(
                     rust_type: Some(ty.clone()),
                 }],
             };
-            let payload = if ty.is_fixed_value() {
-                None
+            let reads = if ty.is_fixed_value() {
+                Vec::new()
             } else {
-                Some(map_rust_type(ty, ctx)?)
+                vec![ChoiceVariantRead {
+                    rust_field: variant.name_as_var(),
+                    ty: map_rust_type(ty, ctx)?,
+                }]
             };
-            Ok((params, payload))
+            Ok(ChoiceVariantShape { params, reads })
         }
         EnumVariantData::Inlined(record) => {
-            // An optional fixed member materializes as a native `bool`, but this one-payload WIT
-            // shape has neither a constructor parameter nor a field-identity read door for it.
-            // Exclude the whole choice rather than emitting guest glue that calls the native ctor
-            // with too few arguments and reads the wrong field. The eventual multi-value component
-            // API must replace this narrow safety boundary deliberately.
-            if record
-                .fields
-                .iter()
-                .any(|field| field.optional && field.rust_type.is_fixed_value())
-            {
-                return Err(unprojectable(format!(
-                    "the inlined group-choice arm `{}` contains an optional fixed member, whose \
-                     materialized presence bit has no component/WIT constructor and read projection",
-                    variant.name
-                )));
-            }
-            let non_fixed: Vec<&RustField> = record
-                .fields
-                .iter()
-                .filter(|f| !f.rust_type.is_fixed_value())
-                .collect();
-            // The wasm face ASSERTS `<= 1` here; this module never asserts (R2), so the shape its
-            // assert guards against leaves as an exclusion record naming itself.
-            if non_fixed.len() > 1 {
-                return Err(unprojectable(format!(
-                    "the inlined group-choice arm `{}` carries {} non-fixed fields, and an embedded \
-                     arm's payload has no single WIT type",
-                    variant.name,
-                    non_fixed.len()
-                )));
-            }
             let mut params = Vec::new();
-            for field in &non_fixed {
-                params.push(field_param(
-                    &field.name,
-                    field.to_embedded_rust_type().as_ref(),
-                    ctx,
-                )?);
+            let mut reads = Vec::new();
+            // This exact filter is the native inlined arm's constructor shape (and the WASM
+            // counterpart's): mandatory fixed values consume no Rust storage; optional fixed
+            // values materialize as bool presence fields; all other values keep their embedded
+            // optionality. Walking source order keeps WIT and Rust constructor arguments aligned.
+            for field in &record.fields {
+                if field.rust_type.is_fixed_value() && !field.optional {
+                    continue;
+                }
+                if field.optional && field.rust_type.is_fixed_value() {
+                    params.push(WitParam {
+                        name: convert_to_kebab_case(&field.name),
+                        rust_name: field.name.clone(),
+                        ty: WitType::Bool,
+                        validates: false,
+                        rust_type: None,
+                    });
+                    reads.push(ChoiceVariantRead {
+                        rust_field: field.name.clone(),
+                        ty: WitType::Bool,
+                    });
+                } else {
+                    let ty = field.to_embedded_rust_type();
+                    params.push(field_param(&field.name, ty.as_ref(), ctx)?);
+                    reads.push(ChoiceVariantRead {
+                        rust_field: field.name.clone(),
+                        ty: map_rust_type(ty.as_ref(), ctx)?,
+                    });
+                }
             }
-            let payload = match non_fixed.first() {
-                Some(field) => Some(map_rust_type(field.to_embedded_rust_type().as_ref(), ctx)?),
-                None => None,
-            };
-            Ok((params, payload))
+            Ok(ChoiceVariantShape { params, reads })
         }
     }
 }

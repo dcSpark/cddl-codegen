@@ -49,12 +49,14 @@ signature that would have referenced it is excluded with the same reason. The ge
 validity is gated by `component_wit_validates` and, at corpus breadth, by
 `component_wit_validates_the_corpus`.
 
-One current exclusion is an inlined group-choice arm carrying an optional fixed member. Native Rust
-stores that member's presence as a `bool`, but the component face's one-payload choice API has
-neither a constructor parameter nor a field-qualified read door for it. The projection therefore
-records the whole choice as unexported instead of emitting a WIT constructor and guest glue that
-disagree with the native constructor. This is a safe temporary boundary, not a public API decision:
-a future component design must project every materialized arm value deliberately.
+An inlined group-choice arm projects **every materialized native value**. Mandatory fixed values
+still have no storage; an optional fixed member contributes its `bool` presence bit. The arm's
+`new-<arm>` static takes those values in native constructor order under their field names. A sole
+value keeps the established `as-<arm>() -> option<T>` read; an arm with multiple values has one
+snapshot read per field, `as-<arm>-<field>() -> option<T>`. This is intentionally a component API
+decision, not a copied wasm convention: a named WIT record would create another naming/collision
+surface, while a tuple would discard field identity. The independent option reads preserve identity
+and the established wrong-arm `none` semantics without either cost.
 
 ## Getters hand back a snapshot
 

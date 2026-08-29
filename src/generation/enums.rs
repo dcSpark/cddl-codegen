@@ -736,12 +736,6 @@ impl EnumVariantInRust {
         }
     }
 
-    /// The component face's pre-existing one-payload projection. The WASM face must use the
-    /// explicit-field helper above because an inlined optional fixed field can precede that payload.
-    pub(super) fn capture_ignore_encodings(&self) -> String {
-        self.capture_field_ignore_encodings(&self.names[0])
-    }
-
     /// if init_fields exists, use these for values, otherwise assumes variables exist with same names
     fn generate_constructor(
         &self,

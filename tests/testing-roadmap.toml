@@ -74,7 +74,6 @@ entries = [
   "testing.grammar-fuzzer-escalations",
   "testing.grammar-fuzzer.arbitrary-supported-ast",
   "testing.grammar-fuzzer.real-world-corpus-differential",
-  "testing.component-wit-inlined-enum-arm-signature-parity",
   "testing.duplicates-policy-residuals",
   "part-set-nominalization-residuals-delivery-set-architecture-rethink-d177516",
   "testing.duplicates.same-shape-set-conversion",
@@ -704,44 +703,6 @@ rationale_md = '''The decided boundary and its reasons are the exact preserved d
 '''
 authority_reference_id = "testing-guard-complete-cargo-mutants-sweep-will-never"
 permanence = "permanent"
-
-[[record]]
-id = "testing.component-wit-inlined-enum-arm-signature-parity"
-title = "Component/WIT signatures for materialized values of an inlined group-choice enum arm."
-
-[record.payload]
-kind = "work"
-body_md = '''- **Component/WIT signatures for materialized values of an inlined group-choice enum arm.** Before
-  the safety exclusion, `thing = [ ? a: 0, x: tstr, ? b: 1 // y: bytes ]` projected just the
-  non-fixed value: WIT emitted `new-thing0(x: string)` and `as-thing0() -> option<string>`, while
-  native Rust emitted `Thing::new_thing0(a: bool, x: String, b: bool)`. Generated guest glue then
-  called the constructor with one argument (E0061) and bound `a: bool` as `String` (E0308). A
-  scratch component from that exact shape established this as a product defect, not an upstream WIT
-  or wit-bindgen failure. Current state is safe rather than supported: projection excludes any
-  inlined group-choice arm containing an optional fixed member with the standard explicit WIT
-  `unexported` record, so it emits neither that resource nor broken guest glue; the focused
-  projection/validity regression holds the exclusion live. The current `component_api_parity`
-  intentionally checks member names rather than signatures, and its fixtures previously carried no
-  optional-fixed inlined arm, so neither it nor the existing build fixtures could catch the
-  pre-guard mismatch. The parallel wasm API is delivered separately: it has field-qualified read
-  doors for multi-value arms and `Option<bool>` optional-fixed semantics.
-'''
-work_state = "ready"
-work_intent = "repair"
-work_kind = "regression_gap"
-risk = "wrong_public_api"
-acceptance_md = '''Settle and document the component read API for every materialized direct value of
-an inlined group-choice arm, including the sole-value compatibility case. Project every
-optional-fixed presence bit as a WIT `bool` constructor argument and preserve both `false`/`true`
-states and wrong-arm `None` through real component execution. Add a focused fixture that combines
-optional-fixed and non-fixed values in one inlined arm, compiles the generated guest, and verifies
-its WIT signatures and glue bindings against the native Rust constructor/field identities. Extend
-the Rust→WIT differential with a signature/argument-obligation check sufficient to catch an omitted
-materialized value, rather than relying only on names emitted by the projection. Do not reuse the
-wasm getter vocabulary as an unreviewed component API design.'''
-priority_rationale_md = '''Without the safety exclusion this face emitted a noncompiling component
-crate for a supported native input; the current explicit exclusion prevents broken output but leaves
-that native-supported shape unavailable at the component boundary.'''
 
 [[record]]
 id = "testing.composing-registration-rows-across-generation-passes-share-output"

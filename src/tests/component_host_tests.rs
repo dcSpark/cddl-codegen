@@ -43,7 +43,7 @@ use std::path::{Path, PathBuf};
 /// Bump on any change to what the cached closure CHECKS (not to the bytes it checks, which the tree
 /// hash already covers). Without it, tightening an assertion would be laundered past every
 /// previously-cached cell.
-const VERDICT_MARKER: &str = "host-behavior-v1";
+const VERDICT_MARKER: &str = "host-behavior-v2";
 
 /// Free scratch below this and the nested build is a coin flip between ENOSPC and a machine-wide
 /// stall, so the gate says so and stops rather than reporting a code verdict it did not reach.

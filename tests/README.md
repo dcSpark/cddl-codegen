@@ -4812,7 +4812,12 @@ but reading it would make this an intent check instead of an output check. Three
    (`pub encodings: Option<XEncoding>` under `--preserve-encodings` is round-trip metadata).
 3. Every rust inherent `pub fn` on such a type has a WIT member of the kebab name. Signatures are
    generally unchecked by design: the two ABIs differ by construction (borrows in, owned handles
-   out, every failure as `result<_, string>`).
+   out, every failure as `result<_, string>`). The deliberate narrow exception is an inlined
+   group-choice `new_<arm>` static: its emitted Rust argument names must match resolved WIT
+   `new-<arm>` names after snake→kebab conversion, and each direct value owes a read (`as-<arm>` for
+   one, `as-<arm>-<field>` for many). The parser identifies this shape from the emitted enum's direct
+   named fields, never projection metadata, so named-record arm constructors keep their legitimate
+   aggregate `as-<arm> -> option<record>` API.
 
 A `pub type` alias imposes nothing — a CDDL alias and a named collection are resolved THROUGH at
 their use sites and never surfaced, which is the documented type-mapping row. A counterpart that is a
@@ -4820,14 +4825,13 @@ WIT **value** type (`enum`, the `int` variant, an alias) has no member namespace
 nothing to compare — but a rust type with inherent fns *and* a value-type counterpart is reported
 rather than carved out, which is what keeps the `Int` class visible.
 
-**Open signature boundary.** An inlined group-choice arm carrying an optional-fixed member is now
-explicitly excluded from the component face: its prior WIT projected only non-fixed values while
-native Rust required every materialized value, so the guest could fail to compile and its legacy
-`as-<arm>` glue could bind the wrong field. The exclusion record keeps the package valid and emits
-no broken glue. This is tracked by
-`testing.component-wit-inlined-enum-arm-signature-parity`: it needs a reviewed component read API,
-signature-level Rust→WIT obligations, and a real component execution fixture. The delivered wasm
-field-qualified getter API is intentionally not presumed to settle the component design.
+**Inlined-arm signature control.** Optional-fixed presence bits are WIT `bool` constructor values,
+so `thing = [ ? a: 0, x: tstr, ? b: 1 // y: bytes ]` resolves as
+`new-thing0(a: bool, x: string, b: bool)`. Its three field-qualified reads retain `Some(false)` and
+`Some(true)` separately, and return `None` on `y`. The host fixture executes all four bit pairs and
+compares its bytes with native Rust. The parity gate additionally reads the emitted Rust and resolved
+WIT only, with a dedicated output pin for that signature, so either omitted bool fails even before
+component execution.
 
 Findings reconcile against `COMPONENT_PARITY_EXEMPT` keyed `(label, item, reason)` with the same
 two-way staleness guard: an unexempted finding fails with the remedy; an entry matching no live
@@ -4838,9 +4842,10 @@ carries every failure as a `string`. The sweep is the component fixture set plus
 `tests/component-cycle/inputs`, whose deliberate refusal is pinned in `EXPECTED_GENERATION_FAIL` (a
 listed label that starts generating fails as "the refusal is gone").
 `component_api_parity_axes_and_pins_are_live` holds the whole-axis assertions, including that every
-fixture `component_tests` compiles or validates is differentialled here too. Two vacuity guards: a
-floor on the number of rust-surface obligations compared, and a stray-key guard over both generated
-trees so a new emission surface fails loudly instead of escaping the differential.
+fixture `component_tests` compiles or validates is differentialled here too. Three vacuity controls:
+floors on ordinary and variant-signature obligations, an emitted-WIT optional-fixed signature pin,
+and a stray-key guard over both generated trees so a new emission surface fails loudly instead of
+escaping the differential.
 
 ### component behavior (`component_host_tests::component_host_behavior`, gate `component_host`)
 
@@ -4861,6 +4866,9 @@ into a `wasmtime` host and drives it through one `#[test]` per assertion class:
 - **byte-equality with the rust crate's own serialization**, both directions — the oracle is a path
   dep on the generated `rust` crate, so "the boundary agrees with the library it wraps" is checkable
   where "the boundary produced some bytes" is not;
+- **inlined group-choice materialized fields**, including all four optional-fixed `bool` presence
+  pairs, native-byte agreement after construction and re-read, field-qualified snapshot reads, and
+  wrong-arm `None`;
 - **fallible doors return `Err` and never trap**, and the instance is still usable afterwards. That
   last clause is the real assertion: a trap poisons the whole component instance, so in a composed
   topology one bad call kills a shared dependency for every consumer. The trap TEXT is deliberately
@@ -5529,10 +5537,10 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   the inlined enum match borrows its bool presence fields, while the shared dynamic-length and write
   paths had treated them as values. The shared dereference fix is executed across default, preserve,
   and JSON generated Rust crates (and compiles their WASM crates) by
-  `group_choice_optional_fixed_arm_emits_bool_presence_field`. The separate wasm read API is now
-  delivered by `wasm_inlined_enum_materialized_fields_have_read_doors`; its component/WIT signature
-  counterpart remains tracked by `testing.component-wit-inlined-enum-arm-signature-parity`. The two
-  known panic class counts remain unchanged.
+  `group_choice_optional_fixed_arm_emits_bool_presence_field`. Both boundary faces now project every
+  materialized inlined-arm value: wasm uses its field-qualified getters, and component uses native
+  constructor-order WIT arguments plus field-qualified snapshot reads (with the one-value
+  compatibility door). The two known panic class counts remain unchanged.
 - `recombination_crates_execute` (`#[ignore]`, check.ts full tier — the `recombination_crates_execute`
   gate): executes the sweep's `ok` compositions under TWO deterministic, decorrelated greedy plans
   (~40 rules/batch; the budget is a ceiling except that an intrinsically oversized composition is
