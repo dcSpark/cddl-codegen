@@ -85,6 +85,27 @@ if (unknownVerifyFlags.length) {
 }
 const SELFTEST = VERIFY_ARGS.includes("--selftest");
 
+// This seam exists solely for the elapsed-receipt process-boundary self-test below.  It is not a
+// CLI surface: ordinary verification cannot activate it because it requires both --selftest and
+// this private child marker.  Keep the delay bounded so a malformed inherited environment cannot
+// turn the cheap self-test into an unbounded hang.
+const ELAPSED_RECEIPT_CHILD_MARKER = "cddl-codegen-verify-elapsed-receipt-v1";
+const ELAPSED_RECEIPT_CHILD_ENV = "CDDL_CODEGEN_VERIFY_ELAPSED_RECEIPT_CHILD";
+const ELAPSED_RECEIPT_DELAY_ENV = "CDDL_CODEGEN_VERIFY_ELAPSED_RECEIPT_DELAY_MS";
+const elapsedReceiptChild = SELFTEST && process.env[ELAPSED_RECEIPT_CHILD_ENV] === ELAPSED_RECEIPT_CHILD_MARKER;
+let elapsedReceiptStartupDelayMs = 0;
+if (elapsedReceiptChild) {
+  const rawDelay = process.env[ELAPSED_RECEIPT_DELAY_ENV] ?? "";
+  if (!/^[0-9]+$/.test(rawDelay) || !Number.isSafeInteger(Number(rawDelay)) || Number(rawDelay) < 150 || Number(rawDelay) > 250) {
+    console.error("HARNESS FAILURE: elapsed-receipt self-test child received an invalid bounded startup delay.");
+    process.exit(2);
+  }
+  elapsedReceiptStartupDelayMs = Number(rawDelay);
+  // Atomics.wait is synchronous by design: this must be startup work that has completed before
+  // the rest of the child runs, so moving verifyStartedAt below this seam makes the receipt test red.
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, elapsedReceiptStartupDelayMs);
+}
+
 // verify.ts is launched by Bun from a plain shell, so its scratch-cwd cargo children do not inherit
 // Cargo's repository-toolchain selection. Parse the repository declaration once and make it a
 // process-wide invariant before any cargo/rustc subprocess (including lib.ts's gate-cache key
@@ -206,6 +227,15 @@ const formatElapsed = (ms: number): string => {
   if (seconds > 0) return `${seconds}.${millis.toString().padStart(3, "0")}s`;
   return `${millis}ms`;
 };
+
+function parseElapsedReceipt(line: string): number | undefined {
+  const match = /^elapsed time        : (?:(\d+)h (\d+)m (\d+)s|(\d+)m (\d+)s|(\d+)\.(\d{3})s|(\d+)ms)$/.exec(line);
+  if (!match) return undefined;
+  if (match[1] !== undefined) return (Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3])) * 1000;
+  if (match[4] !== undefined) return (Number(match[4]) * 60 + Number(match[5])) * 1000;
+  if (match[6] !== undefined) return Number(match[6]) * 1000 + Number(match[7]);
+  return Number(match[8]);
+}
 // Scratch this run created under tmpdir(), removed by the exit handler below so a run cannot leak
 // multi-GB cargo targets. Registered at creation (not hardcoded) because the early-exit guards above
 // the creation sites — oracle-resolution, ALL_PROFILES extraction, the disk-headroom preflight — exit
@@ -226,6 +256,35 @@ process.on("exit", (code) => {
     else console.log(`probe scratch kept for triage: ${scratchProbeDir}`);
   }
 });
+
+function elapsedReceiptSelfTest(): void {
+  if (!SELFTEST || elapsedReceiptChild) return; // the child is the subject, never another parent
+  const injectedDelayMs = 200;
+  const child = Bun.spawnSync([process.execPath, process.argv[1]!, "--selftest"], {
+    cwd: ROOT,
+    env: {
+      ...VERIFY_SUBPROCESS_ENV,
+      [ELAPSED_RECEIPT_CHILD_ENV]: ELAPSED_RECEIPT_CHILD_MARKER,
+      [ELAPSED_RECEIPT_DELAY_ENV]: String(injectedDelayMs),
+    },
+    stdout: "pipe", stderr: "pipe",
+  });
+  const output = (child.stdout?.toString() ?? "") + (child.stderr?.toString() ?? "");
+  const receiptLines = output.split("\n").filter(line => line.startsWith("elapsed time        : "));
+  const elapsed = receiptLines.length === 1 ? parseElapsedReceipt(receiptLines[0]!) : undefined;
+  // A lower bound, never an equality or upper bound: scheduling and the child's other startup work
+  // are intentionally free to add time.  formatElapsed's minute/hour forms floor to whole seconds,
+  // which remains safely above this bound on a loaded machine.
+  if (child.exitCode !== 0 || elapsed === undefined || elapsed < 120) {
+    console.error(
+      "HARNESS FAILURE: elapsed-receipt process self-test failed — the child receipt must include its bounded startup delay " +
+      `(exit ${child.exitCode}, receipt ${JSON.stringify(receiptLines)}).`,
+    );
+    process.exit(2);
+  }
+  console.log(`elapsed-receipt process self-test OK (child receipt ${formatElapsed(elapsed)} includes >=120ms of a ${injectedDelayMs}ms startup delay)`);
+}
+elapsedReceiptSelfTest();
 
 // --- oracle locations (env-overridable; defaults assume the sibling-repo layout) ------------------
 const CODEGEN_DIR = resolve(ROOT, ".."); // the cddl-codegen repo this script lives in

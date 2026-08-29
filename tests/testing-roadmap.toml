@@ -87,7 +87,6 @@ entries = [
   "testing.generated-local-collision-class-refused-mangled-refusal-s",
   "testing.generated-local-collision.general-mangling-remedy",
   "testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns",
-  "testing.verify-ts-elapsed-time-covers-startup-activity",
 ]
 
 [[section]]
@@ -210,7 +209,6 @@ body_md = '''## Operational watches
 
 '''
 entries = [
-  "testing.gate-s-own-stdout-print-column-result-pass",
   "testing.flag-cddl-codegen-invocation-wasm-run-wasm-flag",
   "testing.failing-snapshot-test-surfaces-mismatch-per-test-run",
   "testing.extern-interface-export-public-interchange-format",
@@ -2245,34 +2243,6 @@ action_on_fire_md = '''Set testing.gate-cache.coverage-extensions to ready and e
 [record.payload.reopening_signal.predicate]
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.gate-cache.coverage-extensions's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
-
-[[record]]
-id = "testing.gate-s-own-stdout-print-column-result-pass"
-title = "A gate's own stdout can print a column-0 `RESULT: PASS (...)` line, so a log poll that greps for `RESULT:` (even line-anchored) reads a sub-check's verdict as the tier's."
-
-[record.payload]
-kind = "control"
-body_md = '''- **A gate's own stdout can print a column-0 `RESULT: PASS (...)` line, so a log poll that greps
-  for `RESULT:` (even line-anchored) reads a sub-check's verdict as the tier's.** Proven
-  2026-08-07, twice in one cycle: a session polling a live `check-local-*.log` for the tier
-  verdict fired early on `RESULT: PASS (editorial mapping holds mechanically)` — an in-gate
-  self-check's line — while the tier had ~10 minutes left; the re-armed anchor `^RESULT:` matched
-  the same line again. The tier verdict's exact shapes are
-  `RESULT: PASS — all in-tier gates green (tier=<t>)` and `RESULT: FAIL — <n> gate(s) failed: …`
-  (and a `--only` run's is the distinct `<sel> selected PASS/FAIL … no tier verdict` line), so a
-  poll must match those shapes, not the `RESULT:` prefix — and any watcher should also cover
-  process death (`pgrep` the run) so silence is distinguishable from still-running. Working rule:
-  poll for the tier-shaped line verbatim; treat a bare `RESULT:` match inside a live log as a
-  sub-check's output until the process has exited.
-
-'''
-control_kind = "operator_procedure"
-control_state = "live"
-reference_ids = ["agents-build-verify-n2"]
-claim_md = '''The operator procedure in testing.gate-s-own-stdout-print-column-result-pass's preserved detail remains authoritative.
-'''
-boundary_md = '''This procedure owns its exact operating surface and does not infer adjacent lifecycle work.
 '''
 
 [[record]]
@@ -6003,34 +5973,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.verify-ts-elapsed-time-covers-startup-activity"
-title = "verify.ts's elapsed-time receipt needs a process-boundary regression proving it includes startup work."
-legacy_aliases = ["Next work 27"]
-
-[record.payload]
-kind = "work"
-body_md = '''27. **verify.ts's elapsed-time receipt needs a process-boundary regression proving it includes
-    startup work.** B5-202 added two real startup subprocess checks, but a review caught the timer
-    initialized afterwards: external wall time was about 0.2 s while the verifier printed 7 ms.
-    The code fix moves the timer before every verifier-owned startup action. Neither the matrix
-    status-counter system (it derives committed-doc quantities) nor `timings_digest_check` (it
-    validates check.ts's recorded gate timing rows) observes verify.ts's own receipt, so neither
-    could catch this accounting boundary. Add a cheap process-boundary self-test with a TEST-ONLY,
-    bounded startup delay and assert the printed elapsed time includes it with a conservative
-    lower bound; keep ordinary production modes and their timing semantics unchanged. The test
-    must clean up its scratch state and avoid a wall-clock equality assertion.
-
-'''
-work_state = "ready"
-work_intent = "add_regression"
-work_kind = "regression_gap"
-risk = "misleading_docs"
-acceptance_md = '''Complete exactly the operative work, validation, and bounded exclusions stated in testing.verify-ts-elapsed-time-covers-startup-activity's payload prose; do not widen adjacent future work.
-'''
-priority_rationale_md = '''The source owner places this item in Next priority order.
-'''
-
-[[record]]
 id = "testing.wac-composed-component-transpiled-jco-loses-cross-instance"
 title = "A `wac`-composed component transpiled by jco loses cross-instance resource identity, and the worse half of that is SILENT."
 
@@ -7108,13 +7050,6 @@ source = "testing.gate-cache-costs"
 kind = "file_heading"
 path = "tests/README.md"
 heading = "The gate cache (memoize-and-skip for nested cargo)"
-
-[[reference]]
-id = "agents-build-verify-n2"
-source = "testing.gate-s-own-stdout-print-column-result-pass"
-kind = "file_heading"
-path = "AGENTS.md"
-heading = "Build & verify"
 
 [[reference]]
 id = "gate-fuzz-compile-rot"

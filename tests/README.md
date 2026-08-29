@@ -164,7 +164,8 @@ of discipline:**
   warms). Unknown gate ids and out-of-tier selections are refused the same way, exit 2;
 - **the last line is a receipt, never the tier verdict**:
   `check.ts --only <gates> @ <commit>: N/N selected PASS; M in-tier gates NOT RUN — no tier verdict`.
-  `RESULT: PASS — all in-tier gates green` stays reserved for a complete tier.
+  `CHECK_TIER_RESULT: PASS — all in-tier gates green` stays reserved for a complete tier; the
+  reserved prefix means a gate's own column-0 `RESULT:` line can never be read as the tier verdict.
 
 **Reporting rule:** a `--only` run is citable only as "gates X, Y ran green" — never as a tier
 verdict, in a commit message, a doc, or a report. That is the same rule AGENTS.md states for

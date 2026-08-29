@@ -2507,7 +2507,7 @@ export const REGISTRY: Gate[] = [
 //      retention (per-GATE rows are still emitted: those remain legitimate measurements);
 //   4. dependency-splitting selections are refused, naming the prerequisite (`requires`);
 //   5. the final line is a paste-able receipt that cannot state a verdict without stating the
-//      omission — `RESULT: PASS — all in-tier gates green` stays reserved for complete tiers.
+//      omission — `CHECK_TIER_RESULT: PASS — all in-tier gates green` stays reserved for complete tiers.
 export type SelectionResult = { ok: true; ids: Set<string> } | { ok: false; message: string };
 
 /**
@@ -3415,8 +3415,8 @@ async function main() {
 
   // A SELECTED run's last line is the paste-able receipt, and it replaces the verdict rather than
   // merely omitting it: counts and names are fused, so the sentence cannot state what ran without
-  // stating what did not. `RESULT: PASS — all in-tier gates green` stays reserved for complete
-  // tiers — it is the string AGENTS.md and the timings parser both read as a tier verdict.
+  // stating what did not. `CHECK_TIER_RESULT: PASS — all in-tier gates green` stays reserved for
+  // complete tiers — its namespace cannot be impersonated by a gate's own RESULT: line.
   if (selected) {
     const sel = inTier.map(g => ({ id: g.id, status: results.get(g.id)!.out.status }));
     const passed = sel.filter(s => s.status === "PASS").map(s => s.id);
@@ -3436,10 +3436,10 @@ async function main() {
   }
 
   if (fails.length) {
-    console.log(`RESULT: FAIL — ${fails.length} gate(s) failed: ${fails.join(", ")}`);
+    console.log(`CHECK_TIER_RESULT: FAIL — ${fails.length} gate(s) failed: ${fails.join(", ")}`);
     process.exit(1);
   }
-  console.log(`RESULT: PASS — all in-tier gates green (tier=${tier})`);
+  console.log(`CHECK_TIER_RESULT: PASS — all in-tier gates green (tier=${tier})`);
   process.exit(0);
 }
 

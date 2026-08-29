@@ -39,8 +39,9 @@
  *     because check.ts prints `--- <gate>: <STATUS>  [<dur>]` incrementally as each gate finishes.
  *     Such a run is recorded WITHOUT a wall time — a killed run's gate sum is not a wall time.
  *   - `^RESULT` is not the tier verdict. Individual gates print their own `RESULT:` lines
- *     (`RESULT: PASS (editorial mapping holds mechanically)` and four others). Only the two long
- *     forms check.ts itself prints are the verdict.
+ *     (`RESULT: PASS (editorial mapping holds mechanically)` and four others). Current check.ts
+ *     receipts use the reserved `CHECK_TIER_RESULT:` namespace; the old long forms remain accepted
+ *     solely so --backfill can recover retained historical logs.
  */
 import {
   appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync,
@@ -344,8 +345,12 @@ export function machineId(): string {
 const RE_SECTION = /^=== \[(fast|local|full)\] (\S+) — /;
 const RE_GATE = /^--- ([A-Za-z0-9_]+): (PASS|FAIL|SKIPPED)(?: \(.*\))?  \[([^\]]+)\]$/;
 const RE_SUMMARY = /^SUMMARY — tier=(\S+)  wall=(.+)$/;
-const RE_VERDICT_PASS = /^RESULT: PASS — all in-tier gates green \(tier=(\S+)\)$/;
-const RE_VERDICT_FAIL = /^RESULT: FAIL — \d+ gate\(s\) failed:/;
+const RE_CURRENT_VERDICT_PASS = /^CHECK_TIER_RESULT: PASS — all in-tier gates green \(tier=(\S+)\)$/;
+const RE_CURRENT_VERDICT_FAIL = /^CHECK_TIER_RESULT: FAIL — \d+ gate\(s\) failed:/;
+// The old namespace is accepted only after check.ts's summary, as historical logs emitted it.
+// That keeps an exact-looking `RESULT:` line inside a gate from becoming a tier receipt.
+const RE_HISTORICAL_VERDICT_PASS = /^RESULT: PASS — all in-tier gates green \(tier=(\S+)\)$/;
+const RE_HISTORICAL_VERDICT_FAIL = /^RESULT: FAIL — \d+ gate\(s\) failed:/;
 // Both roll-up shapes: verify.ts's unlabelled padded form and the Rust gates' `<label> gate-cache:`.
 // The label is NOT used for attribution — see parseLog.
 const RE_ROLLUP = /gate-cache\s*:\s*(\d+) run, (\d+) cached\s*$/;
@@ -379,6 +384,7 @@ export function parseLog(text: string, basename: string): ParsedLog | null {
   const parsed: ParsedLog = { run: named.run, tier: named.tier, gates: [] };
   const cells = new Map<string, { run: number; cached: number }>();
   let section: string | null = null;
+  let sawSummary = false;
 
   for (const line of text.split("\n")) {
     const sec = RE_SECTION.exec(line);
@@ -405,9 +411,9 @@ export function parseLog(text: string, basename: string): ParsedLog | null {
       continue;
     }
     const s = RE_SUMMARY.exec(line);
-    if (s) { const w = parseDur(s[2]!); if (w !== null) parsed.wallMs = w; continue; }
-    if (RE_VERDICT_PASS.test(line)) { parsed.verdict = "pass"; continue; }
-    if (RE_VERDICT_FAIL.test(line)) { parsed.verdict = "fail"; continue; }
+    if (s) { const w = parseDur(s[2]!); if (w !== null) parsed.wallMs = w; sawSummary = true; continue; }
+    if (RE_CURRENT_VERDICT_PASS.test(line) || sawSummary && RE_HISTORICAL_VERDICT_PASS.test(line)) { parsed.verdict = "pass"; continue; }
+    if (RE_CURRENT_VERDICT_FAIL.test(line) || sawSummary && RE_HISTORICAL_VERDICT_FAIL.test(line)) { parsed.verdict = "fail"; continue; }
   }
   return parsed;
 }
@@ -730,7 +736,37 @@ gate-cache          : 149 run, 687 cached
 --------------------------------------------------
 SUMMARY — tier=full  wall=74m 33s
 --------------------------------------------------
-RESULT: PASS — all in-tier gates green (tier=full)
+CHECK_TIER_RESULT: PASS — all in-tier gates green (tier=full)
+`.trimStart();
+
+const FIXTURE_HISTORICAL_COMPLETED = FIXTURE_COMPLETED.replace(
+  "CHECK_TIER_RESULT: PASS — all in-tier gates green (tier=full)",
+  "RESULT: PASS — all in-tier gates green (tier=full)",
+);
+
+const FIXTURE_HISTORICAL_FAILED = FIXTURE_HISTORICAL_COMPLETED.replace(
+  "RESULT: PASS — all in-tier gates green (tier=full)",
+  "RESULT: FAIL — 1 gate(s) failed: verify",
+);
+
+const FIXTURE_INTERNAL_RESULT = `
+check.ts — tier=fast
+
+=== [fast] fmt — formatter ===
+RESULT: PASS — all in-tier gates green (tier=fast)
+--- fmt: PASS  [202ms]
+
+SUMMARY — tier=fast  wall=202ms
+`.trimStart();
+
+const FIXTURE_SELECTED = `
+check.ts — tier=local --only fmt
+
+=== [fast] fmt — formatter ===
+--- fmt: PASS  [202ms]
+
+SUMMARY (PARTIAL — --only fmt) — tier=local  wall=202ms
+check.ts --only fmt @ deadbeef: 1/1 selected PASS; 9 in-tier gates NOT RUN — no tier verdict
 `.trimStart();
 
 const FIXTURE_KILLED = `
@@ -944,10 +980,25 @@ export async function selfTests(): Promise<TestResult[]> {
       JSON.stringify({ n: p.gates.length, wallMs: p.wallMs, verdict: p.verdict, verify, test }));
   }
   {
+    const p = parseLog(FIXTURE_HISTORICAL_COMPLETED, "check-full-2000-01-01T00-00-01Z.log")!;
+    const failed = parseLog(FIXTURE_HISTORICAL_FAILED, "check-full-2000-01-01T00-00-02Z.log")!;
+    ok("parser_accepts_old_complete_tier_receipts_for_backfill", p.verdict === "pass" && failed.verdict === "fail",
+      JSON.stringify({ passed: p.verdict, failed: failed.verdict }));
+  }
+  {
+    const p = parseLog(FIXTURE_INTERNAL_RESULT, "check-fast-2000-01-01T00-00-03Z.log")!;
+    ok("parser_does_not_treat_a_gate_internal_result_as_a_tier_verdict", p.verdict === undefined,
+      JSON.stringify(p));
+  }
+  {
     const p = parseLog(FIXTURE_KILLED, "check-full-2000-01-01T01-00-00Z.log")!;
     ok("parser_killed_log_yields_gates_but_no_wall_or_verdict",
       p.gates.length === 2 && p.wallMs === undefined && p.verdict === undefined,
       JSON.stringify({ n: p.gates.length, wallMs: p.wallMs, verdict: p.verdict }));
+  }
+  {
+    const p = parseLog(FIXTURE_SELECTED, "check-only-2000-01-01T01-00-01Z.log");
+    ok("parser_keeps_selected_receipts_out_of_tier_attribution", p === null, JSON.stringify(p));
   }
   {
     ok("parser_rejects_a_non_tier_log_name",

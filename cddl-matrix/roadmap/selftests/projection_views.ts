@@ -117,7 +117,7 @@ export const PROJECTION_VIEW_SELFTEST_CASES: readonly SelfTestCase[] = Object.fr
           record.payload.kind === "testing_operational_watch" && record.payload.watch_state !== "watching" ||
           record.payload.kind === "testing_incident" && record.payload.incident_posture !== "live"),
       };
-      assert(operationalBuckets.systems.length === 11 && operationalBuckets.live.length === 2 &&
+      assert(operationalBuckets.systems.length === 10 && operationalBuckets.live.length === 2 &&
         operationalBuckets.history.length === 0, "live operational classification counts changed");
       const systemsStart = liveText.indexOf("### Operational systems, controls, and resource work");
       const liveStart = liveText.indexOf("### Live operational watches");
@@ -144,7 +144,7 @@ export const PROJECTION_VIEW_SELFTEST_CASES: readonly SelfTestCase[] = Object.fr
       }
       const aliases = live.document.records.flatMap((record) => record.legacy_aliases ?? [])
         .filter((alias) => /^Next work [0-9]+$/u.test(alias)).sort();
-      assert(aliases.length === 8 && !aliases.includes("Next work 3") && !aliases.includes("Next work 5") && !aliases.includes("Next work 6") && !aliases.includes("Next work 9") && !aliases.includes("Next work 10") && !aliases.includes("Next work 12") && !aliases.includes("Next work 14") && !aliases.includes("Next work 15") && !aliases.includes("Next work 16") && !aliases.includes("Next work 17") && !aliases.includes("Next work 18") && !aliases.includes("Next work 19") && !aliases.includes("Next work 20") && !aliases.includes("Next work 21") && !aliases.includes("Next work 22") && !aliases.includes("Next work 23") && !aliases.includes("Next work 24") && !aliases.includes("Next work 25") && !aliases.includes("Next work 26") && aliases.includes("Next work 27"),
+      assert(aliases.length === 7 && !aliases.includes("Next work 3") && !aliases.includes("Next work 5") && !aliases.includes("Next work 6") && !aliases.includes("Next work 9") && !aliases.includes("Next work 10") && !aliases.includes("Next work 12") && !aliases.includes("Next work 14") && !aliases.includes("Next work 15") && !aliases.includes("Next work 16") && !aliases.includes("Next work 17") && !aliases.includes("Next work 18") && !aliases.includes("Next work 19") && !aliases.includes("Next work 20") && !aliases.includes("Next work 21") && !aliases.includes("Next work 22") && !aliases.includes("Next work 23") && !aliases.includes("Next work 24") && !aliases.includes("Next work 25") && !aliases.includes("Next work 26") && !aliases.includes("Next work 27"),
         "live Next-work ordinal inventory changed or filled the intentional ordinal gap");
       const handStatusLine = (record: (typeof live.document.records)[number]): string => {
         const facts = recordStatusFacts(record.payload);
