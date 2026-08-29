@@ -10,6 +10,7 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     reg.claim_reachable::<cddl_lib::BoundedPreservePmap>();
     reg.claim_reachable::<cddl_lib::CustomWrapper>();
     reg.claim_reachable::<cddl_lib::NePreservePmap>();
+    reg.claim_reachable::<cddl_lib::NonEmptyRejectUints>();
     reg.claim_reachable::<cddl_lib::PreservePmap>();
     reg.claim_reachable::<cddl_lib::RejectUints>();
     reg.claim_reachable::<cddl_lib::Table>();
@@ -26,6 +27,7 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     reg.add::<cddl_lib::NemJson>();
     reg.add::<cddl_lib::NevJson>();
     reg.add::<cddl_lib::NintWrapper>();
+    reg.add::<cddl_lib::NonEmptyRejectSetJson>();
     reg.add::<cddl_lib::PreservePmapJson>();
     reg.add::<cddl_lib::RejectSetJson>();
     reg.add::<cddl_lib::StrWrapper>();

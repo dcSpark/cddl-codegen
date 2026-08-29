@@ -14,6 +14,7 @@ expression: content
 pub use crate::generated::BoundedPreservePmap;
 pub use crate::generated::NePreservePmap;
 pub use crate::generated::NonEmptyMapTextToU64;
+pub use crate::generated::NonEmptyRejectUints;
 pub use crate::generated::NonEmptyU64List;
 pub use crate::generated::PairMapU64ToText;
 pub use crate::generated::PreservePmap;

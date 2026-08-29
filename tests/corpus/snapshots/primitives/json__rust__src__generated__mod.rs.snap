@@ -12,6 +12,7 @@ expression: content
 )]
 
 extern crate alloc;
+use alloc::borrow::ToOwned;
 use alloc::string::String;
 use alloc::string::ToString;
 use alloc::vec::Vec;
@@ -54,7 +55,9 @@ impl schemars::JsonSchema for Int {
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        String::json_schema(generator)
+        let mut schema = String::json_schema(generator);
+        schema.insert("pattern".to_owned(), "^[+-]?[0-9]+$".into());
+        schema
     }
 
     fn inline_schema() -> bool {

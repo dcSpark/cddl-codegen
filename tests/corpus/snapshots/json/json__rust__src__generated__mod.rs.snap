@@ -30,7 +30,7 @@ pub mod serialization;
 use crate::generated::error::*;
 use crate::generated::non_empty::NonEmptyVec;
 use crate::generated::non_empty_map::NonEmptyMap;
-use crate::generated::ordered_set::OrderedSet;
+use crate::generated::ordered_set::{NonEmptyOrderedSet, OrderedSet};
 use crate::generated::pair_map::{BoundedPairMap, NonEmptyPairMap, PairMap};
 use crate::generated::serialization::decode_canonical_hex;
 
@@ -388,7 +388,9 @@ impl schemars::JsonSchema for Int {
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        String::json_schema(generator)
+        let mut schema = String::json_schema(generator);
+        schema.insert("pattern".to_owned(), "^[+-]?[0-9]+$".into());
+        schema
     }
 
     fn inline_schema() -> bool {
@@ -588,6 +590,21 @@ impl schemars::JsonSchema for NintWrapper {
         <u64 as schemars::JsonSchema>::inline_schema()
     }
 }
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct NonEmptyRejectSetJson {
+    pub xs: NonEmptyRejectUints,
+}
+
+impl NonEmptyRejectSetJson {
+    pub fn new(xs: NonEmptyRejectUints) -> Self {
+        Self { xs }
+    }
+}
+
+/// `[+ u64]`: at least one element, enforced at the `NonEmptyOrderedSet` `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same door, so wire-side and API-side rejection are identical).
+/// `@duplicates reject`: a repeated element is refused (a `DuplicateKey` error) on both the wire and the API; accepted (duplicate-free) input re-emits byte-exactly in wire order (the set is order-preserving, never sorted).
+pub type NonEmptyRejectUints = NonEmptyOrderedSet<u64>;
 
 pub type PreservePmap = PairMap<u64, String>;
 

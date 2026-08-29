@@ -26,6 +26,8 @@ use crate::generated::BoundedPreservePmap as _;
 #[allow(unused_imports)]
 use crate::generated::NePreservePmap as _;
 #[allow(unused_imports)]
+use crate::generated::NonEmptyRejectUints as _;
+#[allow(unused_imports)]
 use crate::generated::PreservePmap as _;
 #[allow(unused_imports)]
 use crate::generated::RejectUints as _;
@@ -57,6 +59,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::NevJson>();
     _assert_serialize::<crate::generated::NintWrapper>();
     _assert_deserialize::<crate::generated::NintWrapper>();
+    _assert_serialize::<crate::generated::NonEmptyRejectSetJson>();
+    _assert_deserialize::<crate::generated::NonEmptyRejectSetJson>();
     _assert_serialize::<crate::generated::PreservePmapJson>();
     _assert_deserialize::<crate::generated::PreservePmapJson>();
     _assert_serialize::<crate::generated::RejectSetJson>();
