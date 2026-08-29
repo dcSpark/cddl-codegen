@@ -1395,13 +1395,13 @@ pub(super) fn generate_int(gen_scope: &mut GenerationScope, types: &Intermediate
         json_schema_fn
             .arg("generator", "&mut schemars::SchemaGenerator")
             .ret("schemars::Schema")
-            .line("let mut schema = String::json_schema(generator);")
+            .line("let mut out = String::json_schema(generator);")
             // `Int::from_str` first admits Rust's signed decimal-integer spelling, then applies
             // the CBOR Int range through `TryFrom<i128>`. Keep the lexical half in the published
             // schema; the range is intentionally left to the deserialize door rather than trying
             // to encode the asymmetric -2^64..2^64-1 interval in a brittle regex.
-            .line("schema.insert(\"pattern\".to_owned(), \"^[+-]?[0-9]+$\".into());")
-            .line("schema");
+            .line("out.insert(\"pattern\".to_owned(), \"^[+-]?[0-9]+$\".into());")
+            .line("out");
         let mut inline_schema_fn = codegen::Function::new("inline_schema");
         inline_schema_fn.ret("bool").line("String::inline_schema()");
         json_schema_impl
