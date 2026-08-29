@@ -36,7 +36,7 @@ const text = (value: string): Uint8Array => UTF8.encode(value);
 const ZERO_HASH = "0".repeat(64);
 
 export const REQUIRED_SCHEMA_SELFTEST_CASE_IDS = [
-  "strict_unknown_top", "strict_unknown_nested_record", "strict_unknown_reference", "strict_unknown_every_table", "strict_unknown_kind", "strict_unknown_enum", "strict_enum_every_field", "strict_missing_discriminator", "strict_generic_state_rejected", "strict_generic_disposition_rejected", "missing_section_entries", "empty_records_floor", "all_fields_identity", "v3_semantic_identity", "v2_unsupported", "v3_retired_keys_rejected", "transition_observable_arm_dependent", "noncanonical_basic_string", "noncanonical_table_order", "noncanonical_set_order", "toml_terminal_newline", "domain_matrix_all_tags", "domain_testing_all_tags", "domain_state_required_forbidden", "domain_defect_regression_required", "domain_missing_system_admission_required", "domain_transition_each_kind", "domain_quantitative_scope_unit_required", "domain_manual_not_auto_boolean", "domain_stale_unknown_visible", "evidence_point_requires_provenance", "evidence_negative_requires_enumeration", "evidence_generator_requires_harness_free", "evidence_timing_join_structural", "evidence_draft_log_rejected", "schema_exact_keys_every_structural_arm", "schema_shared_payload_exact_keys_every_arm", "schema_matrix_payload_exact_keys_every_arm", "schema_testing_payload_exact_keys_every_arm", "schema_reference_exact_keys_every_arm", "schema_canonical_key_order_every_arm", "schema_duplicate_assignment_rejected", "schema_duplicate_table_rejected", "schema_duplicate_nested_payload_rejected", "noncanonical_comment", "noncanonical_inline_table", "schema_priority_band_closed_enum", "schema_observed_at_civil_date", "schema_held_permanent_rejected", "schema_due_on_valid_through_postures",
+  "strict_unknown_top", "strict_unknown_nested_record", "strict_unknown_reference", "strict_unknown_every_table", "strict_unknown_kind", "strict_unknown_enum", "strict_enum_every_field", "strict_missing_discriminator", "strict_generic_state_rejected", "strict_generic_disposition_rejected", "missing_section_entries", "empty_records_floor", "all_fields_identity", "v3_semantic_identity", "v2_unsupported", "v3_retired_keys_rejected", "transition_observable_arm_dependent", "noncanonical_basic_string", "noncanonical_table_order", "noncanonical_set_order", "toml_terminal_newline", "domain_matrix_all_tags", "domain_testing_all_tags", "domain_state_required_forbidden", "domain_defect_regression_required", "domain_missing_system_admission_required", "domain_transition_each_kind", "domain_quantitative_scope_unit_required", "domain_manual_not_auto_boolean", "domain_stale_unknown_visible", "evidence_point_requires_provenance", "evidence_negative_requires_enumeration", "evidence_generator_requires_harness_free", "evidence_timing_join_structural", "evidence_draft_log_rejected", "schema_exact_keys_every_structural_arm", "schema_shared_payload_exact_keys_every_arm", "schema_matrix_payload_exact_keys_every_arm", "schema_testing_payload_exact_keys_every_arm", "schema_reference_exact_keys_every_arm", "schema_canonical_key_order_every_arm", "schema_duplicate_assignment_rejected", "schema_duplicate_table_rejected", "schema_duplicate_table_quoted_equivalence_rejected", "schema_duplicate_nested_payload_rejected", "schema_duplicate_nested_payload_per_aot_instance_allowed", "schema_duplicate_nested_payload_nested_aot_allowed", "schema_duplicate_table_scanner_ignores_comment_and_strings", "noncanonical_comment", "noncanonical_inline_table", "schema_priority_band_closed_enum", "schema_observed_at_civil_date", "schema_held_permanent_rejected", "schema_due_on_valid_through_postures",
 ] as const;
 
 export type RequiredSchemaSelfTestCaseId = (typeof REQUIRED_SCHEMA_SELFTEST_CASE_IDS)[number];
@@ -831,8 +831,25 @@ function execute(id: RequiredSchemaSelfTestCaseId, context?: SelfTestContext): v
     case "schema_observed_at_civil_date": expectFailure(() => decodePayload('kind = "testing_cost"\ncost_posture = "historical_observation"\nunit = "ms"\nscope_md = """Scope."""\nvalue_min = 1\nvalue_max = 2\nobserved_at = "2025-02-29"\nenvironment_md = """Env."""\nevidence_ids = ["testing.fixture-evidence"]\n', "testing"), ["E-SCHEMA-TYPE"]); return;
     case "schema_duplicate_assignment_rejected": duplicateParseRejected(new TextDecoder().decode(minimalRoadmap()).replace("schema_version = 3", "schema_version = 3\nschema_version = 3")); return;
     case "schema_duplicate_table_rejected": duplicateParseRejected(new TextDecoder().decode(minimalRoadmap()).replace("\n[[section]]", "\n[document]\n\n[[section]]")); return;
+    case "schema_duplicate_table_quoted_equivalence_rejected":
+      duplicateParseRejected('[document]\nvalue = 1\n["doc\\u0075ment"]\nother = 2\n'); return;
     case "schema_duplicate_nested_payload_rejected":
       duplicateParseRejected(`${new TextDecoder().decode(minimalRoadmap())}\n[record.payload]\nkind = "work"\n`); return;
+    case "schema_duplicate_nested_payload_per_aot_instance_allowed": {
+      const bindings = shieldTomlMarkdown(text('[[record]]\nid = "one"\n[record.payload]\nvalue = 1\n\n[[record]]\nid = "two"\n[record.payload]\nvalue = 2\n'), "<aot-table-scope>");
+      assert(bindings.parsed !== undefined, "a child table may repeat beneath a new array-table element");
+      return;
+    }
+    case "schema_duplicate_nested_payload_nested_aot_allowed": {
+      const bindings = shieldTomlMarkdown(text('[[record]]\n[[record.child]]\n[record.child.detail]\nvalue = 1\n\n[[record]]\n[[record.child]]\n[record.child.detail]\nvalue = 2\n'), "<nested-aot-table-scope>");
+      assert(bindings.parsed !== undefined, "a grandchild table may repeat beneath a new nested array-table owner");
+      return;
+    }
+    case "schema_duplicate_table_scanner_ignores_comment_and_strings": {
+      const bindings = shieldTomlMarkdown(text(`# [document]\nsingle_basic = "[document]"\nsingle_literal = '[document]'\nmulti_basic = """\n[document]\n"""\nmulti_literal = '''\n[document]\n'''\n\n[document]\nvalue = "ok"\n`), "<table-header-lexing>");
+      assert(bindings.parsed !== undefined, "header-like comment/string forms remain TOML values");
+      return;
+    }
     case "schema_exact_keys_every_structural_arm": {
       assert(context !== undefined, `${id} requires fixture ports`);
       assertRowMutationCoverage(fixtureMutationProof(context), [...ROADMAP_SCHEMA_ROWS]);
@@ -977,7 +994,11 @@ const SCHEMA_CASES: { readonly [K in RequiredSchemaSelfTestCaseId]: SchemaCaseSp
   schema_canonical_key_order_every_arm: { category: "schema", polarity: "positive" },
   schema_duplicate_assignment_rejected: { category: "schema", polarity: "negative" },
   schema_duplicate_table_rejected: { category: "schema", polarity: "negative" },
+  schema_duplicate_table_quoted_equivalence_rejected: { category: "schema", polarity: "negative" },
   schema_duplicate_nested_payload_rejected: { category: "schema", polarity: "negative" },
+  schema_duplicate_nested_payload_per_aot_instance_allowed: { category: "schema", polarity: "positive" },
+  schema_duplicate_nested_payload_nested_aot_allowed: { category: "schema", polarity: "positive" },
+  schema_duplicate_table_scanner_ignores_comment_and_strings: { category: "schema", polarity: "positive" },
   noncanonical_comment: { category: "schema", polarity: "negative" },
   noncanonical_inline_table: { category: "schema", polarity: "negative" },
   schema_priority_band_closed_enum: { category: "schema", polarity: "positive" },
@@ -1022,4 +1043,3 @@ const FIXTURE_REQUIRED_SCHEMA_CASE_IDS = new Set<RequiredSchemaSelfTestCaseId>([
   "schema_canonical_key_order_every_arm",
   "schema_priority_band_closed_enum",
 ]);
-

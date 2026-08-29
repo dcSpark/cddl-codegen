@@ -329,7 +329,12 @@ function runGit(
       LC_ALL: "C",
       TZ: "UTC",
     });
-    result = spawnSync("git", [...argv], {
+    // The adapter deliberately disables ambient Git config above, including any host-level
+    // `safe.directory` declaration. Trust only the exact repository root this call already owns:
+    // command-scoped configuration keeps the ownership check deterministic without reopening the
+    // ambient configuration surface. This is also required in agent sandboxes where the bind-mounted
+    // checkout is legitimately owned by the human account rather than the runner uid.
+    result = spawnSync("git", ["-c", `safe.directory=${root}`, ...argv], {
       cwd: root,
       shell: false,
       encoding: null,

@@ -219,6 +219,107 @@ function scanTokens(bytes: Uint8Array, source: string): MutableToken[] {
   return tokens;
 }
 
+/**
+ * Bun 1.3.13 merges a repeated ordinary table. Ask Bun to make that merge observable instead of
+ * reproducing TOML's quoted-key and array-table ownership rules: insert one source-unique key
+ * after every complete ordinary-table header, then parse the private probe. A real redefinition
+ * puts the same key in one table and Bun rejects it; equal child paths in separate array-table
+ * elements still belong to separate values and remain valid.
+ */
+function rejectDuplicateOrdinaryTableHeaders(shadow: string, source: string): void {
+  const bytes = UTF8.encode(shadow);
+  let sentinel = "__ROADMAP_DUPLICATE_TABLE_GUARD__";
+  while (shadow.includes(sentinel)) sentinel += "_";
+
+  const completeOrdinaryHeaderLineEnd = (start: number): number | undefined => {
+    if (bytes[start + 1] === 0x5b) return undefined;
+    for (let index = start + 1; index < bytes.length; ) {
+      const byte = bytes[index];
+      if (byte === 0x0a) return undefined;
+      if (byte === 0x22) {
+        index = scanSingleBasic(bytes, source, index);
+        continue;
+      }
+      if (byte === 0x27) {
+        index = scanSingleLiteral(bytes, source, index);
+        continue;
+      }
+      if (byte !== 0x5d) {
+        index += 1;
+        continue;
+      }
+      for (let rest = index + 1; rest < bytes.length; rest += 1) {
+        if (bytes[rest] === 0x0a) return rest + 1;
+        if (bytes[rest] === 0x23) {
+          while (rest < bytes.length && bytes[rest] !== 0x0a) rest += 1;
+          return rest === bytes.length ? rest : rest + 1;
+        }
+        if (bytes[rest] !== 0x20 && bytes[rest] !== 0x09) return undefined;
+      }
+      return bytes.length;
+    }
+    return undefined;
+  };
+
+  const insertionPoints: number[] = [];
+  let lineStart = true;
+  for (let index = 0; index < bytes.length; ) {
+    const byte = bytes[index];
+    if (byte === 0x0a) {
+      lineStart = true;
+      index += 1;
+      continue;
+    }
+    if (lineStart && (byte === 0x20 || byte === 0x09)) {
+      index += 1;
+      continue;
+    }
+    if (byte === 0x23) {
+      while (index < bytes.length && bytes[index] !== 0x0a) index += 1;
+      continue;
+    }
+    if (byte === 0x22) {
+      index = quoteRun(bytes, index, 0x22) >= 3
+        ? scanMultilineBasic(bytes, source, index)
+        : scanSingleBasic(bytes, source, index);
+      lineStart = false;
+      continue;
+    }
+    if (byte === 0x27) {
+      index = quoteRun(bytes, index, 0x27) >= 3
+        ? scanMultilineLiteral(bytes, source, index)
+        : scanSingleLiteral(bytes, source, index);
+      lineStart = false;
+      continue;
+    }
+    if (lineStart && byte === 0x5b) {
+      const lineEnd = completeOrdinaryHeaderLineEnd(index);
+      if (lineEnd !== undefined) insertionPoints.push(lineEnd);
+    }
+    lineStart = false;
+    index += 1;
+  }
+  if (insertionPoints.length === 0) return;
+
+  const parts: Uint8Array[] = [];
+  let cursor = 0;
+  for (const insertionPoint of insertionPoints) {
+    parts.push(bytes.subarray(cursor, insertionPoint));
+    const needsLeadingLf = insertionPoint === bytes.length && bytes[insertionPoint - 1] !== 0x0a;
+    parts.push(UTF8.encode(`${needsLeadingLf ? "\n" : ""}${sentinel} = true\n`));
+    cursor = insertionPoint;
+  }
+  parts.push(bytes.subarray(cursor));
+  const length = parts.reduce((sum, part) => sum + part.length, 0);
+  const probe = new Uint8Array(length);
+  let offset = 0;
+  for (const part of parts) {
+    probe.set(part, offset);
+    offset += part.length;
+  }
+  parseShadow(source, new TextDecoder().decode(probe));
+}
+
 function rebuildShadow(bytes: Uint8Array, tokens: readonly MutableToken[]): string {
   const parts: Uint8Array[] = [];
   let cursor = 0;
@@ -351,6 +452,7 @@ export class MarkdownBindings {
 export function shieldTomlMarkdown(bytes: Uint8Array, source: string): MarkdownBindings {
   decodeFatalUtf8Lf(bytes, source);
   const tokens = scanTokens(bytes, source);
+  rejectDuplicateOrdinaryTableHeaders(rebuildShadow(bytes, tokens), source);
   let parsed: unknown;
   let stringCount = 0;
   let attempts = 0;
