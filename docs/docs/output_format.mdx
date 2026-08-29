@@ -989,6 +989,11 @@ Each non-empty type provides one conversion contract:
   an empty CBOR array/map is rejected during decode with the *same* `0 not at least 1` error the API
   raises, so the constraint holds identically at both doors.
 
+Under `--json-schema-export`, the direct carrier schemas publish that same cardinality invariant:
+`NonEmptyVec<T>` has `minItems: 1`, and `NonEmptyMap<K, V>` has `minProperties: 1`. Those are JSON
+Schema constraints on the JSON array/object carriers, alongside (not instead of) the checked Rust
+construction and deserialize doors.
+
 `BoundedVec` has the same loose-to-tight `TryFrom<Vec<T>>` and widening `From`/`into_inner` contract.
 It exposes slices and mutable elements but never `&mut Vec`; `push`, `extend`, `pop`, `remove`, and
 `truncate` return the existing `RangeCheck` before crossing either bound. JSON is an ordinary array
@@ -1073,6 +1078,11 @@ A tag-258 set (which defaults to `reject`) uses the SAME twins for its inner col
 them in a nominal struct that owns its encodings rather than aliasing to them transparently — see
 [Nominal tag-258 set types](#nominal-tag-258-set-types) above. The twin conversion contract below
 describes the inner collection either way.
+
+Under `--json-schema-export`, their direct carrier schemas make the same JSON-array distinction:
+`OrderedSet<T>` publishes `uniqueItems: true`; `NonEmptyOrderedSet<T>` publishes both
+`uniqueItems: true` and `minItems: 1`. This aligns the schema with the duplicate and non-empty
+checks the JSON deserializer performs through the corresponding `TryFrom<Vec<T>>` door.
 
 The default is `preserve` — today's occurrence-selected `Vec` / `NonEmptyVec` /
 `BoundedVec<T, MIN, MAX>`, which accept and re-emit duplicates byte-exactly for multi-era readers;
@@ -1219,9 +1229,9 @@ preserved input encodings.
 **JSON** (`--json-serde-derives` / `--json-schema-export`): a preserve table serializes as an **array
 of `[key, value]` pairs**, not a JSON object — a JSON object cannot carry duplicate keys any more than
 a `BTreeMap` can, so the array-of-pairs shape is the faithful one. The generated `schemars` schema is
-therefore an **array** schema, not an object/`additionalProperties` one. Bounded pair maps add
-`minItems`/`maxItems` to that pair sequence, and the `{+}` flavor's door refuses an empty `[]` on the
-JSON path with the same min-1 error as the wire path.
+therefore an **array** schema, not an object/`additionalProperties` one. `NonEmptyPairMap` publishes
+`minItems: 1`; bounded pair maps publish `minItems`/`maxItems` for their authored window. The `{+}`
+flavor's JSON deserializer likewise refuses an empty `[]` through the same min-1 door as the wire path.
 
 The wasm boundary mirrors the set twins' two-wrapper pattern, except the loose `PairMap`'s `insert`
 **appends** (returning `Option`) rather than rejecting. The synthesized wasm class name carries the

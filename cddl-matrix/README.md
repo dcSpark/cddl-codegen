@@ -701,7 +701,10 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   (`E0277`, loud and local at the first build), and supplying them builds the whole surface green:
   `tests/json` splices the hand-written impls of `tests/external_json_impls` into the generated
   crate and builds the rust, wasm and json-gen crates, standalone type and derived container
-  alike (pinned by `custom_wrapper_in_derived_container`). Gating those surfaces on "does this
+  alike (pinned by `custom_wrapper_in_derived_container`). Its normal and preserve fixture runs use
+  the exact `--emit-tests --json-serde-derives --json-schema-export` triple too, so IR-minted JSON
+  serializations are validated against the supplied schema; direct carrier/container pins remain the
+  independent check of its documented JSON form. Gating those surfaces on "does this
   type carry serde derives" would delete the door the directive exists to publish — a hand-owned
   JSON form the wasm and schema faces can still expose. So the `dsl.custom_json` row
   (`cj = uint ; @newtype @custom_json`) sitting on both `JSON_SURFACE_SKIP` and

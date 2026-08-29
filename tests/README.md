@@ -3518,8 +3518,11 @@ hand-written `@custom_json` schema: it catches both a schema that rejects its se
 and one that accepts shapes its deserializer refuses. The synthetic
 `emitted_json_schema_assertion_accepts_correct_custom_schema` and
 `emitted_json_schema_assertion_rejects_over_permissive_custom_schema` controls execute the passing
-and expected-failure hand-authored implementations; `tests/json` retains its independent
-hand-authored assertions.
+and expected-failure hand-authored implementations. `integration_tests::json` and
+`integration_tests::json_preserve` run the exact triple over the broad `tests/json` fixture, so they
+execute the generated assertion against its hand-authored custom schema in both profiles; that
+fixture's direct carrier/holder schema and runtime-rejection pins remain independent of the generated
+mutation coverage.
 
 ### The corpus compile gate (`feature_corpus_compiles`)
 
