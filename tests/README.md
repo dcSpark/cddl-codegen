@@ -5414,8 +5414,12 @@ cddl-matrix/project_multifile_excluded_matrix.ts  ─►  tests/matrix_multifile
   change a real pin's error code to a bogus one, e.g. `E9999` → the class-changed message fires),
   watch it fail, revert.
 
-**What it guards today.** Every projected cell compiles and round-trips — both skip ledgers are
-empty. Greenness rests on emitter invariants this matrix guards, each once a loud cross-module
+**What it guards today.** Every projected cell compiles; the full-tier round-trip gate executes
+every ordinary profile/cell combination. Its only expected-red residents are the JSON profile's six
+`otbl__*` / `otblrec__*` open-table cells, whose minted typed bstr keys correctly lack a JSON object
+member-name image. They remain a strict non-lossy boundary (`matrix.non-string-json-map-key-boundary`),
+are stale/resurfacing guarded, and therefore do not weaken the default/preserve or all-profile
+compile floor. Greenness rests on emitter invariants this matrix guards, each once a loud cross-module
 failure class: every cross-module collection occurrence imports the SAME wasm wrapper the emitter
 names, from the module it is minted in (`scope_references`/`mark_refs` resolve the wrapper name +
 home scope through `IntermediateTypes::wasm_collection_wrapper`, the `for_wasm_member` twin, so
@@ -5617,11 +5621,15 @@ pinned collections after review. Two layers, mirroring the identifier-hazard spl
   generated `rust/` crate. This is the broad shape gate for serde derive / schemars derive compile
   failures while still executing the emitted CBOR tests. `--json-schema-export=true --wasm=false`
   also emits an independent `wasm/json-gen/` crate; this recombination leg deliberately leaves that
-  crate to the existing json profile compile/schema gates rather than running it per batch. Both
-  json-only ledgers (`JSON_ONLY_PANIC_CLASSES`, `LAYER2_JSON_KNOWN_BAD`) are empty at HEAD — json
-  derives do not rewire the panic surface, so classification matches the default profile exactly.
-  The authoritative totals live in `tests/recombination-counts.json`; every `ok` composition is
-  executed in both plans, with 0 shared known-bad exclusions.
+  crate to the existing json profile compile/schema gates rather than running it per batch.
+  `JSON_ONLY_PANIC_CLASSES` remains empty — json derives do not rewire the panic surface, so
+  classification matches the default profile exactly — but `LAYER2_JSON_KNOWN_BAD` holds the three
+  strict non-string-map-key compositions (`{ bstr => uint }`, `{ bytes => uint }`, and the tagged
+  bytes table). They are excluded from the two ordinary batch plans so their deliberate red cannot
+  obscure a batchmate, then each is executed once independently and required to retain
+  serde_json's `key must be a string` result. Thus both a now-green boundary and a changed failure
+  signature resurface loudly rather than being silently excluded. The authoritative totals live in
+  `tests/recombination-counts.json`; every non-ledgered `ok` composition is executed in both plans.
 - `recombination_wasm_crates_check` (`#[ignore]`, check.ts full tier): the WASM escalation of
   layer 2, using explicit `--wasm=true` for both in-process classification and out-of-process batch
   generation. It does not pass `--emit-tests`: the oracle is `cargo check` on the generated `wasm/`

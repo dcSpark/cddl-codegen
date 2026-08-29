@@ -518,10 +518,53 @@ const MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)] = &[];
 
 /// Per-profile round-trip skips for `multifile_matrix_roundtrips` ONLY — `(profile, cell stem,
 /// reason)` for cells red under a SPECIFIC profile, distinct from `MULTIFILE_ROUNDTRIP_SKIP`'s
-/// "red in every profile". Expected empty: the first full sweep found no profile-specific reds
-/// (default/preserve/json all green outside the collrec pins). Same four-state contract; an
-/// up-front stale-pin guard rejects entries naming a dead profile or cell stem.
-const MULTIFILE_ROUNDTRIP_PROFILE_SKIP: &[(&str, &str, &str)] = &[];
+/// "red in every profile". The six JSON cells below all mint the typed bstr row of an open table;
+/// JSON has no injective object-member-name image for that key, so serde_json correctly rejects it
+/// before the emitted JSON/schema round-trip oracle can run. This is the decided strict boundary in
+/// `matrix.non-string-json-map-key-boundary`, not a `to_value` error to swallow. Same four-state
+/// contract; an up-front stale-pin guard rejects entries naming a dead profile or cell stem, and a
+/// newly passing resident is a boundary-contract change to investigate before removing its pin.
+const MULTIFILE_ROUNDTRIP_PROFILE_SKIP: &[(&str, &str, &str)] = &[
+    (
+        "json",
+        "otbl__aliased",
+        "the open table's minted typed bstr key has no JSON member-name image; serde_json must \
+         strict-fail rather than invent a lossy spelling (matrix.non-string-json-map-key-boundary)",
+    ),
+    (
+        "json",
+        "otbl__named",
+        "the open table's minted typed bstr key has no JSON member-name image; serde_json must \
+         strict-fail rather than invent a lossy spelling (matrix.non-string-json-map-key-boundary)",
+    ),
+    (
+        "json",
+        "otbl__unref",
+        "the open table's minted typed bstr key has no JSON member-name image; serde_json must \
+         strict-fail rather than invent a lossy spelling (matrix.non-string-json-map-key-boundary)",
+    ),
+    (
+        "json",
+        "otblrec__aliased",
+        "the record-held open table's minted typed bstr key has no JSON member-name image; \
+         serde_json must strict-fail rather than invent a lossy spelling \
+         (matrix.non-string-json-map-key-boundary)",
+    ),
+    (
+        "json",
+        "otblrec__named",
+        "the record-held open table's minted typed bstr key has no JSON member-name image; \
+         serde_json must strict-fail rather than invent a lossy spelling \
+         (matrix.non-string-json-map-key-boundary)",
+    ),
+    (
+        "json",
+        "otblrec__unref",
+        "the record-held open table's minted typed bstr key has no JSON member-name image; \
+         serde_json must strict-fail rather than invent a lossy spelling \
+         (matrix.non-string-json-map-key-boundary)",
+    ),
+];
 
 /// Serialize gates that share a per-checkout scratch root under `temp_dir()`: two concurrent runs
 /// of the SAME gate from the SAME checkout both `remove_dir_all` that root at start, so the second
@@ -5870,8 +5913,10 @@ fn multifile_matrix_roundtrips() {
     );
     assert!(
         resurfaced.is_empty(),
-        "these skip-listed multifile-matrix cells now round-trip — remove them from \
-         MULTIFILE_ROUNDTRIP_SKIP / MULTIFILE_ROUNDTRIP_PROFILE_SKIP (a fix landed):\n{}",
+        "these skip-listed multifile-matrix cells now round-trip — investigate whether a permanent \
+         boundary contract changed before removing their pins; only an ordinary defect fix is \
+         automatically removable from MULTIFILE_ROUNDTRIP_SKIP / \
+         MULTIFILE_ROUNDTRIP_PROFILE_SKIP:\n{}",
         resurfaced.join("\n")
     );
     assert!(

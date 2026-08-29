@@ -726,7 +726,7 @@ fn layer2_actual_default_executable_corpus_has_two_decorrelated_plans() {
             (matches!(outcome, Outcome::Ok)
                 && !LAYER2_KNOWN_BAD
                     .iter()
-                    .any(|(key, _)| composition.desc.contains(key)))
+                    .any(|entry| composition.desc.contains(entry.desc_substring)))
             .then_some(composition)
         })
         .collect();
@@ -1765,7 +1765,7 @@ fn check_recombination_counts(measured: &RecombinationCounts) {
 /// labels + involved feature ids). Every entry cites the committed pin that owns the class.
 /// Excluded from batching (vacuity-guarded: each entry must match >= 1 ok composition, so a fixed
 /// class flips loudly).
-const LAYER2_KNOWN_BAD: &[(&str, &str)] = &[
+const LAYER2_KNOWN_BAD: &[Layer2KnownBad] = &[
     // (retired when `any` gained runtime support) `any` no longer "generates but does not compile" —
     // it lowers to the `AnyCbor` static-runtime type and the generated crate compiles across plain
     // / preserve / preserve+canonical. The former `filler=prelude.any` known-bad class is gone.
@@ -1865,6 +1865,20 @@ const LAYER2_KNOWN_BAD: &[(&str, &str)] = &[
     // make.)
 ];
 
+/// A profile-local layer-2 red class. The batch plans exclude it so an intentional failure cannot
+/// obscure unrelated compositions, but the runner executes every matching composition once as an
+/// expected-red probe and requires this exact failure signature. That extra probe is what makes a
+/// changed boundary resurface instead of leaving a now-green class silently excluded.
+#[derive(Clone, Copy)]
+struct Layer2KnownBad {
+    /// A deliberately narrow composition-description substring.
+    desc_substring: &'static str,
+    /// Durable reason/pin a reviewer can follow.
+    cite: &'static str,
+    /// Required substring of the independently executed expected-red result.
+    expected_failure: &'static str,
+}
+
 // ---- generalized layer-2 runner (shared by every emission profile) --------------------------------
 /// A layer-2 execution profile. One runner (`run_layer2_profile`) drives the whole shape:
 /// classify under the profile in-process, execute the ok compositions under natural and transposed
@@ -1891,8 +1905,10 @@ struct Layer2Profile<'a> {
     /// Panic classes expected under THIS profile beyond the shared `KNOWN_PANIC_CLASSES` (which is
     /// always an allowlist here, never re-vacuity-guarded). Vacuity-guarded within this run.
     panic_ledger: &'a [(&'a str, &'a str)],
-    /// Compile/execute known-bad classes specific to this profile. Vacuity-guarded within this run.
-    known_bad: &'a [(&'a str, &'a str)],
+    /// Compile/execute known-bad classes specific to this profile. Every matching composition is
+    /// excluded from the two batch plans, then executed once independently and required to retain
+    /// its recorded failure; both classification and runtime behavior are therefore stale-guarded.
+    known_bad: &'a [Layer2KnownBad],
     /// Whether to vacuity-guard the SHARED `LAYER2_KNOWN_BAD` in this run. TRUE only for the default
     /// profile (its home): a shared entry can legitimately match zero of a non-default profile's
     /// ok compositions because that profile's generation may PANIC for the class earlier, so the
@@ -2200,32 +2216,42 @@ fn run_layer2_profile(p: &Layer2Profile) {
     // guarded only for the default profile (`guard_shared`); the profile's own ledger always is.
     let mut shared_hits: BTreeMap<&str, usize> = BTreeMap::new();
     let mut profile_hits: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut profile_known_bad_compositions: Vec<(&Composition, &Layer2KnownBad)> = Vec::new();
     let mut executable: Vec<&Composition> = Vec::new();
     for c in &ok_comps {
-        if let Some((sub, _)) = LAYER2_KNOWN_BAD
+        if let Some(entry) = LAYER2_KNOWN_BAD
             .iter()
-            .find(|(sub, _)| c.desc.contains(sub))
+            .find(|entry| c.desc.contains(entry.desc_substring))
         {
-            *shared_hits.entry(sub).or_default() += 1;
-        } else if let Some((sub, _)) = p.known_bad.iter().find(|(sub, _)| c.desc.contains(sub)) {
-            *profile_hits.entry(sub).or_default() += 1;
+            *shared_hits.entry(entry.desc_substring).or_default() += 1;
+        } else if let Some(entry) = p
+            .known_bad
+            .iter()
+            .find(|entry| c.desc.contains(entry.desc_substring))
+        {
+            *profile_hits.entry(entry.desc_substring).or_default() += 1;
+            profile_known_bad_compositions.push((c, entry));
         } else {
             executable.push(c);
         }
     }
     if p.guard_shared {
-        for (sub, cite) in LAYER2_KNOWN_BAD {
+        for entry in LAYER2_KNOWN_BAD {
             assert!(
-                shared_hits.contains_key(sub),
-                "LAYER2_KNOWN_BAD entry `{sub}` matched no ok composition (pin: {cite}) — stale entry"
+                shared_hits.contains_key(entry.desc_substring),
+                "LAYER2_KNOWN_BAD entry `{}` matched no ok composition (pin: {}) — stale entry",
+                entry.desc_substring,
+                entry.cite,
             );
         }
     }
-    for (sub, cite) in p.known_bad {
+    for entry in p.known_bad {
         assert!(
-            profile_hits.contains_key(sub),
-            "{} known-bad entry `{sub}` matched no ok composition (pin: {cite}) — stale entry",
-            p.name
+            profile_hits.contains_key(entry.desc_substring),
+            "{} known-bad entry `{}` matched no ok composition (pin: {}) — stale entry",
+            p.name,
+            entry.desc_substring,
+            entry.cite,
         );
     }
 
@@ -2311,6 +2337,49 @@ fn run_layer2_profile(p: &Layer2Profile) {
             executed,
             embedded_alias_roots,
         ));
+    }
+    // Known-bad compositions are deliberately omitted from BOTH batch plans, where their expected
+    // red would otherwise hide unrelated batchmates. Execute each once in its own crate instead:
+    // a green result means the declared boundary changed, while a different red is a new defect
+    // masquerading as the old class.
+    let expected_bad_target = root.join("expected_bad_target");
+    for (composition, entry) in profile_known_bad_compositions {
+        let out = root.join(format!("expected_bad_{}", composition.id));
+        match gen_and_exec(
+            &composition.spec,
+            &out,
+            &expected_bad_target,
+            p,
+            &mut cache_run,
+            &mut cache_hit,
+        ) {
+            Err(reason) if reason.contains(entry.expected_failure) => {}
+            Err(reason) => {
+                findings.insert(
+                    format!("expected-bad-{}", composition.id),
+                    format!(
+                        "{} profile expected-red composition {} ({}) failed with a NEW signature; \
+                         expected `{}`, recorded by {}:\n--- spec ---\n{}--- actual failure ---\n{reason}",
+                        p.name,
+                        composition.id,
+                        composition.desc,
+                        entry.expected_failure,
+                        entry.cite,
+                        composition.spec,
+                    ),
+                );
+            }
+            Ok(_) => {
+                findings.insert(
+                    format!("expected-bad-{}", composition.id),
+                    format!(
+                        "{} profile expected-red composition {} ({}) now passes — investigate a \
+                         changed boundary contract before removing {}:\n--- spec ---\n{}",
+                        p.name, composition.id, composition.desc, entry.cite, composition.spec,
+                    ),
+                );
+            }
+        }
     }
     let _ = std::fs::remove_dir_all(&root);
     if gate_cache::enabled() {
@@ -2421,7 +2490,7 @@ const PRESERVE_ONLY_PANIC_CLASSES: &[(&str, &str)] = &[
 // their fixed behavior is pinned by the `tagged_constrained_int` / `composite_map_key` corpus fixtures
 // (compile + round-trip under preserve). The freed compositions batch back into the preserve gate. New
 // preserve-only compile classes would be caught by that gate as NEW findings and re-ledgered here.
-const LAYER2_PRESERVE_KNOWN_BAD: &[(&str, &str)] = &[];
+const LAYER2_PRESERVE_KNOWN_BAD: &[Layer2KnownBad] = &[];
 
 /// MANUAL/LOCAL ONLY (`#[ignore]`, check.ts `full` tier): the PRESERVE escalation of layer 2.
 /// Classifies every composition under `--preserve-encodings=true`, executes each preserve-ok
@@ -2480,10 +2549,26 @@ fn recombination_preserve_crates_execute() {
 /// `recombination_json_crates_execute`.
 const JSON_ONLY_PANIC_CLASSES: &[(&str, &str)] = &[];
 
-/// Json-profile compile/round-trip known-bad classes. Desc-substring keyed, each citing its pin;
-/// vacuity-guarded in `recombination_json_crates_execute`. The shared `LAYER2_KNOWN_BAD` also
-/// applies (as an exclusion, un-guarded here).
-const LAYER2_JSON_KNOWN_BAD: &[(&str, &str)] = &[];
+/// Json-profile strict non-string-map-key boundary. These descriptions are exact enough to exclude
+/// ONLY the independently confirmed bstr/bytes map-domain compositions; the runner then executes
+/// each one singly and requires serde_json's deliberate `key must be a string` failure.
+const LAYER2_JSON_KNOWN_BAD: &[Layer2KnownBad] = &[
+    Layer2KnownBad {
+        desc_substring: "outer=map_key filler=prelude.bstr features=[prelude.bstr]",
+        cite: "matrix.non-string-json-map-key-boundary",
+        expected_failure: "key must be a string",
+    },
+    Layer2KnownBad {
+        desc_substring: "outer=map_key filler=prelude.bytes features=[prelude.bytes]",
+        cite: "matrix.non-string-json-map-key-boundary",
+        expected_failure: "key must be a string",
+    },
+    Layer2KnownBad {
+        desc_substring: "outer=tag_content inner=map_key filler=prelude.bytes features=[prelude.bytes]",
+        cite: "matrix.non-string-json-map-key-boundary",
+        expected_failure: "key must be a string",
+    },
+];
 
 /// MANUAL/LOCAL ONLY (`#[ignore]`, check.ts `full` tier): the JSON escalation of layer 2.
 /// Classifies every composition under the `json` profile from `crate::tests::ALL_PROFILES`
@@ -2524,7 +2609,8 @@ fn recombination_json_crates_execute() {
         panic_ledger: JSON_ONLY_PANIC_CLASSES,
         known_bad: LAYER2_JSON_KNOWN_BAD,
         guard_shared: false,
-        // Observed baseline: 927 json-ok / 897 executed (30 known-bad excluded); floors ~10% under.
+        // The three strict JSON-key boundary residents execute once as expected-red probes outside
+        // both plans; `executed_floor` counts only the ordinary two-plan executions.
         ok_floor: 835,
         executed_floor: 808,
         embedded_alias_roots_floor: 1,
@@ -2556,7 +2642,7 @@ const WASM_ONLY_PANIC_CLASSES: &[(&str, &str)] = &[];
 // `cbor_bignint_table` corpus fixture (wasm crate compiles via `feature_corpus_compiles`). The freed
 // compositions return to both wasm batch plans; a new wasm-only compile class would be caught there
 // as a NEW finding.
-const LAYER2_WASM_KNOWN_BAD: &[(&str, &str)] = &[];
+const LAYER2_WASM_KNOWN_BAD: &[Layer2KnownBad] = &[];
 
 /// MANUAL/LOCAL ONLY (`#[ignore]`, check.ts `full` tier): the WASM escalation of layer 2.
 /// Classifies every composition under `--wasm=true`, executes each wasm-ok composition in both
@@ -2617,20 +2703,29 @@ fn ledger_key_shape_floor() {
             );
         }
     }
-    let known_bad_ledgers: &[(&str, &[(&str, &str)])] = &[
+    let known_bad_ledgers: &[(&str, &[Layer2KnownBad])] = &[
         ("LAYER2_KNOWN_BAD", LAYER2_KNOWN_BAD),
         ("LAYER2_PRESERVE_KNOWN_BAD", LAYER2_PRESERVE_KNOWN_BAD),
         ("LAYER2_JSON_KNOWN_BAD", LAYER2_JSON_KNOWN_BAD),
         ("LAYER2_WASM_KNOWN_BAD", LAYER2_WASM_KNOWN_BAD),
     ];
     for (name, ledger) in known_bad_ledgers {
-        for (key, cite) in *ledger {
+        for entry in *ledger {
             assert!(
                 ["shape=", "outer=", "inner=", "filler="]
                     .iter()
-                    .any(|axis| key.contains(axis)),
-                "{name} key `{key}` carries no desc-axis label (shape=/outer=/inner=/filler=) — \
-                 too generic, could absorb unrelated compositions (cite: {cite})"
+                    .any(|axis| entry.desc_substring.contains(axis)),
+                "{name} key `{}` carries no desc-axis label (shape=/outer=/inner=/filler=) — \
+                 too generic, could absorb unrelated compositions (cite: {})",
+                entry.desc_substring,
+                entry.cite,
+            );
+            assert!(
+                !entry.expected_failure.is_empty(),
+                "{name} key `{}` has no expected failure signature — a changed red could be \
+                 silently classified as the old boundary (cite: {})",
+                entry.desc_substring,
+                entry.cite,
             );
         }
     }
