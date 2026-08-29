@@ -31,7 +31,12 @@ impl schemars::JsonSchema for CustomWrapper {
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        String::json_schema(generator)
+        // `u64::from_str` admits an optional plus sign and one or more decimal digits, then
+        // enforces its numeric range. Publish the lexical carrier; range overflow remains the
+        // deserialize door's responsibility rather than a fragile maximum-value regex.
+        let mut schema = String::json_schema(generator);
+        schema.insert("pattern".to_owned(), "^[+]?[0-9]+$".into());
+        schema
     }
 
     fn inline_schema() -> bool {

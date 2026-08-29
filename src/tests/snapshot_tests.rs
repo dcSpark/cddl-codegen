@@ -742,6 +742,7 @@ fn emitted_json_schema_assertion_is_wired_only_under_the_exact_triple() {
         "jsonschema::validator_for",
         "schema rejected a real serialization",
         "schema accepted a shape the JSON deserializer rejects",
+        "duplicated.push(first.clone())",
         "cddl_json_schema::assert_case::<CustomWrapper>",
     ] {
         assert!(

@@ -3511,8 +3511,9 @@ parse time) are the spec-anchored oracles' job (`tests/golden_hex/`).
 When `--emit-tests`, `--json-serde-derives`, and `--json-schema-export` are all enabled, those same
 minted round-trip values also check their actual `serde_json` output against `schemars::schema_for!`
 with a generated `jsonschema` dev-dependency. The helper exercises bounded top-level and one-level
-shape mutations; it requires schema rejection only for candidates `serde_json::from_value::<T>`
-rejects, avoiding false reds for deliberately broad JSON forms. This is the execution oracle for a
+shape mutations, including a duplicate-array candidate at the root or one object field deep; it
+requires schema rejection only for candidates `serde_json::from_value::<T>` rejects, avoiding false
+reds for deliberately broad JSON forms. This is the execution oracle for a
 hand-written `@custom_json` schema: it catches both a schema that rejects its serializer's output
 and one that accepts shapes its deserializer refuses. The synthetic
 `emitted_json_schema_assertion_accepts_correct_custom_schema` and

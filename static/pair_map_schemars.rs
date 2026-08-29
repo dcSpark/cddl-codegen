@@ -19,8 +19,11 @@ impl<K: schemars::JsonSchema, V: schemars::JsonSchema> schemars::JsonSchema
         format!("NonEmptyPairMap<{}, {}>", K::schema_name(), V::schema_name()).into()
     }
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        // shape matches the array-of-pairs JSON; the >= 1 invariant is enforced at TryFrom.
-        Vec::<(K, V)>::json_schema(generator)
+        // Shape matches the array-of-pairs JSON, plus the same non-empty door the deserializer
+        // reaches through TryFrom.
+        let mut schema = Vec::<(K, V)>::json_schema(generator);
+        schema.insert("minItems".to_owned(), 1.into());
+        schema
     }
     fn inline_schema() -> bool {
         Vec::<(K, V)>::inline_schema()

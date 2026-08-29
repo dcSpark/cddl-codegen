@@ -763,7 +763,9 @@ pub fn emit_generated_tests(
         // Deterministic, bounded top-level and one-level mutations. The deserialize oracle below
         // means a schema may intentionally accept a broad JSON form; only a candidate Rust rejects
         // becomes a required schema rejection. Eight immediate children cap a wide object/array at
-        // 62 candidates (six top-level shapes + eight removals + eight times six replacements).
+        // 70 candidates (six top-level shapes + eight removals + eight times six replacements +
+        // eight deterministic duplicate-array candidates). The direct-array duplicate is within
+        // that bound too.
         fn mutations(value: &serde_json::Value) -> Vec<serde_json::Value> {
             let mut out = Vec::new();
             for shape in shapes() {
@@ -771,6 +773,11 @@ pub fn emit_generated_tests(
             }
             match value {
                 serde_json::Value::Array(values) => {
+                    if let Some(first) = values.first() {
+                        let mut duplicated = values.clone();
+                        duplicated.push(first.clone());
+                        push_unique(&mut out, serde_json::Value::Array(duplicated));
+                    }
                     for index in 0..values.len().min(8) {
                         let mut removed = values.clone();
                         removed.remove(index);
@@ -790,6 +797,15 @@ pub fn emit_generated_tests(
                         removed.remove(&key);
                         push_unique(&mut out, serde_json::Value::Object(removed));
                         let original = &values[&key];
+                        if let serde_json::Value::Array(array) = original {
+                            if let Some(first) = array.first() {
+                                let mut duplicated = array.clone();
+                                duplicated.push(first.clone());
+                                let mut changed = values.clone();
+                                changed.insert(key.clone(), serde_json::Value::Array(duplicated));
+                                push_unique(&mut out, serde_json::Value::Object(changed));
+                            }
+                        }
                         for shape in shapes() {
                             if shape != *original {
                                 let mut changed = values.clone();

@@ -104,6 +104,21 @@ mod tests {
         let from_json: CustomWrapper = serde_json::from_str(&json_str).unwrap();
         assert_eq!(json_str, serde_json::to_string_pretty(&from_value).unwrap());
         assert_eq!(json_str, serde_json::to_string_pretty(&from_json).unwrap());
+        // The parser accepts its documented optional-plus spelling and serialization normalizes it.
+        let plus: CustomWrapper = serde_json::from_str("\"+1234\"").unwrap();
+        assert_eq!(serde_json::to_string(&plus).unwrap(), json_str);
+
+        // The hand-owned schema describes the same decimal-string carrier the hand-owned serde
+        // deserializer reads. Its range ceiling remains the Rust parser's door; these lexical
+        // rejects are the class a bare String schema used to publish incorrectly.
+        let schema = serde_json::to_value(schemars::schema_for!(CustomWrapper)).unwrap();
+        assert_eq!(schema["pattern"], "^[+]?[0-9]+$", "{schema}");
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        assert!(validator.is_valid(&serde_json::json!("1234")));
+        assert!(validator.is_valid(&serde_json::json!("+1234")));
+        assert!(!validator.is_valid(&serde_json::json!("")));
+        assert!(!validator.is_valid(&serde_json::json!("abc")));
+        assert_json_reject::<CustomWrapper>("\"\"", "invalid u64 as string");
     }
 
     // `@custom_json` in CONTAINED position. `CustomHolder` derives serde and schemars, and each
@@ -123,6 +138,14 @@ mod tests {
         // the member's own rejection door still applies through the container
         assert_json_reject::<CustomHolder>(r#"{"c":1234}"#, "invalid type");
         assert_json_reject::<CustomHolder>(r#"{"c":"abc"}"#, "invalid u64 as string");
+        assert_json_reject::<CustomHolder>(r#"{"c":""}"#, "invalid u64 as string");
+
+        // Derived containment must retain the hand schema rather than silently widening its
+        // member back to an unconstrained string.
+        let schema = serde_json::to_value(schemars::schema_for!(CustomHolder)).unwrap();
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        assert!(validator.is_valid(&serde_json::json!({"c": "1234"})));
+        assert!(!validator.is_valid(&serde_json::json!({"c": ""})));
     }
 
     // The bare `Int` serializes as the signed decimal *string* (see its serde impls): a JSON number
@@ -142,6 +165,19 @@ mod tests {
             let from_json: Int = serde_json::from_str(json).unwrap();
             assert_eq!(serde_json::to_string(&from_json).unwrap(), json);
         }
+
+        // The schema carries the parser's decimal-integer lexical door. Its asymmetric CBOR
+        // range remains checked by Int::try_from after parse, just as deserialize does.
+        let schema = serde_json::to_value(schemars::schema_for!(Int)).unwrap();
+        assert_eq!(schema["pattern"], "^[+-]?[0-9]+$", "{schema}");
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        assert!(validator.is_valid(&serde_json::json!("-500")));
+        assert!(validator.is_valid(&serde_json::json!("+500")));
+        assert!(!validator.is_valid(&serde_json::json!("")));
+        assert!(!validator.is_valid(&serde_json::json!("abc")));
+        let plus: Int = serde_json::from_str("\"+500\"").unwrap();
+        assert_eq!(serde_json::to_string(&plus).unwrap(), "\"500\"");
+        assert_json_reject::<Int>("\"\"", "invalid Int");
     }
 
     // map JSON serde: `Table` is BTreeMap under the plain json profile and OrderedHashMap under
@@ -197,6 +233,7 @@ mod tests {
         // custom (@custom_json) wrapper parses a u64 out of a string
         assert_json_reject::<CustomWrapper>("\"abc\"", "invalid u64 as string");
         assert_json_reject::<CustomWrapper>("\"-1\"", "invalid u64 as string");
+        assert_json_reject::<CustomWrapper>("\"\"", "invalid u64 as string");
         // wrong JSON type entirely, for every JSON shape the fixture emits
         assert_json_reject::<U8Wrapper>("\"5\"", "invalid type");
         assert_json_reject::<StrWrapper>("5", "invalid type");
@@ -403,6 +440,15 @@ mod tests {
         assert_eq!(serde_json::to_string(&back).unwrap(), json);
         // an empty object for a `{+ tstr => uint}` field is rejected AT the TryFrom door on deserialize
         assert!(serde_json::from_str::<NemJson>(r#"{"xs":{}}"#).is_err());
+
+        let carrier = serde_json::to_value(schemars::schema_for!(NonEmptyMap<String, u64>)).unwrap();
+        assert_eq!(carrier["minProperties"], 1, "{carrier}");
+        let schema = serde_json::to_value(schemars::schema_for!(NemJson)).unwrap();
+        let text = schema.to_string();
+        assert!(text.contains("minProperties"), "non-empty map schema must publish minProperties: {text}");
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        assert!(validator.is_valid(&serde_json::json!({"xs": {"a": 1}})));
+        assert!(!validator.is_valid(&serde_json::json!({"xs": {}})));
     }
 
     // WI-3: an `@duplicates reject` set (`OrderedSet<u64>`) serializes as a plain JSON array, and
@@ -425,6 +471,39 @@ mod tests {
             serde_json::from_str::<RejectSetJson>(r#"{"xs":[1,1]}"#).is_err(),
             "a duplicate-carrying JSON array must be refused at the OrderedSet TryFrom door"
         );
+
+        let carrier = serde_json::to_value(schemars::schema_for!(OrderedSet<u64>)).unwrap();
+        assert_eq!(carrier["uniqueItems"], true, "{carrier}");
+        let schema = serde_json::to_value(schemars::schema_for!(RejectSetJson)).unwrap();
+        let text = schema.to_string();
+        assert!(text.contains("uniqueItems"), "reject-set schema must publish uniqueness: {text}");
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        assert!(validator.is_valid(&serde_json::json!({"xs": [1, 2]})));
+        assert!(!validator.is_valid(&serde_json::json!({"xs": [1, 1]})));
+    }
+
+    // The non-empty `@duplicates reject` twin combines both direct OrderedSet invariants. Keep
+    // its JSON door and schema pins together so a future delegation to Vec cannot lose either.
+    #[test]
+    fn non_empty_reject_set_json() {
+        let value = NonEmptyRejectSetJson::new(NonEmptyOrderedSet::try_from(vec![1u64, 2]).unwrap());
+        let json = serde_json::to_string(&value).unwrap();
+        let back: NonEmptyRejectSetJson = serde_json::from_str(&json).unwrap();
+        assert_eq!(serde_json::to_string(&back).unwrap(), json);
+        assert!(serde_json::from_str::<NonEmptyRejectSetJson>(r#"{"xs":[]}"#).is_err());
+        assert!(serde_json::from_str::<NonEmptyRejectSetJson>(r#"{"xs":[1,1]}"#).is_err());
+
+        let carrier = serde_json::to_value(schemars::schema_for!(NonEmptyOrderedSet<u64>)).unwrap();
+        assert_eq!(carrier["uniqueItems"], true, "{carrier}");
+        assert_eq!(carrier["minItems"], 1, "{carrier}");
+        let schema = serde_json::to_value(schemars::schema_for!(NonEmptyRejectSetJson)).unwrap();
+        let text = schema.to_string();
+        assert!(text.contains("uniqueItems"), "non-empty reject-set schema must publish uniqueness: {text}");
+        assert!(text.contains("minItems"), "non-empty reject-set schema must publish minItems: {text}");
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        assert!(validator.is_valid(&serde_json::json!({"xs": [1, 2]})));
+        assert!(!validator.is_valid(&serde_json::json!({"xs": []})));
+        assert!(!validator.is_valid(&serde_json::json!({"xs": [1, 1]})));
     }
 
     // WI-4: a `@duplicates preserve` table (`PairMap<u64, String>`) serializes as a JSON ARRAY of
@@ -466,6 +545,15 @@ mod tests {
         let ok: NePreservePmapJson =
             serde_json::from_str(r#"{"ys":[[1,"a"],[1,"b"]]}"#).expect("a non-empty array-of-pairs is accepted");
         assert_eq!(ok.ys.len(), 2, "the door keeps duplicate keys");
+
+        let carrier = serde_json::to_value(schemars::schema_for!(NonEmptyPairMap<u64, String>)).unwrap();
+        assert_eq!(carrier["minItems"], 1, "{carrier}");
+        let schema = serde_json::to_value(schemars::schema_for!(NePreservePmapJson)).unwrap();
+        let text = schema.to_string();
+        assert!(text.contains("minItems"), "non-empty pair-map schema must publish minItems: {text}");
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        assert!(validator.is_valid(&serde_json::json!({"ys": [[1, "a"]]})));
+        assert!(!validator.is_valid(&serde_json::json!({"ys": []})));
     }
 
     #[test]

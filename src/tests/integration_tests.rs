@@ -15406,13 +15406,17 @@ fn json() {
         .join("external_json_impls");
     run_test(
         "json",
-        &["--json-serde-derives=true", "--json-schema-export=true"],
+        &[
+            "--emit-tests=true",
+            "--json-serde-derives=true",
+            "--json-schema-export=true",
+        ],
         None,
         &[extern_rust_path],
         &[],
         false,
-        // schemas_validate_serialization (tests.rs) checks emitted output against emitted schema
-        &[JSONSCHEMA_DEP],
+        // The exact triple writes jsonschema under rust's [dev-dependencies].
+        &[],
     );
 }
 
@@ -18281,6 +18285,7 @@ fn json_preserve() {
         "json",
         &[
             "--preserve-encodings=true",
+            "--emit-tests=true",
             "--json-serde-derives=true",
             "--json-schema-export=true",
         ],
@@ -18288,8 +18293,8 @@ fn json_preserve() {
         &[extern_rust_path],
         &[],
         false,
-        // schemas_validate_serialization (tests.rs) checks emitted output against emitted schema
-        &[JSONSCHEMA_DEP],
+        // The exact triple writes jsonschema under rust's [dev-dependencies].
+        &[],
     );
 }
 
@@ -28889,7 +28894,11 @@ fn comment_preserve_lexer_round_trip_over_corpus() {
         ),
         (
             "tests/json/input.cddl",
-            &["--json-serde-derives=true", "--json-schema-export=true"],
+            &[
+                "--emit-tests=true",
+                "--json-serde-derives=true",
+                "--json-schema-export=true",
+            ],
         ),
         // Generator-comment-rich shapes: `--emit-tests` stamps TRAILING `// <cddl>` comments and the
         // comment DSL emits `///` doc blocks — both must self-cancel (not spam compile_error blocks

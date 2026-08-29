@@ -44,6 +44,10 @@ nem_json = { xs: {+ tstr => uint} }
 ; duplicate-carrying array is rejected there (never silently deduped). Accept round-trips byte-exactly.
 reject_uints    = [* uint] ; @duplicates reject
 reject_set_json = { xs: reject_uints }
+; The non-empty reject-set twin reaches NonEmptyOrderedSet, whose JSON schema must carry BOTH
+; `uniqueItems` and `minItems` to match the deserialize TryFrom door.
+non_empty_reject_uints    = [+ uint] ; @duplicates reject
+non_empty_reject_set_json = { xs: non_empty_reject_uints }
 
 ; WI-4: an `@duplicates preserve` table field exercises the serde/schemars leg — a PairMap serializes
 ; as a JSON ARRAY of `[k, v]` pairs (NOT an object, which would collapse duplicate keys), preserving
