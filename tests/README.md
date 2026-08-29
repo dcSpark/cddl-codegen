@@ -543,6 +543,18 @@ skips the fetch and trusts the cache. The warm-up is the ONE place a network ret
 cache-population/update work, with no assertions behind it); if it fails all attempts the run stops
 before any gate.
 
+The local `generated_dep_resolution` gate closes the separate *review* boundary. It writes the
+actual bytes of `static/Cargo_rust.toml` into a fresh scratch crate (with only an empty `src/lib.rs`)
+and runs unlocked `cargo metadata`, then compares that crate's **direct** `cbor_event` package
+coordinate (version and source, selected through the metadata root → dependency edge → package
+graph) with metadata for the repository manifest run under `--locked`. The committed `Cargo.lock`
+is the reviewed baseline; the fresh template manifest is the consumer-like side, so a compatible
+upstream release now makes local/full red for intentional review instead of silently changing every
+nested generated build. This must not read `tests/warmup/Cargo.lock`: a fresh scratch resolution once
+outran that warmed, gitignored lock when `zerocopy-derive 0.8.56` was published, which is why the
+warm-up refreshes it before fetching and why the gate independently compares a fresh resolution to
+the committed reviewed lock.
+
 ### Persistent ignored fixture outputs copy bytes only
 
 Some integration fixtures regenerate ignored `tests/**/export*` trees in place. A destination can

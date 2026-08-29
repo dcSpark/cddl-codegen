@@ -91,7 +91,7 @@
  *   canaries reverted after confirming red.
  */
 import {
-  existsSync, mkdirSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync,
+  existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, statSync,
   unlinkSync, writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -1107,6 +1107,189 @@ function warmupThenOffline(tier: Tier) {
   console.log("warm-up: dep universe refreshed and fetched — CARGO_NET_OFFLINE=true for all gates");
 }
 
+// ---- fresh generated-manifest dependency resolution ----------------------------------------------
+// Generated crates deliberately carry semver requirements rather than a copied workspace lock.
+// Compare the actual fresh resolution of that exact template to the reviewed workspace lock before
+// nested-cargo cells can silently start compiling against a newly published compatible release.
+export interface CargoMetadataPackage {
+  id: string;
+  name: string;
+  version: string;
+  source?: string | null;
+}
+
+export interface CargoMetadataResolveNodeDependency {
+  name: string;
+  pkg: string;
+}
+
+export interface CargoMetadataResolveNode {
+  id: string;
+  deps: CargoMetadataResolveNodeDependency[];
+}
+
+export interface CargoMetadataForDirectDependency {
+  packages: CargoMetadataPackage[];
+  resolve?: { root?: string | null; nodes?: CargoMetadataResolveNode[] | null } | null;
+}
+
+export interface ResolvedDependencyCoordinate {
+  name: string;
+  version: string;
+  source: string | null;
+}
+
+/**
+ * Follow Cargo metadata's root -> resolve-node dependency edge -> package, rather than selecting
+ * a package merely by name: a future transitive second version must not change this verdict.
+ */
+export function directDependencyCoordinate(
+  metadata: CargoMetadataForDirectDependency,
+  dependencyName: string,
+): ResolvedDependencyCoordinate | { error: string } {
+  if (!Array.isArray(metadata.packages))
+    return { error: "cargo metadata has no packages array" };
+  const root = metadata.resolve?.root;
+  if (typeof root !== "string" || root.length === 0)
+    return { error: "cargo metadata has no resolve.root for the manifest package" };
+  const nodes = metadata.resolve?.nodes;
+  if (!Array.isArray(nodes))
+    return { error: "cargo metadata has no resolve.nodes array" };
+  const rootNode = nodes.find(node => node && node.id === root);
+  if (!rootNode)
+    return { error: `cargo metadata has resolve.root '${root}' but no matching resolve node` };
+  if (!Array.isArray(rootNode.deps))
+    return { error: `root resolve node '${root}' has no dependency array` };
+  const edges = rootNode.deps.filter(dep => dep.name === dependencyName);
+  if (edges.length !== 1)
+    return { error: `root resolve node has ${edges.length} direct '${dependencyName}' dependency edge(s), expected exactly one` };
+  const pkg = metadata.packages.find(candidate => candidate.id === edges[0]!.pkg);
+  if (!pkg)
+    return { error: `direct '${dependencyName}' edge points to missing package '${edges[0]!.pkg}'` };
+  if (typeof pkg.name !== "string")
+    return { error: `direct '${dependencyName}' package '${pkg.id}' has no name` };
+  if (pkg.name !== dependencyName)
+    return { error: `direct '${dependencyName}' edge resolves to package named '${pkg.name}' (${pkg.id})` };
+  if (typeof pkg.version !== "string" || pkg.version.length === 0)
+    return { error: `direct '${dependencyName}' package '${pkg.id}' has no version` };
+  if (pkg.source !== undefined && pkg.source !== null && typeof pkg.source !== "string")
+    return { error: `direct '${dependencyName}' package '${pkg.id}' has a non-string source` };
+  return { name: pkg.name, version: pkg.version, source: pkg.source ?? null };
+}
+
+function dependencyCoordinateText(coordinate: ResolvedDependencyCoordinate): string {
+  return `${coordinate.name} ${coordinate.version} (${coordinate.source ?? "path/local source"})`;
+}
+
+/** Null means the fresh consumer-like resolution agrees with the reviewed workspace baseline. */
+export function dependencyResolutionDrift(
+  fresh: ResolvedDependencyCoordinate,
+  reviewed: ResolvedDependencyCoordinate,
+): string | null {
+  if (fresh.name !== reviewed.name)
+    return `dependency name differs: fresh ${dependencyCoordinateText(fresh)}; reviewed ${dependencyCoordinateText(reviewed)}`;
+  if (fresh.version !== reviewed.version || fresh.source !== reviewed.source)
+    return (
+      `fresh generated manifest resolves ${dependencyCoordinateText(fresh)}, but reviewed workspace Cargo.lock resolves ${dependencyCoordinateText(reviewed)}. ` +
+      "Review the compatible release/source change against dependency and behavior vectors. If intentional, update the committed workspace lock to the fresh coordinate " +
+      "(for version-only registry drift: `cargo update -p cbor_event --precise <fresh-version>`; for source drift, make the appropriate source update) and commit it. " +
+      "If not intentional, constrain the shipped generated requirement in static/manifest_changes/rust.toml rather than editing static/Cargo_rust.toml directly."
+    );
+  return null;
+}
+
+/** Pure floors for edge traversal and the version/source review boundary. */
+export function generatedDependencyResolutionSelftest(): void {
+  const root = "root 0.1.0 (path+file:///scratch)";
+  const direct = "registry+https://github.com/rust-lang/crates.io-index#cbor_event@3.3.0";
+  const oldTransitive = "registry+https://github.com/rust-lang/crates.io-index#cbor_event@3.2.0";
+  const metadata: CargoMetadataForDirectDependency = {
+    packages: [
+      { id: root, name: "consumer", version: "0.1.0", source: null },
+      { id: oldTransitive, name: "cbor_event", version: "3.2.0", source: "registry+https://github.com/rust-lang/crates.io-index" },
+      // Deliberately before the direct package: selecting the first same-name package is wrong.
+      { id: direct, name: "cbor_event", version: "3.3.0", source: "registry+https://github.com/rust-lang/crates.io-index" },
+    ],
+    resolve: { root, nodes: [
+      { id: root, deps: [{ name: "cbor_event", pkg: direct }] },
+      { id: direct, deps: [] },
+      { id: oldTransitive, deps: [] },
+    ] },
+  };
+  const selected = directDependencyCoordinate(metadata, "cbor_event");
+  if ("error" in selected)
+    throw new Error(`generated-dependency-resolution self-test could not select the direct dependency: ${selected.error}`);
+  if (selected.version !== "3.3.0")
+    throw new Error(`generated-dependency-resolution self-test selected transitive same-name version ${selected.version}`);
+  if (dependencyResolutionDrift(selected, { ...selected }) !== null)
+    throw new Error("generated-dependency-resolution self-test rejected matching direct dependencies");
+  const versionDrift = dependencyResolutionDrift({ ...selected, version: "3.3.1" }, selected);
+  if (
+    !versionDrift?.includes("3.3.1") || !versionDrift.includes("3.3.0") ||
+    !versionDrift.includes("Review the compatible release/source change") ||
+    !versionDrift.includes("cargo update -p cbor_event --precise <fresh-version>") ||
+    !versionDrift.includes("static/manifest_changes/rust.toml")
+  )
+    throw new Error(`generated-dependency-resolution self-test did not reject version drift: ${versionDrift}`);
+  const sourceDrift = dependencyResolutionDrift({ ...selected, source: "git+https://example.invalid/cbor_event" }, selected);
+  if (!sourceDrift?.includes("git+https://example.invalid/cbor_event") || !sourceDrift.includes("for source drift, make the appropriate source update"))
+    throw new Error(`generated-dependency-resolution self-test did not reject source drift: ${sourceDrift}`);
+}
+
+function cargoMetadata(manifestPath: string, locked: boolean): { metadata?: CargoMetadataForDirectDependency; error?: string } {
+  const args = ["cargo", "metadata", "--format-version", "1", "--manifest-path", manifestPath];
+  if (locked) args.push("--locked");
+  const result = Bun.spawnSync(args, { cwd: ROOT, stdout: "pipe", stderr: "pipe", stdin: "inherit" });
+  if (result.exitCode !== 0)
+    return { error: `${args.join(" ")} exited ${result.exitCode}: ${result.stderr.toString().trim()}` };
+  try {
+    return { metadata: JSON.parse(result.stdout.toString()) as CargoMetadataForDirectDependency };
+  } catch (error) {
+    return { error: `${args.join(" ")} returned invalid JSON: ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+
+function runGeneratedDependencyResolution(): Outcome {
+  const scratch = mkdtempSync(join(tmpdir(), "cddl_codegen_generated_dep_resolution_"));
+  try {
+    // Keep this byte-for-byte the shipped Rust manifest template: it is the consumer-like side of
+    // the comparison, not a second hand-maintained spelling of its semver requirement.
+    writeFileSync(join(scratch, "Cargo.toml"), readFileSync(join(ROOT, "static", "Cargo_rust.toml")));
+    mkdirSync(join(scratch, "src"));
+    writeFileSync(join(scratch, "src", "lib.rs"), "");
+
+    const freshMetadata = cargoMetadata(join(scratch, "Cargo.toml"), false);
+    if (!freshMetadata.metadata) {
+      console.log(`  fresh generated-manifest metadata FAILED — ${freshMetadata.error}`);
+      return { status: "FAIL", reason: "fresh generated manifest cargo metadata failed" };
+    }
+    const reviewedMetadata = cargoMetadata(join(ROOT, "Cargo.toml"), true);
+    if (!reviewedMetadata.metadata) {
+      console.log(`  reviewed workspace metadata FAILED — ${reviewedMetadata.error}`);
+      return { status: "FAIL", reason: "reviewed workspace Cargo.lock metadata failed" };
+    }
+    const fresh = directDependencyCoordinate(freshMetadata.metadata, "cbor_event");
+    if ("error" in fresh) {
+      console.log(`  fresh generated-manifest direct dependency FAILED — ${fresh.error}`);
+      return { status: "FAIL", reason: "could not identify fresh direct cbor_event dependency" };
+    }
+    const reviewed = directDependencyCoordinate(reviewedMetadata.metadata, "cbor_event");
+    if ("error" in reviewed) {
+      console.log(`  reviewed workspace direct dependency FAILED — ${reviewed.error}`);
+      return { status: "FAIL", reason: "could not identify reviewed direct cbor_event dependency" };
+    }
+    const drift = dependencyResolutionDrift(fresh, reviewed);
+    if (drift) {
+      console.log(`  resolution drift FAILED — ${drift}`);
+      return { status: "FAIL", reason: "fresh generated dependency resolution differs from reviewed workspace lock" };
+    }
+    console.log(`  direct cbor_event resolution matches — fresh ${dependencyCoordinateText(fresh)}; reviewed ${dependencyCoordinateText(reviewed)}`);
+    return { status: "PASS" };
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
 // ---- run-start scratch sweep: leaked nested-cargo scratch retires itself -------------------------
 /**
  * Every nested-cargo gate and in-process test suite mints per-run scratch under `tmpdir()` and relies
@@ -1861,6 +2044,8 @@ export const REGISTRY: Gate[] = [
     desc: "tests/corpus/COVERAGE.md is up to date" },
 
   // --- local tier (default): the heavy correctness gates, NOT run in CI (cost policy) ---
+  { id: "generated_dep_resolution", tier: "local", kind: "fn", run: runGeneratedDependencyResolution,
+    desc: "fresh shipped Rust manifest's direct cbor_event resolution matches the reviewed workspace Cargo.lock" },
   { id: "build", tier: "local", kind: "cmd", cmd: ["cargo", "build", "--locked", "--workspace", "--all-features", "--all-targets"],
     desc: "workspace build" },
   { id: "test", tier: "local", kind: "cmd", cmd: ["cargo", "test", "--all-features", "--all-targets"],
@@ -3240,11 +3425,12 @@ async function runSelfLogged(): Promise<never> {
 if (import.meta.main) {
   if (process.argv.includes("--selftest")) {
     warmupCommandsSelftest();
+    generatedDependencyResolutionSelftest();
     registryReadmeIntegritySelftest();
     corpusParityNewFixtureAdvisoriesSelftest();
     componentTargetRequiredForTierSelftest();
     componentSkipVisibilitySelftest();
-    console.log("check.ts self-test OK (warm-up refresh/fetch command order + README-integrity + new-fixture advisory + component-target tier + skip-visibility controls)");
+    console.log("check.ts self-test OK (warm-up refresh/fetch command order + generated dependency resolution + README-integrity + new-fixture advisory + component-target tier + skip-visibility controls)");
     process.exit(0);
   }
   // --help prints and exits; no evidence to preserve, so no log file for it.

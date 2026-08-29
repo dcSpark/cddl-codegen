@@ -190,7 +190,6 @@ entries = [
   "testing.wasm32-link-floor-deferred-reject-twin",
   "testing.extern-interface-export-dialect-v2-candidates",
   "testing.cddl-module-directives-draft-ietf-cbor-cddl-modules",
-  "testing.dependency-version-range-resolution-untested-generated-crates-float",
   "testing.transparent-tag-set-idiom-recognized-shape-boundary-request",
   "testing.tag-set.non-idiom-generic-boundary",
   "testing.tag-set.inline-anonymous-choice-boundary",
@@ -1019,41 +1018,6 @@ action_on_fire_md = '''Set testing.dependency-swap-pass-compile-parity-existing-
 [record.payload.promotion_trigger.predicate]
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.dependency-swap-pass-compile-parity-existing-gate-silently's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
-
-[[record]]
-id = "testing.dependency-version-range-resolution-untested-generated-crates-float"
-title = "Dependency version-RANGE resolution is untested: generated crates float on semver `cbor_event = \"3.3.0\"`, and nothing gates what that range actually resolves to over time."
-
-[record.payload]
-kind = "work"
-body_md = '''- **Dependency version-RANGE resolution is untested: generated crates float on semver
-  `cbor_event = "3.3.0"`, and nothing gates what that range actually resolves to over time.** In
-  check.ts runs the nested-cargo cells now resolve OFFLINE from the cargo cache (the
-  registry-transient watch below), so the float enters one step removed — through the warm-up
-  fetch, which pulls the newest semver-compatible releases into the cache — but the exposure is
-  the same: a new upstream release changes what every nested-cargo cell — and every downstream
-  consumer — builds against, with no gate noticing until something breaks. The
-  3.2.0 upgrade itself arrived as exactly such a version event (the 2.4.0-era prediction this
-  entry re-captures), absorbed deliberately with flip vectors; an UNPLANNED 3.x release would be
-  absorbed silently. The mechanical layer when a release actually bites: a pinned-latest or
-  `--minimal-versions`-style resolve check over one generated crate, red when the resolved
-  `cbor_event` version drifts from the one the vectors were blessed against.
-'''
-work_state = "deferred"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "false_pass_or_red"
-
-[record.payload.reopening_signal]
-observer = "generated-crate consumer or dependency release steward"
-dimension = "unreviewed semver-compatible cbor_event resolution changes"
-action_on_fire_md = '''Set testing.dependency-version-range-resolution-untested-generated-crates-float to ready and execute only its preserved acceptance/mechanical-layer scope.
-'''
-
-[record.payload.reopening_signal.predicate]
-predicate_kind = "event"
-event_md = '''A semver-compatible cbor_event release makes an unchanged generated crate compile or behave differently before that release is intentionally adopted by cddl-codegen.
 '''
 
 [[record]]
@@ -4773,31 +4737,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.proof.warm-up-refresh-dep-universe-lock-trust-fresh"
-title = "Historical execution proof for the warm-up dep-universe lock-trust gap."
-
-[record.payload]
-kind = "evidence"
-evidence_kind = "execution_probe"
-claim_md = '''A fresh scratch resolution once outran the warmed dep-universe lock; the delivered command-plan and exact TypeScript-lock regressions preserve the two corrected universes.
-'''
-freshness = "as_of"
-reference_ids = ["test-check-ts-warmup-refresh-plan", "test-shared-ts-toolchain-lock-manifest"]
-command_md = '''Run the offline-forced tier path after the locked warm-up fetch while the oracle-fingerprint scratch manifest resolves fresh against the newly published zerocopy-derive 0.8.56.
-'''
-result_md = '''The fresh scratch resolve requested zerocopy-derive 0.8.56, absent from the lock-trusting warmed cache, and failed offline; the cache contained .52 through .55.
-'''
-at_commit = "9246c9a2d65902e0a2f46bae006f19fe57d915ae"
-observed_at = "2026-08-06"
-environment_md = '''cargo registry cache plus offline nested-cargo gate
-'''
-unprobed_remainder_md = '''This historical probe did not itself run the TypeScript universe or synthesize a new registry release; its two bounded replacements are covered by the command-plan and lock/manifest tests.
-'''
-
-[record.payload.scope]
-surfaces = ["check.ts warm-up, oracle-fingerprint scratch resolve, shared TypeScript test toolchain"]
-
-[[record]]
 id = "testing.propagating-deliberately-unpublished-type-s-intent-json-ts"
 title = "Propagating a deliberately-unpublished type's intent to the JSON → TS scripts."
 
@@ -7531,20 +7470,6 @@ id = "gate-no-std-check"
 source = "testing.profile-driven-compile-gate-covers-compositions-profiles-specs"
 kind = "gate"
 gate_id = "no_std_check"
-
-[[reference]]
-id = "test-check-ts-warmup-refresh-plan"
-source = "testing.proof.warm-up-refresh-dep-universe-lock-trust-fresh"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::check_ts_warmup_refresh_plan_selftest"
-symbol = "tests::integration_tests::check_ts_warmup_refresh_plan_selftest"
-
-[[reference]]
-id = "test-shared-ts-toolchain-lock-manifest"
-source = "testing.proof.warm-up-refresh-dep-universe-lock-trust-fresh"
-kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::integration_tests::shared_ts_toolchain_lock_matches_the_effective_manifest"
-symbol = "tests::integration_tests::shared_ts_toolchain_lock_matches_the_effective_manifest"
 
 [[reference]]
 id = "testing-roadmap-declined-decided-with-a-reopening-signal-n9"

@@ -424,6 +424,19 @@
       ]
     },
     {
+      "gate": "generated_dep_resolution",
+      "warm_ms": 235,
+      "n": 3,
+      "measured": "2026-08-29",
+      "machine": "86216c55",
+      "history": [
+        {
+          "date": "2026-08-29",
+          "warm_ms": 235
+        }
+      ]
+    },
+    {
       "gate": "generated_local_scope_wide_crates_compile",
       "warm_ms": 194000,
       "n": 1,
@@ -1049,15 +1062,11 @@
     },
     {
       "gate": "self_checks",
-      "warm_ms": 4000,
+      "warm_ms": 8000,
       "n": 20,
       "measured": "2026-08-29",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-08-19",
-          "warm_ms": 3000
-        },
         {
           "date": "2026-08-19",
           "warm_ms": 5000
@@ -1073,6 +1082,10 @@
         {
           "date": "2026-08-29",
           "warm_ms": 4000
+        },
+        {
+          "date": "2026-08-29",
+          "warm_ms": 8000
         }
       ]
     },
