@@ -1,0 +1,2 @@
+; generation-only excluded cell: extern x unref (shape defs, module a)
+ext = _CDDL_CODEGEN_EXTERN_TYPE_

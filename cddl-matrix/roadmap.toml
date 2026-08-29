@@ -1307,36 +1307,39 @@ event_md = '''one rule's alternatives are re-spelled at more than a handful of r
 
 [[record]]
 id = "matrix.multifile.extern-shape-coverage"
-title = "The multifile matrix never enumerates extern/rawbytes shapes at all"
+title = "Add a compile-excluded multifile shape or reference position outside the projected generation grid"
 
 [record.payload]
 kind = "work"
-body_md = '''  - The multifile matrix never enumerates extern/rawbytes shapes at all
-    (`project_multifile_matrix.ts`'s `SHAPES`), so its exclusion is structural rather than a skip
-    list. Extern PLACEMENT across scopes is covered by `tests/extern-generic-scoped` and
-    `facade_composition_compiles`.
+body_md = '''  - `extern` and `rawbytes` remain excluded only from the standalone compile matrix:
+    their Rust definitions are supplied by a consumer, so that verdict would measure fixture
+    plumbing. Their current generation-only complement and the hand-owned user-code execution
+    proof are documented in `tests/README.md` § "multifile placement matrix". The remaining action
+    is to extend that projection when a new user-supplied shape or meaningful reference position is
+    outside its exact set; do not add it to the standalone compile matrix unless in-repo user
+    definitions make the compile verdict meaningful.
+
 '''
-signal_md = '''  **Reopening signal for the multifile half:** a cross-module extern break that
-  `facade_composition_compiles`' single hand-curated composition does not reach — i.e. a real
-  consumer's multi-scope spec fails to build on a shape that gate does not model. The magnitude that
-  grows here is the number of SCOPES a consumer's spec splits an extern surface across, not the
-  number of consumers.
+signal_md = '''  **Residual trigger:** a new user-supplied multifile shape or a newly meaningful
+  reference position that does not fit the exact projected set above. Add it to the generation-only
+  grid in the feature change; do not put it in the standalone compile matrix unless valid in-repo
+  user definitions make the compile verdict meaningful.
 
 '''
 work_state = "deferred"
-work_intent = "build_system"
-work_kind = "missing_system"
+work_intent = "add_regression"
+work_kind = "coverage_cell"
 risk = "compile_failure"
 
 [record.payload.reopening_signal]
-observer = "multi-scope consumer"
-dimension = "scopes crossed by extern surface"
-action_on_fire_md = '''enumerate demanded shapes
+observer = "generator change author or multi-scope consumer"
+dimension = "user-supplied shape or reference position outside the projected grid"
+action_on_fire_md = '''extend the generation-only projection with the demanded cell
 '''
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = '''a cross-module extern build breaks outside facade composition
+event_md = '''a user-supplied multifile shape or reference position is not represented by the generation-only grid
 '''
 
 [[record]]
@@ -1668,7 +1671,10 @@ body_md = '''- **Keep EVERY matrix axis honest (periodic).** `project_multifile_
   local `SHAPES` to contain every standalone-compilable wasm shape; its only exact exclusions are
   `prim`, `extern`, and `rawbytes`, and the exclusion ledger is itself asserted live. The grid still
   relies on the hand-curated `SHAPES` × `ROLES` and `SHAPES` × reference-MODE axes, so a new boundary
-  representation, role, or placement position remains an ungated hole until it is added. **The
+  representation, role, or placement position remains an ungated hole until it is added. The
+  user-supplied `extern`/`rawbytes` exclusion has a second, deterministic generation-only projected
+  grid because it cannot produce a standalone compile verdict; its exact shapes and modes are pinned
+  independently. **The
   standing rule: a generator change that gives types a NEW way to cross the wasm boundary, or a NEW
   position to sit in, adds the shape/role/mode in the same change.** The remaining periodic sweep is
   therefore about reach and exclusions, not copying sibling rows by review:
@@ -2439,9 +2445,9 @@ body_md = '''  - **The EXCLUSION comments, not just the missing rows** — a sha
     floor cannot build it standalone (`extern` / `rawbytes`) bounds the GATE, not the generator, and
     a consumer regen has already broken inside exactly such an exclusion. An exclusion justified by
     the gate's execution model is never evidence the generator has nothing to get wrong there.
-  One residual is recorded rather than enumerated, in `tests/testing-roadmap.toml`: the
-  `gcvariant` mode extension over the Record-resolving shapes plus a generation-only leg over the
-  excluded shapes (§ "Multifile reference-POSITION coverage"). (Input REALISM — consumer-scale
+  Both complements are now enumerated: `gcvariant` covers the exact Record-resolving subset, and
+  the generation-only leg covers the compile-excluded shapes. A newly meaningful reference position
+  is added to the appropriate projected leg in the same change. (Input REALISM — consumer-scale
   identifier length, a dimension no axis here enumerates — is not a residual here: the
   over-width-field class every short-named fixture kept unreachable is held by a standing
   cddl-codegen gate, the dense width ladder

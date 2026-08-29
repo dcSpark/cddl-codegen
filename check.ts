@@ -175,7 +175,7 @@ export interface Gate {
   cwd?: string;              // kind === "cmd"; defaults to ROOT
   run?: (o: Opts) => Outcome;// kind === "fn"
   ignoredTest?: string;      // maps this gate to a `#[ignore]` test (meta-check 1)
-  script?: string;           // cddl-matrix/*.ts this gate drives (meta-check 2)
+  script?: string | readonly string[]; // cddl-matrix/*.ts script(s) this gate drives (meta-check 2)
   /**
    * OPT-IN gate-level concurrency: this gate may run concurrently with the OTHER gates naming the
    * same group. Absent (the default for every gate) means sequential — today's behaviour, byte for
@@ -1441,7 +1441,11 @@ function runSelfChecks(): Outcome {
 
   // 2. matrix-script coverage: every cddl-matrix/*.ts (except the shared lib) must be wired to a gate.
   const scripts = readdirSync(MATRIX).filter(f => f.endsWith(".ts") && f !== "lib.ts");
-  const referenced = new Set(REGISTRY.map(g => g.script).filter(Boolean) as string[]);
+  const referenced = new Set(
+    REGISTRY.flatMap(g =>
+      g.script === undefined ? [] : typeof g.script === "string" ? [g.script] : [...g.script]
+    ),
+  );
   for (const s of scripts)
     if (!referenced.has(s))
       problems.push(`meta-2: cddl-matrix/${s} is wired into no gate — add it to a tier in the registry (or justify its exclusion)`);
@@ -2029,7 +2033,8 @@ export const REGISTRY: Gate[] = [
   // (maintainer call, 2026-07: measured ~0.04s wall).
   { id: "project_multifile_matrix_check", tier: "fast", kind: "cmd",
     cmd: ["bun", "run", "project_multifile_matrix.ts", "--check"], cwd: MATRIX,
-    script: "project_multifile_matrix.ts", desc: "multifile placement matrix fixtures drift gate" },
+    script: ["project_multifile_matrix.ts", "project_multifile_excluded_matrix.ts"],
+    desc: "multifile placement matrix fixtures drift gate" },
   { id: "query_q4_directional", tier: "fast", kind: "cmd", cmd: ["bun", "run", "query_q4_directional.ts", "--check"], cwd: MATRIX,
     script: "query_q4_directional.ts", desc: "Q4 directional-support query + consistency gate (matrix.json + catalog.toml, no cargo)" },
   { id: "query_q1_gaps", tier: "fast", kind: "cmd", cmd: ["bun", "run", "query_q1_gaps.ts", "--check"], cwd: MATRIX,

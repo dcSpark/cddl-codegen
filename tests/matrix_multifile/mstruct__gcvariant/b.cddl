@@ -1,0 +1,2 @@
+; cell: mstruct x gcvariant (reference from module b)
+bholder = [mst // 1, uint]

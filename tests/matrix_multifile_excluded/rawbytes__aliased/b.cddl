@@ -1,0 +1,2 @@
+; generation-only excluded cell: rawbytes x aliased (reference from module b)
+bal = pub_key

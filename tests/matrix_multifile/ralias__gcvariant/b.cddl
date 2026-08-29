@@ -1,0 +1,2 @@
+; cell: ralias x gcvariant (reference from module b)
+bholder = [ral // 1, uint]

@@ -5186,12 +5186,10 @@ definitions land wherever `types.scope(ident)` puts them — and that region had
 fixture
 (`tests/multifile`, which covers NAMED cross-module refs but no structural-wrapper-ownership
 cells). This sweep enumerates the placement grid, compile-floors it (always-on), and round-trips it
-(manual, full tier). Three placement vectors the grid does NOT enumerate are hand-fixture-owned:
-the group-choice-VARIANT reference position (`tests/multifile`, see Axis 2 below); the
-extern-shaped type-alias-TARGET position (`tests/extern-generic-scoped` — a generic-EXTERN
-instance aliased from a non-root scope decomposes into a base import at the base's declaring
-scope plus argument imports, never the whole `Base<Args>` type expression; extern shapes sit in
-this grid's SHAPES exclusion, so the compile floor can never enumerate them — see Axis 1); and the
+(manual, full tier). Its user-code exclusion has a complementary projected generation-only leg:
+`project_multifile_excluded_matrix.ts` covers plain extern/raw-bytes/generic-extern shapes ×
+named/aliased/unreferenced positions (see Axis 1). Two placement vectors remain hand-fixture-owned:
+the existing user-code-backed compile/round-trip exemplar (`tests/extern-generic-scoped`), and the
 open-rest CONTAINER position (`tests/multifile`'s `open_flat` / `open_nested` / `open_tail` in
 `qux.cddl`, whose key/value/element live in `a`, `a/c/foo` and `b/bar`). The last one is a SHAPES
 exclusion of a different kind: a rest row/tail exists only INSIDE a record, so it has no
@@ -5208,6 +5206,9 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
      enumerate {shape × ref-mode}             two-module DIRECTORY fixture per cell                     generate --wasm=true (dir input), cargo check the wasm crate
                                                                                                     ─►  integration_tests::multifile_matrix_roundtrips (#[ignore]d)
                                                                                                         generate --wasm=true --emit-tests=true × ALL_PROFILES, cargo test rust/ + wasm/
+
+cddl-matrix/project_multifile_excluded_matrix.ts  ─►  tests/matrix_multifile_excluded/<shape>__<mode>/{lib,a,b}.cddl  ─►  multifile_excluded_shape_matrix_generates
+     enumerate excluded {shape × ref-mode}               user-code-requiring directory fixtures                         api::generated_strings; exact import + `use`-syntax pins
 ```
 
 - **The two-module template.** Each cell is a DIRECTORY fixture. `lib.cddl` (file stem `lib` ==
@@ -5224,11 +5225,14 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   are representative examples, not a closed list). Every self-contained shape that HAS defs is
   included. The exact live exclusion ledger is `prim` (no defs — nothing to place in a module) and
   `extern`/`rawbytes` (user-supplied types, can't compile standalone); the projection asserts each
-  remains present in wasm and absent locally. The exclusion bounds the
-  GATE, not the generator: extern shapes still have placement behavior (re-export glue routing;
-  generic-instance alias decomposition), and its alias-position residue escaped to a production
-  regen as feature request 07 — now hand-pinned by `tests/extern-generic-scoped`
-  (`extern_generic_scoped` + `extern_generic_scoped_alias_imports`).
+  remains present in wasm and absent locally. The exclusion bounds the COMPILE gate, not generation:
+  the second projected tree enumerates plain extern, raw bytes, and generic-extern instances with
+  both plain-record and raw-bytes arguments across `named`/`aliased`/`unref`, pinning exact
+  twelve-cell membership. Its fast
+  `api::generated_strings` test asserts every cell generates, no generated Rust `use` line carries
+  `<`/`>`, and the generic alias retains `Base<Args>` only in its alias while importing its base and
+  argument from module `a`. `tests/extern-generic-scoped` remains the user-definition-backed
+  compile/round-trip proof.
 - **Axis 2 — cross-module reference mode.** `named` — `b` references the shape's named rule
   (`bholder = [field0: <ty>]`); `aliased` — `b` ALIASES it (`bal = <ty>`, a plain rule alias whose
   emitted `pub type Bal = …;` names the cross-module target with no field reference in sight — the
@@ -5271,11 +5275,10 @@ cddl-matrix/project_multifile_matrix.ts  ─►  tests/matrix_multifile/<shape>_
   not enumerated. The one known position-keyed import class — a group-choice VARIANT over a
   foreign-scope Record, whose expanded `new_<variant>` ctor names the record's field types in the
   choice's module (marked by `scope_references` via the shared
-  `EnumVariant::group_ctor_record_fields` helper) — is pinned by the hand fixture instead
-  (`tests/multifile`: `relay` in `qux.cddl` over `relay_host` in `b/bar.cddl`, test
-  `cross_module_group_choice_ctor`, compiled rust+wasm under both fixture profiles); the mode-axis
-  extension is recorded recur-first in `tests/testing-roadmap.toml` ("Multifile reference-POSITION
-  coverage").
+  `EnumVariant::group_ctor_record_fields` helper) — is now the `gcvariant` mode
+  (`bholder = [<ty> // 1, uint]`) for exactly the three Record-resolving shapes
+  `struct`/`mstruct`/`ralias`. `EXPECTED_GCVARIANT_SHAPES` makes a fourth path an explicit review;
+  the older `tests/multifile` `relay` hand fixture remains a behavioural compile/round-trip vector.
 - **The compile floor** (`integration_tests::multifile_matrix_compiles`) globs the cell dirs,
   generates each with DIRECTORY input `--wasm=true`, and `cargo check`s the wasm crate ONLY (which
   path-depends on the rust crate, so rust-side breakage surfaces transitively). Its shared target uses
@@ -5381,11 +5384,14 @@ error-code evidence), and the full-tier **round-trip gate** executes that wiring
 profiles — a green placement cell is semantically verified once both hold (first full sweep:
 every non-collrec cell green under default, preserve, and json).
 
-**Adding / changing cells.** Edit `SHAPES`/`MODES` in the projection, `bun run
-project_multifile_matrix.ts`, review the new fixtures, run the gate. Output is deterministic — **never
-hand-edit `tests/matrix_multifile/`**; `--check` is the drift gate (stale/missing/orphaned dir or
-file). `EXPECTED_CELLS`, `EXPECTED_ANON_SHAPES`, and `EXPECTED_ANONB_SHAPES` guard the grid, so a
-shrink/growth is an explicit reviewed edit.
+**Adding / changing cells.** Edit the compile/round-trip tree's `SHAPES`/`MODES`, or the user-code
+tree's excluded `SHAPES`/`MODES`, then run `bun run project_multifile_matrix.ts`; its existing
+drift command projects and checks both trees. Review the new fixtures and run the applicable gate.
+Output is deterministic — **never hand-edit either fixture tree**; `--check` detects a stale,
+missing, or orphaned dir/file. `EXPECTED_CELLS`, `EXPECTED_ANON_SHAPES`, `EXPECTED_ANONB_SHAPES`, and
+`EXPECTED_GCVARIANT_SHAPES` guard the compile/round-trip grid, while the excluded-shape projection
+pins its exact shape/mode membership and twelve-cell product. A shrink/growth is an explicit reviewed
+edit in either leg.
 
 ## Shape-recombination fuzzer (`tests/recomb/` + `src/tests/recombination_tests.rs`)
 

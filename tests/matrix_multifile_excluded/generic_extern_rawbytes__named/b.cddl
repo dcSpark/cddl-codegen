@@ -1,0 +1,2 @@
+; generation-only excluded cell: generic_extern_rawbytes x named (reference from module b)
+bholder = [field0: ext_set<pub_key>]

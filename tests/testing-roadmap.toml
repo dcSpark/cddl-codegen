@@ -3094,10 +3094,10 @@ title = "Current control for testing.multifile-reference-position-coverage-two-p
 kind = "control"
 control_kind = "test"
 control_state = "live"
-reference_ids = ["test-extern-generic-scoped", "test-extern-generic-scoped-alias-imports"]
-claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.multifile-reference-position-coverage-two-position-keyed-escapes's preserved detail.
+reference_ids = ["test-extern-generic-scoped", "test-extern-generic-scoped-alias-imports", "test-multifile-excluded-shape-matrix-generates"]
+claim_md = '''The ordinary matrix's three `gcvariant` cells compile-check and round-trip rust plus wasm under default, preserve, and JSON. The excluded-shape matrix is intentionally generation-only; `tests/extern-generic-scoped` remains the user-definition-backed compile/round-trip proof.
 '''
-boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
+boundary_md = '''This control owns the exact known position/shape grid. It does not claim a future emitter position or user-supplied shape is already represented, nor that the unprobed consumer and repository universe is empty.
 '''
 
 [[record]]
@@ -4053,62 +4053,31 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 
 [[record]]
 id = "testing.multifile-reference-position-coverage-two-position-keyed-escapes"
-title = "Multifile reference-POSITION coverage: two position-keyed escapes down, one enumerated position still missing."
+title = "Add a newly introduced multifile import-collection position outside the projected legs."
 
 [record.payload]
 kind = "work"
-body_md = '''- **Multifile reference-POSITION coverage: two position-keyed escapes down, one enumerated position
-  still missing.** Two cross-module import bugs were invisible to `tests/matrix_multifile` because
-  its field-embedding modes (`named`/`anon`/`anonb`/`unref`) all reference the shape as a `bholder`
-  record FIELD, while each bug lived in a different reference *position* with its own
-  import-collection path: the group-ctor class (a GROUP choice over a foreign-scope Record expands
-  that record's field types into `new_<variant>` ctor params, unmarked by `scope_references`;
-  fixed via `EnumVariant::group_ctor_record_fields`, vector held by the hand fixture
-  `tests/multifile` `relay`/`relay_host`, test `cross_module_group_choice_ctor`), and the
-  type-alias-target class (a plain alias rule's `pub type` line names its cross-scope target,
-  unwalked — E0412, hit in production; fixed by the `scope_references` type-alias walk). The second
-  escape triggered this entry's mechanical layer: the position axis now exists as the `aliased`
-  mode (`bal = <ty>`, every INCLUDED shape). A third production escape then hit the same `aliased`
-  position from the SHAPE side — inside the matrix's extern/rawbytes EXCLUSION, not a missing row:
-  a generic-EXTERN instance named by a non-root rule aliases a `Base<Args>` TYPE-EXPRESSION ident
-  (`RustIdent::new_generic_with_base`), which the new walk fed to `set_ref` verbatim — a `<…>` in
-  the scope's `use` list, rustfmt abort, consumer regen dead (feature request 07, the day after
-  the walk landed). Fixed by decomposing in the walk (base imported at the base extern's declaring
-  scope via the single-owner `GenericInstance::extern_base_ident`, each argument walked); pinned
-  by the hand fixture `tests/extern-generic-scoped` (compile+round-trip proof
-  `extern_generic_scoped`; content pin `extern_generic_scoped_alias_imports`, incl. the
-  no-`<`-in-`use`-lines invariant). The exclusion itself stays — the matrix's compile floor cannot
-  build extern shapes standalone — so extern-shaped placement coverage is hand-fixture-owned.
-  Mechanical layer if the excluded region bites again (recur-first): the compile floor forces the
-  exclusion, but a GENERATION-ONLY leg (the in-process `api::generated_strings` probe the content
-  pin already uses) has no such constraint — an excluded-shapes × reference-modes generation sweep
-  needs no hand defs. What remains future-facing is the `gcvariant` mode
-  (`bholder = [<ty> // 1, uint]`) over a curated shape subset (the Record-resolving shapes
-  `struct`/`mstruct`/`ralias` are the discriminating cells), same participation-pin idiom as
-  `anonForm`/`EXPECTED_ANON_SHAPES` — the group-ctor class still rests on the single hand vector
-  rather than a matrix row. Its own signal, since the two positions this entry already delivered
-  have met the parent's escape-driven one: **the count of Record-resolving shapes reachable through
-  a group-choice ctor that the single hand vector does not cover**, which is what the next author
-  touching `EnumVariant::group_ctor_record_fields` reads off the shape list — one vector standing in
-  for three discriminating cells is tolerable, and stops being so the moment a fourth shape resolves
-  through that path.
+body_md = '''- The documented multifile matrix now owns the known field, alias-target, group-choice-ctor,
+  and compile-excluded user-code paths. This residual is only for a genuinely NEW emitter
+  import-collection position. It is not a reason to duplicate named/alias root rows:
+  `matrix.root-reference-placement` remains deferred on its own precise root-only dangling-import
+  signal.
 '''
-work_state = "armed"
-work_intent = "build_system"
-work_kind = "missing_system"
+work_state = "deferred"
+work_intent = "add_regression"
+work_kind = "coverage_cell"
 risk = "compile_failure"
 control_ids = ["testing.guard.multifile-reference-position-coverage-two-position-keyed-escapes"]
 
-[record.payload.promotion_trigger]
-observer = "fresh-evidence submitter for testing.multifile-reference-position-coverage-two-position-keyed-escapes"
-dimension = "Multifile reference-POSITION coverage: two position-keyed escapes down, one enumerated position still missing."
-observable = "- **Multifile reference-POSITION coverage: two position-keyed escapes down, one enumerated position still missing.** Two cross-module import bugs were invisible to `tests/matrix_multifile` because its field-embedding modes (`named`/`anon`/`anonb`/`unref`) all reference the shape as a `bholder` record FIELD, while each bug lived in a different reference *position* with its own import-collection path: the group-ctor class (a GROUP choice over a foreign-scope Record expands that record's field types into `new_<variant>` ctor params, unmarked by `scope_references`; fixed via `EnumVariant::group_ctor_record_fields`, vector held by the hand fixture `tests/multifile` `relay`/`relay_host`, test `cross_module_group_choice_ctor`), and the type-alias-target class (a plain alias rule's `pub type` line names its cross-scope target, unwalked — E0412, hit in production; fixed by the `scope_references` type-alias walk). The second escape triggered this entry's mechanical layer: the position axis now exists as the `aliased` mode (`bal = <ty>`, every INCLUDED shape). A third production escape then hit the same `aliased` position from the SHAPE side — inside the matrix's extern/rawbytes EXCLUSION, not a missing row: a generic-EXTERN instance named by a non-root rule aliases a `Base<Args>` TYPE-EXPRESSION ident (`RustIdent::new_generic_with_base`), which the new walk fed to `set_ref` verbatim — a `<…>` in the scope's `use` list, rustfmt abort, consumer regen dead (feature request 07, the day after the walk landed). Fixed by decomposing in the walk (base imported at the base extern's declaring scope via the single-owner `GenericInstance::extern_base_ident`, each argument walked); pinned by the hand fixture `tests/extern-generic-scoped` (compile+round-trip proof `extern_generic_scoped`; content pin `extern_generic_scoped_alias_imports`, incl. the no-`<`-in-`use`-lines invariant). The exclusion itself stays — the matrix's compile floor cannot build extern shapes standalone — so extern-shaped placement coverage is hand-fixture-owned. Mechanical layer if the excluded region bites again (recur-first): the compile floor forces the exclusion, but a GENERATION-ONLY leg (the in-process `api::generated_strings` probe the content pin already uses) has no such constraint — an excluded-shapes × reference-modes generation sweep needs no hand defs. What remains future-facing is the `gcvariant` mode (`bholder = [<ty> // 1, uint]`) over a curated shape subset (the Record-resolving shapes `struct`/`mstruct`/`ralias` are the discriminating cells), same participation-pin idiom as `anonForm`/`EXPECTED_ANON_SHAPES` — the group-ctor class still rests on the single hand vector rather than a matrix row. Its own signal, since the two positions this entry already delivered have met the parent's escape-driven one: **the count of Record-resolving shapes reachable through a group-choice ctor that the single hand vector does not cover**, which is what the next author touching `EnumVariant::group_ctor_record_fields` reads off the shape list — one vector standing in for three discriminating cells is tolerable, and stops being so the moment a fourth shape resolves through that path."
-action_on_fire_md = '''Set testing.multifile-reference-position-coverage-two-position-keyed-escapes to ready and execute only its preserved acceptance/mechanical-layer scope.
+[record.payload.reopening_signal]
+observer = "generator change author or affected consumer"
+dimension = "previously unrepresented cross-module import-collection position"
+action_on_fire_md = '''Add the position to the appropriate projected leg in the same change, or record the exact structural reason it cannot be generated or compiled there.
 '''
 
-[record.payload.promotion_trigger.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.multifile-reference-position-coverage-two-position-keyed-escapes's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = '''a new emitter path collects cross-module references outside field, alias-target, group-choice-ctor, or the excluded-shape named/aliased/unreferenced grid
 '''
 
 [[record]]
@@ -6244,7 +6213,7 @@ body_md = '''- **Extend rust-to-wasm API parity to materialized fields carried d
   specifies.
 '''
 work_state = "ready"
-work_intent = "fix_bug"
+work_intent = "repair"
 work_kind = "regression_gap"
 risk = "wrong_public_api"
 acceptance_md = '''Choose and document a stable wasm read API for every materialized field of an inlined enum arm; make the optional-fixed group-choice vector observe both presence states after CBOR round-trip; and extend the AST-based rust-to-wasm parity system so deleting that read door fails independently of the hand vector. Preserve the existing exemption for encoding-only sidecars and prove the chosen representation still permits wasm construction of the present state.'''
@@ -7469,6 +7438,13 @@ source = "testing.multifile-reference-position-coverage-two-position-keyed-escap
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::integration_tests::extern_generic_scoped"
 symbol = "tests::integration_tests::extern_generic_scoped"
+
+[[reference]]
+id = "test-multifile-excluded-shape-matrix-generates"
+source = "testing.multifile-reference-position-coverage-two-position-keyed-escapes"
+kind = "test_symbol"
+test_id = "rust-test:cddl-codegen#tests::multifile_excluded_matrix_tests::multifile_excluded_shape_matrix_generates"
+symbol = "tests::multifile_excluded_matrix_tests::multifile_excluded_shape_matrix_generates"
 
 [[reference]]
 id = "test-extern-generic-scoped-alias-imports"

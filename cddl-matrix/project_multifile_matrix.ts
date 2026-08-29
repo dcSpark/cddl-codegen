@@ -30,8 +30,8 @@
  * — except the `rootref` cells, whose reference lives in `lib.cddl` and which therefore carry no `b.cddl`.
  *
  * Run from cddl-matrix/:
- *   bun run project_multifile_matrix.ts          -> (re)writes tests/matrix_multifile/<cell>/*.cddl
- *   bun run project_multifile_matrix.ts --check  -> drift gate: fails if any fixture is stale/missing/orphaned
+ *   bun run project_multifile_matrix.ts          -> (re)writes both multifile fixture trees
+ *   bun run project_multifile_matrix.ts --check  -> drift gate: fails if either fixture tree is stale/missing/orphaned
  */
 import { readFileSync, existsSync, readdirSync, mkdirSync, writeFileSync, rmSync, statSync } from "node:fs";
 
@@ -152,8 +152,8 @@ supersetSelfTests();
 // defs and is self-contained (can compile standalone). `anonForm` is the shape's inline anonymous
 // same-shape spelling (the `mark_refs` structural-wrapper class); present iff the anon holder
 // `holder = [field0: <anonForm>]` compiles GREEN as a single-file spec — verified once when the
-// shape lands (throwaway generate + `cargo check` rust+wasm). All 11 anon-cell candidates probed
-// green (the EXPECTED_ANON_SHAPES list below), so all 11 admit an anon cell; a red
+// shape lands (throwaway generate + `cargo check` rust+wasm). All 13 anon-cell candidates probed
+// green (the EXPECTED_ANON_SHAPES list below), so all 13 admit an anon cell; a red
 // there would be a single-file limitation, not a placement finding, and the shape would carry no
 // `anonForm`. (The generic-instance and `@duplicates` directive shapes carry no `anonForm` by
 // construction — an instance `ty` IS the anonymous spelling, and the per-rule directive has no
@@ -166,7 +166,8 @@ supersetSelfTests();
 //     exclusion bounds this gate, not the generator — extern shapes still have placement behavior,
 //     and its alias-position residue escaped to production once (feature request 07: generic-extern
 //     instance alias targets are `Base<Args>` type expressions). Hand-pinned by
-//     tests/extern-generic-scoped; a generation-only excluded-shapes leg is recorded recur-first in
+//     tests/extern-generic-scoped. The complementary generation-only excluded-shapes grid is
+//     projected by project_multifile_excluded_matrix.ts; its remaining expansion trigger is in
 //     tests/testing-roadmap.toml ("Multifile reference-POSITION coverage").
 interface Shape {
   defs: string[]; // named-type definitions -> module `a` (authored dependency order; CDDL is order-free)
@@ -190,6 +191,11 @@ interface Shape {
   // Membership is a PROBE outcome (each participating shape's root `generated/mod.rs` was read for
   // the structural name it resolves), pinned by EXPECTED_ROOTREF_SHAPES below.
   rootRef?: boolean;
+  // `gcvariant` participation: a group-choice variant (`bholder = [<ty> // 1, uint]`) whose
+  // generated `new_<variant>` ctor expands a foreign Record's fields in module `b`.  This is a
+  // separate reference-collection path from a record field or an alias target, so include only
+  // the shapes which resolve to a Record through the direct, map-record, or alias-to-record path.
+  gcVariant?: boolean;
 }
 const SHAPES: Record<string, Shape> = {
   palias: { defs: ["pa = uint"], ty: "pa" },
@@ -231,12 +237,12 @@ const SHAPES: Record<string, Shape> = {
   nenestmap: { defs: ["nn = { + uint => { + uint => text } }"], ty: "nn" },
   passthru: { defs: ["nums = [* uint]", "pt = nums"], ty: "pt" },
   passthrumap: { defs: ["mp = { * uint => text }", "ptm = mp"], ty: "ptm" },
-  struct: { defs: ["st = [a: uint, b: text]"], ty: "st" },
+  struct: { defs: ["st = [a: uint, b: text]"], ty: "st", gcVariant: true },
   // transparent alias to a Record struct — like passthru/passthrumap but with a record target, so
   // the alias-target recursion in `mark_refs` descends into a type with its own wasm wrapper (the
   // shape whose wasm-matrix gchoice cell exposed the ctor alias-resolution divergence)
-  ralias: { defs: ["st = [a: uint, b: text]", "ral = st"], ty: "ral" },
-  mstruct: { defs: ["mst = { a: uint, b: text }"], ty: "mst" },
+  ralias: { defs: ["st = [a: uint, b: text]", "ral = st"], ty: "ral", gcVariant: true },
+  mstruct: { defs: ["mst = { a: uint, b: text }"], ty: "mst", gcVariant: true },
   // cborwrap's anon form references the named `foo` (which lives in module `a`) — a cross-module named
   // ref embedded in an anonymous `.cbor` wrapper. It still individuates the anon-placement class (the
   // `.cbor` wrapper resolution under module scope) and its single-file control is green, so it is kept.
@@ -407,6 +413,11 @@ const MODES: Record<string, Mode> = {
     b: (s) => (s.anonBallast && s.anonForm ? `bholder = [field0: ${s.anonForm}]` : null),
     aExtra: () => ["ballast = [bal0: uint]"],
   },
+  // The group-choice ctor position is not a record field: emitting `new_<variant>` in module `b`
+  // expands the foreign Record fields into ctor parameters. Only the three Record-resolving shapes
+  // opt in (`gcVariant`), so transparent aliases and collection wrappers cannot bulk up the grid
+  // without reaching this import-collection path.
+  gcvariant: { b: (s) => (s.gcVariant ? `bholder = [${s.ty} // 1, uint]` : null) },
   named: { b: (s) => `bholder = [field0: ${s.ty}]` },
   // The referencing-MODULE variation of `anon`: same inline anonymous spelling, placed at ROOT.
   rootref: { root: (s) => (s.rootRef && s.anonForm ? `rootholder = [field0: ${s.anonForm}]` : null) },
@@ -466,6 +477,18 @@ for (const k of rootrefShapes)
   if (!SHAPES[k].anonForm)
     throw new Error(`SHAPES.${k}: rootRef without anonForm — rootref reuses the anon spelling, so it needs one`);
 
+// The group-choice-variant subset is a second position-specific participation pin.  A fourth
+// Record-resolving shape must be an explicit review decision rather than a silent grid expansion.
+const EXPECTED_GCVARIANT_SHAPES = ["mstruct", "ralias", "struct"];
+const gcvariantShapes = Object.keys(SHAPES)
+  .filter((k) => SHAPES[k].gcVariant)
+  .sort();
+if (JSON.stringify(gcvariantShapes) !== JSON.stringify(EXPECTED_GCVARIANT_SHAPES))
+  throw new Error(
+    `group-choice-variant shape set is [${gcvariantShapes.join(", ")}], expected [${EXPECTED_GCVARIANT_SHAPES.join(", ")}] — ` +
+      `if the change is deliberate (a Record-resolution path changed), update EXPECTED_GCVARIANT_SHAPES in the same commit`,
+  );
+
 // lib.cddl is the root scope (file stem `lib` == ROOT_SCOPE); one trivial rule, constant across cells.
 const LIB_CDDL = "rt = [uint]\n";
 
@@ -500,7 +523,7 @@ for (const shape of Object.keys(SHAPES).sort()) {
 cells.sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0));
 
 // Grid shrink/growth must be an explicit, reviewed edit — not the byproduct of a filter change.
-const EXPECTED_CELLS = 163; // 46 shapes × {aliased, named, unref} = 138 + 13 anon-form shapes × {anon} + 5 anonb shapes × {anonb} + 7 rootref shapes × {rootref} -> 163
+const EXPECTED_CELLS = 166; // 46 shapes × {aliased, named, unref} = 138 + 13 anon-form shapes × {anon} + 5 anonb shapes × {anonb} + 3 group-choice Record shapes × {gcvariant} + 7 rootref shapes × {rootref} -> 166
 if (cells.length !== EXPECTED_CELLS)
   throw new Error(
     `multifile grid produced ${cells.length} cells, expected ${EXPECTED_CELLS} — if the change is deliberate, update EXPECTED_CELLS in the same commit`,
@@ -554,3 +577,8 @@ if (CHECK) {
   }
   console.log("drift check OK: tests/matrix_multifile matches the projection");
 }
+
+// The existing registered projection command owns BOTH multifile fixture trees.  The excluded
+// shapes cannot join this tree's standalone compile gate, but their projected generation-only tree
+// must receive the same committed-fixture drift protection without adding a new tier gate.
+await import("./project_multifile_excluded_matrix.ts");

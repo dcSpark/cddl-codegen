@@ -1,0 +1,2 @@
+; generation-only excluded cell: extern x named (reference from module b)
+bholder = [field0: ext]

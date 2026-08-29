@@ -1,0 +1,2 @@
+; generation-only excluded cell: generic_extern_rawbytes x aliased (reference from module b)
+bal = ext_set<pub_key>

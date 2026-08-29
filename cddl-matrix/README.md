@@ -144,6 +144,17 @@ meaningless. Normalizing keeps each fact in one place — e.g. "tags are support
 not" is not a bespoke row; it's `containment(tag-content, type2.tag)` with a cddl-codegen annotation of
 `unsupported`. The combinatorial concern collapses into one relation.
 
+### Projected multifile placement fixtures
+
+The master feature matrix is not the owner of module-placement combinations, but its test projections
+keep that boundary explicit. `project_multifile_matrix.ts` emits the standalone-compilable placement
+grid that is compiled and (at full tier) round-tripped. User-code shapes cannot make that standalone
+compile claim: their Rust definitions belong to a consumer. They therefore have the complementary
+`project_multifile_excluded_matrix.ts` generation-only grid, with exact shape/mode pins and an
+in-process generated-source invariant. Together these legs distinguish a real generator scope-routing
+regression from a fixture that merely lacks a consumer definition; `tests/README.md` documents the
+cells and the remaining hand-owned execution proof.
+
 ## Why it's *provably* comprehensive (not just "we tried hard")
 
 Comprehensiveness is established by a **bidirectional lint** against the first-party sources (the ABNF

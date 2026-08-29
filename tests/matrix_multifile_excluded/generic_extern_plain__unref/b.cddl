@@ -1,0 +1,2 @@
+; generation-only excluded cell: generic_extern_plain x unref (reference from module b)
+bholder = [field0: uint]
