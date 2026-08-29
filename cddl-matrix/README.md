@@ -844,8 +844,8 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   a verdict from `generate` for those ops (classified statically by controller op-name —
   `lib.ts` `rubyGenerateIsBernoulli`, self-tested at startup, gated by `verify_selftest`;
   `bun run verify.ts --selftest` runs that check, its wasm-evidence sibling, the policy-mint
-  classifier, the unknown-flag and elapsed-receipt process boundaries, and a pure toolchain-comparison classifier
-  (including absent `rustup`) standalone in tens of milliseconds. Ordinary verifier modes still
+  classifier, the unknown-flag and bounded-child elapsed-receipt process boundaries, and a pure toolchain-comparison classifier
+  (including absent `rustup`) standalone well under a second. Ordinary verifier modes still
   execute the scratch-cwd toolchain-pin comparison and fail closed when `rustup` is absent or the
   compiler identity differs. The
   clause reports deterministic tokens, all preserving the `; ruby=` delimiter downstream

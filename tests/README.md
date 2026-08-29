@@ -76,7 +76,7 @@ before considering work done" — the heavy correctness gates (full
 `cddl-matrix` scripts, via a dev-only local `typescript`/`@types/bun` — run `bun install` in
 `cddl-matrix/` once; the runtime stays dependency-free — which is also why it is NOT in the class
 above: CI cannot install it without a second `run:` step), `verify_selftest` (`verify.ts`'s
-assert-at-startup deciders, run standalone in tens of milliseconds — their own gate is `full`-tier,
+assert-at-startup deciders, including a bounded child receipt check, run standalone well under a second — their own gate is `full`-tier,
 and an ignored flag, wrong compiler identity, verdict token, evidence-stage name, policy-mint
 classifier, or drifted component row-selection/name mirror is silent in production, so the cheap
 tier is where it must fail), `no_std_check` (the
