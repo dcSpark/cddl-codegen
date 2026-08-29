@@ -15414,6 +15414,187 @@ fn json() {
     );
 }
 
+/// A hand-authored `@custom_json` implementation that delegates its schema body to the same u64
+/// representation its serde pair uses must pass the generated minted-value assertion end to end.
+#[test]
+fn emitted_json_schema_assertion_accepts_correct_custom_schema() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static N: AtomicUsize = AtomicUsize::new(0);
+
+    let root = std::env::temp_dir().join(format!(
+        "cddl_json_schema_assert_positive_{}_{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::Relaxed)
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let input = root.join("input.cddl");
+    std::fs::write(&input, "good = uint ; @newtype @custom_json\n").unwrap();
+    let export = root.join("export");
+    let generated = codegen_cmd()
+        .arg("--input")
+        .arg(&input)
+        .arg("--output")
+        .arg(&export)
+        .arg("--static-dir")
+        .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/static"))
+        .arg("--wasm=false")
+        .arg("--emit-tests=true")
+        .arg("--json-serde-derives=true")
+        .arg("--json-schema-export=true")
+        .arg("--no-preserve-comments")
+        .output()
+        .unwrap();
+    assert!(
+        generated.status.success(),
+        "generation failed:\n{}",
+        String::from_utf8_lossy(&generated.stderr)
+    );
+
+    let module = export.join("rust/src/generated/mod.rs");
+    let hand_impl = r#"
+
+impl serde::Serialize for Good {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where S: serde::Serializer {
+        serde::Serialize::serialize(&self.0, serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Good {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: serde::Deserializer<'de> {
+        Ok(Good::new(<u64 as serde::Deserialize>::deserialize(deserializer)?))
+    }
+}
+
+impl schemars::JsonSchema for Good {
+    fn schema_name() -> std::borrow::Cow<'static, str> { "Good".into() }
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <u64 as schemars::JsonSchema>::json_schema(generator)
+    }
+}
+"#;
+    use std::io::Write;
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&module)
+        .unwrap()
+        .write_all(hand_impl.as_bytes())
+        .unwrap();
+
+    let result = tool_cmd("cargo")
+        .arg("test")
+        .arg("--manifest-path")
+        .arg(export.join("rust/Cargo.toml"))
+        .arg("--lib")
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "a matching hand-authored schema must pass:\n{}\n{}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+/// The negative end-to-end leg for the emitted minted-value assertion. `Bad` has a legitimate
+/// hand-written serde pair but deliberately publishes `{}` as its schema, so positive-only
+/// validation would pass. The generated bounded mutations must instead fail with the stable
+/// over-permissiveness wording, proving the serde acceptance oracle controls the assertion.
+#[test]
+fn emitted_json_schema_assertion_rejects_over_permissive_custom_schema() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static N: AtomicUsize = AtomicUsize::new(0);
+
+    let root = std::env::temp_dir().join(format!(
+        "cddl_json_schema_assert_negative_{}_{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::Relaxed)
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let input = root.join("input.cddl");
+    std::fs::write(&input, "bad = uint ; @newtype @custom_json\n").unwrap();
+    let export = root.join("export");
+    let generated = codegen_cmd()
+        .arg("--input")
+        .arg(&input)
+        .arg("--output")
+        .arg(&export)
+        .arg("--static-dir")
+        .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/static"))
+        .arg("--wasm=false")
+        .arg("--emit-tests=true")
+        .arg("--json-serde-derives=true")
+        .arg("--json-schema-export=true")
+        .arg("--no-preserve-comments")
+        .output()
+        .unwrap();
+    assert!(
+        generated.status.success(),
+        "generation failed:\n{}",
+        String::from_utf8_lossy(&generated.stderr)
+    );
+
+    // This is exactly the three-trait `@custom_json` contract. The empty schema is intentional:
+    // it accepts every JSON value, while the serde implementation accepts only a u64.
+    let module = export.join("rust/src/generated/mod.rs");
+    let hand_impl = r#"
+
+impl serde::Serialize for Bad {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where S: serde::Serializer {
+        serde::Serialize::serialize(&self.0, serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Bad {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: serde::Deserializer<'de> {
+        Ok(Bad::new(<u64 as serde::Deserialize>::deserialize(deserializer)?))
+    }
+}
+
+impl schemars::JsonSchema for Bad {
+    fn schema_name() -> std::borrow::Cow<'static, str> { "Bad".into() }
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::Schema::default()
+    }
+}
+"#;
+    use std::io::Write;
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&module)
+        .unwrap()
+        .write_all(hand_impl.as_bytes())
+        .unwrap();
+
+    let result = tool_cmd("cargo")
+        .arg("test")
+        .arg("--manifest-path")
+        .arg(export.join("rust/Cargo.toml"))
+        .arg("--lib")
+        .output()
+        .unwrap();
+    let output = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(
+        !result.status.success(),
+        "an over-permissive hand-authored schema unexpectedly passed:\n{output}"
+    );
+    assert!(
+        output.contains("Bad (baseline): schema accepted a shape the serializer rejects"),
+        "the generated assertion failed for the wrong reason:\n{output}"
+    );
+    std::fs::remove_dir_all(root).unwrap();
+}
+
 /// Regression for feature request 05: json-gen must not emit uncompilable schema-registration rows
 /// for extern types. `ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_` instantiated as `my_set =
 /// ext_set<uint>` makes generation see BOTH the generic-extern BASE (`ExtSet`, bare — names no

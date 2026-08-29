@@ -721,6 +721,53 @@ fn emitted_bounds_site_differential_and_wart_scan() {
     }
 }
 
+/// The emitted schema assertion is deliberately a three-flag intersection: every neighboring
+/// combination must remain source-identical to its previous `--emit-tests` / JSON surface, while
+/// the exact triple wires the shared helper into the existing minted cases.
+#[test]
+fn emitted_json_schema_assertion_is_wired_only_under_the_exact_triple() {
+    let input = std::path::Path::new("tests/json/input.cddl");
+    let triple = [
+        "--wasm=false",
+        "--emit-tests=true",
+        "--json-serde-derives=true",
+        "--json-schema-export=true",
+    ];
+    let triple_files = crate::api::generated_strings(&cli_for(input, &triple)).unwrap();
+    let triple_mod = triple_files
+        .get("rust/src/generated/mod.rs")
+        .expect("rust generated module must be present");
+    for needle in [
+        "mod cddl_json_schema",
+        "jsonschema::validator_for",
+        "schema rejected a real serialization",
+        "schema accepted a shape the serializer rejects",
+        "cddl_json_schema::assert_case::<CustomWrapper>",
+    ] {
+        assert!(
+            triple_mod.contains(needle),
+            "exact triple lost `{needle}` from the emitted test module:\n{triple_mod}"
+        );
+    }
+
+    for missing in 1..4 {
+        let flags: Vec<&str> = triple
+            .iter()
+            .enumerate()
+            .filter_map(|(index, flag)| (index != missing).then_some(*flag))
+            .collect();
+        let files = crate::api::generated_strings(&cli_for(input, &flags)).unwrap();
+        let module = files
+            .get("rust/src/generated/mod.rs")
+            .expect("rust generated module must be present");
+        assert!(
+            !module.contains("cddl_json_schema"),
+            "omitting `{}` unexpectedly emitted the JSON-schema assertion helper:\n{module}",
+            triple[missing]
+        );
+    }
+}
+
 /// Every wasm method that puts an exact byte value directly in a collection carrier must perform
 /// the fallible Vec-to-array handover itself. Constructors that delegate to a native named type are
 /// deliberately absent: their native `new` owns the same conversion and its named diagnostic.

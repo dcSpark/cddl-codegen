@@ -14,7 +14,8 @@
 //!   edits to these are overwritten by design (the dep set is version-coupled to the emitted code).
 //!   **Three** path classes are exceptions, all merging into the existing value instead of replacing
 //!   it:
-//!   - `["dependencies", <name>]` merges FIELD-LEVEL ([`merge_dep_spec`]), so a user's
+//!   - `["dependencies" | "dev-dependencies", <name>]` merges FIELD-LEVEL
+//!     ([`merge_dep_spec`]), so a user's
 //!     `optional`/`default-features`/extra features and a compatible version pin survive a regen
 //!     while the tool still owns the version floor, its required features, and any field it sets
 //!     (e.g. `path`). The one axis a merge can be told to OWN outright is the dep's SOURCE: a spec
@@ -25,7 +26,7 @@
 //!     place the byte-for-byte claim above is qualified, in two bounded ways: its inline table's
 //!     whitespace is re-normalized ([`normalize_inline_decor`] — the merge moves fields between
 //!     positions, so their old spacing is stale by construction), and a dependency the tool ADDS to
-//!     a `[dependencies]` table that already existed gains an [`OWNERSHIP_MARKER`].
+//!     a dependency table that already existed gains an [`OWNERSHIP_MARKER`].
 //!   - `["features", "default"]` merges as a UNION ([`merge_default_features`]): the user's list
 //!     survives verbatim and tool entries it lacks are appended. A whole-value replace would
 //!     silently drop a consumer's customized default-feature list, and the key is not one the tool
@@ -57,7 +58,7 @@
 //! **The unconditional ops come from an append-only change LOG**, one per manifest
 //! (`static/manifest_changes/{rust,wasm,json_gen,static_runtime}.toml`) — the single source of truth. Each log is
 //! an ordered list of entries, each an `id` + dotted `path` + exactly one of `set` / `seed` /
-//! `remove`, plus the optional `assert_source = true` modifier (`set` on a `dependencies.*` path
+//! `remove`, plus the optional `assert_source = true` modifier (`set` on a dependency-table path
 //! only). [`fold_log`] folds them per-path last-write-wins (final `set` → [`ManifestOp::Set`],
 //! final `seed` → [`ManifestOp::SeedOnce`], final `remove` → [`ManifestOp::Remove`], i.e. a dropped
 //! key is auto-tombstoned) and emits the folded ops in first-mention order of each path. Editing is
@@ -93,14 +94,15 @@ pub type KeyPath = Vec<String>;
 #[derive(Debug, Clone)]
 pub enum ManifestOp {
     /// Tool-owned key: written every run, overwriting whatever value is there — EXCEPT a
-    /// `["dependencies", <name>]` path, which merges field-level into an existing entry
+    /// `["dependencies" | "dev-dependencies", <name>]` path, which merges field-level into an
+    /// existing entry
     /// ([`merge_dep_spec`]) so a user's dep-spec shape survives regeneration.
     Set {
         value: Item,
-        /// Whether this spec OWNS the dependency's SOURCE axis — `["dependencies", <name>]` paths
-        /// only. `true` makes the assertion a git-carrying spec already makes implicitly: source-axis
-        /// keys the spec does not itself name (`git`, `rev`, `branch`, `tag`, `path`, `registry`) are
-        /// cleared off the existing entry. A crates.io version has no cargo key that could carry that
+        /// Whether this spec OWNS the dependency's SOURCE axis — dependency-table paths only.
+        /// `true` makes the assertion a git-carrying spec already makes implicitly: source-axis keys
+        /// the spec does not itself name (`git`, `rev`, `branch`, `tag`, `path`, `registry`) are
+        /// cleared off the existing entry. A crates.io version has no cargo key that could carry the
         /// intent, so the changeset entry says it out-of-band (`assert_source = true`). See
         /// [`merge_dep_spec`].
         assert_source: bool,
@@ -152,9 +154,9 @@ pub fn apply(
                 assert_source,
             } => {
                 // Two Set paths merge into what is already there rather than replacing it: a
-                // `[dependencies].<name>` entry (field-level, keeping the user's dep-spec shape) and
-                // `features.default` (union, keeping the user's default-feature list). Every other
-                // Set path hard-replaces.
+                // dependency-table `<name>` entry (field-level, keeping the user's dep-spec shape)
+                // and `features.default` (union, keeping the user's default-feature list). Every
+                // other Set path hard-replaces.
                 let value = match item_at(doc.as_table(), path) {
                     Some(existing) if is_dependency_entry(path) => {
                         merge_dep_spec(existing, item, *assert_source)
@@ -389,11 +391,13 @@ fn remove_leaf(table: &mut Table, path: &[String]) {
 
 // ---- dependency-spec merge ------------------------------------------------------------------
 
-/// Is `path` exactly `["dependencies", <name>]` — the one path class whose `Set` merges field-level
-/// rather than hard-replacing? Deeper paths (e.g. `dependencies.foo.version`) and everything else
-/// keep replace semantics.
+/// Is `path` exactly `["dependencies" | "dev-dependencies", <name>]` — the two dependency-table
+/// path classes whose `Set` merges field-level rather than hard-replacing? Deeper paths (e.g.
+/// `dependencies.foo.version`) and everything else keep replace semantics. Dev dependencies share
+/// the user-customization contract, but are deliberately absent from `features.std`: test-only
+/// crates never need the generated library to forward their `std` features.
 fn is_dependency_entry(path: &[String]) -> bool {
-    path.len() == 2 && path[0] == "dependencies"
+    path.len() == 2 && matches!(path[0].as_str(), "dependencies" | "dev-dependencies")
 }
 
 /// Is `path` exactly `["features", "default"]` — the other path class whose `Set` merges (as a
@@ -775,6 +779,22 @@ fn dep(name: &str, spec: &str, enabled: bool) -> (KeyPath, ManifestOp) {
     (path, op)
 }
 
+/// A `[dev-dependencies]` entry emitted set-or-remove. This is intentionally a sibling of
+/// [`dep`], rather than making callers spell a table name: conditional test tooling needs the same
+/// tombstone/fixed-point rule as production dependencies while staying out of `features.std`.
+fn dev_dep(name: &str, spec: &str, enabled: bool) -> (KeyPath, ManifestOp) {
+    let path = key_path(&["dev-dependencies", name]);
+    let op = if enabled {
+        ManifestOp::Set {
+            value: val(spec),
+            assert_source: false,
+        }
+    } else {
+        ManifestOp::Remove
+    };
+    (path, op)
+}
+
 /// The write-only version stamp: `package.metadata.cddl-codegen.generated-with = <tool version>`.
 /// The tool NEVER reads this back — reading would make output depend on prior disk contents.
 fn version_stamp() -> (KeyPath, ManifestOp) {
@@ -802,9 +822,9 @@ enum FoldedAction {
 /// the emitted ops are in first-mention order of each path (deterministic). `file_name` names the log
 /// in any error. A gap in ids, a missing/duplicated action, or an unparseable snippet is a hard error.
 ///
-/// One OPTIONAL modifier: `assert_source = true`, valid only beside `set` on a `dependencies.*` path,
-/// declaring the spec the owner of the dep's source axis ([`merge_dep_spec`]). Either misuse is a hard
-/// error naming the log, in the same style as the contiguous-id and one-of validation.
+/// One OPTIONAL modifier: `assert_source = true`, valid only beside `set` on a dependency-table path,
+/// declaring the spec the owner of the dep's source axis ([`merge_dep_spec`]). Either misuse is a
+/// hard error naming the log, in the same style as the contiguous-id and one-of validation.
 fn fold_log(raw: &str, file_name: &str) -> Result<Vec<(KeyPath, ManifestOp)>, ManifestError> {
     let err = |message: String| ManifestError {
         file: file_name.to_owned(),
@@ -867,7 +887,7 @@ fn fold_log(raw: &str, file_name: &str) -> Result<Vec<(KeyPath, ManifestOp)>, Ma
             }
             if !is_dependency_entry(&path) {
                 return Err(err(format!(
-                    "change id {id} `assert_source` is valid only on a `dependencies.<name>` path, \
+                    "change id {id} `assert_source` is valid only on a dependency-table `<name>` path, \
                      not `{path_str}`"
                 )));
             }
@@ -1071,6 +1091,16 @@ pub fn ops_for_rust(
         "schemars",
         "{ version = \"1.2.1\", default-features = false, features = [\"derive\"] }",
         cli.json_schema_export,
+    ));
+    // The emitted JSON-schema assertions are test-only and require all three surfaces: values must
+    // be serializable (`json-serde-derives`), schemas must exist (`json-schema-export`), and the
+    // generated test module must actually be present (`emit-tests`). Keep this in dev-dependencies
+    // so normal generated-crate builds remain unchanged. `jsonschema` is intentionally NOT
+    // forwarded by `features.std`: Cargo does not compile dev deps for a library consumer.
+    ops.push(dev_dep(
+        "jsonschema",
+        "{ version = \"0.46\", default-features = false }",
+        cli.emit_tests && cli.json_serde_derives && cli.json_schema_export,
     ));
 
     // type-conditional deps (mirrors the old `rust_cargo_toml` conditions exactly)
@@ -2975,12 +3005,12 @@ set = 'not = valid = toml'
 
     #[test]
     fn fold_assert_source_off_a_dependency_path_is_an_error() {
-        // Only a `dependencies.<name>` value HAS a source axis; anywhere else the modifier is inert.
+        // Only a dependency-table `<name>` value HAS a source axis; anywhere else the modifier is inert.
         let raw = log(&[("package.name", "set = '\"my-lib\"'\nassert_source = true")]);
         let err = fold_log(&raw, "manifest_changes/rust.toml").unwrap_err();
         assert!(
             err.to_string().contains("assert_source")
-                && err.to_string().contains("dependencies.<name>"),
+                && err.to_string().contains("dependency-table"),
             "assert_source off a dependency path must be rejected: {err}"
         );
     }
@@ -3094,6 +3124,77 @@ set = 'not = valid = toml'
                 "no wasm-bindgen dep should be emitted without a c-style enum:\n{out}"
             );
         });
+    }
+
+    #[test]
+    fn emitted_json_schema_assertion_dev_dep_requires_exact_triple_and_merges() {
+        const SPEC: &str = "holder = [value: uint]\n";
+        let triple = [
+            "--emit-tests=true",
+            "--json-serde-derives=true",
+            "--json-schema-export=true",
+        ];
+        with_manifest_ops(SPEC, &triple, |rust, _| {
+            let fresh = apply(rust, None, "rust/Cargo.toml").unwrap();
+            assert!(
+                fresh.contains("[dev-dependencies]")
+                    && fresh
+                        .contains("jsonschema = { version = \"0.46\", default-features = false }"),
+                "the exact triple must add the test-only validator:\n{fresh}"
+            );
+            assert!(
+                !fresh.contains("jsonschema/std"),
+                "a dev dependency must not be forwarded by the library's std feature:\n{fresh}"
+            );
+
+            let customized = "[dev-dependencies]\njsonschema = { version = \"0.46.8\", features = [\"draft202012\"], optional = true }\n";
+            let merged = apply(rust, Some(customized), "rust/Cargo.toml").unwrap();
+            assert!(
+                merged.contains("version = \"0.46.8\"")
+                    && merged.contains("draft202012")
+                    && merged.contains("optional = true")
+                    && merged.contains("default-features = false"),
+                "the user-customized dev dependency must merge field-wise:\n{merged}"
+            );
+            assert_eq!(
+                merged,
+                apply(rust, Some(&merged), "rust/Cargo.toml").unwrap(),
+                "the merged dev dependency must be a fixed point"
+            );
+
+            with_manifest_ops(
+                SPEC,
+                &["--emit-tests=true", "--json-serde-derives=true"],
+                |off, _| {
+                    let tombstoned = apply(off, Some(&merged), "rust/Cargo.toml").unwrap();
+                    assert!(
+                        !tombstoned.contains("jsonschema"),
+                        "dropping one triple flag must tombstone the validator:\n{tombstoned}"
+                    );
+                    assert_eq!(
+                        tombstoned,
+                        apply(off, Some(&tombstoned), "rust/Cargo.toml").unwrap(),
+                        "the flag-off manifest must be a fixed point"
+                    );
+                },
+            );
+        });
+
+        for missing in 0..3 {
+            let flags: Vec<&str> = triple
+                .iter()
+                .enumerate()
+                .filter_map(|(index, flag)| (index != missing).then_some(*flag))
+                .collect();
+            with_manifest_ops(SPEC, &flags, |rust, _| {
+                let out = apply(rust, None, "rust/Cargo.toml").unwrap();
+                assert!(
+                    !out.contains("jsonschema"),
+                    "omitting `{}` must not add the validator:\n{out}",
+                    triple[missing]
+                );
+            });
+        }
     }
 
     #[test]

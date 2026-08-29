@@ -941,11 +941,13 @@ file broke, since the impl has no other identity at run time. The module path he
 one (`crate::json_schema_gen::…`, or `<common>::json_schema_gen::…` under an override); the
 crate-root spelling in fact 1 applies to the macro alone.
 
-Worth adding on your side: a round-trip test validating `serde_json::to_value` of real values
-against the same files, composed the way the document composes them
-(`{"$defs": {…every file…}, "$ref": "#/$defs/<Name>"}`). Nothing in this tool can check that a
-hand-authored schema describes the type's actual serialization — that is the whole meaning of
-`@custom_json` — so the assertion has to live where the impls do.
+For a generated, per-type check of that contract, enable **all three** `--emit-tests`,
+`--json-serde-derives`, and `--json-schema-export`. The emitted round-trip cases serialize their
+IR-minted values through your real `Serialize` impl and validate them against
+`schemars::schema_for!(T)`; they also use `Deserialize` as an oracle for bounded wrong-shape
+mutations, so an all-accepting hand-written schema fails rather than passing its positive examples.
+Keep hand-authored vectors too when they express domain-specific cases the deterministic minter
+cannot reach (and when validating the composed, multi-file document rather than one type's schema).
 
 ## @no_json_schema_export
 

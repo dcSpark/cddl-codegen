@@ -199,7 +199,6 @@ entries = [
   "testing.propagating-deliberately-unpublished-type-s-intent-json-ts",
   "testing.json2ts-artifact-doc-comments-naming-undefined",
   "testing.file-listing-json-schema-root-values-flag-per",
-  "testing.assert-hand-authored-json-schema-against-type-s",
   "testing.composing-registration-rows-across-generation-passes-share-output",
   "testing.machine-readable-ownership-co-owned-features-std-list",
   "testing.per-gate-cgroup-memory-cap-kernel-enforced-slot",
@@ -464,48 +463,6 @@ action_on_fire_md = '''Set testing.armed-idle-harness-arms-empty-head-ledgers-ze
 [record.payload.promotion_trigger.predicate]
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.armed-idle-harness-arms-empty-head-ledgers-zero's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
-'''
-
-[[record]]
-id = "testing.assert-hand-authored-json-schema-against-type-s"
-title = "Assert a hand-authored JSON schema against the type's actual serialization."
-
-[record.payload]
-kind = "work"
-body_md = '''- **Assert a hand-authored JSON schema against the type's actual serialization.** Supplying the
-  schema body needs neither new spec syntax nor a hand-written impl: `@custom_json` suppresses the
-  `serde`/`schemars` derives while the type still gets a registration row, and `custom_schema_impl!`
-  writes the `JsonSchema` impl around a JSON file, so an authored body lands in the document as an
-  ordinary local `$defs` entry through the normal route (`docs/docs/comment_dsl.mdx` § Writing the
-  `JsonSchema` impl the directive promises). The missing half is the one with the value: a
-  hand-written schema drifts from the serialization it claims to describe and nothing notices — the
-  reported consumer failure is a hand-maintained schema that had been wrong in two places for years.
-  The assertion SHAPE already exists, hand-authored per fixture: `tests/json/tests.rs`'s
-  `schemas_validate_serialization` validates a concrete value of every exported type against
-  `schema_for!(T)`, with `schemas_reject_wrong_shapes` as the over-permissive counterpart (a
-  degenerate always-true schema passes every positive check). What it needs in order to generalize
-  into a consumer's crate is per-type sample values MINTED rather than hand-listed — the
-  `--emit-tests` IR-derived value minting is the candidate. A spec-level `@json_schema = "<file>"`
-  spelling is the cosmetic half and should not ship first: without the assertion it relocates the
-  hazard instead of removing it. '''
-signal_md = '''Reopening signal: the sample-value minting gets reused for this, or
-  a consumer reports a shipped schema that contradicted its own serialization.
-'''
-work_state = "deferred"
-work_intent = "build_capability"
-work_kind = "feature"
-risk = "wrong_public_api"
-
-[record.payload.reopening_signal]
-observer = "fresh-evidence submitter for testing.assert-hand-authored-json-schema-against-type-s"
-dimension = "Assert a hand-authored JSON schema against the type's actual serialization."
-observable = "- **Assert a hand-authored JSON schema against the type's actual serialization.** Supplying the schema body needs neither new spec syntax nor a hand-written impl: `@custom_json` suppresses the `serde`/`schemars` derives while the type still gets a registration row, and `custom_schema_impl!` writes the `JsonSchema` impl around a JSON file, so an authored body lands in the document as an ordinary local `$defs` entry through the normal route (`docs/docs/comment_dsl.mdx` § Writing the `JsonSchema` impl the directive promises). The missing half is the one with the value: a hand-written schema drifts from the serialization it claims to describe and nothing notices — the reported consumer failure is a hand-maintained schema that had been wrong in two places for years. The assertion SHAPE already exists, hand-authored per fixture: `tests/json/tests.rs`'s `schemas_validate_serialization` validates a concrete value of every exported type against `schema_for!(T)`, with `schemas_reject_wrong_shapes` as the over-permissive counterpart (a degenerate always-true schema passes every positive check). What it needs in order to generalize into a consumer's crate is per-type sample values MINTED rather than hand-listed — the `--emit-tests` IR-derived value minting is the candidate. A spec-level `@json_schema = \"<file>\"` spelling is the cosmetic half and should not ship first: without the assertion it relocates the hazard instead of removing it. Reopening signal: the sample-value minting gets reused for this, or a consumer reports a shipped schema that contradicted its own serialization."
-action_on_fire_md = '''Set testing.assert-hand-authored-json-schema-against-type-s to ready and execute only its preserved acceptance/mechanical-layer scope.
-'''
-
-[record.payload.reopening_signal.predicate]
-predicate_kind = "manual"
-review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.assert-hand-authored-json-schema-against-type-s's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 '''
 
 [[record]]

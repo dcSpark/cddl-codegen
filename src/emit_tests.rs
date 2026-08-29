@@ -664,6 +664,7 @@ pub fn emit_generated_tests(
             value_eq: !cli.preserve_encodings,
             preserve: cli.preserve_encodings && !uses_custom,
             canonical: cli.canonical_form && !uses_custom,
+            json_schema: cli.emit_tests && cli.json_serde_derives && cli.json_schema_export,
         };
         let roundtrip = match rust_struct.variant() {
             RustStructType::Record(record) => {
@@ -736,6 +737,93 @@ pub fn emit_generated_tests(
     } else {
         ""
     };
+    // Validate the value serde ACTUALLY produced, rather than a hand-built JSON representative.
+    // This is emitted only under the same triple that adds the matching `jsonschema` dev-dependency.
+    let json_schema_mod = if cli.emit_tests && cli.json_serde_derives && cli.json_schema_export {
+        r#"    mod cddl_json_schema {
+        use serde::de::DeserializeOwned;
+
+        fn push_unique(out: &mut Vec<serde_json::Value>, value: serde_json::Value) {
+            if !out.contains(&value) {
+                out.push(value);
+            }
+        }
+
+        fn shapes() -> [serde_json::Value; 6] {
+            [
+                serde_json::Value::Null,
+                serde_json::Value::Bool(false),
+                serde_json::Value::Number(serde_json::Number::from(0)),
+                serde_json::Value::String(String::new()),
+                serde_json::Value::Array(Vec::new()),
+                serde_json::Value::Object(serde_json::Map::new()),
+            ]
+        }
+
+        // Deterministic, bounded top-level and one-level mutations. The deserialize oracle below
+        // means a schema may intentionally accept a broad JSON form; only a candidate Rust rejects
+        // becomes a required schema rejection. Eight immediate children cap a wide object/array at
+        // 62 candidates (six top-level shapes + eight removals + eight times six replacements).
+        fn mutations(value: &serde_json::Value) -> Vec<serde_json::Value> {
+            let mut out = Vec::new();
+            for shape in shapes() {
+                push_unique(&mut out, shape);
+            }
+            match value {
+                serde_json::Value::Array(values) => {
+                    for index in 0..values.len().min(8) {
+                        let mut removed = values.clone();
+                        removed.remove(index);
+                        push_unique(&mut out, serde_json::Value::Array(removed));
+                        for shape in shapes() {
+                            if shape != values[index] {
+                                let mut changed = values.clone();
+                                changed[index] = shape;
+                                push_unique(&mut out, serde_json::Value::Array(changed));
+                            }
+                        }
+                    }
+                }
+                serde_json::Value::Object(values) => {
+                    for key in values.keys().take(8).cloned().collect::<Vec<_>>() {
+                        let mut removed = values.clone();
+                        removed.remove(&key);
+                        push_unique(&mut out, serde_json::Value::Object(removed));
+                        let original = &values[&key];
+                        for shape in shapes() {
+                            if shape != *original {
+                                let mut changed = values.clone();
+                                changed.insert(key.clone(), shape);
+                                push_unique(&mut out, serde_json::Value::Object(changed));
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+            out
+        }
+
+        pub fn assert_case<T>(value: serde_json::Value, rust_type: &str, case: &str)
+        where
+            T: schemars::JsonSchema + DeserializeOwned,
+        {
+            let schema = serde_json::to_value(schemars::schema_for!(T))
+                .unwrap_or_else(|error| panic!("{rust_type} ({case}): could not serialize schemars::schema_for! output: {error}"));
+            let validator = jsonschema::validator_for(&schema)
+                .unwrap_or_else(|error| panic!("{rust_type} ({case}): schema validator could not compile the generated schema: {error}"));
+            assert!(validator.is_valid(&value), "{rust_type} ({case}): schema rejected a real serialization: {value}");
+            for candidate in mutations(&value) {
+                if serde_json::from_value::<T>(candidate.clone()).is_err() {
+                    assert!(!validator.is_valid(&candidate), "{rust_type} ({case}): schema accepted a shape the serializer rejects: {candidate}");
+                }
+            }
+        }
+    }
+"#
+    } else {
+        ""
+    };
     // `--preserve-encodings`: the self-contained CBOR mutator whose `variants()` the round-trip loop
     // calls (spliced verbatim, no external append needed, so it works at corpus breadth). Only
     // meaningful under preserve — the encoding-fidelity assertions the loop emits are keyed on the
@@ -799,7 +887,7 @@ pub fn emit_generated_tests(
         String::new()
     };
     Some(format!(
-        "#[cfg(test)]\n#[allow(clippy::all)]\n{unused_imports_allow}mod cddl_generated_tests {{\n{STD_RESTORE}    use super::*;\n    use super::serialization::*;\n{bounded_failure_import}{any_import}{scope_globs}{conformance_mod}{fidelity_mod}{}\n}}\n",
+        "#[cfg(test)]\n#[allow(clippy::all)]\n{unused_imports_allow}mod cddl_generated_tests {{\n{STD_RESTORE}    use super::*;\n    use super::serialization::*;\n{bounded_failure_import}{any_import}{scope_globs}{conformance_mod}{json_schema_mod}{fidelity_mod}{}\n}}\n",
         fns.join("\n")
     ))
 }
@@ -990,6 +1078,7 @@ struct RtEmit {
     value_eq: bool,
     preserve: bool,
     canonical: bool,
+    json_schema: bool,
 }
 
 /// What an enum's round-trip needs to assert the property the WIRE has, rather than the one the
@@ -1048,6 +1137,7 @@ fn roundtrip_body(
         value_eq,
         preserve,
         canonical,
+        json_schema,
     } = rt;
     let conf_line = conf
         .map(|rule| format!("        cddl_conformance::validate(&bytes, \"{rule}\");\n"))
@@ -1135,11 +1225,18 @@ fn roundtrip_body(
             } else {
                 String::new()
             };
+            let json_schema_line = if json_schema {
+                format!(
+                    "        cddl_json_schema::assert_case::<{name}>(serde_json::to_value(&v).expect(\"{name} ({label}): minted value must serialize as JSON\"), \"{name}\", \"{label}\");\n"
+                )
+            } else {
+                String::new()
+            };
             format!(
                 "    {{
         let v = {expr};
         let bytes = v.to_cbor_bytes();
-{dump_line}{conf_line}        let back = {name}::from_cbor_bytes(&bytes).expect(\"{name} ({label}): serialized bytes must deserialize\");{first_match_line}{value_eq_line}
+{dump_line}{conf_line}{json_schema_line}        let back = {name}::from_cbor_bytes(&bytes).expect(\"{name} ({label}): serialized bytes must deserialize\");{first_match_line}{value_eq_line}
         assert_eq!(back.to_cbor_bytes(), bytes, \"{name} ({label}): wire round-trip must be byte-identical\");{fidelity}
     }}"
             )
