@@ -516,54 +516,56 @@ const WASM_MATRIX_PROFILE_SKIP: &[(&str, &str, &str)] = &[];
 /// pin — a fix landed).
 const MULTIFILE_ROUNDTRIP_SKIP: &[(&str, &str)] = &[];
 
-/// Per-profile round-trip skips for `multifile_matrix_roundtrips` ONLY — `(profile, cell stem,
-/// reason)` for cells red under a SPECIFIC profile, distinct from `MULTIFILE_ROUNDTRIP_SKIP`'s
-/// "red in every profile". The six JSON cells below all mint the typed bstr row of an open table;
-/// JSON has no injective object-member-name image for that key, so serde_json correctly rejects it
-/// before the emitted JSON/schema round-trip oracle can run. This is the decided strict boundary in
-/// `matrix.non-string-json-map-key-boundary`, not a `to_value` error to swallow. Same four-state
-/// contract; an up-front stale-pin guard rejects entries naming a dead profile or cell stem, and a
-/// newly passing resident is a boundary-contract change to investigate before removing its pin.
-const MULTIFILE_ROUNDTRIP_PROFILE_SKIP: &[(&str, &str, &str)] = &[
-    (
-        "json",
-        "otbl__aliased",
-        "the open table's minted typed bstr key has no JSON member-name image; serde_json must \
-         strict-fail rather than invent a lossy spelling (matrix.non-string-json-map-key-boundary)",
-    ),
-    (
-        "json",
-        "otbl__named",
-        "the open table's minted typed bstr key has no JSON member-name image; serde_json must \
-         strict-fail rather than invent a lossy spelling (matrix.non-string-json-map-key-boundary)",
-    ),
-    (
-        "json",
-        "otbl__unref",
-        "the open table's minted typed bstr key has no JSON member-name image; serde_json must \
-         strict-fail rather than invent a lossy spelling (matrix.non-string-json-map-key-boundary)",
-    ),
-    (
-        "json",
-        "otblrec__aliased",
-        "the record-held open table's minted typed bstr key has no JSON member-name image; \
-         serde_json must strict-fail rather than invent a lossy spelling \
-         (matrix.non-string-json-map-key-boundary)",
-    ),
-    (
-        "json",
-        "otblrec__named",
-        "the record-held open table's minted typed bstr key has no JSON member-name image; \
-         serde_json must strict-fail rather than invent a lossy spelling \
-         (matrix.non-string-json-map-key-boundary)",
-    ),
-    (
-        "json",
-        "otblrec__unref",
-        "the record-held open table's minted typed bstr key has no JSON member-name image; \
-         serde_json must strict-fail rather than invent a lossy spelling \
-         (matrix.non-string-json-map-key-boundary)",
-    ),
+/// Per-profile expected runtime reds for `multifile_matrix_roundtrips` ONLY. They are distinct from
+/// `MULTIFILE_ROUNDTRIP_SKIP`'s all-profile red cells: a resident must reach `cargo test` and fail
+/// with its pinned `expected_failure`; generation failure, a missing wasm surface, a green test, or
+/// a different runtime red is a finding. The six JSON cells below all mint the typed bstr row of an
+/// open table, whose JSON member-name image is deliberately unavailable. This is the strict
+/// boundary in `matrix.non-string-json-map-key-boundary`, not a `to_value` error to swallow.
+struct MultifileRoundtripProfileExpectedRed {
+    profile: &'static str,
+    stem: &'static str,
+    reason: &'static str,
+    expected_failure: &'static str,
+}
+
+const MULTIFILE_ROUNDTRIP_PROFILE_SKIP: &[MultifileRoundtripProfileExpectedRed] = &[
+    MultifileRoundtripProfileExpectedRed {
+        profile: "json",
+        stem: "otbl__aliased",
+        reason: "the open table's minted typed bstr key has no JSON member-name image; serde_json must strict-fail rather than invent a lossy spelling (matrix.non-string-json-map-key-boundary)",
+        expected_failure: "open table typed key has no JSON member-name image",
+    },
+    MultifileRoundtripProfileExpectedRed {
+        profile: "json",
+        stem: "otbl__named",
+        reason: "the open table's minted typed bstr key has no JSON member-name image; serde_json must strict-fail rather than invent a lossy spelling (matrix.non-string-json-map-key-boundary)",
+        expected_failure: "open table typed key has no JSON member-name image",
+    },
+    MultifileRoundtripProfileExpectedRed {
+        profile: "json",
+        stem: "otbl__unref",
+        reason: "the open table's minted typed bstr key has no JSON member-name image; serde_json must strict-fail rather than invent a lossy spelling (matrix.non-string-json-map-key-boundary)",
+        expected_failure: "open table typed key has no JSON member-name image",
+    },
+    MultifileRoundtripProfileExpectedRed {
+        profile: "json",
+        stem: "otblrec__aliased",
+        reason: "the record-held open table's minted typed bstr key has no JSON member-name image; serde_json must strict-fail rather than invent a lossy spelling (matrix.non-string-json-map-key-boundary)",
+        expected_failure: "open table typed key has no JSON member-name image",
+    },
+    MultifileRoundtripProfileExpectedRed {
+        profile: "json",
+        stem: "otblrec__named",
+        reason: "the record-held open table's minted typed bstr key has no JSON member-name image; serde_json must strict-fail rather than invent a lossy spelling (matrix.non-string-json-map-key-boundary)",
+        expected_failure: "open table typed key has no JSON member-name image",
+    },
+    MultifileRoundtripProfileExpectedRed {
+        profile: "json",
+        stem: "otblrec__unref",
+        reason: "the record-held open table's minted typed bstr key has no JSON member-name image; serde_json must strict-fail rather than invent a lossy spelling (matrix.non-string-json-map-key-boundary)",
+        expected_failure: "open table typed key has no JSON member-name image",
+    },
 ];
 
 /// Serialize gates that share a per-checkout scratch root under `temp_dir()`: two concurrent runs
@@ -5691,12 +5693,12 @@ fn wasm_matrix_roundtrips() {
 /// profiles × 2 `cargo test`s is materially heavier than the always-on compile floor. Run it with
 /// `cargo test --bin cddl-codegen multifile_matrix_roundtrips -- --ignored`.
 ///
-/// Two skip ledgers, both four-state (red+listed = expected; red+unlisted = fail — fix or,
-/// deliberately, pin + cddl-matrix/roadmap.toml ledger reason; green+listed = "resurfaced — remove
-/// the pin"; green+unlisted = pass) with up-front stale-key guards: `MULTIFILE_ROUNDTRIP_SKIP`
-/// (red in EVERY profile — the collrec compile-floor carries) and
-/// `MULTIFILE_ROUNDTRIP_PROFILE_SKIP` (profile-specific reds). No rustc-error-code class assertion
-/// here — the compile floor's `MULTIFILE_MATRIX_SKIP` pins each collrec cell's exact class.
+/// `MULTIFILE_ROUNDTRIP_SKIP` remains a four-state all-profile ledger (red+listed = expected;
+/// red+unlisted = fail; green+listed = resurfaced; green+unlisted = pass). A
+/// `MULTIFILE_ROUNDTRIP_PROFILE_SKIP` resident has the stricter contract: it must generate its wasm
+/// surface and its captured `cargo test` red must contain the resident's exact pinned signature.
+/// No rustc-error-code class assertion here — the compile floor's `MULTIFILE_MATRIX_SKIP` pins each
+/// collrec cell's exact class.
 ///
 /// Vacuity floor: the sweep counts each generated crate whose root `generated/mod.rs` carries a
 /// minted test module (the `feature_corpus_compiles` counting pattern) and asserts a floor, so
@@ -5749,16 +5751,26 @@ fn multifile_matrix_roundtrips() {
         .filter(|(profile, _)| *profile != super::COMPONENT_PROFILE)
         .copied()
         .collect();
-    for (profile, stem, _reason) in MULTIFILE_ROUNDTRIP_PROFILE_SKIP {
+    for entry in MULTIFILE_ROUNDTRIP_PROFILE_SKIP {
         assert!(
-            profiles.iter().any(|(name, _)| name == profile),
-            "MULTIFILE_ROUNDTRIP_PROFILE_SKIP names profile `{profile}`, which this gate does not \
-             sweep — stale pin, remove or fix it"
+            profiles.iter().any(|(name, _)| *name == entry.profile),
+            "MULTIFILE_ROUNDTRIP_PROFILE_SKIP names profile `{}`, which this gate does not \
+             sweep — stale pin, remove or fix it",
+            entry.profile,
         );
         assert!(
-            cell_stems.contains(stem),
-            "MULTIFILE_ROUNDTRIP_PROFILE_SKIP names cell `{stem}` that no longer exists in \
-             tests/matrix_multifile — stale pin, remove or fix it"
+            cell_stems.contains(entry.stem),
+            "MULTIFILE_ROUNDTRIP_PROFILE_SKIP names cell `{}` that no longer exists in \
+             tests/matrix_multifile — stale pin, remove or fix it",
+            entry.stem,
+        );
+        assert!(
+            !entry.expected_failure.is_empty(),
+            "MULTIFILE_ROUNDTRIP_PROFILE_SKIP entry {}/{} has no expected runtime failure \
+             signature — a changed red would be silently accepted (pin: {})",
+            entry.stem,
+            entry.profile,
+            entry.reason,
         );
     }
 
@@ -5787,10 +5799,10 @@ fn multifile_matrix_roundtrips() {
         for (profile, extra) in &profiles {
             let label = format!("{stem}/{profile}");
             // Skipped in EVERY profile, or in THIS specific profile.
-            let skipped = skipped_all
-                || MULTIFILE_ROUNDTRIP_PROFILE_SKIP
-                    .iter()
-                    .any(|(p, s, _)| p == profile && s == &stem);
+            let profile_expected_red = MULTIFILE_ROUNDTRIP_PROFILE_SKIP
+                .iter()
+                .find(|entry| entry.profile == *profile && entry.stem == stem);
+            let skipped = skipped_all || profile_expected_red.is_some();
             let out = root.join(format!("{stem}__{profile}"));
             let gen_out = codegen_cmd()
                 .arg(format!("--input={}", input.to_str().unwrap()))
@@ -5801,12 +5813,11 @@ fn multifile_matrix_roundtrips() {
                 .output()
                 .unwrap();
             if !gen_out.status.success() {
-                if !skipped {
-                    failures.push(format!(
-                        "{label}: generation failed\n{}",
-                        String::from_utf8_lossy(&gen_out.stderr)
-                    ));
-                }
+                failures.push(format!(
+                    "{label}: generation failed (an expected runtime red must still generate)\nstdout:\n{}\nstderr:\n{}",
+                    String::from_utf8_lossy(&gen_out.stdout),
+                    String::from_utf8_lossy(&gen_out.stderr)
+                ));
                 let _ = std::fs::remove_dir_all(&out);
                 continue;
             }
@@ -5827,14 +5838,11 @@ fn multifile_matrix_roundtrips() {
                 // Every cell holds a composite record — module `b`'s, or (for the `rootref` cells,
                 // which carry no `b.cddl`) the root scope's — so a wasm crate is always
                 // expected — a missing one silently de-gates the cell (mirror the compile floor).
-                if skipped {
-                    resurfaced.push(format!("{label} (emits no wasm crate)"));
-                } else {
-                    failures.push(format!(
-                        "{label}: generated no wasm crate (expected a wasm wrapper for every cell \
-                         — the cell is no longer being round-trip-gated)"
-                    ));
-                }
+                failures.push(format!(
+                    "{label}: generated no wasm crate (expected a wasm wrapper for every cell \
+                     — the cell is no longer being round-trip-gated; an expected runtime red does \
+                     not excuse a missing surface)"
+                ));
                 let _ = std::fs::remove_dir_all(&out);
                 continue;
             }
@@ -5877,8 +5885,27 @@ fn multifile_matrix_roundtrips() {
             );
             cache_run += outcome.ran();
             cache_hit += outcome.cached();
-            match (skipped, cell_red) {
-                (false, Some((crate_sub, test))) => failures.push(format!(
+            match (profile_expected_red, skipped, cell_red) {
+                (Some(entry), _, Some((crate_sub, test))) => {
+                    let stdout = String::from_utf8_lossy(&test.stdout);
+                    let stderr = String::from_utf8_lossy(&test.stderr);
+                    if !stdout.contains(entry.expected_failure)
+                        && !stderr.contains(entry.expected_failure)
+                    {
+                        failures.push(format!(
+                            "{label} ({crate_sub}): cargo test failed with a NEW signature; expected \
+                             `{}` for {}\nstdout:\n{stdout}\nstderr:\n{stderr}",
+                            entry.expected_failure, entry.reason,
+                        ));
+                    }
+                }
+                (Some(_), _, None) if outcome.success() => resurfaced.push(label),
+                (Some(entry), _, None) => failures.push(format!(
+                    "{label}: expected runtime red `{}` ({}) but the oracle failed without a \
+                     captured cargo-test failure",
+                    entry.expected_failure, entry.reason,
+                )),
+                (None, false, Some((crate_sub, test))) => failures.push(format!(
                     "{label} ({crate_sub}): cargo test failed (multifile round-trip red cell — \
                      fix the emitter/generator or, deliberately, add to MULTIFILE_ROUNDTRIP_SKIP \
                      / MULTIFILE_ROUNDTRIP_PROFILE_SKIP + a cddl-matrix/roadmap.toml ledger \
@@ -5886,8 +5913,8 @@ fn multifile_matrix_roundtrips() {
                     String::from_utf8_lossy(&test.stdout),
                     String::from_utf8_lossy(&test.stderr)
                 )),
-                (true, None) if outcome.success() => resurfaced.push(label),
-                _ => {} // (false, None) = green as expected; (true, Some(_)) = red as expected
+                (None, true, None) if outcome.success() => resurfaced.push(label),
+                _ => {} // (false, None) = green as expected; an all-profile listed red is expected
             }
             // Free the per-cell crate dir as we go (keep the shared target) — 46 cells × 3
             // profiles of generated crates add up.

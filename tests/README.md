@@ -5417,9 +5417,10 @@ cddl-matrix/project_multifile_excluded_matrix.ts  ─►  tests/matrix_multifile
 **What it guards today.** Every projected cell compiles; the full-tier round-trip gate executes
 every ordinary profile/cell combination. Its only expected-red residents are the JSON profile's six
 `otbl__*` / `otblrec__*` open-table cells, whose minted typed bstr keys correctly lack a JSON object
-member-name image. They remain a strict non-lossy boundary (`matrix.non-string-json-map-key-boundary`),
-are stale/resurfacing guarded, and therefore do not weaken the default/preserve or all-profile
-compile floor. Greenness rests on emitter invariants this matrix guards, each once a loud cross-module
+member-name image. They remain a strict non-lossy boundary (`matrix.non-string-json-map-key-boundary`):
+each must generate both surfaces and fail `cargo test` with its pinned open-table key-image signature,
+so a missing surface, a green cell, or a changed red fails loudly. They therefore do not weaken the
+default/preserve or all-profile compile floor. Greenness rests on emitter invariants this matrix guards, each once a loud cross-module
 failure class: every cross-module collection occurrence imports the SAME wasm wrapper the emitter
 names, from the module it is minted in (`scope_references`/`mark_refs` resolve the wrapper name +
 home scope through `IntermediateTypes::wasm_collection_wrapper`, the `for_wasm_member` twin, so

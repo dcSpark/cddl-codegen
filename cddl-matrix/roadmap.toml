@@ -426,14 +426,15 @@ body_md = '''- **Non-string CBOR map keys remain an intentional strict JSON boun
   hand-written open-table/open-struct faces likewise strict-fail (`OpenTableKeyImageError`) rather
   than silently mapping bytes to a text convention. A generated hex/base64 spelling would be a
   lossy, non-obvious public mapping and is not a bug fix; it needs an explicit consumer/maintainer
-  API decision. The current controls deliberately execute the exact expected red, not merely omit
-  it: corpus JSON-profile residents, the six multifile open-table placement residents, and the
-  JSON recombination bstr/bytes-table residents. Each has a stale/resurfacing guard, so a newly
-  passing cell initiates a review of whether this boundary contract changed before its pin is
-  removed.
+  API decision. The corpus JSON-profile residents execute under a coarser expected-red contract:
+  any runtime red is accepted, but a green result resurfaces for review. The six multifile
+  open-table placement residents and the JSON recombination bstr/bytes-table residents are
+  stronger probes: each executes and must retain its recorded failure signature. Every control
+  resurfaces a newly passing cell for review of whether this boundary contract changed before its
+  pin is removed.
 '''
 policy_kind = "boundary"
-authority_reference_id = "roadmap-findings-open-candidate-cddl-codegen-fixes-the"
+authority_reference_id = "docs-output-format-typed-key-domains-in-json"
 rationale_md = '''A JSON object cannot injectively represent arbitrary CBOR map keys. Retain loud refusal until a consumer-driven API decision explicitly adopts and documents a distinct lossy key-image convention.'''
 permanence = "reopenable"
 
@@ -2651,6 +2652,13 @@ source = "matrix.cbor-any-boundary"
 kind = "file_heading"
 path = "draft/roadmaps/matrix-roadmap.md"
 heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
+
+[[reference]]
+id = "docs-output-format-typed-key-domains-in-json"
+source = "matrix.non-string-json-map-key-boundary"
+kind = "file_heading"
+path = "docs/docs/output_format.mdx"
+heading = "Typed key domains in JSON"
 
 [[reference]]
 id = "roadmap-wasm-abi-multifile-placement-matrices-remaining"
