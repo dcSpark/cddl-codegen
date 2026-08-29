@@ -1127,6 +1127,21 @@ const WHOLE_PROGRAM_CASES: &[(&str, &str, Profile)] = &[
             &["--json-serde-derives=true", "--json-schema-export=true"],
         ),
     ),
+    // Checked scalar JSON Schema projections have a dedicated e2e fixture because integer
+    // boundaries, nint's stored magnitude, and text's byte-vs-character measure need assertions
+    // more precise than the general JSON shape suite. Rust-only: its contract is serde/schema.
+    (
+        "json_scalar_bounds",
+        "tests/json-scalar-bounds/input.cddl",
+        (
+            "json",
+            &[
+                "--wasm=false",
+                "--json-serde-derives=true",
+                "--json-schema-export=true",
+            ],
+        ),
+    ),
     // loose-CBOR `any` positions (member / array element / table domain+range / top-level alias /
     // tagged / last-position choice arm), lowered to the AnyCbor runtime type. All legs pass
     // --wasm=false to isolate the rust and json surfaces here (the wasm AnyCbor surface is pinned

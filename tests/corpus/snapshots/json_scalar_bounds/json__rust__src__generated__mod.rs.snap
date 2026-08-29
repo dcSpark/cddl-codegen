@@ -1,0 +1,650 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+extern crate alloc;
+use alloc::borrow::ToOwned;
+use alloc::string::String;
+pub mod error;
+mod extern_interface_check;
+pub mod json_schema_gen;
+pub mod json_value_ser;
+pub mod serialization;
+
+use crate::generated::error::*;
+
+#[derive(Clone, Debug, Copy)]
+pub struct FloatWindow(pub(crate) f64);
+
+impl FloatWindow {
+    pub fn get(&self) -> f64 {
+        self.0
+    }
+
+    pub fn new(inner: f64) -> Result<Self, DeserializeError> {
+        if !(inner >= 1.5f64 && inner < 4.5f64) {
+            return Err(DeserializeError::new(
+                "FloatWindow",
+                DeserializeFailure::RangeCheckFloat {
+                    found: inner as f64,
+                    min: Some(1.5f64),
+                    max: Some(4.5f64),
+                    min_inclusive: true,
+                    max_inclusive: false,
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
+impl TryFrom<f64> for FloatWindow {
+    type Error = DeserializeError;
+
+    fn try_from(inner: f64) -> Result<Self, Self::Error> {
+        FloatWindow::new(inner)
+    }
+}
+
+impl serde::Serialize for FloatWindow {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for FloatWindow {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <f64 as serde::de::Deserialize>::deserialize(deserializer)?;
+        Self::new(inner).map_err(|_e| {
+            serde::de::Error::invalid_value(
+                serde::de::Unexpected::Float(inner),
+                &"invalid FloatWindow",
+            )
+        })
+    }
+}
+
+impl schemars::JsonSchema for FloatWindow {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("FloatWindow")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let mut out = <f64 as schemars::JsonSchema>::json_schema(generator);
+        out.insert("minimum".to_owned(), 1.5f64.into());
+        out.insert("exclusiveMaximum".to_owned(), 4.5f64.into());
+        out
+    }
+
+    fn inline_schema() -> bool {
+        <f64 as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct IntExact(i64);
+
+impl IntExact {
+    pub fn get(&self) -> i64 {
+        self.0
+    }
+
+    fn new(inner: i64) -> Result<Self, DeserializeError> {
+        if inner != 7 {
+            return Err(DeserializeError::new(
+                "IntExact",
+                DeserializeFailure::RangeCheck {
+                    found: inner as i128,
+                    min: Some(7),
+                    max: Some(7),
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
+impl TryFrom<i64> for IntExact {
+    type Error = DeserializeError;
+
+    fn try_from(inner: i64) -> Result<Self, Self::Error> {
+        IntExact::new(inner)
+    }
+}
+
+impl serde::Serialize for IntExact {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for IntExact {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <i64 as serde::de::Deserialize>::deserialize(deserializer)?;
+        Self::try_from(inner).map_err(|_e| {
+            serde::de::Error::invalid_value(
+                serde::de::Unexpected::Signed(inner as i64),
+                &"invalid IntExact",
+            )
+        })
+    }
+}
+
+impl schemars::JsonSchema for IntExact {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("IntExact")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let mut out = <i64 as schemars::JsonSchema>::json_schema(generator);
+        out.insert("const".to_owned(), 7u64.into());
+        out
+    }
+
+    fn inline_schema() -> bool {
+        <i64 as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct IntNe(i64);
+
+impl IntNe {
+    pub fn get(&self) -> i64 {
+        self.0
+    }
+
+    fn new(inner: i64) -> Result<Self, DeserializeError> {
+        if inner == 1 {
+            return Err(DeserializeError::new(
+                "IntNe",
+                DeserializeFailure::RangeCheck {
+                    found: inner as i128,
+                    min: Some(2),
+                    max: Some(0),
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
+impl TryFrom<i64> for IntNe {
+    type Error = DeserializeError;
+
+    fn try_from(inner: i64) -> Result<Self, Self::Error> {
+        IntNe::new(inner)
+    }
+}
+
+impl serde::Serialize for IntNe {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for IntNe {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <i64 as serde::de::Deserialize>::deserialize(deserializer)?;
+        Self::try_from(inner).map_err(|_e| {
+            serde::de::Error::invalid_value(
+                serde::de::Unexpected::Signed(inner as i64),
+                &"invalid IntNe",
+            )
+        })
+    }
+}
+
+impl schemars::JsonSchema for IntNe {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("IntNe")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let mut out = <i64 as schemars::JsonSchema>::json_schema(generator);
+        out.insert(
+            "not".to_owned(),
+            schemars::json_schema!({ "const": 1u64 }).into(),
+        );
+        out
+    }
+
+    fn inline_schema() -> bool {
+        <i64 as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct NegativeMin(i64);
+
+impl NegativeMin {
+    pub fn get(&self) -> i64 {
+        self.0
+    }
+
+    fn new(inner: i64) -> Result<Self, DeserializeError> {
+        if inner < -10 {
+            return Err(DeserializeError::new(
+                "NegativeMin",
+                DeserializeFailure::RangeCheck {
+                    found: inner as i128,
+                    min: Some(-10),
+                    max: None,
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
+impl TryFrom<i64> for NegativeMin {
+    type Error = DeserializeError;
+
+    fn try_from(inner: i64) -> Result<Self, Self::Error> {
+        NegativeMin::new(inner)
+    }
+}
+
+impl serde::Serialize for NegativeMin {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for NegativeMin {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <i64 as serde::de::Deserialize>::deserialize(deserializer)?;
+        Self::try_from(inner).map_err(|_e| {
+            serde::de::Error::invalid_value(
+                serde::de::Unexpected::Signed(inner as i64),
+                &"invalid NegativeMin",
+            )
+        })
+    }
+}
+
+impl schemars::JsonSchema for NegativeMin {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("NegativeMin")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let mut out = <i64 as schemars::JsonSchema>::json_schema(generator);
+        out.insert("minimum".to_owned(), (-10i64).into());
+        out
+    }
+
+    fn inline_schema() -> bool {
+        <i64 as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct NintGe(u64);
+
+impl NintGe {
+    pub fn get(&self) -> u64 {
+        self.0
+    }
+
+    fn new(inner: u64) -> Result<Self, DeserializeError> {
+        if inner > 4 {
+            return Err(DeserializeError::new(
+                "NintGe",
+                DeserializeFailure::RangeCheck {
+                    found: inner as i128,
+                    min: None,
+                    max: Some(4),
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
+impl TryFrom<u64> for NintGe {
+    type Error = DeserializeError;
+
+    fn try_from(inner: u64) -> Result<Self, Self::Error> {
+        NintGe::new(inner)
+    }
+}
+
+impl serde::Serialize for NintGe {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for NintGe {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <u64 as serde::de::Deserialize>::deserialize(deserializer)?;
+        Self::try_from(inner).map_err(|_e| {
+            serde::de::Error::invalid_value(
+                serde::de::Unexpected::Signed(inner as i64),
+                &"invalid NintGe",
+            )
+        })
+    }
+}
+
+impl schemars::JsonSchema for NintGe {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("NintGe")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let mut out = <u64 as schemars::JsonSchema>::json_schema(generator);
+        out.insert("maximum".to_owned(), 4u64.into());
+        out
+    }
+
+    fn inline_schema() -> bool {
+        <u64 as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct NintNe(u64);
+
+impl NintNe {
+    pub fn get(&self) -> u64 {
+        self.0
+    }
+
+    fn new(inner: u64) -> Result<Self, DeserializeError> {
+        if inner == 4 {
+            return Err(DeserializeError::new(
+                "NintNe",
+                DeserializeFailure::RangeCheck {
+                    found: inner as i128,
+                    min: Some(5),
+                    max: Some(3),
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
+impl TryFrom<u64> for NintNe {
+    type Error = DeserializeError;
+
+    fn try_from(inner: u64) -> Result<Self, Self::Error> {
+        NintNe::new(inner)
+    }
+}
+
+impl serde::Serialize for NintNe {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for NintNe {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <u64 as serde::de::Deserialize>::deserialize(deserializer)?;
+        Self::try_from(inner).map_err(|_e| {
+            serde::de::Error::invalid_value(
+                serde::de::Unexpected::Signed(inner as i64),
+                &"invalid NintNe",
+            )
+        })
+    }
+}
+
+impl schemars::JsonSchema for NintNe {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("NintNe")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let mut out = <u64 as schemars::JsonSchema>::json_schema(generator);
+        out.insert(
+            "not".to_owned(),
+            schemars::json_schema!({ "const": 4u64 }).into(),
+        );
+        out
+    }
+
+    fn inline_schema() -> bool {
+        <u64 as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SizedText(String);
+
+impl SizedText {
+    pub fn get(&self) -> &String {
+        &self.0
+    }
+
+    fn new(inner: String) -> Result<Self, DeserializeError> {
+        if inner.len() < 2 || inner.len() > 4 {
+            return Err(DeserializeError::new(
+                "SizedText",
+                DeserializeFailure::RangeCheck {
+                    found: inner.len() as i128,
+                    min: Some(2),
+                    max: Some(4),
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
+impl TryFrom<String> for SizedText {
+    type Error = DeserializeError;
+
+    fn try_from(inner: String) -> Result<Self, Self::Error> {
+        SizedText::new(inner)
+    }
+}
+
+impl serde::Serialize for SizedText {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for SizedText {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <String as serde::de::Deserialize>::deserialize(deserializer)?;
+        Self::try_from(inner.clone()).map_err(|_e| {
+            serde::de::Error::invalid_value(
+                serde::de::Unexpected::Str(&inner),
+                &"invalid SizedText",
+            )
+        })
+    }
+}
+
+impl schemars::JsonSchema for SizedText {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("SizedText")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let mut out = <String as schemars::JsonSchema>::json_schema(generator);
+        out.insert("minLength".to_owned(), 1u64.into());
+        out.insert("maxLength".to_owned(), 4u64.into());
+        out
+    }
+
+    fn inline_schema() -> bool {
+        <String as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+impl From<SizedText> for String {
+    fn from(wrapper: SizedText) -> Self {
+        wrapper.0
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct UintExclusive(u64);
+
+impl UintExclusive {
+    pub fn get(&self) -> u64 {
+        self.0
+    }
+
+    fn new(inner: u64) -> Result<Self, DeserializeError> {
+        if inner < 3 || inner > 9 {
+            return Err(DeserializeError::new(
+                "UintExclusive",
+                DeserializeFailure::RangeCheck {
+                    found: inner as i128,
+                    min: Some(3),
+                    max: Some(9),
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
+impl TryFrom<u64> for UintExclusive {
+    type Error = DeserializeError;
+
+    fn try_from(inner: u64) -> Result<Self, Self::Error> {
+        UintExclusive::new(inner)
+    }
+}
+
+impl serde::Serialize for UintExclusive {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for UintExclusive {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <u64 as serde::de::Deserialize>::deserialize(deserializer)?;
+        Self::try_from(inner).map_err(|_e| {
+            serde::de::Error::invalid_value(
+                serde::de::Unexpected::Unsigned(inner),
+                &"invalid UintExclusive",
+            )
+        })
+    }
+}
+
+impl schemars::JsonSchema for UintExclusive {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("UintExclusive")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let mut out = <u64 as schemars::JsonSchema>::json_schema(generator);
+        out.insert("minimum".to_owned(), 3u64.into());
+        out.insert("maximum".to_owned(), 9u64.into());
+        out
+    }
+
+    fn inline_schema() -> bool {
+        <u64 as schemars::JsonSchema>::inline_schema()
+    }
+}
+
+impl From<FloatWindow> for f64 {
+    fn from(wrapper: FloatWindow) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<IntExact> for i64 {
+    fn from(wrapper: IntExact) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<IntNe> for i64 {
+    fn from(wrapper: IntNe) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<NegativeMin> for i64 {
+    fn from(wrapper: NegativeMin) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<NintGe> for u64 {
+    fn from(wrapper: NintGe) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<NintNe> for u64 {
+    fn from(wrapper: NintNe) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<UintExclusive> for u64 {
+    fn from(wrapper: UintExclusive) -> Self {
+        wrapper.0
+    }
+}

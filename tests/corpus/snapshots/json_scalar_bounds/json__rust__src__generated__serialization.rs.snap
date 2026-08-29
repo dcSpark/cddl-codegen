@@ -1,0 +1,291 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use super::*;
+use crate::generated::error::*;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for FloatWindow {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        write_float(serializer, self.0)
+    }
+}
+
+impl Deserialize for FloatWindow {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let inner = f64::deserialize(raw)?;
+            if !(inner >= 1.5f64 && inner < 4.5f64) {
+                return Err(DeserializeFailure::RangeCheckFloat {
+                    found: inner as f64,
+                    min: Some(1.5f64),
+                    max: Some(4.5f64),
+                    min_inclusive: true,
+                    max_inclusive: false,
+                }
+                .into());
+            }
+            Ok(Self(inner))
+        })()
+        .map_err(|e| e.annotate("FloatWindow"))
+    }
+}
+
+impl cbor_event::se::Serialize for IntExact {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        if self.get() >= 0 {
+            serializer.write_unsigned_integer(self.get() as u64)
+        } else {
+            serializer.write_negative_integer(self.get() as i64)
+        }
+    }
+}
+
+impl Deserialize for IntExact {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let inner = match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => raw
+                    .unsigned_integer()
+                    .map_err(Into::<DeserializeError>::into)
+                    .and_then(|x| {
+                        if x > 9223372036854775807 {
+                            Err(DeserializeFailure::RangeCheck {
+                                found: x as i128,
+                                min: Some(-9223372036854775808),
+                                max: Some(9223372036854775807),
+                            }
+                            .into())
+                        } else {
+                            Ok(x)
+                        }
+                    })? as i64,
+                _ => raw
+                    .negative_integer_sz()
+                    .map_err(Into::<DeserializeError>::into)
+                    .and_then(|(x, _enc)| {
+                        if x < -9223372036854775808 {
+                            Err(DeserializeFailure::RangeCheck {
+                                found: x,
+                                min: Some(-9223372036854775808),
+                                max: Some(9223372036854775807),
+                            }
+                            .into())
+                        } else {
+                            Ok((x, _enc))
+                        }
+                    })
+                    .map(|(x, _enc)| x)? as i64,
+            };
+            Self::try_from(inner).map_err(DeserializeError::without_location)
+        })()
+        .map_err(|e| e.annotate("IntExact"))
+    }
+}
+
+impl cbor_event::se::Serialize for IntNe {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        if self.get() >= 0 {
+            serializer.write_unsigned_integer(self.get() as u64)
+        } else {
+            serializer.write_negative_integer(self.get() as i64)
+        }
+    }
+}
+
+impl Deserialize for IntNe {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let inner = match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => raw
+                    .unsigned_integer()
+                    .map_err(Into::<DeserializeError>::into)
+                    .and_then(|x| {
+                        if x > 9223372036854775807 {
+                            Err(DeserializeFailure::RangeCheck {
+                                found: x as i128,
+                                min: Some(-9223372036854775808),
+                                max: Some(9223372036854775807),
+                            }
+                            .into())
+                        } else {
+                            Ok(x)
+                        }
+                    })? as i64,
+                _ => raw
+                    .negative_integer_sz()
+                    .map_err(Into::<DeserializeError>::into)
+                    .and_then(|(x, _enc)| {
+                        if x < -9223372036854775808 {
+                            Err(DeserializeFailure::RangeCheck {
+                                found: x,
+                                min: Some(-9223372036854775808),
+                                max: Some(9223372036854775807),
+                            }
+                            .into())
+                        } else {
+                            Ok((x, _enc))
+                        }
+                    })
+                    .map(|(x, _enc)| x)? as i64,
+            };
+            Self::try_from(inner).map_err(DeserializeError::without_location)
+        })()
+        .map_err(|e| e.annotate("IntNe"))
+    }
+}
+
+impl cbor_event::se::Serialize for NegativeMin {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        if self.get() >= 0 {
+            serializer.write_unsigned_integer(self.get() as u64)
+        } else {
+            serializer.write_negative_integer(self.get() as i64)
+        }
+    }
+}
+
+impl Deserialize for NegativeMin {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let inner = match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => raw
+                    .unsigned_integer()
+                    .map_err(Into::<DeserializeError>::into)
+                    .and_then(|x| {
+                        if x > 9223372036854775807 {
+                            Err(DeserializeFailure::RangeCheck {
+                                found: x as i128,
+                                min: Some(-9223372036854775808),
+                                max: Some(9223372036854775807),
+                            }
+                            .into())
+                        } else {
+                            Ok(x)
+                        }
+                    })? as i64,
+                _ => raw
+                    .negative_integer_sz()
+                    .map_err(Into::<DeserializeError>::into)
+                    .and_then(|(x, _enc)| {
+                        if x < -9223372036854775808 {
+                            Err(DeserializeFailure::RangeCheck {
+                                found: x,
+                                min: Some(-9223372036854775808),
+                                max: Some(9223372036854775807),
+                            }
+                            .into())
+                        } else {
+                            Ok((x, _enc))
+                        }
+                    })
+                    .map(|(x, _enc)| x)? as i64,
+            };
+            Self::try_from(inner).map_err(DeserializeError::without_location)
+        })()
+        .map_err(|e| e.annotate("NegativeMin"))
+    }
+}
+
+impl cbor_event::se::Serialize for NintGe {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_negative_integer_sz(
+            -(self.get() as i128 + 1),
+            cbor_event::Sz::canonical(self.get()),
+        )
+    }
+}
+
+impl Deserialize for NintGe {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let inner = raw
+                .negative_integer_sz()
+                .map(|(x, _enc)| (x + 1).unsigned_abs() as u64)?;
+            Self::try_from(inner).map_err(DeserializeError::without_location)
+        })()
+        .map_err(|e| e.annotate("NintGe"))
+    }
+}
+
+impl cbor_event::se::Serialize for NintNe {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_negative_integer_sz(
+            -(self.get() as i128 + 1),
+            cbor_event::Sz::canonical(self.get()),
+        )
+    }
+}
+
+impl Deserialize for NintNe {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let inner = raw
+                .negative_integer_sz()
+                .map(|(x, _enc)| (x + 1).unsigned_abs() as u64)?;
+            Self::try_from(inner).map_err(DeserializeError::without_location)
+        })()
+        .map_err(|e| e.annotate("NintNe"))
+    }
+}
+
+impl cbor_event::se::Serialize for SizedText {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_text(self.get())
+    }
+}
+
+impl Deserialize for SizedText {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let inner = raw.text()?;
+            Self::try_from(inner).map_err(DeserializeError::without_location)
+        })()
+        .map_err(|e| e.annotate("SizedText"))
+    }
+}
+
+impl cbor_event::se::Serialize for UintExclusive {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_unsigned_integer(self.get())
+    }
+}
+
+impl Deserialize for UintExclusive {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let inner = raw.unsigned_integer()?;
+            Self::try_from(inner).map_err(DeserializeError::without_location)
+        })()
+        .map_err(|e| e.annotate("UintExclusive"))
+    }
+}

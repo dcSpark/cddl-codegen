@@ -12,6 +12,7 @@ expression: content
 )]
 
 extern crate alloc;
+use alloc::borrow::ToOwned;
 use alloc::string::String;
 pub mod error;
 mod extern_interface_check;
@@ -191,7 +192,12 @@ impl schemars::JsonSchema for TaggedCtlNe {
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        <i64 as schemars::JsonSchema>::json_schema(generator)
+        let mut out = <i64 as schemars::JsonSchema>::json_schema(generator);
+        out.insert(
+            "not".to_owned(),
+            schemars::json_schema!({ "const": 1u64 }).into(),
+        );
+        out
     }
 
     fn inline_schema() -> bool {
@@ -260,7 +266,10 @@ impl schemars::JsonSchema for TaggedRangeExcl {
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        <i64 as schemars::JsonSchema>::json_schema(generator)
+        let mut out = <i64 as schemars::JsonSchema>::json_schema(generator);
+        out.insert("minimum".to_owned(), (-10i64).into());
+        out.insert("maximum".to_owned(), 9u64.into());
+        out
     }
 
     fn inline_schema() -> bool {
@@ -329,7 +338,10 @@ impl schemars::JsonSchema for TaggedRangeIncl {
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        <i64 as schemars::JsonSchema>::json_schema(generator)
+        let mut out = <i64 as schemars::JsonSchema>::json_schema(generator);
+        out.insert("minimum".to_owned(), (-10i64).into());
+        out.insert("maximum".to_owned(), 10u64.into());
+        out
     }
 
     fn inline_schema() -> bool {
@@ -398,7 +410,10 @@ impl schemars::JsonSchema for TaggedRangeNint {
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        <i64 as schemars::JsonSchema>::json_schema(generator)
+        let mut out = <i64 as schemars::JsonSchema>::json_schema(generator);
+        out.insert("minimum".to_owned(), (-10i64).into());
+        out.insert("maximum".to_owned(), (-4i64).into());
+        out
     }
 
     fn inline_schema() -> bool {
@@ -467,7 +482,10 @@ impl schemars::JsonSchema for TaggedRangeUint {
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        <u64 as schemars::JsonSchema>::json_schema(generator)
+        let mut out = <u64 as schemars::JsonSchema>::json_schema(generator);
+        out.insert("minimum".to_owned(), 3u64.into());
+        out.insert("maximum".to_owned(), 9u64.into());
+        out
     }
 
     fn inline_schema() -> bool {

@@ -1,0 +1,13 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// Seeded by cddl-codegen on first export; never overwritten after that.
+// All regenerated code lives in the `generated` module. Add your own
+// modules/re-exports/attrs here freely (e.g. `pub mod utils;`).
+// Hand-added code should stay no_std-clean or be gated on `feature = "std"` —
+// verify with the emitted no-std-check crate (generated beside this crate):
+//   cargo check --manifest-path <output-root>/no-std-check/Cargo.toml --target thumbv7m-none-eabi
+#![cfg_attr(not(feature = "std"), no_std)]
+mod generated;
+pub use generated::*;

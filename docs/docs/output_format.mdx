@@ -443,6 +443,24 @@ permissive "any JSON value" schema (json2ts → TS `unknown`, a `{* K => any}` m
 `{ [k: string]: unknown }`), while a bare `AnyCbor` keeps the tagged `oneOf` schema over the kind
 objects above.
 
+### Checked scalar JSON Schema
+
+For a named checked scalar (a named integer, float, text, or bytes rule carrying a constraint), the
+generated `JsonSchema` advertises the same JSON carrier door that generated `Deserialize` checks.
+Integer exclusive endpoints are normalized to their inclusive integer neighbour, ordinary windows
+use `minimum`/`maximum`, an exact value uses `const`, and `int .ne N` uses `not: { "const": N }`.
+The JSON carrier of `nint` is its stored unsigned magnitude `-value - 1`, so its advertised bounds
+are in that coordinate rather than signed CDDL-value space. Float windows retain their endpoint
+kind: inclusive sides use `minimum`/`maximum`, and exclusive sides use the numeric JSON Schema
+2020-12 `exclusiveMinimum`/`exclusiveMaximum` keywords.
+
+Bytes serialize as canonical hex text, so byte-size bounds are projected to twice as many string
+characters (an exact byte size is therefore an exact hex length). Text is different: the generated
+Rust checks UTF-8 **bytes**, while JSON Schema `minLength`/`maxLength` count Unicode scalar values.
+Its schema is consequently conservative and sound rather than exact: it never rejects a string the
+deserializer accepts, but may accept a short ASCII string that the byte-counting deserializer then
+rejects.
+
 The wasm wrapper for `any` is documented under [wasm differences](wasm_differences#the-any-type-anycbor).
 
 ## Hex text: the canonical grammar

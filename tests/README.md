@@ -832,7 +832,7 @@ with [`insta`]. No subprocess, no compilation, no `target/` bloat. Three sub-sui
   *skipped* here — they barely vary by construct, so they'd be repeated noise; they're covered by
   `whole_program` and `serialization_prelude` instead.
 - **`whole_program`** — the larger integration inputs (`core`, `preserve-encodings`, `canonical`,
-  `json`, `json-float`, and the `multifile` directory) each under one known-safe profile, capturing
+  `json`, `json-float`, `json-scalar-bounds`, and the `multifile` directory) each under one known-safe profile, capturing
   the *full* output incl. `Cargo.toml`s. Covers cross-feature interactions, the scope/module path,
   and the edition/deps logic. It's also the home for inputs that need a *profile-limited* snapshot,
   which routes a single CONSTRUCT into such an input's `.cddl` rather than the corpus:
@@ -855,6 +855,12 @@ with [`insta`]. No subprocess, no compilation, no `target/` bloat. Three sub-sui
   `float_roundtrip` feature — a manifest this suite captures and the corpus deliberately skips.
   Both the fold-back into `tests/json/` (split from it only for the retired float reason) and the
   promotion of the bare `[f: float64]` construct into the corpus are open, unperformed work.
+  `json-scalar-bounds` is the complementary checked-scalar fixture: it compiles generated schema
+  mutation/validation tests against signed and unsigned integer windows (`const` and `not/const`
+  included), nint's stored-magnitude carrier, float exclusivity, and the deliberately conservative
+  UTF-8-byte-to-Unicode-length text projection. It is where the generated schema and generated
+  `Deserialize` doors are compared directly; the corpus snapshots keep the broader per-construct
+  output coverage.
   And it's the home for inputs whose output *can't compile
   standalone* (`extern_deps`/`extern_deps_wasm`/`raw_bytes` reference user-supplied types; their
   behavioral coverage is their integration fixtures) — this suite never compiles, so neither constraint bites here, which
@@ -3573,6 +3579,13 @@ three-profile sweep here and the full-tier execution sweep
 cover the three classes an in-process suite structurally cannot: an emission rustfmt rejects, an
 emission rustc rejects, and an emission that is only wrong under a non-default profile. Promote such
 a shape into `tests/corpus/`; do not build a harness beside it.
+Its JSON profile has exactly three permanent-boundary cells: `alias_positions/json`,
+`bytes_map_key/json`, and `open_table/json` mint byte-string/non-string map keys, which cannot have
+a non-lossy serde_json object-member-name image. They remain on the gate's fixture/profile `SKIP`
+ledger (and consequently skip that profile's wasm execution), while the all-profile compile gate
+still covers their generated crates. A listed cell that starts passing is not an ordinary
+gap-closure instruction: investigate whether the documented JSON boundary contract has changed
+before removing its pin.
 A fixture whose generation deliberately aborts under ONE profile is ledgered per-profile in the
 gate's `EXPECTED_GENERATION_FAIL` (`(stem, profile, reason)`), for either of two reasons: it reaches
 a tracked unimplemented path, or the profile REFUSES it by design. Its one resident is the by-design

@@ -726,7 +726,12 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   `docs/docs/output_format.mdx` § "Open tables (a typed row plus a catch-all)" and § "Typed key
   domains in JSON"), refusing a lossy encoding on injectivity grounds. The affected replay rows
   sit on the two replay gates' `JSON_SURFACE_SKIP` ledgers citing this entry (which also
-  suppresses their wasm `from_json` sub-leg, the same serde path), and the bare-`bstr` cells stay
+  suppresses their wasm `from_json` sub-leg, the same serde path). The full-tier
+  `feature_corpus_roundtrips_nondefault_profiles` gate also pins this decided boundary at its
+  coarser fixture/profile unit for `alias_positions/json`, `bytes_map_key/json`, and
+  `open_table/json`; that skips their JSON-profile wasm execution but not the all-profile compile
+  floor. Its stale guard asks whether the boundary contract changed before removing a resurfaced
+  cell. The bare-`bstr` cells stay
   in the catalog as the pin for the un-remedied spelling's loud error. The remedy a real consumer
   takes is a key type with a string-producing `Serialize` (a `@newtype`/raw-bytes hex impl —
   `tests/open-table-json-e2e` executes exactly this). A generated hex/base64 key stringification

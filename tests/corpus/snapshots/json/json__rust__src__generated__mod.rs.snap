@@ -278,7 +278,10 @@ impl schemars::JsonSchema for I16Wrapper {
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        <i16 as schemars::JsonSchema>::json_schema(generator)
+        let mut out = <i16 as schemars::JsonSchema>::json_schema(generator);
+        out.insert("minimum".to_owned(), (-32768i64).into());
+        out.insert("maximum".to_owned(), 32767u64.into());
+        out
     }
 
     fn inline_schema() -> bool {
@@ -347,7 +350,10 @@ impl schemars::JsonSchema for I64Wrapper {
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        <i64 as schemars::JsonSchema>::json_schema(generator)
+        let mut out = <i64 as schemars::JsonSchema>::json_schema(generator);
+        out.insert("minimum".to_owned(), (-9223372036854775808i64).into());
+        out.insert("maximum".to_owned(), 9223372036854775807u64.into());
+        out
     }
 
     fn inline_schema() -> bool {
@@ -875,7 +881,10 @@ impl schemars::JsonSchema for U8Wrapper {
     }
 
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        <u8 as schemars::JsonSchema>::json_schema(generator)
+        let mut out = <u8 as schemars::JsonSchema>::json_schema(generator);
+        out.insert("minimum".to_owned(), 0u64.into());
+        out.insert("maximum".to_owned(), 255u64.into());
+        out
     }
 
     fn inline_schema() -> bool {

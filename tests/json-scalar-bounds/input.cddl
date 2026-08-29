@@ -1,0 +1,13 @@
+; JSON Schema projections for checked scalar wrappers. The native scalar carrier is also the JSON
+; carrier: nint deliberately exposes its stored u64 magnitude, so nint bounds must be projected in
+; magnitude space. `text .size` is intentionally checked below with both a sound real value and an
+; unavoidable broad-schema value because Rust counts UTF-8 bytes while JSON Schema counts Unicode
+; scalar values.
+int_ne = int .ne 1
+int_exact = int .eq 7
+negative_min = int .ge -10
+uint_exclusive = 3...10
+nint_ge = nint .ge -5
+nint_ne = nint .ne -5
+sized_text = text .size (2..4)
+float_window = 1.5...4.5

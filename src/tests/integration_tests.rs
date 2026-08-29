@@ -16238,6 +16238,27 @@ fn json_float() {
     );
 }
 
+/// Checked scalar JSON schema bounds: exact integer windows/exclusions, nint's magnitude-space
+/// carrier, the intentionally sound-but-broad text byte-length projection, and float endpoints.
+/// The fixture also proves the generic emitted-schema assertion remains meaningful by showing the
+/// one unavoidable text false positive explicitly rather than globally swallowing validator errors.
+#[test]
+fn json_scalar_bounds() {
+    run_test(
+        "json-scalar-bounds",
+        &[
+            "--wasm=false",
+            "--json-serde-derives=true",
+            "--json-schema-export=true",
+        ],
+        None,
+        &[],
+        &[],
+        false,
+        &[JSONSCHEMA_DEP],
+    );
+}
+
 /// Builds the generated wasm bindings with wasm-pack and runs them under node (see the
 /// `roundtrip.mjs` hook in `run_test`). Regression test for the serde-wasm-bindgen JSON-shape
 /// contract: a CDDL map must come back from `to_json_value()` as an object, not a JS `Map`.
@@ -24134,13 +24155,43 @@ fn feature_corpus_roundtrips_nondefault_profiles() {
     // `special_break()` (so a major-type-7 element/key falls through to its deserializer), letting
     // the encoding-fidelity oracle run ALL its variant classes — including the two
     // container-reframing ones (`indef_containers`/`everything`) — on those cells, fully green.
-    const SKIP: &[(&str, &str, &str)] = &[(
-        "preserve",
-        "dsl_ignore",
-        "an `@ignore` open struct-map is rejected under --preserve-encodings (a preserve crate's \
-         byte-exact round-trip contract cannot hold for a type that drops unknown entries); the \
-         default/json emitted round-trip surface runs normally",
-    )];
+    const SKIP: &[(&str, &str, &str)] = &[
+        (
+            "preserve",
+            "dsl_ignore",
+            "an `@ignore` open struct-map is rejected under --preserve-encodings (a preserve crate's \
+             byte-exact round-trip contract cannot hold for a type that drops unknown entries); the \
+             default/json emitted round-trip surface runs normally",
+        ),
+        // These three JSON fixtures mint a value with a bytes/non-string map key. serde_json can
+        // only render an object member name from a string (or its integer/bool map-key adapters),
+        // so `serde_json::to_value` fails before the emitted JSON/schema round-trip oracle can run.
+        // That loud serialization error is the decided pure-JSON boundary — not a generator defect
+        // to hide by swallowing `to_value` errors. This gate's narrowest unit is fixture/profile,
+        // which also skips the JSON-profile wasm execution for these fixtures; their generated
+        // rust/wasm crates still retain the all-profile compile floor in feature_corpus_compiles.
+        (
+            "json",
+            "alias_positions",
+            "minted alias-position maps carry byte-string keys, which serde_json cannot render as \
+             object member names (`key must be a string`); the JSON test surface deliberately \
+             strict-fails at serialization rather than inventing a lossy map image",
+        ),
+        (
+            "json",
+            "bytes_map_key",
+            "the fixture's bytes-keyed map has no serde_json object-member-name image (`key must \
+             be a string`); this is the documented pure-JSON boundary, so its emitted round-trip \
+             module remains intentionally red until the surface itself changes",
+        ),
+        (
+            "json",
+            "open_table",
+            "its typed bstr row has no JSON member-name image, so the documented open-table JSON \
+             serializer strict-fails on minted typed entries; remedied string-producing-key \
+             spellings execute in tests/open-table-json-e2e",
+        ),
+    ];
 
     // Fixtures this gate skips OUTRIGHT, for its own reason rather than the compile floor's. This
     // gate EXECUTES the emitted round-trip module, and a user-code fixture's round trip is a
@@ -24304,7 +24355,7 @@ fn feature_corpus_roundtrips_nondefault_profiles() {
     let _ = std::fs::remove_dir_all(&root);
     assert!(
         resurfaced.is_empty(),
-        "these SKIP-listed corpus cells now round-trip under their profile — remove them from SKIP (the gap closed):\n{}",
+        "these SKIP-listed corpus cells now round-trip under their profile — investigate whether a permanent boundary contract changed before removing its pin; only an ordinary gap closure is automatically removable:\n{}",
         resurfaced.join("\n")
     );
     assert!(

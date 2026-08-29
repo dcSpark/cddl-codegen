@@ -1,5 +1,151 @@
 use super::*;
 
+/// Render an integer literal for a generated JSON Schema. Checked
+/// scalar carriers are i64/u64 (including nint's stored u64 magnitude), so this deliberately
+/// refuses a bound the carrier could not itself represent instead of silently rounding it through
+/// f64 in the generated schema.
+fn json_schema_integer_value(value: i128) -> String {
+    if value < 0 {
+        format!(
+            "({}i64)",
+            i64::try_from(value).expect("negative scalar bound must fit its i64 carrier")
+        )
+    } else {
+        format!(
+            "{}u64",
+            u64::try_from(value).expect("non-negative scalar bound must fit its u64 carrier")
+        )
+    }
+}
+
+/// Add the JSON-Schema projection of a named scalar wrapper's constructor door to `out`.
+///
+/// Integer endpoints have already been normalized by parsing (exclusive integer endpoints become
+/// inclusive ones), and `effective_min_max` is in the stored carrier coordinate: notably, a nint
+/// wrapper stores its `u64` magnitude rather than its signed CDDL value.  Reusing `reject_cond`
+/// keeps `.ne`'s inverted `(N + 1, N - 1)` representation from being mistaken for an impossible
+/// interval. Text is intentionally only sound, not exact: Rust checks UTF-8 bytes while JSON
+/// Schema counts Unicode scalar values, so the conservative character window cannot reject a
+/// string the real deserializer accepts.
+fn emit_checked_scalar_json_schema_bounds(
+    json_schema_fn: &mut codegen::Function,
+    field_type: &RustType,
+    effective_min_max: Option<(Option<i128>, Option<i128>)>,
+    float_min_max: Option<crate::intermediate::FloatWindow>,
+) {
+    if let Some((min, max)) = effective_min_max {
+        match field_type.resolve_alias_shallow() {
+            ConceptualRustType::Primitive(Primitive::Str) => {
+                if let Some(min) = min {
+                    let min_bytes =
+                        u64::try_from(min).expect("text size lower bound must be non-negative");
+                    // One Unicode scalar is at most four UTF-8 bytes. This is deliberately an
+                    // under-approximation of the byte lower bound: `minLength` counts characters.
+                    let min_chars = min_bytes.div_ceil(4);
+                    json_schema_fn.line(format!(
+                        "out.insert(\"minLength\".to_owned(), {min_chars}u64.into());"
+                    ));
+                }
+                if let Some(max) = max {
+                    let max_bytes =
+                        u64::try_from(max).expect("text size upper bound must be non-negative");
+                    // Each Unicode scalar occupies at least one UTF-8 byte, so this upper bound
+                    // is sound even though it remains broader than the byte-counting runtime.
+                    json_schema_fn.line(format!(
+                        "out.insert(\"maxLength\".to_owned(), {max_bytes}u64.into());"
+                    ));
+                }
+            }
+            ConceptualRustType::Primitive(Primitive::Bytes) => {
+                // Bytes render as canonical hexadecimal: exactly two ASCII JSON characters per
+                // byte, unlike text's UTF-8-byte runtime measure above.
+                if let Some(min) = min {
+                    let chars = u64::try_from(min)
+                        .expect("bytes size lower bound must be non-negative")
+                        .checked_mul(2)
+                        .expect("bytes JSON hex length must fit u64");
+                    json_schema_fn.line(format!(
+                        "out.insert(\"minLength\".to_owned(), {chars}u64.into());"
+                    ));
+                }
+                if let Some(max) = max {
+                    let chars = u64::try_from(max)
+                        .expect("bytes size upper bound must be non-negative")
+                        .checked_mul(2)
+                        .expect("bytes JSON hex length must fit u64");
+                    json_schema_fn.line(format!(
+                        "out.insert(\"maxLength\".to_owned(), {chars}u64.into());"
+                    ));
+                }
+            }
+            ConceptualRustType::Primitive(_) => {
+                use super::bounds::RejectCond;
+
+                match super::bounds::reject_cond(&(min, max), false) {
+                    RejectCond::Outside(min, max) => {
+                        json_schema_fn.line(format!(
+                            "out.insert(\"minimum\".to_owned(), {}.into());",
+                            json_schema_integer_value(min)
+                        ));
+                        json_schema_fn.line(format!(
+                            "out.insert(\"maximum\".to_owned(), {}.into());",
+                            json_schema_integer_value(max)
+                        ));
+                    }
+                    RejectCond::Lt(min) => {
+                        json_schema_fn.line(format!(
+                            "out.insert(\"minimum\".to_owned(), {}.into());",
+                            json_schema_integer_value(min)
+                        ));
+                    }
+                    RejectCond::Gt(max) => {
+                        json_schema_fn.line(format!(
+                            "out.insert(\"maximum\".to_owned(), {}.into());",
+                            json_schema_integer_value(max)
+                        ));
+                    }
+                    RejectCond::Ne(value) => {
+                        json_schema_fn.line(format!(
+                            "out.insert(\"const\".to_owned(), {}.into());",
+                            json_schema_integer_value(value)
+                        ));
+                    }
+                    RejectCond::Eq(value) => {
+                        json_schema_fn.line(format!(
+                            "out.insert(\"not\".to_owned(), schemars::json_schema!({{ \"const\": {} }}).into());",
+                            json_schema_integer_value(value)
+                        ));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    if let Some((min, max)) = float_min_max {
+        if let Some((value, exclusive)) = min {
+            let keyword = if exclusive {
+                "exclusiveMinimum"
+            } else {
+                "minimum"
+            };
+            json_schema_fn.line(format!(
+                "out.insert(\"{keyword}\".to_owned(), {value:?}f64.into());"
+            ));
+        }
+        if let Some((value, exclusive)) = max {
+            let keyword = if exclusive {
+                "exclusiveMaximum"
+            } else {
+                "maximum"
+            };
+            json_schema_fn.line(format!(
+                "out.insert(\"{keyword}\".to_owned(), {value:?}f64.into());"
+            ));
+        }
+    }
+}
+
 // `annotated` - true iff deser_func is the body of an `.annotate(ident)` error closure: emit
 // locationless errors and let the closure supply the name (the per-error annotate/named forms
 // would get the name prepended AGAIN by the closure, reading "Name.Name"). When false, each error
@@ -48,6 +194,20 @@ pub(super) fn generate_wrapper_struct(
     // this one fact to select `TryFrom`; anonymous/member-local windows never reach this wrapper
     // emitter and retain their containing constructor's checks.
     let checked_scalar = types.requires_checked_try_from(type_name);
+    // nint is stored as a u64 magnitude and its coordinate runs in the opposite direction from
+    // the CDDL signed value. Every scalar boundary must use this effective window: the native
+    // constructor/deserializer below and the JSON schema projected above are one contract.
+    let effective_min_max = if matches!(
+        &field_type.conceptual_type,
+        ConceptualRustType::Primitive(Primitive::N64)
+    ) && !field_type
+        .encodings
+        .contains(&CBOREncodingOperation::CBORBytes)
+    {
+        min_max.map(|mm| nint_bounds_to_u64(&mm))
+    } else {
+        min_max
+    };
     // The inner-value getter name: an explicit `@newtype <name>` renames it, otherwise every
     // wrapper (bare tag, plain `@newtype`, bounded/range) exposes the inner value under `get`.
     let getter_name = match struct_config.newtype_getter.as_ref() {
@@ -619,11 +779,25 @@ pub(super) fn generate_wrapper_struct(
                     "{static_array_mod}::static_array_schema::<{element}, {len}>(generator)"
                 ));
                 inline_schema.line("false");
-            } else {
+            } else if effective_min_max.is_some() || float_min_max.is_some() {
                 // qualified-path form: `json_schema_type` is a type-position spelling, so a generic
                 // backing type (map/array @newtype) needs `<T as Trait>::method`, not `T::method`
                 // (which parses `<` as a comparison in expression position). Matches the
                 // `<{json_schema_type} as serde::de::Deserialize>::deserialize` precedent above.
+                json_schema_fn.line(format!(
+                    "let mut out = <{json_schema_type} as schemars::JsonSchema>::json_schema(generator);"
+                ));
+                emit_checked_scalar_json_schema_bounds(
+                    &mut json_schema_fn,
+                    field_type,
+                    effective_min_max,
+                    float_min_max,
+                );
+                json_schema_fn.line("out");
+                inline_schema.line(format!(
+                    "<{json_schema_type} as schemars::JsonSchema>::inline_schema()"
+                ));
+            } else {
                 json_schema_fn.line(format!(
                     "<{json_schema_type} as schemars::JsonSchema>::json_schema(generator)"
                 ));
@@ -807,21 +981,7 @@ pub(super) fn generate_wrapper_struct(
     } else {
         "inner".to_owned()
     };
-    // nint is stored as its u64 magnitude, and magnitude is a *decreasing* function of the value, so
-    // a value bound maps to a SWAPPED magnitude bound (`nint_bounds_to_u64`) — the same transform the
-    // struct-field / setter paths apply. Without it the wrapper's `new()`/deserialize check compares
-    // the u64 `inner` against a negative literal (does not compile: E0600) with inverted semantics.
-    let min_max = if matches!(
-        &field_type.conceptual_type,
-        ConceptualRustType::Primitive(Primitive::N64)
-    ) && !field_type
-        .encodings
-        .contains(&CBOREncodingOperation::CBORBytes)
-    {
-        min_max.map(|mm| nint_bounds_to_u64(&mm))
-    } else {
-        min_max
-    };
+    let min_max = effective_min_max;
     // The whole deserialize() body is accumulated here so it can be wrapped in one
     // `.annotate(type_name)` error closure when `cli.annotate_fields` (giving the container/
     // primitive reads a `failed in <T>` location exactly as field-level errors already get). When
