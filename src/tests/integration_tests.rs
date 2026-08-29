@@ -15428,7 +15428,7 @@ fn emitted_json_schema_assertion_accepts_correct_custom_schema() {
     static N: AtomicUsize = AtomicUsize::new(0);
 
     let root = std::env::temp_dir().join(format!(
-        "cddl_json_schema_assert_positive_{}_{}",
+        "cddl_codegen_json_schema_assert_positive_{}_{}",
         std::process::id(),
         N.fetch_add(1, Ordering::Relaxed)
     ));
@@ -15516,7 +15516,7 @@ fn emitted_json_schema_assertion_rejects_over_permissive_custom_schema() {
     static N: AtomicUsize = AtomicUsize::new(0);
 
     let root = std::env::temp_dir().join(format!(
-        "cddl_json_schema_assert_negative_{}_{}",
+        "cddl_codegen_json_schema_assert_negative_{}_{}",
         std::process::id(),
         N.fetch_add(1, Ordering::Relaxed)
     ));
