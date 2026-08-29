@@ -4594,7 +4594,7 @@ pushed it, caught only by reading the generator. `wasm_api_parity` closes that c
 It parses the emitted `rust/src/generated/mod.rs` and `wasm/src/generated/mod.rs` with `syn` (a
 harness-side dev-dep) and asserts a **one-directional rust→wasm** correspondence — only rust members
 impose obligations, so wasm-side extras (`kind`/`as_*`/`has_*`/`set_*`/`len`/`insert`/`keys`/
-`to_cbor_bytes`/…) are unchecked by design. Four rules:
+`to_cbor_bytes`/…) are unchecked by design. Five rules:
 
 1. Every rust `pub struct`/`enum` has a wasm counterpart (same-named wasm struct/enum, `pub use`
    re-export, or **public** `pub type` alias).
@@ -4630,6 +4630,15 @@ impose obligations, so wasm-side extras (`kind`/`as_*`/`has_*`/`set_*`/`len`/`in
    is a bare-collection alias too and must STAY gated (else rule 5 goes blind to the degradation bug
    it exists to catch). The marker emission is pinned by `synthesized_instance_alias_marker_provenance`.
    `pub use` counterparts stay JS-visible by design (`#[wasm_bindgen]` c-enums re-exported).
+
+One structural boundary is still open: rules 3–4 inventory named struct fields and inherent
+functions, not the materialized fields carried directly by a rust enum variant. Cycle 4's
+optional-fixed recombination extension made the distinction observable: an inlined group-choice arm
+stores both `x: u64` and `a: bool`, and its wasm constructor accepts both, while `as_t0()` returns
+only `x` and no wasm accessor exposes `a`. The focused generator test and every layer-2 wasm compile
+gate stay green because they assert/compile the surface that exists; they cannot demand the missing
+read API. `testing.wasm-api-parity-inlined-enum-materialized-fields` in the testing roadmap owns the
+product decision plus the systematic parity extension.
 
 Legitimate rust→wasm asymmetries are baked into those rules, not ledgered: the "`pub use`d Copy
 enums", "rust-only trait impls" (only inherent impls are walked — `From`/`AsRef`/`Serialize`/… are

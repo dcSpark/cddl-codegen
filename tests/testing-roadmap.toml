@@ -84,6 +84,7 @@ entries = [
   "testing.container-construct-conceptual-type-visitor-walks-flat-combinatorial",
   "part-what-hand-per-construct-buy-established-escape-produced",
   "part-cheap-system-matrix-shape-pairs-compiled-wasm-side",
+  "testing.wasm-api-parity-inlined-enum-materialized-fields",
   "testing.generated-local-collision-class-refused-mangled-refusal-s",
   "testing.generated-local-collision.general-mangling-remedy",
   "testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns",
@@ -6211,6 +6212,43 @@ action_on_fire_md = '''Set testing.wac-composed-component-transpiled-jco-loses-c
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.wac-composed-component-transpiled-jco-loses-cross-instance's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
 '''
+
+[[record]]
+id = "testing.wasm-api-parity-inlined-enum-materialized-fields"
+title = "Extend rust-to-wasm API parity to materialized fields carried directly by enum variants, and expose optional-fixed presence bits on group-choice arms."
+
+[record.payload]
+kind = "work"
+body_md = '''- **Extend rust-to-wasm API parity to materialized fields carried directly by enum variants, and
+  expose optional-fixed presence bits on group-choice arms.** Cycle 4's recombination extension
+  systematically exposed the GENERATION panic for an optional fixed field in an inlined
+  group-choice arm and fixed every compile-facing enum projection. The closeout review then found a
+  distinct wrong-public-API residue by reading the wasm getter path and confirmed it with a focused
+  generated-output probe: `t = [ x: uint, ? a: 0 // b: tstr ]` emits rust
+  `T::T0 { x: u64, a: bool }` and wasm `new_t0(x: u64, a: bool)`, but wasm emits only
+  `as_t0() -> Option<u64>`; no getter exposes `a`, so a caller cannot observe the presence bit after
+  decoding. The new `group_choice_optional_fixed_arm_emits_bool_presence_field` test asserts the
+  constructor and compile-facing projections, the recombination wasm layer compiles whatever API
+  exists, and `wasm_api_parity` rules 3–4 inspect named struct fields/functions rather than enum
+  variant payloads. None can demand the missing accessor.
+
+  First settle the public surface rather than inventing a name in a test. Viable designs include an
+  arm-qualified presence accessor on the enum wrapper, or stopping this multi-materialized-field arm
+  from inlining and exposing a named arm wrapper; the latter is complete only if wasm construction
+  can still express `present = true` rather than defaulting the optional field away. Then extend
+  `wasm_api_parity` (or a sibling AST-based parity rule) to enumerate every non-encoding value field
+  materialized in a rust enum variant and require an observable wasm read door for each. Add a
+  behavior vector that constructs both `a = false` and `a = true`, CBOR-round-trips them, reads the
+  bit through the chosen API, and checks the wrong-arm result. Keep preserve-only encoding sidecars
+  exempt: they remain rust-only round-trip metadata, exactly as the existing struct-field rule
+  specifies.
+'''
+work_state = "ready"
+work_intent = "fix_bug"
+work_kind = "regression_gap"
+risk = "wrong_public_api"
+acceptance_md = '''Choose and document a stable wasm read API for every materialized field of an inlined enum arm; make the optional-fixed group-choice vector observe both presence states after CBOR round-trip; and extend the AST-based rust-to-wasm parity system so deleting that read door fails independently of the hand vector. Preserve the existing exemption for encoding-only sidecars and prove the chosen representation still permits wasm construction of the present state.'''
+priority_rationale_md = '''This is a confirmed supported-shape public-API loss introduced into the newly generating path, not a hypothetical trigger: generated CBOR behavior is correct while wasm callers cannot observe one rust-stored bit, and all current compile/systematic gates are structurally blind to absence.'''
 
 [[record]]
 id = "testing.wasm32-link-floor-deferred-reject-twin"

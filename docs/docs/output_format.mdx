@@ -145,8 +145,12 @@ pub struct A {
 - **Deserialize** peeks the next item's CBOR type; on a match it verifies the constant exactly as a
   mandatory member does (a wrong value is a `FixedValueMismatch`) and records `true`, otherwise
   leaves the field `false`.
-- **wasm** exposes the bit as a getter `v() -> bool` and setter `set_v(present: bool)` on the
-  wrapper.
+- **wasm** exposes the bit as a getter `v() -> bool` and setter `set_v(present: bool)` on an
+  ordinary record wrapper. One boundary remains for a fixed value embedded directly in a
+  group-choice enum arm: `new_<arm>(…, present)` carries the bit and CBOR/JSON preserve it, but the
+  current `as_<arm>()` read API returns only the arm's non-fixed payload and exposes no accessor for
+  the presence bit. The missing enum-payload parity check and the public accessor design are ready
+  work in the testing roadmap.
 - **JSON** (serde / schemars) treats it as a plain `bool` — `"v": false` when absent.
 
 `bool` is used rather than `Option<()>` precisely because it crosses the wasm and serde/schemars
