@@ -16,6 +16,7 @@
 ;   value     — a type choice: `new-<variant>` statics, the `<name>-kind` discriminant, `as-<variant>`.
 ;   thing     — an inlined group-choice arm with two optional fixed presence bits and a text value:
 ;               component field-qualified reads preserve all constructor values and wrong-arm None.
+;   solo      — the tuple-form compatibility control: one optional fixed bit retains `as-solo0`.
 ;   node      — the RE-ENTRANCY case, and the only one with no wasm-face precedent. `children` is
 ;               OPTIONAL, which is what mints a `set-children` taking `list<borrow<node>>` — so
 ;               `x.set-children([x])` is expressible, must return normally, and must store a
@@ -43,6 +44,10 @@ value = uint / text / bytes
 ; An inlined group-choice arm has three materialized native values. The component face keeps every
 ; one in `new-thing0(a, x, b)` and gives each its own `as-thing0-<field>` read door.
 thing = [ ? a: 0, x: tstr, ? b: 1 // y: bytes ]
+
+; A sole materialized inlined arm stays a tuple variant natively; its component API retains the
+; established unqualified `as-solo0()` compatibility read instead of inventing `as-solo0-a()`.
+solo = [ ? a: 2, fixed: 3 // y: bytes ]
 
 ; collection-mediated recursion with the collection field OPTIONAL, which is what gives the resource
 ; a `set-children: func(children: list<borrow<node>>)` — the same-handle re-entrancy shape

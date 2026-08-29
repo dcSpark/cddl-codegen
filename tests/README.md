@@ -4815,9 +4815,10 @@ but reading it would make this an intent check instead of an output check. Three
    out, every failure as `result<_, string>`). The deliberate narrow exception is an inlined
    group-choice `new_<arm>` static: its emitted Rust argument names must match resolved WIT
    `new-<arm>` names after snake→kebab conversion, and each direct value owes a read (`as-<arm>` for
-   one, `as-<arm>-<field>` for many). The parser identifies this shape from the emitted enum's direct
-   named fields, never projection metadata, so named-record arm constructors keep their legitimate
-   aggregate `as-<arm> -> option<record>` API.
+   one, `as-<arm>-<field>` for a direct named multi-field arm). The parser uses emitted enum fields,
+   never projection metadata: tuple arms and named-record aggregate constructors retain their
+   legitimate `as-<arm> -> option<payload>` API, while only direct named fields map every native
+   constructor value to field-qualified reads.
 
 A `pub type` alias imposes nothing — a CDDL alias and a named collection are resolved THROUGH at
 their use sites and never surfaced, which is the documented type-mapping row. A counterpart that is a
@@ -4868,7 +4869,9 @@ into a `wasmtime` host and drives it through one `#[test]` per assertion class:
   where "the boundary produced some bytes" is not;
 - **inlined group-choice materialized fields**, including all four optional-fixed `bool` presence
   pairs, native-byte agreement after construction and re-read, field-qualified snapshot reads, and
-  wrong-arm `None`;
+  wrong-arm `None`; the cheap WIT/parity sweep repeats that fixture under preserve, canonical, and
+  JSON, while one preserve wasip2 build covers its encoding-sidecar arm layout without duplicating
+  the wasmtime execution cell;
 - **fallible doors return `Err` and never trap**, and the instance is still usable afterwards. That
   last clause is the real assertion: a trap poisons the whole component instance, so in a composed
   topology one bad call kills a shared dependency for every consumer. The trap TEXT is deliberately

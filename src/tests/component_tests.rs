@@ -94,8 +94,22 @@ pub(super) const COMPONENT_FIXTURES: &[(&str, &[&str])] = &[
     // never-two-guards invariant STRUCTURALLY — which is the same claim
     // `component_host_tests::component_host_behavior` makes at runtime, from the other side. A
     // fixture whose runtime behaviour is asserted and whose emitted shape is not would be the one
-    // place a regression could land with no static gate noticing.
+    // place a regression could land with no static gate noticing. Preserve changes inlined-arm
+    // capture layout, so the cheap WIT/parity sweep covers that posture (and canonical / JSON) too;
+    // the host execution gate intentionally remains its one default cell.
     ("tests/component-host/inputs", &[]),
+    (
+        "tests/component-host/inputs",
+        &["--preserve-encodings=true"],
+    ),
+    (
+        "tests/component-host/inputs",
+        &["--preserve-encodings=true", "--canonical-form=true"],
+    ),
+    (
+        "tests/component-host/inputs",
+        &["--json-serde-derives=true"],
+    ),
     ("tests/component-multifile/inputs", &[]),
     // Cross-scope references that run THROUGH a named collection: the projection resolves the
     // collection through, so the cycle detector must agree about which scope the `use` points at.
@@ -2489,6 +2503,15 @@ const BUILD_SMOKE_FIXTURES: &[BuildSmokeRow] = &[
     // that wraps a `Result` the rust ctor already returns, is a type error in generated code that
     // resolves, encodes and validates perfectly as WIT.
     ("tests/component-choices/input.cddl", &[], None, None),
+    // The host fixture owns the inlined optional-fixed component arm. Preserve changes its native
+    // enum arm's encoding-sidecar layout, making this representative wasip2 guest build the
+    // compile control for `capture_field_ignore_encodings`; runtime behavior remains default-only.
+    (
+        "tests/component-host/inputs",
+        &["--preserve-encodings=true"],
+        None,
+        None,
+    ),
     // The multi-INTERFACE shape: two `Guest` impls on one guest type under one `export!`, a
     // cross-interface `borrow` parameter, and an `own` handle minted for a resource another
     // interface declares. None of it is reachable from a single-scope fixture, and all of it is a

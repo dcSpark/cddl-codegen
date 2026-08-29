@@ -19,10 +19,10 @@
 //!    something live to reconcile.
 //! 3. *Variant constructors carry a narrow signature obligation.* Most ABI signatures deliberately
 //!    differ, but a choice's `new_<arm>` is a direct bridge to a native constructor. For those
-//!    statics only, this gate compares emitted Rust argument identities with resolved WIT and owes
-//!    each constructor value an arm read: the compatibility `as-<arm>` for one value, or explicit
-//!    `as-<arm>-<field>` reads for multiple values. This catches an omitted optional-fixed presence
-//!    bit without pretending unrelated ABI conversions have identical signatures.
+//!    statics only, this gate compares emitted Rust argument identities with resolved WIT. Direct
+//!    multi-field inlined arms owe explicit `as-<arm>-<field>` reads; tuple/aggregate arms retain
+//!    their one compatibility `as-<arm>` read. This catches an omitted optional-fixed presence bit
+//!    without pretending unrelated ABI conversions have identical signatures.
 //!
 //! **Parsed from emitted sources, never from generator metadata.** The rust half is `syn` over the
 //! emitted `.rs`; the WIT half is `wit-parser` over the emitted `.wit`; the exclusion records are
@@ -137,6 +137,21 @@ const PARITY_CASES: &[(&str, &str, &[&str])] = &[
     // harness driving the boundary would simply never think to call.
     ("component-host", "tests/component-host/inputs", &[]),
     (
+        "component-host-preserve",
+        "tests/component-host/inputs",
+        &["--preserve-encodings=true"],
+    ),
+    (
+        "component-host-canonical",
+        "tests/component-host/inputs",
+        &["--preserve-encodings=true", "--canonical-form=true"],
+    ),
+    (
+        "component-host-json",
+        "tests/component-host/inputs",
+        &["--json-serde-derives=true"],
+    ),
+    (
         "component-multifile",
         "tests/component-multifile/inputs",
         &[],
@@ -246,11 +261,67 @@ const COMPONENT_PARITY_EXEMPT: &[(&str, &str, &str)] = &[
         "`Int` projects to the WIT `variant int { uint(u64), nint(u64) }` — a VALUE type with no \
          member namespace; a caller constructs the arm directly",
     ),
+    // The host fixture's static-only preserve/canonical/JSON rows carry the same `delta: int`
+    // value-type asymmetry as its executable default row.
+    (
+        "component-host-preserve",
+        "Int::new_uint",
+        "`Int` projects to the WIT `variant int { uint(u64), nint(u64) }` — a VALUE type with no \
+         member namespace; a caller constructs the arm directly",
+    ),
+    (
+        "component-host-preserve",
+        "Int::new_nint",
+        "`Int` projects to the WIT `variant int { uint(u64), nint(u64) }` — a VALUE type with no \
+         member namespace; a caller constructs the arm directly",
+    ),
+    (
+        "component-host-canonical",
+        "Int::new_uint",
+        "`Int` projects to the WIT `variant int { uint(u64), nint(u64) }` — a VALUE type with no \
+         member namespace; a caller constructs the arm directly",
+    ),
+    (
+        "component-host-canonical",
+        "Int::new_nint",
+        "`Int` projects to the WIT `variant int { uint(u64), nint(u64) }` — a VALUE type with no \
+         member namespace; a caller constructs the arm directly",
+    ),
+    (
+        "component-host-json",
+        "Int::new_uint",
+        "`Int` projects to the WIT `variant int { uint(u64), nint(u64) }` — a VALUE type with no \
+         member namespace; a caller constructs the arm directly",
+    ),
+    (
+        "component-host-json",
+        "Int::new_nint",
+        "`Int` projects to the WIT `variant int { uint(u64), nint(u64) }` — a VALUE type with no \
+         member namespace; a caller constructs the arm directly",
+    ),
     // The `Int` parse-error enum the rust crate mints beside `Int` (for its `FromStr`/`TryFrom`
     // impls). It is not an IR type at all, so the projection never sees it; the WIT face reports
     // every failure as the `string` of the rust error's `Display`, so there is nothing for it to be.
     (
         "component-host",
+        "IntError",
+        "the rust-only error enum minted beside `Int` for its `FromStr`/`TryFrom` impls — not an IR \
+         type, and the WIT face carries every failure as `result<_, string>`",
+    ),
+    (
+        "component-host-preserve",
+        "IntError",
+        "the rust-only error enum minted beside `Int` for its `FromStr`/`TryFrom` impls — not an IR \
+         type, and the WIT face carries every failure as `result<_, string>`",
+    ),
+    (
+        "component-host-canonical",
+        "IntError",
+        "the rust-only error enum minted beside `Int` for its `FromStr`/`TryFrom` impls — not an IR \
+         type, and the WIT face carries every failure as `result<_, string>`",
+    ),
+    (
+        "component-host-json",
         "IntError",
         "the rust-only error enum minted beside `Int` for its `FromStr`/`TryFrom` impls — not an IR \
          type, and the WIT face carries every failure as `result<_, string>`",
@@ -765,15 +836,24 @@ fn diff_surfaces(
 /// The one signature-level parity rule. General component signatures intentionally differ from
 /// Rust (ownership, result strings, despecialization), but a choice's `new_<arm>` static forwards
 /// exactly its native constructor values. Read obligations are derived solely from emitted Rust and
-/// resolved WIT: one value keeps `as-<arm>` compatibility; multiple values use stable
-/// field-qualified reads, avoiding an ambiguous aggregate payload.
+/// resolved WIT: direct named-field multi-value arms use stable field-qualified reads, while tuple
+/// and aggregate arms keep their established unambiguous `as-<arm>` payload read.
+struct VariantCtorCoverage {
+    obligations: usize,
+    /// `(fixture label, native type, native arm)` proves which output-only constructor shapes ran.
+    witnessed: BTreeSet<(String, String, String)>,
+}
+
 fn diff_variant_ctor_signatures(
     label: &str,
     rust: &RustSurface,
     wit: &WitSurface,
     out: &mut Vec<Finding>,
-) -> usize {
-    let mut obligations = 0;
+) -> VariantCtorCoverage {
+    let mut coverage = VariantCtorCoverage {
+        obligations: 0,
+        witnessed: BTreeSet::new(),
+    };
     for (rust_type, ctors) in &rust.variant_ctors {
         let wit_type = convert_to_kebab_case(rust_type);
         let Some(statics) = wit.variant_statics.get(&wit_type) else {
@@ -787,22 +867,20 @@ fn diff_variant_ctor_signatures(
             let arm_kebab = convert_to_kebab_case(arm);
             // A named-record group-choice arm's native enum field is its one record payload even
             // though its convenience constructor expands that record's fields. It intentionally
-            // retains `as-<arm> -> option<record>`, so only a variant whose emitted direct fields
-            // INCLUDE every constructor parameter is the inlined direct-value shape this rule owns.
-            let Some(arm_fields) = rust
+            // retains `as-<arm> -> option<record>`. Only a direct named-field arm whose fields
+            // include every constructor value uses field-qualified multi-value reads; all other
+            // non-empty tuple/aggregate shapes keep their established compatibility read.
+            let direct_fields = rust
                 .variant_fields
                 .get(rust_type)
-                .and_then(|variants| variants.get(&arm_kebab))
-            else {
-                continue;
-            };
-            if !rust_params.iter().all(|param| arm_fields.contains(param)) {
-                continue;
-            }
+                .and_then(|variants| variants.get(&arm_kebab));
             let Some(wit_params) = statics.get(&arm_kebab) else {
                 continue;
             };
-            obligations += 1;
+            coverage.obligations += 1;
+            coverage
+                .witnessed
+                .insert((label.to_owned(), rust_type.clone(), arm.clone()));
             let expected: Vec<String> = rust_params
                 .iter()
                 .map(|name| convert_to_kebab_case(name))
@@ -823,10 +901,13 @@ fn diff_variant_ctor_signatures(
                     ),
                 });
             }
+            let direct_multi = expected.len() > 1
+                && direct_fields
+                    .is_some_and(|fields| rust_params.iter().all(|param| fields.contains(param)));
             match expected.as_slice() {
                 [] => {}
-                [only] => {
-                    obligations += 1;
+                [only] if !direct_multi => {
+                    coverage.obligations += 1;
                     let member = format!("as-{arm_kebab}");
                     if !members.contains(&member) {
                         out.push(Finding {
@@ -838,9 +919,9 @@ fn diff_variant_ctor_signatures(
                         });
                     }
                 }
-                many => {
+                many if direct_multi => {
                     for field in many {
-                        obligations += 1;
+                        coverage.obligations += 1;
                         let member = format!("as-{arm_kebab}-{field}");
                         if !members.contains(&member) {
                             out.push(Finding {
@@ -853,10 +934,23 @@ fn diff_variant_ctor_signatures(
                         }
                     }
                 }
+                _ => {
+                    coverage.obligations += 1;
+                    let member = format!("as-{arm_kebab}");
+                    if !members.contains(&member) {
+                        out.push(Finding {
+                            label: label.to_owned(),
+                            item: format!("{rust_type}::new_{arm}"),
+                            msg: format!(
+                                "aggregate constructor values have no compatibility read `{member}`"
+                            ),
+                        });
+                    }
+                }
             }
         }
     }
-    obligations
+    coverage
 }
 
 /// Collect `.rs` basenames under `prefix` outside `allowed`, so a new emission surface fails loudly
@@ -933,6 +1027,7 @@ fn component_api_parity() {
     // which is worse than no gate at all.
     let mut obligations = 0usize;
     let mut variant_signature_obligations = 0usize;
+    let mut variant_ctor_witnesses = BTreeSet::new();
     let mut optional_fixed_fixture_pins = 0usize;
 
     for (label, input, extra) in PARITY_CASES {
@@ -1024,8 +1119,9 @@ fn component_api_parity() {
             + rust.inherent_fns.values().map(BTreeSet::len).sum::<usize>()
             + rust.types.len();
         diff_surfaces(label, &rust, &wit, &encoding_structs, &mut findings);
-        variant_signature_obligations +=
-            diff_variant_ctor_signatures(label, &rust, &wit, &mut findings);
+        let coverage = diff_variant_ctor_signatures(label, &rust, &wit, &mut findings);
+        variant_signature_obligations += coverage.obligations;
+        variant_ctor_witnesses.extend(coverage.witnessed);
     }
 
     assert!(
@@ -1051,7 +1147,7 @@ fn component_api_parity() {
          fixtures declare, so it has gone vacuous (a parse or path filter regressed)"
     );
     assert!(
-        variant_signature_obligations >= 28,
+        variant_signature_obligations >= 45,
         "the variant-constructor signature differential compared only \
          {variant_signature_obligations} obligations — its focused fixtures or resolved-WIT walk \
          went vacuous"
@@ -1061,6 +1157,21 @@ fn component_api_parity() {
         "the component-host optional-fixed inlined-arm WIT signature pin disappeared or changed; \
          this is the output-only control for every materialized constructor value"
     );
+    for witness in [
+        ("component-host", "Solo", "solo0"),
+        ("component-choices", "Node", "node1"),
+    ] {
+        assert!(
+            variant_ctor_witnesses.contains(&(
+                witness.0.to_owned(),
+                witness.1.to_owned(),
+                witness.2.to_owned(),
+            )),
+            "the variant-signature differential no longer reaches {:?}; this is a focused tuple/aggregate \
+             compatibility-read control",
+            witness
+        );
+    }
 
     let exempt: BTreeSet<(&str, &str)> = COMPONENT_PARITY_EXEMPT
         .iter()
