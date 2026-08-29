@@ -3492,6 +3492,21 @@
         "status": "unsupported"
       },
       {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 11 foreign spec-derived vector(s); ruby=ok(validate) rust=ok",
+        "id": "ctl.ne.nint_minus_one",
+        "status": "supported"
+      },
+      {
         "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok",
         "id": "ctl.abnf",
         "status": "unsupported"
@@ -7251,6 +7266,15 @@
       "profile": "RFC8610",
       "rfc": "RFC8610 §3.8.1 / §3.8.4 (control semantics); IANA ctl .ne",
       "title": "Not-equal control at the one boundary (.ne 1)"
+    },
+    {
+      "desc": "Target-head × controller-value variation of ctl.ne: CDDL -1 is stored as nint magnitude 0, so the signed exclusion sentinel `(0,-2)` must be transformed as one exclusion into magnitude sentinel `(1,-1)`. Mapping its two synthetic endpoints independently collapses both to magnitude 1 and changes `nint .ne -1` into exactly -2. Neither int-headed `.ne 0` nor `.ne 1` reaches this decreasing-coordinate boundary, so it is a distinct enforcement surface under the \"Intra-alternative variation rows\" rule.",
+      "example": "x = nint .ne -1",
+      "id": "ctl.ne.nint_minus_one",
+      "production": "ne",
+      "profile": "RFC8610",
+      "rfc": "RFC8610 §3.8.1 / §3.8.4 (control semantics); IANA ctl .ne",
+      "title": "Not-equal control at the negative-integer magnitude-zero boundary (nint .ne -1)"
     },
     {
       "desc": "Target-type variation of ctl.size: `.size` over a `uint` target (window 0..65535), the unswept variant from the uint-target oracle-gap entry (README § \"Upstream oracle gaps\") — the base `ctl.size` example sizes a bstr, so this uint-target form is a distinct enforcement surface. Its reject certification depends on the local-fixes rust oracle (released 0.10.x under-enforces `.size` over uint; the same README gap entry). Enumerated per the \"Intra-alternative variation rows\" lesson that enforcement reaches only as far as row enumeration.",

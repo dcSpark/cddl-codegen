@@ -457,6 +457,80 @@ impl schemars::JsonSchema for NintNe {
     }
 }
 
+#[derive(Clone, Debug, Copy)]
+pub struct NintNeMinusOne(u64);
+
+impl NintNeMinusOne {
+    pub fn get(&self) -> u64 {
+        self.0
+    }
+
+    fn new(inner: u64) -> Result<Self, DeserializeError> {
+        if inner == 0 {
+            return Err(DeserializeError::new(
+                "NintNeMinusOne",
+                DeserializeFailure::RangeCheck {
+                    found: inner as i128,
+                    min: Some(1),
+                    max: Some(-1),
+                },
+            ));
+        }
+        Ok(Self(inner))
+    }
+}
+
+impl TryFrom<u64> for NintNeMinusOne {
+    type Error = DeserializeError;
+
+    fn try_from(inner: u64) -> Result<Self, Self::Error> {
+        NintNeMinusOne::new(inner)
+    }
+}
+
+impl serde::Serialize for NintNeMinusOne {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for NintNeMinusOne {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = <u64 as serde::de::Deserialize>::deserialize(deserializer)?;
+        Self::try_from(inner).map_err(|_e| {
+            serde::de::Error::invalid_value(
+                serde::de::Unexpected::Signed(inner as i64),
+                &"invalid NintNeMinusOne",
+            )
+        })
+    }
+}
+
+impl schemars::JsonSchema for NintNeMinusOne {
+    fn schema_name() -> alloc::borrow::Cow<'static, str> {
+        alloc::borrow::Cow::Borrowed("NintNeMinusOne")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        let mut out = <u64 as schemars::JsonSchema>::json_schema(generator);
+        out.insert(
+            "not".to_owned(),
+            schemars::json_schema!({ "const": 0u64 }).into(),
+        );
+        out
+    }
+
+    fn inline_schema() -> bool {
+        <u64 as schemars::JsonSchema>::inline_schema()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct SizedText(String);
 
@@ -639,6 +713,12 @@ impl From<NintGe> for u64 {
 
 impl From<NintNe> for u64 {
     fn from(wrapper: NintNe) -> Self {
+        wrapper.0
+    }
+}
+
+impl From<NintNeMinusOne> for u64 {
+    fn from(wrapper: NintNeMinusOne) -> Self {
         wrapper.0
     }
 }

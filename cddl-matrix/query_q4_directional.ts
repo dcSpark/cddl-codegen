@@ -449,8 +449,11 @@ function vacuityProblems(rs: Directional[]): string[] {
   //       (a type-violation vector engineered onto a numeric row) or a narrowing (a range row losing its
   //       reject vector, re-hiding a silent-acceptance hole) fails this gate.
   //   (c) The controller-value / occurrence-bound variation rows (the variation-row enumeration, roadmap.toml § Expansion).
-  //       `ctl.ne.zero` / `ctl.ne.one` carry the NE sign-boundary violations (`00` / `01` — the `(1,-1)`
-  //       and degenerate `(2,0)` encodings), int-targeted so both oracles certify like family (a).
+  //       `ctl.ne.zero` / `ctl.ne.one` carry the uint-arm NE sign-boundary violations (`00` / `01`
+  //       — the `(1,-1)` and degenerate `(2,0)` encodings), int-targeted so both oracles certify like
+  //       family (a). `ctl.ne.nint_minus_one` carries the nint magnitude-zero twin (`20`, signed -1):
+  //       the decreasing signed-value→magnitude transform must preserve one exclusion rather than map
+  //       its two synthetic endpoints independently.
   //       `occur.bounded{,.lower,.upper}` carry holder-wrapped out-of-count arrays (below the lower
   //       bound / above the upper bound); both oracles certify (the sole-primitive-entry array shape
   //       keeps repetition count == item count, dodging the rust group-occurrence gap).
@@ -498,7 +501,7 @@ function vacuityProblems(rs: Directional[]): string[] {
   //       so an oracle fix pulls these vectors back onto the ordinary consensus route rather than
   //       leaving a permanent carve-out.
   const EXPECTED_ENFORCE_YES = ["ctl.cbor", "ctl.eq", "ctl.ge", "ctl.gt", "ctl.le", "ctl.lt", "ctl.ne",
-    "ctl.ne.one", "ctl.ne.zero", "ctl.size", "ctl.size.uint",
+    "ctl.ne.nint_minus_one", "ctl.ne.one", "ctl.ne.zero", "ctl.size", "ctl.size.uint",
     "dsl.duplicates.preserve",
     "contain.array-element.prelude.false", "contain.array-element.prelude.null",
     "contain.array-element.prelude.true", "contain.array-element.prelude.undefined", "contain.array-element.type2.value",

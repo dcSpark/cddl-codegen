@@ -307,6 +307,16 @@ const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
         )],
     ),
     (
+        // The fixture's checked scalar wrappers expose ordinary wasm classes. Its integration gate
+        // is rust-only so it can focus on serde/schema agreement; this parity row turns wasm back
+        // on under the same JSON flags and differentials every generated boundary door.
+        "json-scalar-bounds",
+        &[(
+            "json",
+            &["--json-serde-derives=true", "--json-schema-export=true"],
+        )],
+    ),
+    (
         // The fixture's integration gate enables both JSON outputs; parity therefore exercises the
         // identical generated wasm surface rather than an uncommitted default-profile variant.
         "zero-permitting-map",

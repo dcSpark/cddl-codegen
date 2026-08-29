@@ -99,10 +99,11 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | `memberkey.type1` | ✅ | Type memberkey (t =>) | `table.cddl` |
 | `memberkey.value` | ✅ | Value memberkey (1:) | `value_key.cddl` |
 
-### `ne` (2)
+### `ne` (3)
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
+| `ctl.ne.nint_minus_one` | ➕ | Not-equal control at the negative-integer magnitude-zero boundary (nint .ne -1) | supported, no corpus fixture (cddl-codegen exit 0) |
 | `ctl.ne.one` | ➕ | Not-equal control at the one boundary (.ne 1) | supported, no corpus fixture (cddl-codegen exit 0) |
 | `ctl.ne.zero` | ➕ | Not-equal control at the zero boundary (.ne 0) | supported, no corpus fixture (cddl-codegen exit 0) |
 
@@ -445,7 +446,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 
 ## Summary
 
-- Features: **123** — ✅ 80 covered · ➕ 31 supported-untested · ⚠️ 1 partial · ➖ 11 not supported
+- Features: **124** — ✅ 80 covered · ➕ 32 supported-untested · ⚠️ 1 partial · ➖ 11 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
 - Corpus fixtures: 106
 

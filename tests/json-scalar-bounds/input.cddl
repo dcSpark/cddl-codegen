@@ -9,5 +9,6 @@ negative_min = int .ge -10
 uint_exclusive = 3...10
 nint_ge = nint .ge -5
 nint_ne = nint .ne -5
+nint_ne_minus_one = nint .ne -1
 sized_text = text .size (2..4)
 float_window = 1.5...4.5

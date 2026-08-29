@@ -52,6 +52,11 @@
   "fillers": [
     {
       "aux": [],
+      "expr": "nint .ne -1",
+      "feature": "ctl.ne.nint_minus_one"
+    },
+    {
+      "aux": [],
       "expr": "int .ne 1",
       "feature": "ctl.ne.one"
     },

@@ -857,10 +857,10 @@ with [`insta`]. No subprocess, no compilation, no `target/` bloat. Three sub-sui
   promotion of the bare `[f: float64]` construct into the corpus are open, unperformed work.
   `json-scalar-bounds` is the complementary checked-scalar fixture: it compiles generated schema
   mutation/validation tests against signed and unsigned integer windows (`const` and `not/const`
-  included), nint's stored-magnitude carrier, float exclusivity, and the deliberately conservative
-  UTF-8-byte-to-Unicode-length text projection. It is where the generated schema and generated
-  `Deserialize` doors are compared directly; the corpus snapshots keep the broader per-construct
-  output coverage.
+  included), nint's stored-magnitude carrier (including the `nint .ne -1` magnitude-zero exclusion),
+  float exclusivity, and the deliberately conservative UTF-8-byte-to-Unicode-length text projection.
+  It is where the generated schema and generated `Deserialize` doors are compared directly; the corpus
+  snapshots keep the broader per-construct output coverage.
   And it's the home for inputs whose output *can't compile
   standalone* (`extern_deps`/`extern_deps_wasm`/`raw_bytes` reference user-supplied types; their
   behavioral coverage is their integration fixtures) — this suite never compiles, so neither constraint bites here, which

@@ -21,7 +21,7 @@ mod tests {
         assert!(!int_ne.is_valid(&serde_json::json!(1)));
         assert!(int_ne.is_valid(&serde_json::json!(2)));
         assert!(serde_json::from_value::<IntNe>(serde_json::json!(1)).is_err());
-        assert!(serde_json::from_value::<IntNe>(serde_json::json!(2)).is_ok());
+        serde_json::from_value::<IntNe>(serde_json::json!(2)).unwrap();
 
         // An exact integer window projects to `const`, the dual of the exclusion's `not: { const
         // ... }` shape above.
@@ -30,7 +30,7 @@ mod tests {
         let exact = validator::<IntExact>();
         assert!(exact.is_valid(&serde_json::json!(7)));
         assert!(!exact.is_valid(&serde_json::json!(6)));
-        assert!(serde_json::from_value::<IntExact>(serde_json::json!(7)).is_ok());
+        serde_json::from_value::<IntExact>(serde_json::json!(7)).unwrap();
         assert!(serde_json::from_value::<IntExact>(serde_json::json!(6)).is_err());
 
         // Keep a negative literal in the compiled fixture: this is specifically what catches the
@@ -41,7 +41,7 @@ mod tests {
         let negative = validator::<NegativeMin>();
         assert!(negative.is_valid(&serde_json::json!(-10)));
         assert!(!negative.is_valid(&serde_json::json!(-11)));
-        assert!(serde_json::from_value::<NegativeMin>(serde_json::json!(-10)).is_ok());
+        serde_json::from_value::<NegativeMin>(serde_json::json!(-10)).unwrap();
         assert!(serde_json::from_value::<NegativeMin>(serde_json::json!(-11)).is_err());
 
         // `3...10` normalizes to the inclusive JSON interval [3, 9] during parsing.
@@ -60,7 +60,7 @@ mod tests {
         let nint_ge = validator::<NintGe>();
         assert!(nint_ge.is_valid(&serde_json::json!(4)));
         assert!(!nint_ge.is_valid(&serde_json::json!(5)));
-        assert!(serde_json::from_value::<NintGe>(serde_json::json!(4)).is_ok());
+        serde_json::from_value::<NintGe>(serde_json::json!(4)).unwrap();
         assert!(serde_json::from_value::<NintGe>(serde_json::json!(5)).is_err());
 
         let nint_ne_schema = schema::<NintNe>();
@@ -69,7 +69,18 @@ mod tests {
         assert!(!nint_ne.is_valid(&serde_json::json!(4)));
         assert!(nint_ne.is_valid(&serde_json::json!(3)));
         assert!(serde_json::from_value::<NintNe>(serde_json::json!(4)).is_err());
-        assert!(serde_json::from_value::<NintNe>(serde_json::json!(3)).is_ok());
+        serde_json::from_value::<NintNe>(serde_json::json!(3)).unwrap();
+
+        // Boundary case: CDDL -1 is stored as magnitude 0. Mapping the `.ne -1` sentinel's two
+        // signed endpoints independently used to collapse them both onto magnitude 1, advertising
+        // and enforcing `const: 1` instead of excluding 0.
+        let boundary_schema = schema::<NintNeMinusOne>();
+        assert_eq!(boundary_schema["not"]["const"], 0, "{boundary_schema}");
+        let boundary = validator::<NintNeMinusOne>();
+        assert!(!boundary.is_valid(&serde_json::json!(0)));
+        assert!(boundary.is_valid(&serde_json::json!(1)));
+        assert!(serde_json::from_value::<NintNeMinusOne>(serde_json::json!(0)).is_err());
+        serde_json::from_value::<NintNeMinusOne>(serde_json::json!(1)).unwrap();
     }
 
     #[test]
@@ -82,7 +93,7 @@ mod tests {
         let validator = validator::<SizedText>();
         assert!(!validator.is_valid(&serde_json::json!("")));
         assert!(validator.is_valid(&serde_json::json!("é")));
-        assert!(serde_json::from_value::<SizedText>(serde_json::json!("é")).is_ok());
+        serde_json::from_value::<SizedText>(serde_json::json!("é")).unwrap();
 
         // One ASCII character is necessarily a false positive of this portable conservative
         // projection: schema accepts it, while the byte-counting deserializer refuses it.
@@ -99,7 +110,7 @@ mod tests {
         assert!(validator.is_valid(&serde_json::json!(1.5)));
         assert!(validator.is_valid(&serde_json::json!(4.49)));
         assert!(!validator.is_valid(&serde_json::json!(4.5)));
-        assert!(serde_json::from_value::<FloatWindow>(serde_json::json!(1.5)).is_ok());
+        serde_json::from_value::<FloatWindow>(serde_json::json!(1.5)).unwrap();
         assert!(serde_json::from_value::<FloatWindow>(serde_json::json!(4.5)).is_err());
     }
 }

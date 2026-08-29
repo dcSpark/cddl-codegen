@@ -5978,6 +5978,77 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "ctl.ne.nint_minus_one"
+axis = "feature"
+example = "x = nint .ne -1"
+spec = "x = nint .ne -1"
+mode = "standalone"
+type_name = "X"
+
+[[row.vector]]
+hex = "20"
+source = "hand"
+expect = "reject"
+class = "constraint"
+reason = "the value -1 equals the `nint .ne -1` excluded value — its stored magnitude 0 must retain the exclusion sentinel `(1,-1)` across the decreasing signed-value-to-magnitude transform"
+expect_err = "0 not in range 1 - -1"
+
+[[row.vector]]
+hex = "21"
+source = "hand"
+expect = "accept"
+
+[[row.vector]]
+hex = "38a5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "38c4"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "390123"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "390156"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "3901b1"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "390257"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "39027b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "3902c7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "390311"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "390322"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "ctl.ne.one"
 axis = "feature"
 example = "x = int .ne 1"

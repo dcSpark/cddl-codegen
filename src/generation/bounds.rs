@@ -89,11 +89,23 @@ pub(super) fn bounds_check_expr_non_negative(ty: &RustType) -> bool {
 // we store nint as its u64 magnitude `m = |v + 1| = -v - 1`, which is *decreasing* in the signed
 // value `v`. So a value bound `vmin <= v <= vmax` maps to a magnitude bound with the endpoints
 // SWAPPED: the value-min becomes the magnitude-max and the value-max becomes the magnitude-min
-// (e.g. `nint .ge -5` → `v >= -5` → `m <= 4`). Not swapping inverts the check in the constructor
-// (the deserializer, which checks the signed value directly, stays correct — so the two disagree).
+// (e.g. `nint .ge -5` → `v >= -5` → `m <= 4`). The `.ne` sentinel is transformed as an
+// EXCLUSION rather than as two real endpoints, so the `-1`/magnitude-0 boundary stays inverted.
 pub(crate) fn nint_bounds_to_u64(
     bounds: &(Option<i128>, Option<i128>),
 ) -> (Option<i128>, Option<i128>) {
+    // Preserve `.ne N` as an exclusion before mapping coordinates. Mapping its synthetic
+    // `(N + 1, N - 1)` endpoints independently is wrong at N = -1: both endpoints map to
+    // magnitude 1, which turns "anything except -1" into "exactly -2". Re-encode the excluded
+    // magnitude as the same inverted-window sentinel instead. i128 has room for both sentinels at
+    // the full u64 magnitude endpoints (`m - 1`, `m + 1`).
+    if let (Some(min), Some(max)) = bounds
+        && min > max
+    {
+        let excluded_value = min - 1;
+        let excluded_magnitude = (excluded_value + 1).abs();
+        return (Some(excluded_magnitude + 1), Some(excluded_magnitude - 1));
+    }
     (
         bounds.1.map(|x| (x + 1).abs()),
         bounds.0.map(|x| (x + 1).abs()),
@@ -766,6 +778,24 @@ pub(super) fn nint_arm_needs_width(arm: &SignArmBounds, wmin: i128) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nint_exclusion_mapping_preserves_the_minus_one_boundary() {
+        // `nint .ne -1` is stored as magnitude 0. Its signed-value exclusion sentinel `(0, -2)`
+        // must become the magnitude-space exclusion sentinel `(1, -1)`, not the exact window
+        // `(1, 1)` produced by independently mapping the two synthetic endpoints.
+        let mapped = nint_bounds_to_u64(&(Some(0), Some(-2)));
+        assert_eq!(mapped, (Some(1), Some(-1)));
+        assert_eq!(reject_cond(&mapped, false), RejectCond::Eq(0));
+
+        // Keep the ordinary non-boundary exclusion and a one-sided window beside it so the fix
+        // cannot change the established decreasing-coordinate transform.
+        assert_eq!(
+            nint_bounds_to_u64(&(Some(-4), Some(-6))),
+            (Some(5), Some(3))
+        );
+        assert_eq!(nint_bounds_to_u64(&(Some(-5), None)), (None, Some(4)));
+    }
 
     #[test]
     fn zero_minimum_payload_is_canonical_only_for_proven_non_negative_checks() {

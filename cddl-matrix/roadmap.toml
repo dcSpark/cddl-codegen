@@ -1206,7 +1206,8 @@ body_md = '''- **Intra-alternative variation rows (the enforcement-blind-spot cl
   enforcement axis, and that axis reaches exactly as far as row/example enumeration — an enumeration gap
   here is an enforcement blind spot, not just coverage accounting (the over-acceptance gotcha in
   `README.md` § "Gotchas"). Precedent rows to model on: `rangeop.{inclusive,exclusive}.{int,nint,float}`,
-  `occur.bounded.{lower,upper}`, `value.number.{hex,bin,hexfloat}`, `ctl.ne.{zero,one}`, `ctl.size.uint`
+  `occur.bounded.{lower,upper}`, `value.number.{hex,bin,hexfloat}`,
+  `ctl.ne.{zero,one,nint_minus_one}`, `ctl.size.uint`
   (Q4 pins the exact enforce-green set). The vector CLASS follows the decoder's current behavior:
   when it correctly rejects the boundary violation, the row lands `class="constraint"` (the rows
   above); when it currently WRONGLY ACCEPTS it, the same enumeration lands the violation as a

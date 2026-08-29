@@ -192,6 +192,15 @@ desc = "Controller-value variation of ctl.ne: the excluded value 1, whose degene
 example = "x = int .ne 1"
 
 [[feature]]
+id = "ctl.ne.nint_minus_one"
+production = "ne"
+rfc = "RFC8610 §3.8.1 / §3.8.4 (control semantics); IANA ctl .ne"
+profile = "RFC8610"
+title = "Not-equal control at the negative-integer magnitude-zero boundary (nint .ne -1)"
+desc = "Target-head × controller-value variation of ctl.ne: CDDL -1 is stored as nint magnitude 0, so the signed exclusion sentinel `(0,-2)` must be transformed as one exclusion into magnitude sentinel `(1,-1)`. Mapping its two synthetic endpoints independently collapses both to magnitude 1 and changes `nint .ne -1` into exactly -2. Neither int-headed `.ne 0` nor `.ne 1` reaches this decreasing-coordinate boundary, so it is a distinct enforcement surface under the \"Intra-alternative variation rows\" rule."
+example = "x = nint .ne -1"
+
+[[feature]]
 id = "ctl.size.uint"
 production = "size"
 rfc = "RFC8610 §3.8.1 / §3.8.4 (control semantics); IANA ctl .size"

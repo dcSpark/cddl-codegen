@@ -13,6 +13,7 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     reg.add::<cddl_lib::NegativeMin>();
     reg.add::<cddl_lib::NintGe>();
     reg.add::<cddl_lib::NintNe>();
+    reg.add::<cddl_lib::NintNeMinusOne>();
     reg.add::<cddl_lib::SizedText>();
     reg.add::<cddl_lib::UintExclusive>();
 }
