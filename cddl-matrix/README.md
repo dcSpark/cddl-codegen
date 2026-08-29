@@ -845,13 +845,19 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   (including absent `rustup`) standalone in tens of milliseconds. Ordinary verifier modes still
   execute the scratch-cwd toolchain-pin comparison and fail closed when `rustup` is absent or the
   compiler identity differs. The
-  clause reports one of three deterministic tokens, all preserving the `; ruby=` delimiter downstream
+  clause reports deterministic tokens, all preserving the `; ruby=` delimiter downstream
   splitters key on: `ruby=ok|fail` from `generate` for NON-narrowing examples; `ruby=ok(validate)|
   fail(validate)` for a narrowing op WITH committed spec-valid accept vectors — ruby `validate` over
   those vectors (deterministic input ⇒ deterministic verdict), the authoritative source; and
   `ruby=nondet(generate)` for a narrowing op with NO committed vectors (`ctl.and`, `ctl.within`) — a
   STABLE token chosen without a subprocess, never spec-invalidating (a dice roll must not flip a row's
-  status). Control-op-axis ruby is corroboration-only, but a narrowing FEATURE row's `spec_valid` reads
+  status). One separately RFC-reviewed compatibility exception, `value.number.hexfloat`, emits the
+  static `ruby=rfc-valid(hexfloat; ruby-0.12.11-gap)` token: the Nix-packaged 0.12.11 gem lacks the
+  standard `hexfloat` grammar, then its generic value handling hands the accepted `0x1.8` prefix to
+  Ruby `eval`; other developer environments may resolve a later gem. The exact row is ledgered and
+  self-tested in `verify.ts`, so this does not turn into a broad oracle bypass or host-dependent
+  annotation churn. Control-op-axis ruby is
+  corroboration-only, but a narrowing FEATURE row's `spec_valid` reads
   the same deterministic source, so no classified row can hard-fail a run on a draw.
 - **Verifier invocation and compiler identity fail closed.** `verify.ts` rejects every unrecognized
   `--` token at startup (rather than falling through to an ordinary sweep); its accepted flags are

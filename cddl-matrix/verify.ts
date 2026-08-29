@@ -6,7 +6,8 @@
  * feature's `example` through the three oracles (ruby cddl / rust cddl / cddl-codegen), emits
  * verify_report.json, and — ONLY when the gate passes — rewrites annotations/cddl_codegen.toml from the
  * probe results (a failing run must not leave a poisoned execution-grounded file to commit). Authority
- * model: the ruby `cddl` reference decides example validity; the rust `cddl` crate only corroborates
+ * model: the ruby `cddl` reference decides example validity except for the tiny, RFC-reviewed
+ * `RUBY_SPEC_VALIDITY_EXEMPTIONS` ledger; the rust `cddl` crate otherwise only corroborates
  * (ruby-accepts-but-rust-rejects is a recorded parser limitation).
  *
  * The cddl-codegen probe is EXECUTION-GATED: generation runs with
@@ -1235,6 +1236,24 @@ function sweepVerdict(gen: number, build: number | null, ledgered: boolean): Swe
   return build === 0 ? "built" : "build-failed";
 }
 const SWEEP_FAILING: ReadonlySet<SweepVerdict> = new Set<SweepVerdict>(["build-failed", "stale-ledger"]);
+// A Ruby failure normally decides that a matrix example is spec-invalid. This ledger is the narrow
+// exception for an RFC-reviewed valid example that a supported gem release cannot interpret. The
+// token is deliberately STATIC: developer environments currently resolve 0.12.11 (which fails) or
+// newer Ruby gems, so publishing raw `ok`/`fail` would make committed annotation bytes host-dependent.
+// Ordinary verifier mode exact-checks each entry against the matrix and its tracked report below.
+const RUBY_SPEC_VALIDITY_EXEMPTIONS: Readonly<Record<string, Readonly<{ example: string; token: string; note: string }>>> = {
+  "value.number.hexfloat": {
+    example: "m = [v: 0x1.8p+1]",
+    token: "rfc-valid(hexfloat; ruby-0.12.11-gap)",
+    note: "cddl-matrix/upstream-reports/ruby-cddl-radix-position-deviations.md#d5--nix-packaged-01211-lowercase-hexfloat",
+  },
+};
+interface RubyClause { token: string; specValid: boolean }
+/** Pure lookup so --selftest stays hermetic even when both external oracles are unavailable. */
+function rubySpecValidityException(id: string, example: string, _rawGenerateExit: number): RubyClause | undefined {
+  const exemption = RUBY_SPEC_VALIDITY_EXEMPTIONS[id];
+  return exemption?.example === example ? { token: exemption.token, specValid: true } : undefined;
+}
 // (7) The sweep's cell classifier. Its failure is silent in exactly the way the composers above are:
 // a `build-failed` cell misread as `refused` (or a refusal admitted into `SWEEP_FAILING`) turns the
 // sweep's whole product — "this row generates but does not compile" — into a green run or a false
@@ -1275,6 +1294,17 @@ const SWEEP_FAILING: ReadonlySet<SweepVerdict> = new Set<SweepVerdict>(["build-f
     process.exit(2);
   }
   if (SELFTEST) console.log(`component-build-sweep classifier self-test OK (${cases.length} fixtures, ledger both-ways)`);
+}
+{
+  const exactFail = rubySpecValidityException("value.number.hexfloat", "m = [v: 0x1.8p+1]", 1);
+  const exactPass = rubySpecValidityException("value.number.hexfloat", "m = [v: 0x1.8p+1]", 0);
+  const nearMiss = rubySpecValidityException("value.number.hexfloat", "m = [v: 3.0]", 1);
+  if (exactFail?.token !== "rfc-valid(hexfloat; ruby-0.12.11-gap)" || !exactFail.specValid ||
+      exactPass?.token !== exactFail.token || exactPass.specValid !== exactFail.specValid || nearMiss !== undefined) {
+    console.error("HARNESS FAILURE: ruby RFC-validity exception self-test failed; refusing to publish host-dependent matrix validity.");
+    process.exit(2);
+  }
+  if (SELFTEST) console.log("ruby RFC-validity exception self-test OK (exact row only; near misses remain raw-oracle judged)");
 }
 if (SELFTEST) process.exit(0);
 // K ruby-generated candidate instances per row (deduped byte-identically before two-oracle validation).
@@ -1369,6 +1399,26 @@ const splitlines = (t: string): string[] => {
 // 1. LOAD the merged matrix exactly as build_matrix.ts does.
 // ==================================================================================================
 const { features, roles, contain, encodings, controlOps: control_ops } = loadMatrixInputs();
+{
+  const byId = new Map(features.map(feature => [feature.id, feature]));
+  const problems: string[] = [];
+  for (const [id, exemption] of Object.entries(RUBY_SPEC_VALIDITY_EXEMPTIONS)) {
+    const feature = byId.get(id);
+    if (!feature)
+      problems.push(`${id}: no feature exists`);
+    else if (feature.example !== exemption.example)
+      problems.push(`${id}: exact example drifted (ledger=${JSON.stringify(exemption.example)}, matrix=${JSON.stringify(feature.example)})`);
+    const report = exemption.note.split("#", 1)[0]!;
+    if (!exemption.token.startsWith("rfc-valid(") || !report.startsWith("cddl-matrix/upstream-reports/"))
+      problems.push(`${id}: exemption must carry an RFC-validity token and tracked upstream report`);
+    else if (!existsSync(resolve(ROOT, "..", report)))
+      problems.push(`${id}: tracked upstream report is missing (${report})`);
+  }
+  if (problems.length) {
+    console.error(`HARNESS FAILURE: RUBY_SPEC_VALIDITY_EXEMPTIONS drifted — ${problems.join("; ")}; review the RFC argument before changing this ledger.`);
+    process.exit(2);
+  }
+}
 if (PROBE_ONLY) {
   const known = new Set([...features, ...contain, ...control_ops].map(value => value.id));
   const unknown = [...PROBE_ONLY].filter(id => !known.has(id)).sort();
@@ -3082,10 +3132,11 @@ function acceptAdmissionSelfTest(): void {
 //   ruby=nondet(generate)               — Bernoulli example with no committed accept vectors; a STABLE token
 //                                         chosen statically (no subprocess), NEVER spec-invalidating (a random
 //                                         generate must not flip a row's status on a dice roll)
+//   ruby=rfc-valid(...)                  — a static, RFC-reviewed Ruby compatibility exception; it prevents
+//                                         host-version-dependent annotation bytes, not a general oracle bypass
 // `specValid` is what feeds derive()'s spec_valid on the feature axis (and the per-cell / uncorroborated
 // gate on the other two loops). Validate uses a DEDICATED probe file so it never clobbers the caller's
 // shared probeFile, keeping rubyClause free of loop-ordering hazards.
-interface RubyClause { token: string; specValid: boolean }
 function rubyValidateHex(spec: string, hex: string): number {
   const specFile = join(probeDir, "ruby_verdict.cddl");
   writeFileSync(specFile, spec.replace(/\n*$/, "\n"));
@@ -3094,6 +3145,8 @@ function rubyValidateHex(spec: string, hex: string): number {
   return runExit([RUBY_CDDL!, specFile, "validate", cbor]);
 }
 function rubyClause(id: string, example: string, generateExit: number): RubyClause {
+  const exception = rubySpecValidityException(id, example, generateExit);
+  if (exception) return exception;
   if (!rubyGenerateIsBernoulli(example)) {
     const okv = generateExit === 0;
     return { token: okv ? "ok" : "fail", specValid: okv };

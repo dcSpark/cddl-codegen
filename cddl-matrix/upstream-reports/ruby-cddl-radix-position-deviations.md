@@ -352,3 +352,34 @@ literal syntax raises SyntaxError ("unexpected constant"). Lowercase `0x1p3` val
 
 verdict: RUBY_BUG (same family as D1–D3: the gem substitutes Ruby-language literal machinery for the
 CDDL ABNF). recommended_test_expectation: a spec-correct implementation accepts `0x1P3` as 8.0.
+
+## D5 — Nix-packaged 0.12.11 lowercase hexfloat `m = [v: 0x1.8p+1]`
+
+The Nix-packaged Ruby `cddl` 0.12.11 is older than the 0.12.14 lineage covered above and has a
+different, broader hexfloat defect. Its bundled grammar contains only:
+
+```abnf
+number = int ["." fraction] ["e" exponent ]
+```
+
+rather than RFC 8610 Appendix B's normative:
+
+```abnf
+number = hexfloat / (int ["." fraction] ["e" exponent ])
+hexfloat = ["-"] "0x" 1*HEXDIG ["." 1*HEXDIG] "p" exponent
+```
+
+The exact RFC-valid lower-case spelling `0x1.8p+1` (3.0) reaches the gem's generic value handler,
+which feeds the accepted prefix `0x1.8` to Ruby `eval`; Ruby then raises `SyntaxError` for the
+fraction after a hexadecimal integer. The observed 0.12.11 stack points to `cddl.rb:1574`, and
+`m = [v: 3.0]` is the decimal control that exits 0. Lower-case `0x1.8p1` and
+`-0x1.8p+1` take the same failing path. Upper-case `P` and `e` are only diagnostic near-spellings,
+not a reason to rewrite the matrix's standard example.
+
+This is a **Ruby compatibility defect**, not malformed matrix input. `verify.ts` therefore has one
+exact-id/exact-example `RUBY_SPEC_VALIDITY_EXEMPTIONS` row for `value.number.hexfloat`; it emits a
+static RFC-validity evidence token on every host. That prevents 0.12.11 and later Ruby environments
+from publishing different annotations while preserving the normal rule that the Ruby oracle decides
+validity. The entry is intentionally not version-detected: a host-dependent `ruby=ok|fail` result is
+the bug being avoided. Retire or revise it only after deliberately selecting and documenting one
+portable oracle-version policy, not merely because a local newer gem accepts the example.
