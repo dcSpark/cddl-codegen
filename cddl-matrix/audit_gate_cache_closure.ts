@@ -92,9 +92,11 @@
  * resumed open (flags split across the trace) is conservatively counted as a read; ENOENT probes are
  * not flagged. Deterministic output: offenders and per-class census are sorted.
  *
- * Exit: 0 PASS · 1 FAIL (a nested-subtree read in no allowed class) · 2 HARNESS (strace absent —
- * visible SKIPPED — / trace died / a repo cargo config is not keyed on / ZERO nested-cargo subtrees traced,
- * the vacuity floor: the audit must refuse to pass if it traced nothing).
+ * Exit: 0 PASS · 1 FAIL (a nested-subtree read in no allowed class) · 2 HARNESS (strace exists
+ * but its capability probe fails for a reason other than ptrace denial / trace died / a repo cargo
+ * config is not keyed on / ZERO nested-cargo subtrees traced, the vacuity floor: the audit must
+ * refuse to pass if it traced nothing) · 77 visible capability SKIP (strace absent / ptrace denied;
+ * check.ts maps this dedicated code to SKIPPED and no other nonzero).
  *
  * Run from cddl-matrix/:  bun run audit_gate_cache_closure.ts   (or CLOSURE_AUDIT_GATE=<test>).
  * `--self-test` runs only the embedded parser fixtures and exits (no cargo, no strace).
@@ -109,6 +111,57 @@ const ROOT = import.meta.dir;
 const CODEGEN_DIR = resolve(ROOT, ".."); // the cddl-codegen repo this script lives in
 const GATE = process.env.CLOSURE_AUDIT_GATE ?? "multifile_matrix_compiles";
 const QUALIFYING_SUBCOMMANDS = new Set(["test", "check", "build", "generate-lockfile"]);
+
+export type StraceCapability =
+  | { status: "available"; strace: string }
+  | { status: "unavailable"; reason: "strace absent" | "ptrace denied"; detail: string }
+  | { status: "broken"; detail: string };
+
+export interface StraceCapabilityResult {
+  exitCode: number | null;
+  output: string;
+  timedOut?: boolean;
+  signalCode?: string | null;
+}
+
+/** Pure result classifier: only an explicit ptrace EPERM is a capability skip. */
+export function classifyStraceCapability(result: StraceCapabilityResult, strace: string): StraceCapability {
+  if (result.exitCode === 0) return { status: "available", strace };
+  const detail = result.output.trim() || `strace exited ${result.exitCode}`;
+  if (!result.timedOut && !result.signalCode && /(?:\bPTRACE_[A-Z_]+\b|\bptrace\b)[^\n]*(?:Operation not permitted|\bEPERM\b)/i.test(result.output))
+    return { status: "unavailable", reason: "ptrace denied", detail };
+  if (result.timedOut) return { status: "broken", detail: `capability probe timed out${detail ? `: ${detail}` : ""}` };
+  if (result.signalCode) return { status: "broken", detail: `capability probe died from ${result.signalCode}${detail ? `: ${detail}` : ""}` };
+  return { status: "broken", detail };
+}
+
+/**
+ * Probe the exact tracing mode the audit uses. A present binary is insufficient in containers that
+ * deny ptrace: those environments are equivalent to a missing strace for this gate, while a bad
+ * option, timeout, signal, or any other failure remains a harness error.
+ */
+export function probeStraceCapability(strace = Bun.which("strace")): StraceCapability {
+  if (!strace)
+    return { status: "unavailable", reason: "strace absent", detail: "strace was not found on PATH" };
+  let run: ReturnType<typeof Bun.spawnSync>;
+  try {
+    run = Bun.spawnSync(
+      [
+        strace, "-f", "--seccomp-bpf", "-e", "trace=%process,openat,openat2,open", "-y", "-s", "4096",
+        "-o", "/dev/null", "--", "/bin/true",
+      ],
+      { stdout: "pipe", stderr: "pipe", timeout: 10_000 },
+    );
+  } catch (error) {
+    return { status: "broken", detail: `could not execute strace capability probe: ${error}` };
+  }
+  return classifyStraceCapability({
+    exitCode: run.exitCode,
+    output: (run.stdout?.toString() ?? "") + (run.stderr?.toString() ?? ""),
+    timedOut: run.exitedDueToTimeout,
+    signalCode: run.signalCode,
+  }, strace);
+}
 
 // ==================================================================================================
 // PURE PARSER (unit-tested via --self-test embedded fixtures below)
@@ -302,6 +355,26 @@ function selfTest(): void {
   const fail = (msg: string): never => { console.error(`self-test FAILED: ${msg}`); process.exit(2); };
   const eq = (a: unknown, b: unknown, msg: string) => { if (JSON.stringify(a) !== JSON.stringify(b)) fail(`${msg}: got ${JSON.stringify(a)} want ${JSON.stringify(b)}`); };
 
+  // strace capability: exit 0 wins even if a best-effort seccomp probe warned; only explicit ptrace
+  // EPERM is unavailable. Every other nonzero, timeout, or signal remains a hard harness error.
+  eq(classifyStraceCapability({ exitCode: 0, output: "PTRACE_TRACEME: Operation not permitted" }, "/bin/strace").status,
+     "available", "successful trace is capable despite warning text");
+  eq(classifyStraceCapability({ exitCode: 1, output: "check: PTRACE_TRACEME: Operation not permitted" }, "/bin/strace"),
+     { status: "unavailable", reason: "ptrace denied", detail: "check: PTRACE_TRACEME: Operation not permitted" },
+     "PTRACE_TRACEME denial is unavailable");
+  eq(classifyStraceCapability({ exitCode: 1, output: "attach: ptrace(PTRACE_SEIZE, 9): Operation not permitted" }, "/bin/strace").status,
+     "unavailable", "PTRACE_SEIZE denial is unavailable");
+  eq(classifyStraceCapability({ exitCode: 1, output: "strace: ptrace(PTRACE_SEIZE): EPERM" }, "/bin/strace").status,
+     "unavailable", "explicit ptrace EPERM is unavailable");
+  eq(classifyStraceCapability({ exitCode: 1, output: "strace: unrecognized option '--seccomp-bpf'" }, "/bin/strace").status,
+     "broken", "bad strace option stays hard");
+  eq(classifyStraceCapability({ exitCode: null, output: "", timedOut: true }, "/bin/strace").status,
+     "broken", "strace probe timeout stays hard");
+  eq(classifyStraceCapability({ exitCode: null, output: "", signalCode: "SIGKILL" }, "/bin/strace").status,
+     "broken", "strace probe signal stays hard");
+  eq(classifyStraceCapability({ exitCode: null, output: "strace: ptrace(PTRACE_SEIZE): EPERM", signalCode: "SIGKILL" }, "/bin/strace").status,
+     "broken", "a signalled probe stays hard even if its partial output mentions ptrace EPERM");
+
   // exec parsing (finished + unfinished)
   eq(parseExec(`100 execve("/usr/bin/cargo", ["cargo", "test", "--bin", "x"], 0x7ff /* 40 vars */) = 0`)?.argv,
      ["cargo", "test", "--bin", "x"], "exec finished");
@@ -483,12 +556,19 @@ async function main(): Promise<void> {
   selfTest();
   if (process.argv.includes("--self-test")) process.exit(0);
 
-  // Preflight 1: strace resolvable — else a VISIBLE skip (never a silent pass), matching --skip-missing.
-  const strace = Bun.which("strace");
-  if (!strace) {
-    console.log("SKIPPED (strace absent) — install strace to run the gate-cache input-closure audit.");
-    process.exit(0);
+  // Preflight 1: strace must be resolvable AND permitted to trace. A container that denies ptrace has
+  // no more audit capability than a machine without strace, so both are visible skips. Any other
+  // probe failure is hard: it may be a bad binary/option rather than an environment capability.
+  const capability = probeStraceCapability();
+  if (capability.status === "unavailable") {
+    console.log(`SKIPPED (${capability.reason}) — ${capability.detail}`);
+    process.exit(77);
   }
+  if (capability.status === "broken") {
+    console.error(`HARNESS FAILURE: strace capability probe failed for an unrecognized reason — ${capability.detail}`);
+    process.exit(2);
+  }
+  const strace = capability.strace;
 
   // Preflight 2: the repo cargo config must be KEYED ON, not absent.
   //
@@ -675,4 +755,4 @@ async function main(): Promise<void> {
   process.exit(0);
 }
 
-main();
+if (import.meta.main) void main();

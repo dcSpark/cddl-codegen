@@ -1757,14 +1757,11 @@ function runVerify(o: Opts): Outcome {
 }
 
 // ---- gate-cache closure-audit gate: strace preflight, then run the strace'd audit script ---------
-// A `fn` gate (not `cmd`) so a strace-less machine shows SKIPPED in the registry SUMMARY table, not
-// a PASS whose skip is visible only in the scrollback — the honest-visible-skip rule at the summary
-// level. The script keeps its own internal strace skip for direct invocation.
+// A `fn` gate (not `cmd`) so a machine without tracing capability shows SKIPPED in the registry
+// SUMMARY table, not a PASS whose skip is visible only in the scrollback — the honest-visible-skip
+// rule at the summary level. The script owns the single capability probe and returns dedicated exit
+// 77 for ONLY absence/ptrace denial; every other nonzero remains a hard gate failure here.
 function runClosureAudit(): Outcome {
-  if (!Bun.which("strace")) {
-    console.log("  strace not found on PATH — install strace to run the gate-cache input-closure audit.");
-    return { status: "SKIPPED", reason: "strace absent" };
-  }
   // The ONE gate that asks for no cell rows. `strace -f` inflates every duration inside the traced
   // subtree, so rows produced here would measure strace rather than the gate — the same reason a
   // killed run's gate sum is not recorded as a wall time. Unsetting it also means the audit's traced
@@ -1774,7 +1771,9 @@ function runClosureAudit(): Outcome {
   delete process.env.CDDL_TIMING_CELLS;
   try {
     const exit = sh(["bun", "run", "audit_gate_cache_closure.ts"], MATRIX);
-    return exit === 0 ? { status: "PASS" } : { status: "FAIL", reason: `audit_gate_cache_closure.ts exit ${exit}` };
+    if (exit === 0) return { status: "PASS" };
+    if (exit === 77) return { status: "SKIPPED", reason: "strace/ptrace unavailable" };
+    return { status: "FAIL", reason: `audit_gate_cache_closure.ts exit ${exit}` };
   } finally {
     if (cells !== undefined) process.env.CDDL_TIMING_CELLS = cells;
   }
@@ -2391,7 +2390,7 @@ export const REGISTRY: Gate[] = [
     requires: [{ gate: "verify", why: "it audits a cache that gate warms in the same run; alone it fails its >=1-hit vacuity floor, or passes against a stale cache" }],
     desc: "gate-cache OUTPUT-side soundness: verify.ts annotations + report byte-identical cached vs GATE_CACHE=0 (flag-gated --cache-transparency)" },
   { id: "gate_cache_closure_audit", tier: "full", kind: "fn", run: runClosureAudit, script: "audit_gate_cache_closure.ts",
-    desc: "gate-cache KEY-side soundness: strace input-closure audit of a cached gate (default multifile_matrix_compiles, CLOSURE_AUDIT_GATE overrides; SKIPPED if strace absent)" },
+    desc: "gate-cache KEY-side soundness: strace input-closure audit of a cached gate (default multifile_matrix_compiles, CLOSURE_AUDIT_GATE overrides; SKIPPED if strace/ptrace unavailable)" },
   { id: "corpus_detect", tier: "full", kind: "cmd", cmd: ["bun", "run", "corpus_detect.ts"], cwd: MATRIX,
     script: "corpus_detect.ts", desc: "corpus_detect featuresIn/rolesIn self-checks" },
   // The tier's ONE deliberately-online gate (warm-up→offline covers every other gate): the whole

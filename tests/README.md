@@ -742,10 +742,12 @@ exactly "a cached site grew an unhashed input"
 and FAILs, naming the path, pid, and owning nested-cargo argv. It traces `multifile_matrix_compiles`
 by default (its nested `cargo check` transitively builds the `../rust` path dep — the highest-risk
 read pattern); `CLOSURE_AUDIT_GATE=<test name>` extends coverage to the other cached gates as
-configuration, not code. It prints a visible `SKIPPED` when `strace` is absent, refuses to pass a
-trace with zero nested-cargo subtrees (vacuity floor), and statically asserts the repo carries no
-`.cargo/config` (an unhashed input for the TS-side sites whose nested cargo runs with cwd = the
-repo). Two nested cargos are deliberately NOT audited, both builds of the TOOL UNDER TEST rather
+configuration, not code. It prints a visible `SKIPPED` when `strace` is absent or an explicit
+capability probe shows that the environment denies ptrace. The same probe classifies every other
+`strace` failure as a hard harness error, and capable hosts still run the complete audit. It refuses
+to pass a trace with zero nested-cargo subtrees (vacuity floor), and proves that any repo
+`.cargo/config` changes the shared cache key (including for TS-side sites whose nested cargo runs
+with cwd = the repo). Two nested cargos are deliberately NOT audited, both builds of the TOOL UNDER TEST rather
 than of a generated crate, and neither work any cell's verdict can be skipped on: the traced root
 (itself a `cargo test`, whose subtree legitimately compiles the harness) and the once-per-process
 generator freshness build (`isOwnGeneratorFreshnessBuild` — `cargo build --bin cddl-codegen` into
