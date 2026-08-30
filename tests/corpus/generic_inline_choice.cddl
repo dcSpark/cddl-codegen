@@ -10,6 +10,9 @@ choice_bytes = choice<bstr>
 nested_choice<p> = [value: (p / tstr) / bstr]
 nested_choice_uint = nested_choice<uint>
 
+map_choices<p> = [lookup: { * (p / tstr) => (p / bstr) }]
+map_choices_uint = map_choices<uint>
+
 nested<p> = [
   values: [* p],
   lookup: { * p => p },

@@ -97,6 +97,17 @@ impl Holder {
 }
 
 #[derive(Clone, Debug)]
+pub struct MapChoicesUint {
+    pub lookup: BTreeMap<U64OrText, U64OrBytes>,
+}
+
+impl MapChoicesUint {
+    pub fn new(lookup: BTreeMap<U64OrText, U64OrBytes>) -> Self {
+        Self { lookup }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct NestedChoiceUint {
     pub value: U64OrTextOrBytes,
 }
@@ -125,6 +136,22 @@ impl NestedUint {
 }
 
 #[derive(Clone, Debug)]
+pub enum U64OrBytes {
+    P(u64),
+    Bytes(Vec<u8>),
+}
+
+impl U64OrBytes {
+    pub fn new_p(p: u64) -> Self {
+        Self::P(p)
+    }
+
+    pub fn new_bytes(bytes: Vec<u8>) -> Self {
+        Self::Bytes(bytes)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum U64OrText {
     P(u64),
     Text(String),

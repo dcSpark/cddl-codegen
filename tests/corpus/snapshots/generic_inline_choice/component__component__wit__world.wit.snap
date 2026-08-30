@@ -53,6 +53,12 @@ interface types {
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<holder, string>;
   }
+  resource map-choices-uint {
+    constructor(lookup: list<tuple<borrow<u64-or-text>, borrow<u64-or-bytes>>>);
+    lookup: func() -> list<tuple<u64-or-text, u64-or-bytes>>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<map-choices-uint, string>;
+  }
   resource nested-choice-uint {
     constructor(value: borrow<u64-or-text-or-bytes>);
     value: func() -> u64-or-text-or-bytes;
@@ -66,6 +72,19 @@ interface types {
     maybe: func() -> option<u64>;
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<nested-uint, string>;
+  }
+  resource u64-or-bytes {
+    new-p: static func(p: u64) -> u64-or-bytes;
+    as-p: func() -> option<u64>;
+    new-bytes: static func(bytes: list<u8>) -> u64-or-bytes;
+    as-bytes: func() -> option<list<u8>>;
+    kind: func() -> u64-or-bytes-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<u64-or-bytes, string>;
+  }
+  enum u64-or-bytes-kind {
+    p,
+    bytes,
   }
   resource u64-or-text {
     new-p: static func(p: u64) -> u64-or-text;

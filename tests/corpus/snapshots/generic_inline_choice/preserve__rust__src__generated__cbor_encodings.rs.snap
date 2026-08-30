@@ -36,6 +36,12 @@ pub struct HolderEncoding {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct MapChoicesUintEncoding {
+    pub len_encoding: LenEncoding,
+    pub lookup_encoding: LenEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct NestedChoiceUintEncoding {
     pub len_encoding: LenEncoding,
 }

@@ -415,12 +415,12 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `prelude.uri` |  | · |  |  |  |  |  |  |  |  |
 | `rangeop.exclusive` |  | · |  |  | · |  |  |  |  |  |
 | `rangeop.inclusive` | · | · |  |  | · |  |  |  |  | · |
-| `type.choice` | · | ✅ | ✅ | ✗ | ✅ | · |  |  | ✅ | ✗ |
+| `type.choice` | · | ✅ | ✅ | ✗ | ✅ | · |  | · | ✅ | ✗ |
 | `type.enum` | · |  |  |  |  |  |  |  |  |  |
 | `type1.ctlop` | · | · | · |  | · |  |  | · | · |  |
 | `type2.array` | · | ➖ | ➖ | ➖ | ✅ | ➖ |  | ➖ | ➖ |  |
 | `type2.map` | · | ➖ | ➖ | · | ✅ | ➖ | ➖ | ➖ | ➖ | ➖ |
-| `type2.parenthesized` | · | · |  |  |  | · |  |  | · |  |
+| `type2.parenthesized` | · | · | · | · |  | · |  | · | · |  |
 | `type2.tag` | · | ✅ | ✅ | ✅ | ➖ | ✅ | ✅ | · | ✅ |  |
 | `type2.typename` | · | · | · | · | · | · |  | · | · | · |
 | `type2.unwrap` | ➖ | ➖ | ➖ |  |  |  |  |  |  |  |
@@ -430,9 +430,9 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `value.text` | · | ✅ | ✅ | · |  | · |  | · |  |  |
 
 - Modelled `(role × feature)` cells: **71** (over 150 shape-granular containment rows).
-- Exercised by the corpus **and** modelled: **37**.
-- Exercised by the corpus, modelled by **nothing**: **177** (the `·` cells).
-- Modelled but not exercised by any corpus fixture: **34**.
+- Exercised by the corpus **and** modelled: **39**.
+- Exercised by the corpus, modelled by **nothing**: **181** (the `·` cells).
+- Modelled but not exercised by any corpus fixture: **32**.
 
 ## Notable findings
 

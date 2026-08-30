@@ -543,6 +543,64 @@ fn inline_generic_choice_substitutes_exact_bindings_and_reuses_concrete_unions()
         );
     })
     .expect("distinct generic arguments must materialize distinct compatible unions");
+
+    // Parser-only placeholders are ordinary `RustIdent`s until generic finalization. An authored
+    // rule with the derived first-placeholder spelling must therefore stay an authored field in
+    // either source order, never be retargeted to the concrete inline union.
+    let authored = "choice_generic_inline_choice1 = bstr\n";
+    let generic = "choice<p> = [authored: choice_generic_inline_choice1, value: p / tstr]\n\
+        choice_uint = choice<uint>\n";
+    for authored_first in [true, false] {
+        let source = if authored_first {
+            format!("{authored}{generic}")
+        } else {
+            format!("{generic}{authored}")
+        };
+        let files = generated(&source);
+        let generated = rust_mod(&files);
+        assert!(
+            generated.contains("pub type ChoiceGenericInlineChoice1 = Vec<u8>;")
+                && generated.contains("pub authored: ChoiceGenericInlineChoice1,")
+                && generated.contains("pub value: U64OrText,"),
+            "an authored placeholder-shaped rule must remain bytes (authored_first={authored_first}):\n{generated}"
+        );
+    }
+
+    // The inline-choice template is a new deferred substitution seam. Its parameter-arm
+    // occurrence tag must remain OUTER to the concrete argument tag just as it does for an
+    // ordinary generic record field, including when preserve-encoding bookkeeping is enabled.
+    let tagged_generic = "choice<p> = [value: #6.10(p) / tstr]\n\
+        choice_tagged = choice<#6.20(uint)>\n";
+    let tagged_concrete = "concrete = [value: #6.10(#6.20(uint)) / tstr]\n";
+    let generic_codec = codec_impl(tagged_generic, "U64OrText", "cbor_event::se::Serialize");
+    let concrete_codec = codec_impl(tagged_concrete, "U64OrText", "cbor_event::se::Serialize");
+    // The direct generic arm intentionally retains the public `P` variant name while the concrete
+    // equivalent derives `U64`; compare the tag ordering rather than that unrelated spelling.
+    assert!(
+        generic_codec.find("write_tag(10u64)") < generic_codec.find("write_tag(20u64)")
+            && concrete_codec.find("write_tag(10u64)") < concrete_codec.find("write_tag(20u64)"),
+        "deferred inline-choice substitution must retain occurrence/argument tag ordering:\n\
+         generic:\n{generic_codec}\nconcrete:\n{concrete_codec}"
+    );
+    let preserve_codec = codec_impl_flags(
+        tagged_generic,
+        "U64OrText",
+        "cbor_event::se::Serialize",
+        &["--preserve-encodings=true"],
+    );
+    let concrete_preserve_codec = codec_impl_flags(
+        tagged_concrete,
+        "U64OrText",
+        "cbor_event::se::Serialize",
+        &["--preserve-encodings=true"],
+    );
+    assert!(
+        preserve_codec.find("write_tag_sz(10u64,") < preserve_codec.find("write_tag_sz(20u64,")
+            && concrete_preserve_codec.find("write_tag_sz(10u64,")
+                < concrete_preserve_codec.find("write_tag_sz(20u64,"),
+        "preserve encoding must keep the template occurrence tag outer to the concrete argument tag:\n\
+         generic:\n{preserve_codec}\nconcrete:\n{concrete_preserve_codec}"
+    );
 }
 
 #[test]
@@ -595,6 +653,46 @@ fn generic_nested_record_field_containers_substitute_parameters() {
             "nested generic field container must use its concrete argument ({expected}):\n{generated}"
         );
     }
+}
+
+#[test]
+fn generic_inline_choices_in_both_map_sides_rewrite_and_compile() {
+    let source = "map_choices<p> = [lookup: { * (p / tstr) => (p / bstr) }]\n\
+        map_choices_uint = map_choices<uint>\n";
+    let cli = cli_for(source);
+    api::with_types(&cli, |types, _| {
+        let resolved = types
+            .rust_structs()
+            .get(&RustIdent::new(crate::intermediate::CDDLIdent::new(
+                "map_choices_uint",
+            )))
+            .expect("concrete generic record must be registered after both map sides resolve");
+        let RustStructType::Record(record) = resolved.variant() else {
+            panic!("generic map-choice instance did not lower to a record")
+        };
+        let ConceptualRustType::Map(domain, range) = &record.fields[0].rust_type.conceptual_type
+        else {
+            panic!("map-choice field did not remain a map")
+        };
+        assert_eq!(domain.for_rust_member(types, false, &cli), "U64OrText");
+        assert_eq!(range.for_rust_member(types, false, &cli), "U64OrBytes");
+        assert!(
+            types
+                .rust_structs()
+                .keys()
+                .all(|ident| !ident.to_string().contains("GenericInlineChoice")),
+            "both parser-only placeholders must be rewritten before registration"
+        );
+    })
+    .expect("both deferred map-side choices must finalize");
+
+    let files = generated(source);
+    let generated = files.values().cloned().collect::<Vec<_>>().join("\n");
+    assert!(
+        generated.contains("pub lookup: BTreeMap<U64OrText, U64OrBytes>,")
+            && !generated.contains("GenericInlineChoice"),
+        "both map-side choices must reach emitted source as concrete unions:\n{generated}"
+    );
 }
 
 #[test]

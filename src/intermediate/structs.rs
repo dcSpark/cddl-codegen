@@ -2270,7 +2270,12 @@ impl GenericInstance {
                     rewrite_type(element, replacements)
                 }
                 ConceptualRustType::Map(domain, range) => {
-                    rewrite_type(domain, replacements) || rewrite_type(range, replacements)
+                    // Both descendants are mutable traversal targets. Do not use `||` directly here:
+                    // its short-circuit semantics would leave a deferred value-side placeholder behind
+                    // whenever the map key was also rewritten.
+                    let domain_changed = rewrite_type(domain, replacements);
+                    let range_changed = rewrite_type(range, replacements);
+                    domain_changed || range_changed
                 }
                 ConceptualRustType::Fixed(_)
                 | ConceptualRustType::Primitive(_)

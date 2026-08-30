@@ -31,6 +31,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::ChoiceUintAgain>();
     _assert_serialize::<crate::generated::Holder>();
     _assert_deserialize::<crate::generated::Holder>();
+    _assert_serialize::<crate::generated::MapChoicesUint>();
+    _assert_deserialize::<crate::generated::MapChoicesUint>();
     _assert_serialize::<crate::generated::NestedChoiceUint>();
     _assert_deserialize::<crate::generated::NestedChoiceUint>();
     _assert_serialize::<crate::generated::NestedUint>();

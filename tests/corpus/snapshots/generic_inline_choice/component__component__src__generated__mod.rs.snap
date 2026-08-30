@@ -23,8 +23,10 @@ impl wit_types::Guest for Component {
     type ChoiceUint = WitChoiceUint;
     type ChoiceUintAgain = WitChoiceUintAgain;
     type Holder = WitHolder;
+    type MapChoicesUint = WitMapChoicesUint;
     type NestedChoiceUint = WitNestedChoiceUint;
     type NestedUint = WitNestedUint;
+    type U64OrBytes = WitU64OrBytes;
     type U64OrText = WitU64OrText;
     type U64OrTextOrBytes = WitU64OrTextOrBytes;
 }
@@ -237,6 +239,54 @@ impl wit_types::GuestHolder for WitHolder {
     }
 }
 
+pub struct WitMapChoicesUint(pub RefCell<cddl_lib::MapChoicesUint>);
+
+impl wit_types::GuestMapChoicesUint for WitMapChoicesUint {
+    fn new(
+        lookup: Vec<(
+            wit_types::U64OrTextBorrow<'_>,
+            wit_types::U64OrBytesBorrow<'_>,
+        )>,
+    ) -> Self {
+        let lookup = lookup
+            .into_iter()
+            .map(|(x0, x1)| {
+                (
+                    x0.get::<WitU64OrText>().0.borrow().clone(),
+                    x1.get::<WitU64OrBytes>().0.borrow().clone(),
+                )
+            })
+            .collect();
+        let inner = cddl_lib::MapChoicesUint::new(lookup);
+        WitMapChoicesUint(RefCell::new(inner))
+    }
+
+    fn lookup(&self) -> Vec<(wit_types::U64OrText, wit_types::U64OrBytes)> {
+        let me = self.0.borrow();
+        me.lookup
+            .iter()
+            .map(|(x0, x1)| {
+                (
+                    wit_types::U64OrText::new(WitU64OrText(RefCell::new(x0.clone()))),
+                    wit_types::U64OrBytes::new(WitU64OrBytes(RefCell::new(x1.clone()))),
+                )
+            })
+            .collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::MapChoicesUint as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::MapChoicesUint, String> {
+        <cddl_lib::MapChoicesUint as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::MapChoicesUint::new(WitMapChoicesUint(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
 pub struct WitNestedChoiceUint(pub RefCell<cddl_lib::NestedChoiceUint>);
 
 impl wit_types::GuestNestedChoiceUint for WitNestedChoiceUint {
@@ -300,6 +350,57 @@ impl wit_types::GuestNestedUint for WitNestedUint {
     fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::NestedUint, String> {
         <cddl_lib::NestedUint as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
             .map(|v| wit_types::NestedUint::new(WitNestedUint(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitU64OrBytes(pub RefCell<cddl_lib::U64OrBytes>);
+
+impl wit_types::GuestU64OrBytes for WitU64OrBytes {
+    fn new_p(p: u64) -> wit_types::U64OrBytes {
+        let inner = cddl_lib::U64OrBytes::new_p(p);
+        wit_types::U64OrBytes::new(WitU64OrBytes(RefCell::new(inner)))
+    }
+
+    fn as_p(&self) -> Option<u64> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::U64OrBytes::P(p) => Some(*p),
+            _ => None,
+        }
+    }
+
+    fn new_bytes(bytes: Vec<u8>) -> wit_types::U64OrBytes {
+        let bytes = bytes.into_iter().collect();
+        let inner = cddl_lib::U64OrBytes::new_bytes(bytes);
+        wit_types::U64OrBytes::new(WitU64OrBytes(RefCell::new(inner)))
+    }
+
+    fn as_bytes(&self) -> Option<Vec<u8>> {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::U64OrBytes::Bytes(bytes) => Some(bytes.iter().map(|x| *x).collect()),
+            _ => None,
+        }
+    }
+
+    fn kind(&self) -> wit_types::U64OrBytesKind {
+        let me = self.0.borrow();
+        match &*me {
+            cddl_lib::U64OrBytes::P(_) => wit_types::U64OrBytesKind::P,
+            cddl_lib::U64OrBytes::Bytes(_) => wit_types::U64OrBytesKind::Bytes,
+        }
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::U64OrBytes as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::U64OrBytes, String> {
+        <cddl_lib::U64OrBytes as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::U64OrBytes::new(WitU64OrBytes(RefCell::new(v))))
             .map_err(err)
     }
 }

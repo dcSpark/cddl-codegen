@@ -3025,26 +3025,33 @@ impl<'a> IntermediateTypes<'a> {
         choice_context: usize,
         template: RustStruct,
     ) -> RustIdent {
-        let scope = self
-            .generic_inline_choice_scopes
-            .last_mut()
-            .expect("generic inline type choice requires an active generic-definition scope");
-        if let Some(placeholder) = scope.placeholders_by_choice.get(&choice_context) {
-            return placeholder.clone();
-        }
-        scope.next_ordinal += 1;
-        let ordinal = scope.next_ordinal;
-        let placeholder = RustIdent::new(CDDLIdent::new(format!(
-            "{}GenericInlineChoice{ordinal}",
-            scope.owner
-        )));
+        let (owner, ordinal) = {
+            let scope = self
+                .generic_inline_choice_scopes
+                .last_mut()
+                .expect("generic inline type choice requires an active generic-definition scope");
+            if let Some(placeholder) = scope.placeholders_by_choice.get(&choice_context) {
+                return placeholder.clone();
+            }
+            scope.next_ordinal += 1;
+            (scope.owner.clone(), scope.next_ordinal)
+        };
+        // This is a parser-private ident, but it participates in ordinary `RustType::Rust` graph
+        // walks until generic finalization. Allocate it through the same collision-free path as
+        // other synthesized idents so an authored rule (all pre-scanned in `scopes`) cannot be
+        // rewritten as a deferred choice. `fresh_synthesized_ident` also sees existing staged
+        // templates and active scopes, preserving stable reuse for a second visit to this AST node.
+        let placeholder =
+            self.fresh_synthesized_ident(&format!("{owner}GenericInlineChoice{ordinal}"));
         let mut template = template;
         template.ident = placeholder.clone();
         self.generic_inline_choice_templates.insert(
             placeholder.clone(),
             GenericInlineTypeChoiceTemplate::new(placeholder.clone(), template),
         );
-        scope
+        self.generic_inline_choice_scopes
+            .last_mut()
+            .expect("generic inline type choice scope must remain active while staging template")
             .placeholders_by_choice
             .insert(choice_context, placeholder.clone());
         placeholder
@@ -7793,6 +7800,13 @@ impl<'a> IntermediateTypes<'a> {
                 || self.scopes.contains_key(ident)
                 || self.generic_instances.contains_key(ident)
                 || self.group_choice_arm_claims.contains_key(ident)
+                || self.generic_inline_choice_templates.contains_key(ident)
+                || self.generic_inline_choice_scopes.iter().any(|scope| {
+                    scope
+                        .placeholders_by_choice
+                        .values()
+                        .any(|placeholder| placeholder == ident)
+                })
                 || self
                     .type_aliases
                     .contains_key(&AliasIdent::Rust(ident.clone()))
