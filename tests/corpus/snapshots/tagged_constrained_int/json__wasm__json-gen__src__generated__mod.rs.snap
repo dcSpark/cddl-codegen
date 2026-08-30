@@ -14,6 +14,14 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     reg.claim_reachable::<cddl_lib::TaggedRangeIncl>();
     reg.claim_reachable::<cddl_lib::TaggedRangeNint>();
     reg.claim_reachable::<cddl_lib::TaggedRangeUint>();
+    reg.preclaim_root::<cddl_lib::CborCtlNe>();
+    reg.preclaim_root::<cddl_lib::Garm>();
+    reg.preclaim_root::<cddl_lib::Holder>();
+    reg.preclaim_root::<cddl_lib::TaggedCtlNe>();
+    reg.preclaim_root::<cddl_lib::TaggedRangeExcl>();
+    reg.preclaim_root::<cddl_lib::TaggedRangeIncl>();
+    reg.preclaim_root::<cddl_lib::TaggedRangeNint>();
+    reg.preclaim_root::<cddl_lib::TaggedRangeUint>();
     reg.add::<cddl_lib::CborCtlNe>();
     reg.add::<cddl_lib::Garm>();
     reg.add::<cddl_lib::Holder>();

@@ -12,6 +12,12 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     reg.claim_reachable::<cddl_lib::NonemptySetText>();
     reg.claim_reachable::<cddl_lib::Point>();
     reg.claim_reachable::<cddl_lib::SetU64>();
+    reg.preclaim_root::<cddl_lib::Holder>();
+    reg.preclaim_root::<cddl_lib::NonemptyOsetPoint>();
+    reg.preclaim_root::<cddl_lib::NonemptySetBytes>();
+    reg.preclaim_root::<cddl_lib::NonemptySetText>();
+    reg.preclaim_root::<cddl_lib::Point>();
+    reg.preclaim_root::<cddl_lib::SetU64>();
     reg.add::<cddl_lib::Holder>();
     reg.add::<cddl_lib::NonemptyOsetPoint>();
     reg.add::<cddl_lib::NonemptySetBytes>();

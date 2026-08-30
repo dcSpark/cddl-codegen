@@ -11,6 +11,13 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     reg.claim_reachable::<cddl_lib::Heterogeneous>();
     reg.claim_reachable::<cddl_lib::Homogeneous>();
     reg.claim_reachable::<cddl_lib::OuterOverArray>();
+    reg.preclaim_root::<cddl_lib::ElemTagged>();
+    reg.preclaim_root::<cddl_lib::Heterogeneous>();
+    reg.preclaim_root::<cddl_lib::HeterogeneousSet>();
+    reg.preclaim_root::<cddl_lib::Holder>();
+    reg.preclaim_root::<cddl_lib::Homogeneous>();
+    reg.preclaim_root::<cddl_lib::HomogeneousInner>();
+    reg.preclaim_root::<cddl_lib::OuterOverArray>();
     reg.add::<cddl_lib::ElemTagged>();
     reg.add::<cddl_lib::Heterogeneous>();
     reg.add::<cddl_lib::HeterogeneousSet>();

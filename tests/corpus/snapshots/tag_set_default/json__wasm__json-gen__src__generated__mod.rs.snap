@@ -11,6 +11,11 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     reg.claim_reachable::<cddl_lib::DefaultSet>();
     reg.claim_reachable::<cddl_lib::OptOut>();
     reg.claim_reachable::<cddl_lib::SingleArm>();
+    reg.preclaim_root::<cddl_lib::DefaultNeset>();
+    reg.preclaim_root::<cddl_lib::DefaultSet>();
+    reg.preclaim_root::<cddl_lib::Holder>();
+    reg.preclaim_root::<cddl_lib::OptOut>();
+    reg.preclaim_root::<cddl_lib::SingleArm>();
     reg.add::<cddl_lib::DefaultNeset>();
     reg.add::<cddl_lib::DefaultSet>();
     reg.add::<cddl_lib::Holder>();

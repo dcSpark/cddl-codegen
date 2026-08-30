@@ -7,6 +7,9 @@ use cddl_lib::json_schema_gen::check_schema_ref_closure;
 
 pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     let mut reg = Registrar::new(generator);
+    reg.preclaim_root::<cddl_lib::OptFixedArray>();
+    reg.preclaim_root::<cddl_lib::OptFixedArrayNull>();
+    reg.preclaim_root::<cddl_lib::OptFixedMap>();
     reg.add::<cddl_lib::OptFixedArray>();
     reg.add::<cddl_lib::OptFixedArrayNull>();
     reg.add::<cddl_lib::OptFixedMap>();

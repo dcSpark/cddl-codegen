@@ -14,6 +14,18 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     reg.claim_reachable::<cddl_lib::U64OrBytes>();
     reg.claim_reachable::<cddl_lib::U64OrText>();
     reg.claim_reachable::<cddl_lib::U64OrTextOrBytes>();
+    reg.preclaim_root::<cddl_lib::BytesOrText>();
+    reg.preclaim_root::<cddl_lib::ChoiceBytes>();
+    reg.preclaim_root::<cddl_lib::ChoiceU64>();
+    reg.preclaim_root::<cddl_lib::ChoiceUint>();
+    reg.preclaim_root::<cddl_lib::ChoiceUintAgain>();
+    reg.preclaim_root::<cddl_lib::Holder>();
+    reg.preclaim_root::<cddl_lib::MapChoicesUint>();
+    reg.preclaim_root::<cddl_lib::NestedChoiceUint>();
+    reg.preclaim_root::<cddl_lib::NestedUint>();
+    reg.preclaim_root::<cddl_lib::U64OrBytes>();
+    reg.preclaim_root::<cddl_lib::U64OrText>();
+    reg.preclaim_root::<cddl_lib::U64OrTextOrBytes>();
     reg.add::<cddl_lib::BytesOrText>();
     reg.add::<cddl_lib::ChoiceBytes>();
     reg.add::<cddl_lib::ChoiceU64>();

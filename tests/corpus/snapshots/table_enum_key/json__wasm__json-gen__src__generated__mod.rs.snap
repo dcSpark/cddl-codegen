@@ -9,6 +9,9 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     let mut reg = Registrar::new(generator);
     reg.claim_reachable::<cddl_lib::EnumKeyed>();
     reg.claim_reachable::<cddl_lib::IntKeyed>();
+    reg.preclaim_root::<cddl_lib::EnumKeyHolder>();
+    reg.preclaim_root::<cddl_lib::Ikey>();
+    reg.preclaim_root::<cddl_lib::Int>();
     reg.add::<cddl_lib::EnumKeyHolder>();
     reg.add::<cddl_lib::Ikey>();
     reg.add::<cddl_lib::Int>();

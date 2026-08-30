@@ -9,6 +9,8 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     let mut reg = Registrar::new(generator);
     reg.claim_reachable::<cddl_lib::Entry>();
     reg.claim_reachable::<cddl_lib::SelfMap>();
+    reg.preclaim_root::<cddl_lib::Entry>();
+    reg.preclaim_root::<cddl_lib::Holder>();
     reg.add::<cddl_lib::Entry>();
     reg.add::<cddl_lib::Holder>();
 }

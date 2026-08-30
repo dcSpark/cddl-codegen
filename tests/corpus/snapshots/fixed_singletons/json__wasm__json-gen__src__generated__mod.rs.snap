@@ -7,6 +7,24 @@ use cddl_lib::json_schema_gen::check_schema_ref_closure;
 
 pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     let mut reg = Registrar::new(generator);
+    reg.preclaim_root::<cddl_lib::Answer>();
+    reg.preclaim_root::<cddl_lib::BytesChoice>();
+    reg.preclaim_root::<cddl_lib::BytesDefault>();
+    reg.preclaim_root::<cddl_lib::BytesEmpty>();
+    reg.preclaim_root::<cddl_lib::BytesHex>();
+    reg.preclaim_root::<cddl_lib::BytesMapMembers>();
+    reg.preclaim_root::<cddl_lib::BytesMembers>();
+    reg.preclaim_root::<cddl_lib::BytesRaw>();
+    reg.preclaim_root::<cddl_lib::CborBytes>();
+    reg.preclaim_root::<cddl_lib::FalseValue>();
+    reg.preclaim_root::<cddl_lib::Marker>();
+    reg.preclaim_root::<cddl_lib::MixedTextBytesChoice>();
+    reg.preclaim_root::<cddl_lib::NilValue>();
+    reg.preclaim_root::<cddl_lib::NullValue>();
+    reg.preclaim_root::<cddl_lib::TaggedBytes>();
+    reg.preclaim_root::<cddl_lib::TrueValue>();
+    reg.preclaim_root::<cddl_lib::UndefinedValue>();
+    reg.preclaim_root::<cddl_lib::Version>();
     reg.add::<cddl_lib::Answer>();
     reg.add::<cddl_lib::BytesChoice>();
     reg.add::<cddl_lib::BytesDefault>();

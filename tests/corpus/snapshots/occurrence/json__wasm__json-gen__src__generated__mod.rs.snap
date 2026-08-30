@@ -14,6 +14,9 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     reg.claim_reachable::<cddl_lib::NestedUpper>();
     reg.claim_reachable::<cddl_lib::OneOrMore>();
     reg.claim_reachable::<cddl_lib::Upper>();
+    reg.preclaim_root::<cddl_lib::ExactMiddleOccurrence>();
+    reg.preclaim_root::<cddl_lib::MiddleOccurrence>();
+    reg.preclaim_root::<cddl_lib::OccurrenceHolder>();
     reg.add::<cddl_lib::ExactMiddleOccurrence>();
     reg.add::<cddl_lib::MiddleOccurrence>();
     reg.add::<cddl_lib::OccurrenceHolder>();

@@ -10,6 +10,10 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     reg.claim_reachable::<cddl_lib::IntNeset>();
     reg.claim_reachable::<cddl_lib::IntSet>();
     reg.claim_reachable::<cddl_lib::TextSet>();
+    reg.preclaim_root::<cddl_lib::Holder>();
+    reg.preclaim_root::<cddl_lib::IntNeset>();
+    reg.preclaim_root::<cddl_lib::IntSet>();
+    reg.preclaim_root::<cddl_lib::TextSet>();
     reg.add::<cddl_lib::Holder>();
     reg.add::<cddl_lib::IntNeset>();
     reg.add::<cddl_lib::IntSet>();

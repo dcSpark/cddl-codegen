@@ -13,6 +13,13 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     reg.claim_reachable::<cddl_lib::PlainTable>();
     reg.claim_reachable::<cddl_lib::SingleArmNeset>();
     reg.claim_reachable::<cddl_lib::SingleArmSet>();
+    reg.preclaim_root::<cddl_lib::Holder>();
+    reg.preclaim_root::<cddl_lib::OptOut>();
+    reg.preclaim_root::<cddl_lib::PlainNesetReject>();
+    reg.preclaim_root::<cddl_lib::PlainReject>();
+    reg.preclaim_root::<cddl_lib::PlainTable>();
+    reg.preclaim_root::<cddl_lib::SingleArmNeset>();
+    reg.preclaim_root::<cddl_lib::SingleArmSet>();
     reg.add::<cddl_lib::Holder>();
     reg.add::<cddl_lib::OptOut>();
     reg.add::<cddl_lib::PlainNesetReject>();

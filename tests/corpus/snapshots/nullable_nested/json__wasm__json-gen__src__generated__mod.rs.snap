@@ -12,6 +12,10 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     reg.claim_reachable::<cddl_lib::MaybeDenum>();
     reg.claim_reachable::<cddl_lib::MaybeUint>();
     reg.claim_reachable::<cddl_lib::NumsArr>();
+    reg.preclaim_root::<cddl_lib::DataEnum>();
+    reg.preclaim_root::<cddl_lib::NullableCollField>();
+    reg.preclaim_root::<cddl_lib::NullableDenumField>();
+    reg.preclaim_root::<cddl_lib::NullableOptionalField>();
     reg.add::<cddl_lib::DataEnum>();
     reg.add::<cddl_lib::NullableCollField>();
     reg.add::<cddl_lib::NullableDenumField>();

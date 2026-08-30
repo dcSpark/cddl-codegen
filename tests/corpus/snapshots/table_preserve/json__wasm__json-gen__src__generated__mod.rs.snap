@@ -13,6 +13,9 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     reg.claim_reachable::<cddl_lib::Nepmap>();
     reg.claim_reachable::<cddl_lib::Pmap>();
     reg.claim_reachable::<cddl_lib::PmapTxt>();
+    reg.preclaim_root::<cddl_lib::Holder>();
+    reg.preclaim_root::<cddl_lib::Int>();
+    reg.preclaim_root::<cddl_lib::Md>();
     reg.add::<cddl_lib::Holder>();
     reg.add::<cddl_lib::Int>();
     reg.add::<cddl_lib::Md>();

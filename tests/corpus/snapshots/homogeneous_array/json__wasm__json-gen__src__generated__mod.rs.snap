@@ -9,6 +9,8 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     let mut reg = Registrar::new(generator);
     reg.claim_reachable::<cddl_lib::Bools>();
     reg.claim_reachable::<cddl_lib::Floats>();
+    reg.preclaim_root::<cddl_lib::BoolHolder>();
+    reg.preclaim_root::<cddl_lib::FloatHolder>();
     reg.add::<cddl_lib::BoolHolder>();
     reg.add::<cddl_lib::FloatHolder>();
 }

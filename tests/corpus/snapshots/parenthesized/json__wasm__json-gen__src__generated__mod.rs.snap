@@ -10,6 +10,10 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     reg.claim_reachable::<cddl_lib::Basic>();
     reg.claim_reachable::<cddl_lib::Choice>();
     reg.claim_reachable::<cddl_lib::NewtypeViaParens>();
+    reg.preclaim_root::<cddl_lib::Choice>();
+    reg.preclaim_root::<cddl_lib::Holder>();
+    reg.preclaim_root::<cddl_lib::Nested>();
+    reg.preclaim_root::<cddl_lib::NewtypeViaParens>();
     reg.add::<cddl_lib::Choice>();
     reg.add::<cddl_lib::Holder>();
     reg.add::<cddl_lib::Nested>();

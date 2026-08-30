@@ -9,6 +9,9 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     let mut reg = Registrar::new(generator);
     reg.claim_reachable::<cddl_lib::NearMiss>();
     reg.claim_reachable::<cddl_lib::SetNonEmptyU64>();
+    reg.preclaim_root::<cddl_lib::Holder>();
+    reg.preclaim_root::<cddl_lib::NearMiss>();
+    reg.preclaim_root::<cddl_lib::SetNonEmptyU64>();
     reg.add::<cddl_lib::Holder>();
     reg.add::<cddl_lib::NearMiss>();
     reg.add::<cddl_lib::SetNonEmptyU64>();

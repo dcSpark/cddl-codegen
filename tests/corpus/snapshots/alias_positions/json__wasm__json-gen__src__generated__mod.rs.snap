@@ -12,6 +12,13 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     reg.claim_reachable::<cddl_lib::Nemap>();
     reg.claim_reachable::<cddl_lib::PolicyId>();
     reg.claim_reachable::<cddl_lib::StakeCredential>();
+    reg.preclaim_root::<cddl_lib::Credential>();
+    reg.preclaim_root::<cddl_lib::Holder>();
+    reg.preclaim_root::<cddl_lib::Int>();
+    reg.preclaim_root::<cddl_lib::Keyed>();
+    reg.preclaim_root::<cddl_lib::Nested>();
+    reg.preclaim_root::<cddl_lib::OpenHolder>();
+    reg.preclaim_root::<cddl_lib::OpenTail>();
     reg.add::<cddl_lib::Credential>();
     reg.add::<cddl_lib::Holder>();
     reg.add::<cddl_lib::Int>();

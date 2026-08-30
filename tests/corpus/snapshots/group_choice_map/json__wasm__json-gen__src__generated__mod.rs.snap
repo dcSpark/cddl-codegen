@@ -10,6 +10,15 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     reg.claim_reachable::<cddl_lib::FixedValueArm0>();
     reg.claim_reachable::<cddl_lib::MultiFieldArm0>();
     reg.claim_reachable::<cddl_lib::NonemptyArm0>();
+    reg.preclaim_root::<cddl_lib::FixedValueArm>();
+    reg.preclaim_root::<cddl_lib::FixedValueArm0>();
+    reg.preclaim_root::<cddl_lib::MixedKeyTypes>();
+    reg.preclaim_root::<cddl_lib::MultiFieldArm>();
+    reg.preclaim_root::<cddl_lib::MultiFieldArm0>();
+    reg.preclaim_root::<cddl_lib::NonemptyArm>();
+    reg.preclaim_root::<cddl_lib::NonemptyArm0>();
+    reg.preclaim_root::<cddl_lib::TextKeyed>();
+    reg.preclaim_root::<cddl_lib::UintKeyed>();
     reg.add::<cddl_lib::FixedValueArm>();
     reg.add::<cddl_lib::FixedValueArm0>();
     reg.add::<cddl_lib::MixedKeyTypes>();
