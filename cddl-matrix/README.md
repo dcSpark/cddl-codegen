@@ -30,9 +30,11 @@ bidirectional lint as spec features — so "not pure RFC" does not mean "unancho
 > only default-`supported` rows are probed). These verdicts are load-bearing, not just reporting:
 > the Rust gate `all_supported_constructs_generate_all_profiles` derives its expected per-profile
 > generation failures from `emission.<profile>.status = "unsupported"` (no second hand list) —
-> except the flavor whose evidence records "generates but does not compile" (a compile-level
-> divergence the generation-only gate cannot observe; the gate skips the expectation so a
-> regression to refusal still lands in its non-expected failures), and
+> except the two post-generation flavors whose evidence records either "generates but does not
+> compile" or "compiles but emitted round-trip tests fail" (a `cargo check` or emitted-test
+> divergence the generation-only gate cannot observe). The gate classifies that exact evidence
+> taxonomy fail-closedly and skips these expectations, so a regression to refusal still lands in
+> its non-expected failures; unknown evidence wording aborts the gate for review, and
 > `project_corpus.ts` renders them as per-row profile caveats in `tests/corpus/COVERAGE.md`. **Four projections *generate* their hand docs:**
 > `golden_hex` (encoding axis), the corpus feature-axis projection — `project_corpus.ts` generates
 > `tests/corpus/COVERAGE.md` (the original north-star target, now subsumed; `corpus_detect.ts` +
