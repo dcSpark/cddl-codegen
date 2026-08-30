@@ -509,6 +509,13 @@ const CORPUS_PARITY_EXCLUDED: &[(&str, &str)] = &[
          --wasm=false and asserts the json-gen run FAILS on the schema-name ledger",
     ),
     (
+        "json-schema-name-rowless-opaque",
+        "rust-only json-gen name-stability fixture (two opaque no-row types reached through one \
+         hand-written schema body): its integration gate generates --wasm=false, exercises both \
+         body traversal orders, and proves explicit root preclaims fail before publication; there \
+         is no generated wasm surface to differential",
+    ),
+    (
         "json-schema-name-stolen",
         "rust-only NEGATIVE json-gen fixture (a row-less extern claiming a later row's schema name): \
          its integration gate generates --wasm=false and asserts the json-gen run FAILS on the \
