@@ -3235,15 +3235,25 @@ the rows, the generator emits deterministic `reg.claim_reachable::<T>()` calls f
 generator-nameable types reachable through the finalized IR's **generated** schema bodies. A claim reads
 only `schema_name`, `inline_schema`, and `type_name` into that ledger: it never calls `subschema_for`
 or changes `$defs`, and skips an inline type at that boundary. The walk stops at an extern or
-`@custom_json` body, excludes dependency-owned types and arbitrary `--json-schema-root` paths, and
-does not treat natural-`any` adapters as the tagged `AnyCbor` schema. Rows still claim/publish inline
-roots as before. Together they carry three checks: a **name ledger** keyed on `core::any::type_name`
+`@custom_json` body, excludes dependency-owned types, and does not treat natural-`any` adapters as
+the tagged `AnyCbor` schema. Then every own-spec row is preclaimed (including inline rows), followed
+by every `--json-schema-root` in flag order, before any schema traversal; that cannot inspect an
+arbitrary root's hand-written descendants, but it makes a known pair of opaque concrete roots fail as
+a named pair before publication and keeps a spec/root conflict actionable by making the CLI path the
+second claimant. Rows still claim/publish inline roots as before. Together they carry three checks: a **name ledger** keyed on `core::any::type_name`
 — the only thing that can see a *merge*, where two hand-written impls return one name and `schema_id()`'s
 default makes them one type to `schemars`; a **kept-its-own-name** comparison against the ref
 `subschema_for` returned; and a **conflict check** on the inline branch's `definitions` insert. Pinned by
 `snapshot_tests::json_gen_extern_schema_rows` (fast tier: emitted claims/rows and deterministic order)
-and executed by three integration vectors, `json_schema_name_merge_fails`,
-`json_schema_name_stolen_fails`, and `json_schema_name_collision_loser_no_row_same_id_fails`. Those need their own fixtures
+and executed by four integration vectors, `json_schema_name_merge_fails`,
+`json_schema_name_stolen_fails`, `json_schema_name_collision_loser_no_row_same_id_fails`, and
+`json_schema_name_rowless_opaque_roots_make_the_collision_loud_and_unique_names_stable`. The last
+one runs a hand-written root body in both traversal orders: without explicit rows, it proves two
+distinct-id opaque definitions swap `Foo`/`Foo2`; with **both** concrete opaque types supplied as
+`--json-schema-root`, it proves the preclaim ledger fails before writing a document and names both;
+with unique concrete `schema_name()`s, it proves the `$defs` name-to-body map is stable. One root is
+intentionally not a safe-pair proof: it may catch only that named type when it loses the traversal
+race. Those need their own fixtures
 and their own harness (`run_json_gen_failure_test`) rather than riding `run_test`, because `run_test`
 asserts the json-gen run SUCCEEDS and the whole point of these is a spec whose run must fail; the
 harness mirrors `run_test` in every respect but the verdict, and asserts on a message FRAGMENT so a
@@ -3252,8 +3262,8 @@ fixture that starts failing for an unrelated reason still fails the test.
 The stolen-name fixture is now an early reachability-ledger vector too: although its first claimant
 has no registration row, the generated parent schema reaches it, so the preclaim reports the two
 types publishing `Shared` before schemars can invent `Shared2`. The kept-its-own-name check remains
-necessary for names introduced outside that generated same-crate reachability inventory, notably
-dependency registrar calls and arbitrary `--json-schema-root` paths.
+necessary for names introduced outside the same-crate ledger inventory, notably dependency registrar
+calls and an unnamed opaque descendant of an arbitrary `--json-schema-root` path.
 
 The emitted crate carries the **reference closure** too, not only the name guard: `export_schemas()`
 walks the finished document and panics — listing every offender, sorted — when a `$ref` is not an
@@ -3286,10 +3296,11 @@ bounds.
 `--json-schema-root`'s input contract is pinned separately and without cargo by
 `json_schema_root_input_contract`: the flag requires `--json-schema-export`, a repeated value is a
 hard error, and the value parser accepts a rust type path (generics included) while rejecting
-anything that could inject tokens into the generated file. An extra root is emitted as an ordinary
-registration row through the same `Registrar`, so it inherits all three of the guard's checks by
-construction — an inheritance asserted by reading the emitter rather than by a fixture putting an
-extra root on the LOSING side of a collision, which would cost another nested-cargo failure cell.
+anything that could inject tokens into the generated file. An extra root is preclaimed after all
+own-spec roots and emitted as an ordinary registration row through the same `Registrar`, so a
+spec/root collision names the actionable CLI path and a pair of known opaque roots enters the same
+ledger before traversal. The latter is executed by the rowless-opaque nested-cargo cell above rather
+than inferred from emitter text.
 
 **`--json-schema-dep` (threading a dependency's registrar) is pinned across three layers.** Its
 emitted SHAPE is the fast-tier tail of `snapshot_tests::json_gen_extern_schema_rows` — the calls are
@@ -3339,13 +3350,13 @@ nested-cargo `a_config_generated_workspace_builds_with_wasm_on` in `config_tests
 section below, since the derivation is where the flag is actually used.
 
 What these layers cannot see is narrower: a cross-crate collision between two `add_schemas` calls
-whose `schema_id`s match, and two rowless types whose names arise only through opaque hand-written
-schema bodies (or whose distinct-id assigned-name mapping needs Schemars' inaccessible accessor).
-The generated same-crate, finalized-IR reachability half is now claimed before rows, but claims do
-not inspect arbitrary CLI roots or dependency-owned types. The remaining residue is enumerated in
-`tests/testing-roadmap.toml`, along with the extra-root-on-the-losing-side cell that is recorded
-rather than minted. The kept-its-own-name guard now decodes the ref Schemars actually returned, so
-percent-encoded names are covered without reproducing its private encoder.
+whose `schema_id`s match, and an unknown pair of rowless types whose names arise only through opaque
+hand-written schema bodies (or whose distinct-id assigned-name mapping needs Schemars' inaccessible
+accessor). The generated same-crate finalized-IR reachability inventory, all own-spec rows, and any
+explicit CLI roots are claimed before rows, but none can discover unnamed opaque descendants or
+dependency-owned types. The remaining automatic-detection gap is armed in
+`tests/testing-roadmap.toml`; the kept-its-own-name guard now decodes the ref Schemars actually
+returned, so percent-encoded names are covered without reproducing its private encoder.
 
 ### JSON-schema → TypeScript JS-side pipeline (`js_schema_to_ts`, `js_d_ts_merge`, `package_json_pipeline`, `json_schema_scripts_without_package_json`)
 

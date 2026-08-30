@@ -377,6 +377,17 @@ impl<'a> Registrar<'a> {
         add_schema::<T>(self.generator, &mut self.claimed);
     }
 
+    /// Put an explicit published root through the name ledger before any schema body is traversed.
+    ///
+    /// Unlike `claim_reachable`, this does not skip inline types: a published root is an authored
+    /// declaration of surface, and `add` will publish an inline root under its name. The emitter
+    /// orders own-spec roots before CLI roots, then every `add`; that makes a pair of opaque CLI
+    /// roots fail as a pair instead of letting one observe only schemars' already-assigned
+    /// `<name>2` through the kept-its-own-name guard.
+    pub fn preclaim_root<T: schemars::JsonSchema>(&mut self) {
+        claim_schema_name::<T>(&mut self.claimed);
+    }
+
     /// Check a transitive `$defs` candidate without materializing a schema or changing `$defs`.
     pub fn claim_reachable<T: schemars::JsonSchema>(&mut self) {
         claim_reachable_schema_name::<T>(&mut self.claimed);

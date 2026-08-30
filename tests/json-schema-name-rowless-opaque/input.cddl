@@ -1,0 +1,5 @@
+; This fixture has one exported, hand-written root. Its JsonSchema implementation is the only
+; route to OpaqueAlpha and OpaqueBeta: neither opaque type has a CDDL rule or a registration row.
+; integration_tests::json_schema_name_rowless_opaque_roots_make_the_collision_loud_and_unique_names_stable
+; appends the implementation with both traversal orders and both naming policies.
+root = _CDDL_CODEGEN_EXTERN_TYPE_

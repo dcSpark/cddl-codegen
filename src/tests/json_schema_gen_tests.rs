@@ -279,6 +279,18 @@ fn registrar_reachable_claim_skips_inline_types() {
     reg.claim_reachable::<InlineSharedTwo>();
 }
 
+/// An explicit CLI root is a published declaration, unlike a transitive reachability candidate:
+/// even an inline root is ultimately published under its own name by `add`. Its early claim must
+/// therefore participate in the ledger rather than inheriting `claim_reachable`'s inline skip.
+#[test]
+#[should_panic(expected = "two distinct Rust types both publish the JSON schema name")]
+fn registrar_root_preclaim_includes_inline_types() {
+    let mut generator = schemars::SchemaGenerator::default();
+    let mut reg = Registrar::new(&mut generator);
+    reg.preclaim_root::<InlineSharedOne>();
+    reg.preclaim_root::<InlineSharedTwo>();
+}
+
 /// The ledger's scope is ONE registrar, matching the scope it had as a local of one crate's
 /// `add_schemas`: a dependency's rows are threaded through the dep's own `add_schemas` and therefore
 /// its own registrar. So two registrars over one generator do not share a ledger — stated here

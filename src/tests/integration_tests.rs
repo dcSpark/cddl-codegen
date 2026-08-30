@@ -15850,6 +15850,183 @@ fn json_schema_name_stolen_fails() {
     );
 }
 
+/// The boundary the generated preclaims cannot inventory: two types reached only through an opaque,
+/// hand-written schema body. `Root` is the sole row; `OpaqueAlpha` and `OpaqueBeta` have no CDDL
+/// rule, distinct `schema_id`s, and (initially) the same `schema_name()`. Schemars consequently
+/// emits both definitions but gives the bare `Foo` name to whichever opaque body `Root` asks for
+/// first, silently swapping `Foo`/`Foo2` across the two body orders.
+///
+/// The exact, non-heuristic containment is opt-in rows for BOTH opaque types: naming both with
+/// `--json-schema-root` sends each through the existing registrar ledger and fails before a schema
+/// document is written, in either traversal order. Naming only one is not tested as a safe remedy:
+/// it can blame that one order's loser, but says nothing pair-wide. The durable fix is instead for
+/// each concrete type to publish its own name; the final two runs prove the `$defs` name-to-body map
+/// is then identical across orders. This is deliberately semantic-map comparison, not document-byte
+/// comparison: the order of unrelated JSON object members is not the published type assignment.
+#[test]
+fn json_schema_name_rowless_opaque_roots_make_the_collision_loud_and_unique_names_stable() {
+    use std::collections::BTreeMap;
+    use std::io::Write;
+    use std::str::FromStr;
+
+    struct JsonGenRun {
+        status: std::process::ExitStatus,
+        stderr: String,
+        schema_path: std::path::PathBuf,
+    }
+
+    fn run(alpha_first: bool, unique_names: bool, roots: bool) -> JsonGenRun {
+        let test_path = std::path::PathBuf::from_str("tests")
+            .unwrap()
+            .join("json-schema-name-rowless-opaque");
+        let export_path = test_path.join("export");
+        for manifest in [
+            "rust/Cargo.toml",
+            "wasm/Cargo.toml",
+            "wasm/json-gen/Cargo.toml",
+        ] {
+            let _ = std::fs::remove_file(export_path.join(manifest));
+        }
+        for root in [
+            "rust/src/lib.rs",
+            "wasm/src/lib.rs",
+            "wasm/json-gen/src/lib.rs",
+        ] {
+            let _ = std::fs::remove_file(export_path.join(root));
+        }
+        let json_export_dir = export_path.join("wasm/json-gen");
+        let _ = std::fs::remove_dir_all(json_export_dir.join("schemas"));
+
+        let mut generate = codegen_cmd();
+        generate
+            .arg(format!("--output={}", export_path.to_str().unwrap()))
+            .arg(format!(
+                "--input={}",
+                test_path.join("input.cddl").to_str().unwrap()
+            ))
+            .arg("--no-preserve-comments")
+            .arg("--json-schema-export=true")
+            .arg("--json-serde-derives=true")
+            .arg("--wasm=false");
+        if roots {
+            generate
+                .arg("--json-schema-root=cddl_lib::OpaqueAlpha")
+                .arg("--json-schema-root=cddl_lib::OpaqueBeta");
+        }
+        let generate = generate.output().unwrap();
+        assert!(
+            generate.status.success(),
+            "generation itself must succeed — the opaque-body boundary is a json-gen runtime concern:\n{}",
+            String::from_utf8_lossy(&generate.stderr),
+        );
+
+        let mut root_lib_rs = std::fs::OpenOptions::new()
+            .append(true)
+            .open(export_path.join("rust/src/lib.rs"))
+            .unwrap();
+        writeln!(
+            root_lib_rs,
+            "const ROWLESS_OPAQUE_ALPHA_FIRST: bool = {alpha_first};\nconst ROWLESS_OPAQUE_UNIQUE_NAMES: bool = {unique_names};"
+        )
+        .unwrap();
+        root_lib_rs
+            .write_all(
+                std::fs::read(test_path.join("external_rust_defs_rowless_opaque"))
+                    .unwrap()
+                    .as_slice(),
+            )
+            .unwrap();
+        std::mem::drop(root_lib_rs);
+
+        let result = tool_cmd("cargo")
+            .arg("run")
+            .current_dir(&json_export_dir)
+            .output()
+            .unwrap();
+        JsonGenRun {
+            status: result.status,
+            stderr: String::from_utf8_lossy(&result.stderr).into_owned(),
+            schema_path: json_export_dir.join("schemas/cddl_lib.schema.json"),
+        }
+    }
+
+    fn defs(run: &JsonGenRun) -> BTreeMap<String, serde_json::Value> {
+        assert!(
+            run.status.success(),
+            "rowless opaque baseline unexpectedly failed to run json-gen:\n{}",
+            run.stderr
+        );
+        serde_json::from_str::<serde_json::Value>(
+            &std::fs::read_to_string(&run.schema_path).unwrap(),
+        )
+        .unwrap()
+        .get("$defs")
+        .and_then(serde_json::Value::as_object)
+        .unwrap_or_else(|| panic!("{:?} has no $defs object", run.schema_path))
+        .iter()
+        .map(|(name, body)| (name.clone(), body.clone()))
+        .collect()
+    }
+
+    let colliding_alpha_first = defs(&run(true, false, false));
+    let colliding_beta_first = defs(&run(false, false, false));
+    for definitions in [&colliding_alpha_first, &colliding_beta_first] {
+        assert!(
+            definitions.contains_key("Foo") && definitions.contains_key("Foo2"),
+            "both distinct-id, rowless schemas must exist before mitigation: {definitions:#?}"
+        );
+    }
+    assert_eq!(
+        colliding_alpha_first["Foo"], colliding_beta_first["Foo2"],
+        "the first opaque traversal must take bare Foo in one order and Foo2 in the other"
+    );
+    assert_eq!(
+        colliding_alpha_first["Foo2"], colliding_beta_first["Foo"],
+        "the second opaque traversal must take Foo2 in one order and bare Foo in the other"
+    );
+    assert_ne!(
+        colliding_alpha_first["Foo"], colliding_alpha_first["Foo2"],
+        "the fixture needs distinct schema bodies; otherwise a name swap is semantically invisible"
+    );
+
+    for alpha_first in [true, false] {
+        let guarded = run(alpha_first, false, true);
+        assert!(
+            !guarded.status.success(),
+            "both explicit opaque roots must make the colliding json-gen run fail"
+        );
+        assert!(
+            guarded
+                .stderr
+                .contains("two distinct Rust types both publish the JSON schema name"),
+            "the root-guard run failed for an unrelated reason:\n{}",
+            guarded.stderr
+        );
+        assert!(
+            guarded.stderr.contains("cddl_lib::OpaqueAlpha")
+                && guarded.stderr.contains("cddl_lib::OpaqueBeta"),
+            "the guard must name both opaque offenders:\n{}",
+            guarded.stderr
+        );
+        assert!(
+            !guarded.schema_path.exists(),
+            "the name collision must fail before publishing a schema document at {:?}",
+            guarded.schema_path
+        );
+    }
+
+    let unique_alpha_first = defs(&run(true, true, false));
+    let unique_beta_first = defs(&run(false, true, false));
+    assert_eq!(
+        unique_alpha_first, unique_beta_first,
+        "unique concrete schema names must make the published name-to-body mapping stable across opaque traversal order"
+    );
+    assert!(
+        unique_alpha_first.contains_key("FooAlpha") && unique_alpha_first.contains_key("FooBeta"),
+        "the stable-name remedy must retain both concrete opaque definitions: {unique_alpha_first:#?}"
+    );
+}
+
 /// The document's REFERENCE-CLOSURE check, emitted into `export_schemas()`. Sibling of the two
 /// name-injectivity fixtures above and the same shape of assertion: the property is one our own suite
 /// has asserted over its own fixtures since the one-document-per-crate change

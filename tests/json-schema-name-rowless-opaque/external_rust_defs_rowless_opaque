@@ -1,0 +1,97 @@
+// User-supplied definitions for the rowless-opaque schema-name fixture.
+//
+// `Root` is the only CDDL row. Its hand-written JsonSchema body reaches OpaqueAlpha and
+// OpaqueBeta, which have no CDDL rules and therefore no generated reachability preclaims. The
+// test supplies the two constants before including this file, exercising both body traversal
+// orders and both the colliding-name and unique-name remedies.
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct Root(pub u64);
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct OpaqueAlpha;
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct OpaqueBeta;
+
+impl schemars::JsonSchema for Root {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("Root")
+    }
+
+    fn schema_id() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("rowless-opaque-root")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        // Keep Root's returned `anyOf` in one semantic order. Only the *calls* reverse: the test
+        // must prove the assigned definition names move with traversal, not accidentally compare
+        // two root bodies whose array spelling changed too.
+        let (alpha, beta) = if ROWLESS_OPAQUE_ALPHA_FIRST {
+            (
+                generator.subschema_for::<OpaqueAlpha>(),
+                generator.subschema_for::<OpaqueBeta>(),
+            )
+        } else {
+            let beta = generator.subschema_for::<OpaqueBeta>();
+            let alpha = generator.subschema_for::<OpaqueAlpha>();
+            (alpha, beta)
+        };
+        schemars::Schema::try_from(serde_json::json!({ "anyOf": [alpha, beta] })).unwrap()
+    }
+}
+
+impl schemars::JsonSchema for OpaqueAlpha {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed(if ROWLESS_OPAQUE_UNIQUE_NAMES {
+            "FooAlpha"
+        } else {
+            "Foo"
+        })
+    }
+
+    // Deliberately distinct from OpaqueBeta. Schemars therefore writes both bodies but assigns
+    // Foo/Foo2 by first encounter when the names collide.
+    fn schema_id() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("rowless-opaque-alpha")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <u64 as schemars::JsonSchema>::json_schema(generator)
+    }
+}
+
+impl schemars::JsonSchema for OpaqueBeta {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed(if ROWLESS_OPAQUE_UNIQUE_NAMES {
+            "FooBeta"
+        } else {
+            "Foo"
+        })
+    }
+
+    fn schema_id() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("rowless-opaque-beta")
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <std::string::String as schemars::JsonSchema>::json_schema(generator)
+    }
+}
+
+impl cbor_event::se::Serialize for Root {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut cbor_event::se::Serializer,
+    ) -> cbor_event::Result<&'se mut cbor_event::se::Serializer> {
+        serializer.write_unsigned_integer(self.0)
+    }
+}
+
+impl serialization::Deserialize for Root {
+    fn deserialize(
+        raw: &mut cbor_event::de::Deserializer,
+    ) -> Result<Self, error::DeserializeError> {
+        Ok(Self(raw.unsigned_integer()?))
+    }
+}

@@ -2003,6 +2003,36 @@ impl GenerationScope {
             for claim in json_schema_reachable_claims(types, &row_roots, cli) {
                 self.json_lines.line(&claim);
             }
+            // Preclaim every own-spec row before the CLI roots. The generated reachability walk
+            // above inventories DESCENDANTS, not the row roots themselves; without this phase an
+            // extra root colliding with a spec row would claim the ledger first merely because its
+            // preclaim sits before registration. Keeping the sequence spec first, CLI second
+            // preserves the actionable contract: the CLI path is the second named claimant.
+            // These are published roots, so inline rows participate too.
+            for root in &row_roots {
+                self.json_lines.line(&format!(
+                    "reg.preclaim_root::<{}>();",
+                    rust_crate_struct_from_wasm(types, root, cli)
+                ));
+            }
+            // `AnyCbor` is the other own-spec row, but it is a static-runtime type rather than a
+            // RustStruct and therefore is not in `row_roots`. Preclaim it in the same spec-root
+            // phase for the identical spec-before-CLI collision contract.
+            if types.uses_any_cbor() && cli.export_static_files() {
+                self.json_lines.line(&format!(
+                    "reg.preclaim_root::<{}::any_cbor::AnyCbor>();",
+                    cli.lib_name_code()
+                ));
+            }
+            // CLI roots name types the IR cannot inspect. Preclaim every one before any row asks
+            // schemars to traverse an opaque body, so supplying BOTH sides of an opaque collision
+            // makes the name ledger name both types rather than stopping at a one-sided `<name>2`.
+            // `preclaim_root`, unlike the generated-reachability walk above, includes inline roots:
+            // a CLI root is an authored published declaration and `add` publishes its body by name.
+            for root in &cli.json_schema_root {
+                self.json_lines
+                    .line(&format!("reg.preclaim_root::<{root}>();"));
+            }
             // `AnyCbor` (CDDL `any`) is a static-runtime type, not a `RustStruct`, so the loop above
             // never emits its registration row. Nothing else reaches it either: a GENERATED type
             // describes an `any`-typed member with the NATURAL rendering's permissive schema
@@ -2037,10 +2067,10 @@ impl GenerationScope {
             // an unresolvable path is an E0433/E0412 in the consumer's json-gen build rather than a
             // generation-time reject (cddl-codegen does not typecheck Rust).
             //
-            // AFTER every spec-derived row: registration order decides which side of a published-name
-            // collision the injectivity guard names, so with the CLI roots last a spec-derived row
-            // keeps its own name and the guard blames the CLI-supplied path — the one the user can
-            // change without touching their spec.
+            // AFTER every spec-derived row: materialization order remains spec first, so schemars'
+            // own assigned refs keep that established ordering. Name conflicts are caught earlier
+            // by the spec-root-then-CLI-root preclaim sequence above, making the CLI path the second
+            // named claimant — the side the user can change without touching their spec.
             //
             // FLAG ORDER, never sorted: the flag list is an input, so preserving it keeps "same
             // inputs -> same bytes" while staying readable; sorting would reorder registration, which

@@ -1833,10 +1833,11 @@ fn json_gen_extern_schema_rows() {
 
     // `--json-schema-root` extra roots (feature request 12, Ask A): the same fixture regenerated with
     // two extra roots, pinning the emitted SHAPE the compile proof (`integration_tests::json_extern`)
-    // cannot see — that a root is emitted VERBATIM (generic arguments and all), that the roots come
-    // AFTER every spec-derived row (registration order decides which side of a published-name
-    // collision the injectivity guard names, and blaming the CLI-supplied path is the actionable
-    // one), and that FLAG ORDER is preserved rather than sorted (`Zeta` before `Alpha`).
+    // cannot see — that a root is emitted VERBATIM (generic arguments and all), every root is
+    // preclaimed BEFORE an opaque body can assign it a suffixed name, OWN-SPEC roots preclaim before
+    // the CLI roots (so an ordinary spec/CLI collision identifies the actionable CLI path), and the
+    // registration rows still come AFTER every spec-derived row. Both preclaims and rows preserve
+    // FLAG ORDER rather than sorting (`Zeta` before `Alpha`).
     let with_roots = cli_for(
         std::path::Path::new("tests/json-extern-rows/inputs"),
         &[
@@ -1862,9 +1863,24 @@ fn json_gen_extern_schema_rows() {
     let last_spec_row = root_mod_rs
         .find("reg.add::<cddl_lib::sub::module::ScopedThing>();")
         .unwrap_or_else(|| panic!("spec-derived rows missing:\n{root_mod_rs}"));
+    let zeta_preclaim = root_mod_rs
+        .find("reg.preclaim_root::<other_crate::Zeta>();")
+        .unwrap_or_else(|| panic!("extra root preclaim missing verbatim:\n{root_mod_rs}"));
+    let alpha_preclaim = root_mod_rs
+        .find("reg.preclaim_root::<cddl_lib::Alpha<u64>>();")
+        .unwrap_or_else(|| panic!("generic extra root preclaim missing verbatim:\n{root_mod_rs}"));
+    let spec_preclaim = root_mod_rs
+        .find("reg.preclaim_root::<cddl_lib::sub::module::ScopedThing>();")
+        .unwrap_or_else(|| panic!("spec-root preclaim missing verbatim:\n{root_mod_rs}"));
     assert!(
         last_spec_row < zeta && zeta < alpha,
         "extra roots must follow every spec-derived row, in flag order (never sorted):\n{root_mod_rs}"
+    );
+    assert!(
+        spec_preclaim < zeta_preclaim
+            && zeta_preclaim < alpha_preclaim
+            && alpha_preclaim < last_spec_row,
+        "spec roots must preclaim before CLI roots, whose flag order precedes every schema traversal:\n{root_mod_rs}"
     );
 
     // `--json-schema-dep` registrar calls: the same fixture regenerated with two mappings, pinning

@@ -5278,71 +5278,50 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 
 [[record]]
 id = "testing.schema-name.two-rowless-types-collide"
-title = "A collision between two types that BOTH lack rows"
+title = "Two opaque, rowless types can still collide without an automatic assigned-name detector"
 
 [record.payload]
 kind = "work"
-body_md = '''  - **A collision between two types that BOTH lack rows** — each reached only transitively from some
-    row'd type — is now covered when both are same-crate, finalized-IR descendants of generated
-    schema bodies: preclaims put them through the name ledger before registration rows. The remaining
-    form is outside that inventory: opaque hand-written schema bodies, arbitrary CLI roots, or another
-    crate. With distinct `schema_id`s both bodies can still be emitted and one takes `<name>2` by
-    first-encounter order, so an unrelated spec edit (a rule that sorts earlier, a reordered struct
-    field) can silently SWAP which published TypeScript name belongs to which type. The byte-identity
-    assertion cannot see it — it compares two runs of ONE spec, never two versions of a spec. Making
-    the ordering irrelevant rather than merely loud would mean a published-name scheme that does not
-    depend on traversal order at all — a breaking rename of published names in its own right, so it
-    needs a consumer asking for name stability across spec edits. A cheaper *tell* is worth recording
-    as a candidate rather than a commitment, because the emitted crate cannot inspect opaque bodies:
-    schemars assigns a collision suffix by walking `for i in 2..`
-    over the names it has already used (`schemars-1.2.1/src/generate.rs`, the `find_ref` name
-    assignment — verified at that pinned version, which `static/Cargo_json_gen.toml` is what pins),
-    so a document holding both `<base>` and `<base>2` where no registered row publishes `<base>2` is
-    the observable signature of the collision. It carries a real false-positive class — a genuine
-    Rust type named `Foo2` — so it would need an opt-out, which is most of why it is not obviously
-    worth shipping.
+body_md = '''  - **Two opaque, rowless types can still collide without an automatic assigned-name detector.**
+    The CML `AssetBundle`/`AssetBundle2` report remains the measured event: two distinct-id schemas
+    reached only through opaque hand-written bodies both existed, while traversal order silently chose
+    which body owned the bare published name and which became `<name>2`.
 
-    **This hole is MEASURED, not hypothetical — by the consumer, in their corpus, not by us.** CML
-    reported that the `AssetBundle`/`AssetBundle2` pair we predicted would trip the name ledger trips
-    nothing: neither is a row. They are `$defs` entries reached through fields (`Value.multiasset`,
-    `TransactionBody.mint`) from a hand-written generic substituted in by a `replace` block, and
-    because that generic `#[derive(JsonSchema)]`s, the ids DIFFER — so both bodies are emitted and
-    which instantiation keeps the bare name is traversal order. Milder than the ids-match merge
-    recorded above (no wrong body; both types exist) and worse in one specific way: it silently
-    renames a *published TypeScript type* on an unrelated spec edit, which for a published package is
-    an API break.
+    The delivered containment is executable, not a prose inference. The emitted registrar now
+    preclaims every `--json-schema-root` before it traverses any schema body. The integration cell
+    `json_schema_name_rowless_opaque_roots_make_the_collision_loud_and_unique_names_stable` models
+    two opaque no-row types through a hand-written root body in both traversal orders: it proves the
+    unguarded `Foo`/`Foo2` assignment swaps, proves that naming **both** concrete types as roots fails
+    before a document is written with both Rust offenders named, and proves unique concrete
+    `schema_name()` values preserve the `$defs` name-to-body map across the same order change. One
+    named root is intentionally not a pair-wide invariant: it can see only that named type when it
+    receives the suffix. The user-facing contract is in `docs/docs/command_line_flags.mdx`; when a
+    consumer cannot name or change the types, its committed generated `.d.ts` diff remains the
+    publication backstop.
 
-    The CML report satisfies the old transition: this is ready work, not an armed possibility. A
-    precise detector needs the schema_id -> assigned-name mapping, and
-    `schemars::SchemaGenerator` exposes no such accessor — `definitions()` /
-    `definitions_mut()` / `take_definitions()` all return only `Map<String, Value>` (read at
-    `schemars-1.2.1/src/generate.rs`). From the finished document alone the `{base}{i}` rename is
-    indistinguishable from a type genuinely named `Foo2`, so a `$defs`-shaped heuristic needs an
-    explicit opt-out and decision rather than being silently assumed. The consumer's committed
-    `.d.ts` CI diff remains the precise current mitigation while the implementation decision is
-    made.
-
-    What a consumer can do TODAY, and why that further lowers the priority: give each instantiation a
-    row with `--json-schema-root` (`--json-schema-root=my_crate::AssetBundle<u64>` and `…<i64>` —
-    generic arguments are inside the flag's accepted charset). Registering both makes them two rows
-    publishing one `schema_name()` with different `std::any::type_name`s, which the ledger reports;
-    registering only the instantiation that LOST the bare name makes the kept-its-own-name check
-    report the `<name>2` it was assigned. So the rows-plus-preclaims guard is opt-in-able for exactly
-    the opaque shape it cannot see on its own. (Reasoned from `static/json_schema_gen.rs`'s `add_schema` and `parse_json_schema_root`'s
-    charset — not run.)
-
-  The document's reference CLOSURE is checked in two places — our own per-fixture assertion and the
-  emitted `export_schemas()` walking the CONSUMER's document before it writes, both current state in
-  `tests/README.md` § "JSON-schema document — Rust-side coverage (`run_test`'s per-fixture assertions
+    We explicitly rejected a finished-document `$defs` `{base}{i}` heuristic. A real `Foo2` is
+    indistinguishable from a suffix collision after the fact, so that heuristic would require an
+    opt-out and would create a new false-positive API contract. The remaining zero-config detector
+    needs a Schemars `schema_id` → assigned-definition-name accessor (or an equivalent upstream
+    facility); `SchemaGenerator`'s exposed definitions map cannot supply the association. This is a
+    known limitation, not an upstream issue to file in this work.
 '''
-work_state = "ready"
+work_state = "armed"
 work_intent = "build_system"
 work_kind = "missing_system"
 risk = "wrong_public_api"
-acceptance_md = '''Resolve the CML-measured two-rowless rename hole by obtaining and using a precise Schemars `schema_id`→assigned-name accessor, or by preparing and pursuing that narrow upstream ask through the maintainer-approved filing path. Make and record an explicit decision between a guarded `$defs` `{base}{i}` heuristic (including its `Foo2` false-positive and opt-out contract) and the non-heuristic row/root plus committed-`.d.ts` remedy. Prove the chosen detection or mitigation keeps published names stable across the traversal-order edit that caused the consumer event; do not treat the already-observed event as a future promotion prerequisite.'''
-priority_rationale_md = '''A consumer already observed an unrelated spec edit silently rename a published TypeScript type. The precise accessor is external, but choosing and documenting the safe remedy is now our active work.'''
 control_ids = ["testing.guard.schema-name-two-rowless-types-collide"]
 admission_ids = ["testing.admission.schema-name-two-rowless-types-collide"]
+
+[record.payload.promotion_trigger]
+observer = "maintainer reviewing a Schemars release, API proposal, or equivalent locally available facility"
+dimension = "A precise `schema_id` to assigned-definition-name association is available without inferring it from `$defs` keys."
+observable = "Schemars exposes (or an equivalent dependency facility supplies) the exact association for every registered schema, so cddl-codegen can detect the remaining opaque distinct-id rename automatically without a `{base}{i}` heuristic or an opt-out."
+action_on_fire_md = '''Set testing.schema-name.two-rowless-types-collide to ready and implement only the automatic zero-config detector, retaining the delivered explicit-root and unique-name remedies.'''
+
+[record.payload.promotion_trigger.predicate]
+predicate_kind = "manual"
+review_procedure_md = '''Verify against the available API's source and a two-order opaque-rowless reproducer that each registered `schema_id` maps to the exact assigned definition name. Record the version, facility, observed mapping, and any unprobed ownership/cross-crate boundary before promotion; a bare release note or a `$defs` suffix pattern is not sufficient.'''
 
 [[record]]
 id = "testing.signal-shaped-prose-lives-arms-cannot-reopen"
