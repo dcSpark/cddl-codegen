@@ -24329,7 +24329,7 @@ mod unsupported_emission_stage_tests {
                 "unknown taxonomy must fail closed: {detail}"
             );
         }
-        assert!(unsupported_emission_stage("compiles but emitted round-trip tests fail").is_err());
+        unsupported_emission_stage("compiles but emitted round-trip tests fail").unwrap_err();
     }
 }
 
