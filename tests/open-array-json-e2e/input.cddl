@@ -75,6 +75,21 @@ wide_reject_newtype = wide_reject_loose ; @newtype
 wide_reject_choice = wide_reject_loose / tstr
 wide_reject_any = [* wide_any] ; @duplicates reject
 wide_reject_any_holder = [xs: wide_reject_any]
+; Recursive map containment: unique maps retain JSON objects, while duplicate-preserving maps use
+; their truthful array-of-pairs face. The exact array is deliberately in both pair positions once.
+wide_map = {* uint => wide}
+wide_nonempty_map = {+ uint => wide}
+wide_bounded_map = {2*2 uint => wide}
+wide_pair_map = {* uint => wide} ; @duplicates preserve
+wide_nonempty_pair_map = {+ uint => wide} ; @duplicates preserve
+wide_bounded_pair_map = {2*2 uint => wide} ; @duplicates preserve
+wide_pair_key = {* wide => uint} ; @duplicates preserve
+wide_any_map = {* uint => wide_any}
+wide_map_holder = [loose: wide_map, nonempty: wide_nonempty_map, bounded: wide_bounded_map]
+wide_pair_holder = [loose: wide_pair_map, nonempty: wide_nonempty_pair_map, bounded: wide_bounded_pair_map, key: wide_pair_key]
+wide_any_map_holder = [value: wide_any_map]
+wide_open_rest = { fixed: uint, * uint => wide }
+wide_open_table = { * uint => wide, * tstr => wide }
 ; Dynamic occurrence segments use the same recursive exact-array descriptor as declared fields.
 ; Loose remains omitted/defaulted; every restricted carrier stays required and crosses its checked
 ; door after JSON stages a list. The middle vector retains its positional suffix in the native/CBOR

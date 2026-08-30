@@ -1062,15 +1062,17 @@ has a loose vector, convert it once at the assembly boundary:
 component `list<T>` remain list-shaped and make the equivalent checked handover themselves. JSON
 does so recursively for every ordinary, `@duplicates preserve`, or `@duplicates reject` loose,
 nonempty, bounded, nullable, and exact collection tree that contains a wide exact array or an exact natural-`any` position,
-including aliases/newtypes, ordinary optional fields, type-choice payloads, and captured open-array
-segments. Each node remains a JSON list;
+including map/table values, positional pair-map keys and values, aliases/newtypes, ordinary optional
+fields, type-choice payloads, captured open-array segments, and open-map/table dynamic values.
+Sequence nodes remain JSON lists; unique maps remain JSON objects and duplicate-preserving maps
+remain arrays of pairs.
 exact layers retain `minItems = maxItems`, restricted sequence layers re-enter their existing
 `NonEmptyVec`, `BoundedVec`, `NonEmptyOrderedSet`, or `BoundedOrderedSet` `TryFrom<Vec<_>>` door,
 and duplicate-reject schemas additionally publish `uniqueItems: true`.
-The established typed direct `Vec<[T; N]>` case remains compatible. Open-array segments retain their
+The established typed direct `Vec<[T; N]>` case remains compatible. A wide non-string-compatible
+exact-array object-map key remains a pre-codegen refusal. Open-array segments retain their
 named field shape; loose segments keep `skip_serializing_if = "Vec::is_empty"` plus `default`, while
-restricted segments are required. Map/table entries, open-struct map rest rows, and dynamic map rows
-still reject under either JSON flag. Optional+nullable three-state fields compose their outer presence
+restricted segments are required. Optional+nullable three-state fields compose their outer presence
 option with the recursive descriptor for the inner nullable member, including short natural-`any`
 exact arrays. This is separate from `bytes .size N`, whose `[u8; N]` storage retains a
 loose `Vec<u8>` constructor for compatibility.

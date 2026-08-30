@@ -7305,24 +7305,12 @@ fn open_array_front_end() {
     }
     for (shape, spec) in [
         (
-            "map value",
-            "wide = [64*64 uint]\nh = [prefix: uint, m: {* uint => wide}]\n",
-        ),
-        (
             "map key",
             "wide = [64*64 uint]\nh = [prefix: uint, m: {* wide => uint}]\n",
         ),
         (
-            "map alias with natural-any exact descendant",
-            "wide_any = [64*64 any]\nmapped = {* uint => wide_any}\nh = [prefix: uint, m: mapped]\n",
-        ),
-        (
-            "open-struct map rest row",
-            "wide = [64*64 uint]\nopen = { fixed: uint, * uint => wide }\n",
-        ),
-        (
-            "dynamic open-table row",
-            "wide = [64*64 uint]\nopen = { * uint => wide, * tstr => uint }\n",
+            "object-map key nested in pair-map value",
+            "wide = [64*64 uint]\ninner = {* wide => uint}\npairs = {* uint => inner} ; @duplicates preserve\nh = [prefix: uint, m: pairs]\n",
         ),
     ] {
         for json_flag in ["--json-serde-derives=true", "--json-schema-export=true"] {
@@ -7336,6 +7324,73 @@ fn open_array_front_end() {
             );
         }
     }
+    // Object maps adapt their values; the JSON key preclaim remains deliberately strict above.
+    // Pair maps are positional arrays-of-pairs, so both key and value descriptors are legal there.
+    for (shape, spec, expected) in [
+        (
+            "loose map value",
+            "wide = [64*64 uint]\nh = [m: {* uint => wide}]\n",
+            "static_array::Map<",
+        ),
+        (
+            "nonempty map value",
+            "wide = [64*64 uint]\nh = [m: {+ uint => wide}]\n",
+            "static_array::NonEmptyMap<",
+        ),
+        (
+            "bounded map value",
+            "wide = [64*64 uint]\nh = [m: {2*3 uint => wide}]\n",
+            "static_array::BoundedMap<",
+        ),
+        (
+            "preserve pair map value",
+            "wide = [64*64 uint]\nm = {* uint => wide} ; @duplicates preserve\nh = [m: m]\n",
+            "static_array::PairMap<",
+        ),
+        (
+            "alias hidden bounded preserve pair map",
+            "wide = [64*64 uint]\nm = {2*3 uint => wide} ; @duplicates preserve\nalias = m\nh = [m: alias]\n",
+            "static_array::BoundedPairMap<",
+        ),
+        (
+            "pair map exact-array key",
+            "wide = [64*64 uint]\nm = {* wide => uint} ; @duplicates preserve\nh = [m: m]\n",
+            "static_array::PairMap<",
+        ),
+        (
+            "map value natural any",
+            "wide = [64*64 any]\nh = [m: {* uint => wide}]\n",
+            "static_array::Map<",
+        ),
+        (
+            "open struct-map value",
+            "wide = [64*64 uint]\nopen = { fixed: uint, * uint => wide }\n",
+            "RecursiveSerializeAs",
+        ),
+        (
+            "open table both value partitions",
+            "wide = [64*64 uint]\nopen = { * uint => wide, * tstr => wide }\n",
+            "RecursiveSerializeAs",
+        ),
+    ] {
+        for json_flag in ["--json-serde-derives=true", "--json-schema-export=true"] {
+            let generated = gen_flags(spec, &[json_flag])
+                .unwrap_or_else(|err| panic!("{shape} must generate under {json_flag}: {err}"));
+            let source = &generated["rust/src/generated/mod.rs"];
+            if json_flag == "--json-serde-derives=true" {
+                assert!(
+                    source.contains(expected),
+                    "{shape} must select its recursive JSON adapter: {source}"
+                );
+            } else {
+                assert!(
+                    source.contains("static_array::recursive_schema")
+                        || source.contains("flatten_schema"),
+                    "{shape} must select recursive JSON Schema: {source}"
+                );
+            }
+        }
+    }
     gen_flags(
         "small_any = [2*2 any]\nh = [prefix: uint, xs: [* small_any]]\n",
         json_flags,
@@ -7343,15 +7398,9 @@ fn open_array_front_end() {
     .expect("small natural-any exact arrays compose through a sequence semantically, not by width");
     let exact_map_any = "nullable_any = any / null\nmapped = {* uint => nullable_any}\nexact = [2*2 mapped]\nh = [prefix: uint, xs: exact]\n";
     for json_flag in ["--json-serde-derives=true", "--json-schema-export=true"] {
-        let err = gen_flags(exact_map_any, &[json_flag]).expect_err(
-            "an exact array containing a nullable-any map must retain the map boundary",
-        );
-        assert!(
-            err.contains("natural JSON")
-                && err.contains("map")
-                && err.contains("--json-serde-derives/--json-schema-export"),
-            "{json_flag}: map-contained natural any must name the truthful boundary, got: {err}"
-        );
+        gen_flags(exact_map_any, &[json_flag]).unwrap_or_else(|err| {
+            panic!("{json_flag}: an exact array containing a nullable-any map must compose naturally: {err}")
+        });
     }
     let out_of_range = run("a = [uint, 18446744073709551616* bytes]\n")
         .expect_err("an occurrence endpoint beyond u64 must reject gracefully");

@@ -1142,8 +1142,8 @@ impl<'a> IntermediateTypes<'a> {
     /// Refuse a JSON-derived surface before it reaches rustc when a wide native exact array sits in
     /// a containing shape the current static-array adapters do not own. The representation itself
     /// remains valid without JSON; direct and all sequence/set-tree field/newtype and open-array
-    /// forms stay accepted, while maps (including dynamic map rows) remain outside this JSON
-    /// handover boundary.
+    /// forms stay accepted, along with map values and positional preserve-pair entries. Object-map
+    /// keys remain outside this JSON handover boundary.
     fn reject_unadapted_wide_static_array_json_shapes(&mut self, cli: &Cli) {
         if !(cli.json_serde_derives || cli.json_schema_export) {
             return;
@@ -1169,13 +1169,39 @@ impl<'a> IntermediateTypes<'a> {
         }
 
         fn check(
+            types: &IntermediateTypes,
             rejections: &mut BTreeSet<String>,
             rule: &RustIdent,
             site: &str,
             ty: &RustType,
             field_optional: bool,
         ) {
+            // Every recursive value and positional pair-map entry is adapted. The remaining
+            // rejected shape is an exact-array tree used as a JSON OBJECT member name. Keep this
+            // alias-aware rather than exempting a whole tree merely because it contains PairMap.
+            fn contains_unadapted_object_map_key(types: &IntermediateTypes, ty: &RustType) -> bool {
+                match &ty.conceptual_type {
+                    ConceptualRustType::Alias(AliasIdent::Rust(ident), _) => types
+                        .type_aliases()
+                        .get(&AliasIdent::Rust(ident.clone()))
+                        .is_some_and(|alias| {
+                            contains_unadapted_object_map_key(types, &alias.base_type)
+                        }),
+                    ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
+                        contains_unadapted_object_map_key(types, inner)
+                    }
+                    ConceptualRustType::Map(key, value) => {
+                        (!ty.is_preserve_pair_map()
+                            && (key.contains_wide_static_array()
+                                || key.contains_exact_natural_any_static_array()))
+                            || contains_unadapted_object_map_key(types, key)
+                            || contains_unadapted_object_map_key(types, value)
+                    }
+                    _ => false,
+                }
+            }
             if ty.has_unadapted_wide_static_array_json_shape()
+                && contains_unadapted_object_map_key(types, ty)
                 && !legacy_direct_typed_static_array_sequence(ty, field_optional)
             {
                 rejections.insert(format!(
@@ -1183,19 +1209,21 @@ impl<'a> IntermediateTypes<'a> {
                      the generated adapters do not yet compose through. The pinned serde/schemars \
                      versions implement array traits only through length 32, so emitting this crate \
                      would fail to compile. Generate without --json-serde-derives/--json-schema-export, \
-                     or avoid map/table containment. Loose, nonempty, and bounded sequence and \
-                     duplicate-reject set carriers and open-array segments are supported; map entries \
-                     and dynamic map rows are not supported with the JSON flags yet."
+                     or avoid an object-map key containing that exact array. Loose, nonempty, and \
+                     bounded sequence, map, duplicate-reject set, pair-map, and dynamic-row values \
+                     are supported."
                 ));
             }
-            if ty.has_unadapted_natural_any_static_array_json_shape() {
+            if ty.has_unadapted_natural_any_static_array_json_shape()
+                && contains_unadapted_object_map_key(types, ty)
+            {
                 rejections.insert(format!(
                     "rule `{rule}`: {site} nests an exact CDDL `any` array behind a JSON container \
                      the natural-JSON adapters do not yet compose through. Emitting it would route \
                      each AnyCbor element through its tagged AnyCbor JSON codec instead of the required \
                      natural JSON value. Generate without --json-serde-derives/--json-schema-export, \
-                     or avoid map/table containment. Sequence and duplicate-reject set carriers are \
-                     supported; map entries are not."
+                     or avoid an object-map key containing that exact array. Sequence, map value, \
+                     duplicate-reject set, pair-map, and dynamic-row positions are supported."
                 ));
             }
         }
@@ -1214,6 +1242,7 @@ impl<'a> IntermediateTypes<'a> {
                         // map/table and dynamic-row containment remains below this field path's
                         // adapter boundary.
                         check(
+                            self,
                             &mut rejections,
                             rule,
                             &format!("field `{}`", field.name),
@@ -1232,22 +1261,35 @@ impl<'a> IntermediateTypes<'a> {
                         } else {
                             format!("dynamic map row `{}`", row.field_name)
                         };
-                        check(&mut rejections, rule, &site, &container, false);
+                        check(self, &mut rejections, rule, &site, &container, false);
                     }
                 }
                 RustStructType::Wrapper { wrapped, .. } => {
-                    check(&mut rejections, rule, "wrapper payload", wrapped, false);
+                    check(
+                        self,
+                        &mut rejections,
+                        rule,
+                        "wrapper payload",
+                        wrapped,
+                        false,
+                    );
                 }
                 RustStructType::GroupChoice { variants, .. }
                 | RustStructType::TypeChoice { variants } => {
                     for variant in variants {
                         match &variant.data {
-                            EnumVariantData::RustType(ty) => {
-                                check(&mut rejections, rule, "type-choice payload", ty, false)
-                            }
+                            EnumVariantData::RustType(ty) => check(
+                                self,
+                                &mut rejections,
+                                rule,
+                                "type-choice payload",
+                                ty,
+                                false,
+                            ),
                             EnumVariantData::Inlined(record) => {
                                 for field in &record.fields {
                                     check(
+                                        self,
                                         &mut rejections,
                                         rule,
                                         &format!("type-choice field `{}`", field.name),

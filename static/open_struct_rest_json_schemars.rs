@@ -16,6 +16,22 @@ pub fn typed_rest_map_schema<K: schemars::JsonSchema, V: schemars::JsonSchema>(
     <alloc::collections::BTreeMap<K, V> as schemars::JsonSchema>::json_schema(generator)
 }
 
+/// Recursive-value counterpart to [`typed_rest_map_schema`]. The value schema has already been
+/// assembled by an adapter (for example a wide exact array), so this keeps the row's key/member
+/// name semantics without requiring `V: JsonSchema`.
+pub fn typed_rest_map_schema_value<K: schemars::JsonSchema>(
+    generator: &mut schemars::SchemaGenerator,
+    value: schemars::Schema,
+) -> schemars::Schema {
+    let mut schema = <alloc::collections::BTreeMap<K, ()> as schemars::JsonSchema>::json_schema(generator);
+    if let Some(patterns) = schema.get_mut("patternProperties").and_then(|value| value.as_object_mut()) {
+        for pattern in patterns.values_mut() { *pattern = value.clone().to_value(); }
+    } else {
+        schema.insert("additionalProperties".to_owned(), value.to_value());
+    }
+    schema
+}
+
 /// The JSON Schema of a captured rest row's flattened open region whose key domain is a GENERAL
 /// typed `K` — an open object over the range, naming no constraint on the member names at all.
 ///
@@ -38,4 +54,10 @@ pub fn general_key_rest_map_schema<V: schemars::JsonSchema>(
         "type": "object",
         "additionalProperties": (generator.subschema_for::<V>().to_value()),
     })
+}
+
+/// The same open-object shape as [`general_key_rest_map_schema`], with an adapter-supplied value
+/// schema that need not have a direct `JsonSchema` implementation.
+pub fn general_key_rest_map_schema_value(value: schemars::Schema) -> schemars::Schema {
+    schemars::json_schema!({ "type": "object", "additionalProperties": value.to_value() })
 }

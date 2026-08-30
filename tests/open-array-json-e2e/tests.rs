@@ -7,8 +7,12 @@ mod open_array_json {
     use super::*;
     use crate::generated::any_cbor::AnyCbor;
     use crate::generated::bounded::BoundedVec;
+    use crate::generated::bounded_map::BoundedMap;
     use crate::generated::non_empty::NonEmptyVec;
+    use crate::generated::non_empty_map::NonEmptyMap;
     use crate::generated::ordered_set::{BoundedOrderedSet, NonEmptyOrderedSet, OrderedSet};
+    use crate::generated::pair_map::{BoundedPairMap, NonEmptyPairMap, PairMap};
+    use std::collections::BTreeMap;
 
     #[test]
     fn typed_tail_renders_as_array_and_round_trips() {
@@ -861,5 +865,64 @@ mod open_array_json {
                 && any_choice_schema.contains("\"maxItems\":64"),
             "exact-any choice schema retains static cardinality: {any_choice_schema}"
         );
+    }
+
+    #[test]
+    fn recursive_static_arrays_compose_through_every_map_carrier() {
+        let mut loose = BTreeMap::new();
+        loose.insert(1, [7; 64]);
+        let nonempty = NonEmptyMap::try_from(loose.clone()).unwrap();
+        let bounded = BoundedMap::try_from(loose.clone().into_iter().chain([(2, [8; 64])]).collect::<BTreeMap<_, _>>()).unwrap();
+        let holder = WideMapHolder::new(loose, nonempty, bounded);
+        let json = serde_json::to_string(&holder).unwrap();
+        assert!(json.contains(r#""loose":{"1":[7,7"#), "unique maps remain objects: {json}");
+        let back: WideMapHolder = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.loose.get(&1).unwrap()[63], 7);
+        assert!(serde_json::from_str::<WideMapHolder>(r#"{"loose":{},"nonempty":{},"bounded":{"1":[7,7]}}"#).is_err());
+        let schema = serde_json::to_value(schemars::schema_for!(WideMapHolder)).unwrap();
+        assert_eq!(schema["properties"]["nonempty"]["minProperties"], 1);
+        assert_eq!(schema["properties"]["bounded"]["minProperties"], 2);
+        assert_eq!(schema["properties"]["bounded"]["maxProperties"], 2);
+        let loose_value = &schema["properties"]["loose"]["patternProperties"]["^\\d+$"];
+        assert_eq!(loose_value["minItems"], 64);
+        assert_eq!(loose_value["maxItems"], 64);
+
+        let pairs = PairMap::from(vec![(1, [3; 64]), (1, [4; 64])]);
+        let nonempty_pairs = NonEmptyPairMap::try_from(vec![(2, [5; 64])]).unwrap();
+        let bounded_pairs = BoundedPairMap::try_from(vec![(3, [6; 64]), (3, [7; 64])]).unwrap();
+        let key_pairs = PairMap::from(vec![([8; 64], 9)]);
+        let pair_holder = WidePairHolder::new(pairs, nonempty_pairs, bounded_pairs, key_pairs);
+        let pair_json = serde_json::to_string(&pair_holder).unwrap();
+        assert!(pair_json.contains(r#""loose":[[1,[3,3"#), "pair maps remain pairs: {pair_json}");
+        assert!(pair_json.contains(r#""key":[[[8,8"#), "pair keys may use exact arrays: {pair_json}");
+        let pair_back: WidePairHolder = serde_json::from_str(&pair_json).unwrap();
+        assert_eq!(pair_back.loose.len(), 2, "duplicate pair-map entries survive JSON");
+        assert!(serde_json::from_str::<WidePairHolder>(r#"{"loose":[],"nonempty":[],"bounded":[[3,[6,6]]],"key":[]}"#).is_err());
+        let pair_schema = serde_json::to_value(schemars::schema_for!(WidePairHolder)).unwrap();
+        assert_eq!(pair_schema["properties"]["bounded"]["minItems"], 2);
+        assert_eq!(pair_schema["properties"]["bounded"]["maxItems"], 2);
+        assert_eq!(pair_schema["properties"]["loose"]["items"]["items"][1]["minItems"], 64);
+    }
+
+    #[test]
+    fn recursive_static_arrays_reach_open_map_rows_and_natural_any() {
+        let mut rest = WideOpenRest::new(1);
+        rest.rest.insert(2, [9; 64]);
+        let json = serde_json::to_string(&rest).unwrap();
+        let back: WideOpenRest = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.rest.get(&2).unwrap()[0], 9);
+
+        let mut table = WideOpenTable::new();
+        table.entries.insert(3, [4; 64]);
+        table.rest.insert("x".to_owned(), [5; 64]);
+        let table_json = serde_json::to_string(&table).unwrap();
+        let table_back: WideOpenTable = serde_json::from_str(&table_json).unwrap();
+        assert_eq!(table_back.entries.get(&3).unwrap()[63], 4);
+        assert_eq!(table_back.rest.get("x").unwrap()[63], 5);
+
+        let mut natural = BTreeMap::new();
+        natural.insert(1, std::array::from_fn(|_| AnyCbor::new_uint(6)));
+        let natural_json = serde_json::to_string(&WideAnyMapHolder::new(natural)).unwrap();
+        assert!(natural_json.contains("[6,6"), "exact natural-any leaves stay natural: {natural_json}");
     }
 }

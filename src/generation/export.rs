@@ -200,6 +200,53 @@ fn composed_runtime_static_files(
             content.push_str(&std::fs::read_to_string(
                 cli.static_dir.join("static_array_json.rs"),
             )?);
+            // Map containment has a dedicated recursive fragment: loose object maps are always
+            // available, while checked carriers are appended only with the runtime module they
+            // name. Pair maps carry all three pair carriers in their one runtime module.
+            let mut map_json =
+                std::fs::read_to_string(cli.static_dir.join("static_array_map_json.rs"))?;
+            if cli.preserve_encodings {
+                map_json = map_json
+                    .replace(
+                        "alloc::collections::BTreeMap",
+                        "super::ordered_hash_map::OrderedHashMap",
+                    )
+                    .replace("K: Ord", "K: Ord + core::hash::Hash + Eq");
+            }
+            content.push_str(&map_json);
+            if include_non_empty_map {
+                let mut fragment = std::fs::read_to_string(
+                    cli.static_dir.join("static_array_non_empty_map_json.rs"),
+                )?;
+                if cli.preserve_encodings {
+                    fragment = fragment
+                        .replace(
+                            "alloc::collections::BTreeMap",
+                            "super::ordered_hash_map::OrderedHashMap",
+                        )
+                        .replace("K: Ord", "K: Ord + core::hash::Hash + Eq");
+                }
+                content.push_str(&fragment);
+            }
+            if include_bounded_map {
+                let mut fragment = std::fs::read_to_string(
+                    cli.static_dir.join("static_array_bounded_map_json.rs"),
+                )?;
+                if cli.preserve_encodings {
+                    fragment = fragment
+                        .replace(
+                            "alloc::collections::BTreeMap",
+                            "super::ordered_hash_map::OrderedHashMap",
+                        )
+                        .replace("K: Ord", "K: Ord + core::hash::Hash + Eq");
+                }
+                content.push_str(&fragment);
+            }
+            if include_pair_map {
+                content.push_str(&std::fs::read_to_string(
+                    cli.static_dir.join("static_array_pair_map_json.rs"),
+                )?);
+            }
             if include_non_empty_vec {
                 content.push_str(&std::fs::read_to_string(
                     cli.static_dir.join("static_array_non_empty_json.rs"),
@@ -220,6 +267,51 @@ fn composed_runtime_static_files(
             content.push_str(&std::fs::read_to_string(
                 cli.static_dir.join("static_array_schemars.rs"),
             )?);
+            let mut map_schemars =
+                std::fs::read_to_string(cli.static_dir.join("static_array_map_schemars.rs"))?;
+            if cli.preserve_encodings {
+                map_schemars = map_schemars
+                    .replace(
+                        "alloc::collections::BTreeMap",
+                        "super::ordered_hash_map::OrderedHashMap",
+                    )
+                    .replace("K: Ord", "K: Ord + core::hash::Hash + Eq");
+            }
+            content.push_str(&map_schemars);
+            if include_non_empty_map {
+                let mut fragment = std::fs::read_to_string(
+                    cli.static_dir
+                        .join("static_array_non_empty_map_schemars.rs"),
+                )?;
+                if cli.preserve_encodings {
+                    fragment = fragment
+                        .replace(
+                            "alloc::collections::BTreeMap",
+                            "super::ordered_hash_map::OrderedHashMap",
+                        )
+                        .replace("K: Ord", "K: Ord + core::hash::Hash + Eq");
+                }
+                content.push_str(&fragment);
+            }
+            if include_bounded_map {
+                let mut fragment = std::fs::read_to_string(
+                    cli.static_dir.join("static_array_bounded_map_schemars.rs"),
+                )?;
+                if cli.preserve_encodings {
+                    fragment = fragment
+                        .replace(
+                            "alloc::collections::BTreeMap",
+                            "super::ordered_hash_map::OrderedHashMap",
+                        )
+                        .replace("K: Ord", "K: Ord + core::hash::Hash + Eq");
+                }
+                content.push_str(&fragment);
+            }
+            if include_pair_map {
+                content.push_str(&std::fs::read_to_string(
+                    cli.static_dir.join("static_array_pair_map_schemars.rs"),
+                )?);
+            }
             if include_non_empty_vec {
                 content.push_str(&std::fs::read_to_string(
                     cli.static_dir.join("static_array_non_empty_schemars.rs"),

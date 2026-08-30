@@ -113,9 +113,11 @@ pub trait RecursiveDeserialize<T> {
         D: serde::Deserializer<'de>;
 }
 
-struct SerializeAs<'a, Shape, T>(&'a T, core::marker::PhantomData<Shape>);
+/// A borrowed recursive JSON view. Generated hand-written JSON surfaces (flattened map rows and
+/// open tables) use it when their value position cannot carry a field `#[serde(with)]` callback.
+pub struct RecursiveSerializeAs<'a, Shape, T>(&'a T, core::marker::PhantomData<Shape>);
 
-impl<Shape, T> serde::Serialize for SerializeAs<'_, Shape, T>
+impl<Shape, T> serde::Serialize for RecursiveSerializeAs<'_, Shape, T>
 where
     Shape: RecursiveSerialize<T>,
 {
@@ -127,9 +129,17 @@ where
     }
 }
 
-struct DeserializeAs<Shape, T>(T, core::marker::PhantomData<Shape>);
+impl<'a, Shape, T> RecursiveSerializeAs<'a, Shape, T> {
+    pub fn new(value: &'a T) -> Self {
+        Self(value, core::marker::PhantomData)
+    }
+}
 
-impl<'de, Shape, T> serde::Deserialize<'de> for DeserializeAs<Shape, T>
+/// An owned recursive JSON view. Its `Deserialize` implementation restores native exact arrays,
+/// and [`into_inner`] hands the resulting value to generated checked-carrier construction.
+pub struct RecursiveDeserializeAs<Shape, T>(T, core::marker::PhantomData<Shape>);
+
+impl<'de, Shape, T> serde::Deserialize<'de> for RecursiveDeserializeAs<Shape, T>
 where
     Shape: RecursiveDeserialize<T>,
 {
@@ -138,6 +148,12 @@ where
         D: serde::Deserializer<'de>,
     {
         Shape::deserialize(deserializer).map(|value| Self(value, core::marker::PhantomData))
+    }
+}
+
+impl<Shape, T> RecursiveDeserializeAs<Shape, T> {
+    pub fn into_inner(self) -> T {
+        self.0
     }
 }
 
@@ -171,7 +187,7 @@ where
         S: serde::Serializer,
     {
         serializer.collect_seq(value.iter().map(|value| {
-            SerializeAs::<Inner, T>(value, core::marker::PhantomData)
+            RecursiveSerializeAs::<Inner, T>::new(value)
         }))
     }
 }
@@ -184,7 +200,7 @@ where
     where
         D: serde::Deserializer<'de>,
     {
-        let elements = <alloc::vec::Vec<DeserializeAs<Inner, T>> as serde::Deserialize>::deserialize(deserializer)?
+        let elements = <alloc::vec::Vec<RecursiveDeserializeAs<Inner, T>> as serde::Deserialize>::deserialize(deserializer)?
             .into_iter()
             .map(|element| element.0)
             .collect::<alloc::vec::Vec<_>>();
@@ -206,7 +222,7 @@ where
         S: serde::Serializer,
     {
         serializer.collect_seq(value.iter().map(|value| {
-            SerializeAs::<Inner, T>(value, core::marker::PhantomData)
+            RecursiveSerializeAs::<Inner, T>::new(value)
         }))
     }
 }
@@ -219,7 +235,7 @@ where
     where
         D: serde::Deserializer<'de>,
     {
-        <alloc::vec::Vec<DeserializeAs<Inner, T>> as serde::Deserialize>::deserialize(deserializer)
+        <alloc::vec::Vec<RecursiveDeserializeAs<Inner, T>> as serde::Deserialize>::deserialize(deserializer)
             .map(|elements| elements.into_iter().map(|element| element.0).collect())
     }
 }
@@ -247,7 +263,7 @@ where
     where
         D: serde::Deserializer<'de>,
     {
-        <Option<DeserializeAs<Inner, T>> as serde::Deserialize>::deserialize(deserializer)
+        <Option<RecursiveDeserializeAs<Inner, T>> as serde::Deserialize>::deserialize(deserializer)
             .map(|value| value.map(|value| value.0))
     }
 }

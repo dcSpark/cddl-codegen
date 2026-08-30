@@ -8,9 +8,7 @@ where
     where
         S: serde::Serializer,
     {
-        serializer.collect_seq(value.iter().map(|value| {
-            SerializeAs::<Inner, T>(value, core::marker::PhantomData)
-        }))
+        serializer.collect_seq(value.iter().map(|value| RecursiveSerializeAs::<Inner, T>::new(value)))
     }
 }
 
@@ -23,7 +21,7 @@ where
     where
         D: serde::Deserializer<'de>,
     {
-        let elements: alloc::vec::Vec<T> = <alloc::vec::Vec<DeserializeAs<Inner, T>> as serde::Deserialize>::deserialize(deserializer)?
+        let elements: alloc::vec::Vec<T> = <alloc::vec::Vec<RecursiveDeserializeAs<Inner, T>> as serde::Deserialize>::deserialize(deserializer)?
             .into_iter()
             .map(|element| element.0)
             .collect();
@@ -40,9 +38,7 @@ where
     where
         S: serde::Serializer,
     {
-        serializer.collect_seq(value.iter().map(|value| {
-            SerializeAs::<Inner, T>(value, core::marker::PhantomData)
-        }))
+        serializer.collect_seq(value.iter().map(|value| RecursiveSerializeAs::<Inner, T>::new(value)))
     }
 }
 
@@ -56,7 +52,7 @@ where
     where
         D: serde::Deserializer<'de>,
     {
-        let elements: alloc::vec::Vec<T> = <alloc::vec::Vec<DeserializeAs<Inner, T>> as serde::Deserialize>::deserialize(deserializer)?
+        let elements: alloc::vec::Vec<T> = <alloc::vec::Vec<RecursiveDeserializeAs<Inner, T>> as serde::Deserialize>::deserialize(deserializer)?
             .into_iter()
             .map(|element| element.0)
             .collect();
@@ -74,9 +70,7 @@ where
     where
         S: serde::Serializer,
     {
-        serializer.collect_seq(value.iter().map(|value| {
-            SerializeAs::<Inner, T>(value, core::marker::PhantomData)
-        }))
+        serializer.collect_seq(value.iter().map(|value| RecursiveSerializeAs::<Inner, T>::new(value)))
     }
 }
 
@@ -91,7 +85,7 @@ where
     where
         D: serde::Deserializer<'de>,
     {
-        let elements: alloc::vec::Vec<T> = <alloc::vec::Vec<DeserializeAs<Inner, T>> as serde::Deserialize>::deserialize(deserializer)?
+        let elements: alloc::vec::Vec<T> = <alloc::vec::Vec<RecursiveDeserializeAs<Inner, T>> as serde::Deserialize>::deserialize(deserializer)?
             .into_iter()
             .map(|element| element.0)
             .collect();

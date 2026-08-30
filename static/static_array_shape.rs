@@ -12,4 +12,12 @@ pub struct Bounded<Inner, const MIN: u64, const MAX: u64>(core::marker::PhantomD
 pub struct RejectSet<Inner>(core::marker::PhantomData<Inner>);
 pub struct RejectSetNonEmpty<Inner>(core::marker::PhantomData<Inner>);
 pub struct RejectSetBounded<Inner, const MIN: u64, const MAX: u64>(core::marker::PhantomData<Inner>);
+// Object maps adapt their VALUE only: JSON member names retain the native map-key convention.
+// Pair maps are positional `[[key, value], …]`, so both descriptors participate.
+pub struct Map<Value>(core::marker::PhantomData<Value>);
+pub struct NonEmptyMap<Value>(core::marker::PhantomData<Value>);
+pub struct BoundedMap<Value, const MIN: u64, const MAX: u64>(core::marker::PhantomData<Value>);
+pub struct PairMap<Key, Value>(core::marker::PhantomData<(Key, Value)>);
+pub struct NonEmptyPairMap<Key, Value>(core::marker::PhantomData<(Key, Value)>);
+pub struct BoundedPairMap<Key, Value, const MIN: u64, const MAX: u64>(core::marker::PhantomData<(Key, Value)>);
 pub struct Optional<Inner>(core::marker::PhantomData<Inner>);

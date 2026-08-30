@@ -5313,7 +5313,7 @@ pub fn natural_any_serde_annotations(cli: &Cli, pos: NaturalAnyPosition) -> Vec<
 /// implement array traits through length 32, so the descriptor owns every sequence carrier between
 /// a field/payload and an exact array. Restricted carriers decode through their native `TryFrom`
 /// door; `any` leaves use their natural adapter rather than `AnyCbor`'s tagged codec.
-fn recursive_exact_array_descriptor(
+pub(crate) fn recursive_exact_array_descriptor(
     types: &IntermediateTypes,
     ty: &RustType,
     field_optional: bool,
@@ -5385,6 +5385,9 @@ fn recursive_exact_array_descriptor(
             ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
                 contains_exact_node(types, inner)
             }
+            ConceptualRustType::Map(key, value) => {
+                contains_exact_node(types, key) || contains_exact_node(types, value)
+            }
             _ => false,
         }
     }
@@ -5420,6 +5423,21 @@ fn recursive_exact_array_descriptor(
 
     fn shape(types: &IntermediateTypes, ty: &RustType, base: &str) -> Option<String> {
         if let Some(alias) = alias_base(types, ty) {
+            // A named table's occurrence/duplicate policy lives on its RustStruct config rather
+            // than the transparent alias base. Restore it before structural dispatch: otherwise
+            // `named_preserve = {* K => V} ; @duplicates preserve` would incorrectly select the
+            // object-map descriptor when referenced through a second alias.
+            if let ConceptualRustType::Rust(ident) = &ty.conceptual_type
+                && let Some(owner) = types.rust_struct(ident)
+                && let RustStructType::Table { bounds, .. } = owner.variant()
+            {
+                let mut configured = alias.clone();
+                configured.config.duplicates = owner.config().duplicates;
+                if let Some(bounds) = bounds {
+                    configured.config.bounds = Some(*bounds);
+                }
+                return shape(types, &configured, base);
+            }
             return shape(types, alias, base);
         }
         match ty.conceptual_type.resolve_alias_shallow() {
@@ -5462,7 +5480,91 @@ fn recursive_exact_array_descriptor(
             ConceptualRustType::Optional(inner) => {
                 Some(format!("{base}::Optional<{}>", shape(types, inner, base)?))
             }
-            ConceptualRustType::Map(_, _) => None,
+            ConceptualRustType::Map(key, value) => {
+                // Ordinary tables serialize as JSON objects, so their keys retain serde's native
+                // member-name path. A recursively adapted key would be an array (or natural-any
+                // array) and has no object-member representation; the IR preclaim keeps that
+                // boundary loud. Pair maps are positional JSON arrays of pairs, so both halves
+                // compose through the descriptor.
+                // Transparent named-table aliases retain their inner `Map` node but carry the
+                // table policy on the owning struct. Recover it here as well as for a bare Rust
+                // ident: an alias-of-a-preserve-table must remain a positional PairMap.
+                let alias_table = {
+                    let mut current = &ty.conceptual_type;
+                    let mut found = None;
+                    while let ConceptualRustType::Alias(AliasIdent::Rust(ident), inner) = current {
+                        if let Some(alias) =
+                            types.type_aliases().get(&AliasIdent::Rust(ident.clone()))
+                        {
+                            found = Some((
+                                alias.base_type.config.duplicates,
+                                alias.base_type.config.bounds,
+                            ));
+                        }
+                        if let Some(owner) = types.rust_struct(ident)
+                            && let RustStructType::Table { bounds, .. } = owner.variant()
+                        {
+                            found = Some((owner.config().duplicates, *bounds));
+                        }
+                        current = inner;
+                    }
+                    found
+                };
+                let pair_map = ty.is_preserve_pair_map()
+                    || alias_table.is_some_and(|(duplicates, _)| {
+                        duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+                    });
+                let bounds = alias_table
+                    .and_then(|(_, bounds)| bounds)
+                    .or_else(|| {
+                        ty.type_enforced_bounded_map_u64_bounds().map(|(min, max)| {
+                            (
+                                Some(i128::from(min)),
+                                (max != u64::MAX).then_some(i128::from(max)),
+                            )
+                        })
+                    })
+                    .or(ty.config.bounds);
+                let key = if pair_map {
+                    shape(types, key, base)?
+                } else if contains_wide_static_array(types, key)
+                    || contains_exact_natural_any(types, key, false)
+                {
+                    return None;
+                } else {
+                    format!("{base}::Leaf")
+                };
+                let value = shape(types, value, base)?;
+                if pair_map {
+                    if let Some((min, max)) = bounds.and_then(|(min, max)| {
+                        let min = min.unwrap_or(0).try_into().ok()?;
+                        let max = max
+                            .map(|max| max.try_into().ok())
+                            .unwrap_or(Some(u64::MAX))?;
+                        ((min, max) != (1, u64::MAX)).then_some((min, max))
+                    }) {
+                        Some(format!(
+                            "{base}::BoundedPairMap<{key}, {value}, {min}, {max}>"
+                        ))
+                    } else if bounds == Some((Some(1), None)) || ty.is_type_enforced_non_empty() {
+                        Some(format!("{base}::NonEmptyPairMap<{key}, {value}>"))
+                    } else {
+                        Some(format!("{base}::PairMap<{key}, {value}>"))
+                    }
+                } else if let Some((min, max)) = bounds.and_then(|(min, max)| {
+                    let min = min.unwrap_or(0).try_into().ok()?;
+                    let max = max
+                        .map(|max| max.try_into().ok())
+                        .unwrap_or(Some(u64::MAX))?;
+                    ((min, max) != (1, u64::MAX)).then_some((min, max))
+                }) {
+                    Some(format!("{base}::BoundedMap<{value}, {min}, {max}>"))
+                } else if bounds == Some((Some(1), None)) || ty.is_type_enforced_non_empty() {
+                    Some(format!("{base}::NonEmptyMap<{value}>"))
+                } else {
+                    Some(format!("{base}::Map<{value}>"))
+                }
+            }
             _ => Some(format!("{base}::Leaf")),
         }
     }
@@ -5491,6 +5593,44 @@ fn recursive_exact_array_descriptor(
         member_type = format!("Option<{member_type}>");
     }
     Some((descriptor, member_type))
+}
+
+/// The hand-written JSON implementations for dynamic map rows do not have a field attribute on
+/// which the legacy direct `[T; N]` callback can sit. Give those seams a recursive descriptor even
+/// for that otherwise-preserved direct shape.
+pub(crate) fn dynamic_row_exact_array_descriptor(
+    types: &IntermediateTypes,
+    ty: &RustType,
+    cli: &Cli,
+) -> Option<(String, String)> {
+    if let Some(descriptor) = recursive_exact_array_descriptor(types, ty, false, true, cli) {
+        return Some(descriptor);
+    }
+    let ConceptualRustType::Array(inner) = ty.conceptual_type.resolve_alias_shallow() else {
+        return None;
+    };
+    let len = ty.exact_homogeneous_array_len_checked()?;
+    if len <= 32
+        && !matches!(
+            inner.conceptual_type.resolve_alias_shallow(),
+            ConceptualRustType::Any
+        )
+    {
+        return None;
+    }
+    let base = format!("{}::static_array", cli.common_import_rust());
+    let inner = if matches!(
+        inner.conceptual_type.resolve_alias_shallow(),
+        ConceptualRustType::Any
+    ) {
+        format!("{base}::NaturalAny")
+    } else {
+        format!("{base}::Leaf")
+    };
+    Some((
+        format!("{base}::Exact<{inner}, {len}>"),
+        ty.for_rust_member(types, false, cli),
+    ))
 }
 
 pub fn static_array_serde_annotations(

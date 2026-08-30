@@ -2287,11 +2287,11 @@ a complete checked `BoundedVec<T, MIN, MAX>` constructor argument for variable w
 ordinary windows are `[T; N]` and their CBOR/component list inputs make one checked `Vec`
 handover. JSON adapters recursively cover every ordinary/`@duplicates preserve`/`@duplicates reject`
 loose, nonempty, bounded, nullable, and exact collection tree containing a wide exact array or an
-exact natural-`any` position, including aliases/newtypes, ordinary optional fields, type-choice
-payloads, optional+nullable three-state fields, and captured open-array segments; every node remains
-a JSON list and keeps its authored bounds, while reject schemas add `uniqueItems: true` and reject
-carriers re-enter their checked set construction door. Map/table entries, open-struct map rest rows,
-and dynamic map rows remain refused before codegen and explicitly roadmapped. Exact reject windows remain
+exact natural-`any` position, including map/table values, positional pair-map keys and values, and
+open-struct/open-table dynamic values. Sequence nodes remain JSON lists; unique maps remain objects;
+duplicate-preserving maps remain arrays of pairs. Every node keeps its authored bounds, while reject
+schemas add `uniqueItems: true` and restricted carriers re-enter their checked construction door. A
+wide non-string-compatible exact-array object-map key remains a pre-codegen refusal. Exact reject windows remain
 `BoundedOrderedSet<T, N, N>`. The middle boundary deliberately
 honors RFC 8610 greedy non-backtracking decoding: general same-major/value-discriminator suffixes
 beyond finite fixed domains need a future design rather than a guessed decoder. User docs: `docs/docs/output_format.mdx` § "Open arrays",
@@ -2300,7 +2300,8 @@ beyond finite fixed domains need a future design rather than a guessed decoder. 
 - **Front end + guards** — `robustness_tests::open_array_front_end` recognizes final loose,
   min-one, finite, max-only, min-only, and exact-zero forms. Its JSON-finalization vectors prove the
   shared recursive/legacy selector for ordinary and duplicate-reject dynamic tails with exact typed
-  and natural-`any` descendants, while retaining map-containing residue as a row-local refusal. The polarity and carrier assertions in
+  and natural-`any` descendants, map value/pair-entry descriptor selection, and the object-map-key
+  refusal. The polarity and carrier assertions in
   `robustness_tests::occurrence_on_array_record_field_rejects_gracefully` cover leading/middle
   loose/min-one success plus exact same-major/zero success without a suffix wire-head discriminator,
   and multiple named exact-count segments (including adjacent/same-major and exact-zero boundaries)
@@ -2329,8 +2330,9 @@ beyond finite fixed domains need a future design rather than a guessed decoder. 
   rejection); nullable elements; aliases/newtypes; required/optional fields; type-choice payloads;
   and the full absent/present-null/present-value table for direct/restricted optional+nullable exact
   arrays. It also executes dynamic loose/nonempty/bounded/exact/middle rows, nested reject carriers,
-  and natural exact-`any` descendants. Map/table entries, open-struct map rest rows, and dynamic map
-  rows remain deliberate front-end refusals under either JSON face.
+  and natural exact-`any` descendants. It also executes loose/nonempty/bounded unique and pair maps,
+  duplicate pair retention, natural-`any` map values, and open-struct/open-table dynamic rows, with
+  inner exact and outer carrier schema bounds.
 - **Snapshots / cross-face** — `open_array_default` / `open_array_json` / `open_array_wasm` profile
   rows retain final-tail byte/API compatibility; `open_array_preserve` snapshots the middle capture
   input. The shared component build fixture wires the declared-major helper fragment and, together

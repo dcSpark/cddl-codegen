@@ -1582,6 +1582,7 @@ fn emit_rest_flatten_json(
         rest.range().conceptual_type.resolve_alias_shallow(),
         ConceptualRustType::Any
     );
+    let recursive_range = super::dynamic_row_exact_array_descriptor(types, rest.range(), cli);
     // snake_case the owner name so the free fns are snake (no `non_snake_case` warning) and unique
     // (struct idents are unique; `convert_to_snake_case` is injective enough here as the field name
     // and fixed suffixes disambiguate).
@@ -1626,6 +1627,25 @@ fn emit_rest_flatten_json(
             annotations.push(format!(
                 "#[schemars(schema_with = \"{base}::natural_any_cbor_map_schema\")]"
             ));
+        } else if let Some((descriptor, member_type)) = &recursive_range {
+            let schema_fn = format!("{}_{}_flatten_schema", owner_snake, rest.field_name);
+            let value = format!(
+                "{}::static_array::recursive_schema::<{descriptor}, {member_type}>(generator)",
+                cli.common_import_rust()
+            );
+            let value_var = record.fresh_generated_member_ident("value_schema");
+            let body = if domain == RestKeyDomain::Typed {
+                format!("{flatten}::general_key_rest_map_schema_value({value_var})")
+            } else {
+                let key_ty = rest.domain().for_rust_member(types, false, cli);
+                format!(
+                    "{flatten}::typed_rest_map_schema_value::<{key_ty}>(generator, {value_var})"
+                )
+            };
+            gen_scope.rust(types, name).raw(format!(
+                "fn {schema_fn}(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {{ let {value_var} = {value}; {body} }}\n"
+            ));
+            annotations.push(format!("#[schemars(schema_with = \"{schema_fn}\")]"));
         } else if domain == RestKeyDomain::Typed {
             let value_ty = rest.range().for_rust_member(types, false, cli);
             annotations.push(format!(
@@ -1751,6 +1771,15 @@ fn emit_rest_flatten_json(
             format!("{field}.iter().map(|(k, v)| (k, {base}::NaturalAnyCborSer(v)))"),
             format!("{base}::NaturalAnyCborDe"),
             "v.0".to_owned(),
+        )
+    } else if let Some((descriptor, member_type)) = &recursive_range {
+        let static_array = format!("{}::static_array", cli.common_import_rust());
+        (
+            format!(
+                "{field}.iter().map(|(k, v)| (k, {static_array}::RecursiveSerializeAs::<{descriptor}, {member_type}>::new(v)))"
+            ),
+            format!("{static_array}::RecursiveDeserializeAs<{descriptor}, {member_type}>"),
+            "v.into_inner()".to_owned(),
         )
     } else {
         (
@@ -2153,13 +2182,25 @@ fn emit_open_table_json(
         )
     };
     // Per-region value view, exactly the rest row's rule: an `any` range renders NATURALLY (through
-    // the natural adapters), a typed range through its own serde.
+    // the natural adapters), while a recursive exact-array descendant is wrapped at the dynamic
+    // row seam because this hand-written impl has no field callback to carry it.
     let value_view = |row: &RestRow| -> (String, String, String) {
         if range_is_any(row) {
             (
                 format!(".map(|(k, v)| (k, {base}::NaturalAnyCborSer(v)))"),
                 format!("{base}::NaturalAnyCborDe"),
                 "v.0".to_owned(),
+            )
+        } else if let Some((descriptor, member_type)) =
+            super::dynamic_row_exact_array_descriptor(types, row.range(), cli)
+        {
+            let static_array = format!("{}::static_array", cli.common_import_rust());
+            (
+                format!(
+                    ".map(|(k, v)| (k, {static_array}::RecursiveSerializeAs::<{descriptor}, {member_type}>::new(v)))"
+                ),
+                format!("{static_array}::RecursiveDeserializeAs<{descriptor}, {member_type}>"),
+                "v.into_inner()".to_owned(),
             )
         } else {
             (
@@ -2333,6 +2374,13 @@ fn emit_open_table_json(
         let range_schema = |row: &RestRow| {
             if range_is_any(row) {
                 format!("{base}::natural_any_cbor_schema(generator)")
+            } else if let Some((descriptor, member_type)) =
+                super::dynamic_row_exact_array_descriptor(types, row.range(), cli)
+            {
+                format!(
+                    "{}::static_array::recursive_schema::<{descriptor}, {member_type}>(generator)",
+                    cli.common_import_rust()
+                )
             } else {
                 format!(
                     "generator.subschema_for::<{}>()",

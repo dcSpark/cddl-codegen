@@ -148,7 +148,6 @@ entries = [
   "matrix.incremental-group-choice-extension",
   "matrix.heterogeneous-array.occurrence-bounds",
   "matrix.open-array.optional-adjacency",
-  "matrix.fixed-array.static-representation",
   "shared-carrier-delivery-requirements",
   "matrix.inline-group-occurrence-carrier",
   "matrix.cbor-any-boundary",
@@ -626,46 +625,6 @@ action_on_fire_md = '''model only demanded seam data
 predicate_kind = "event"
 event_md = '''a concrete query needs it
 '''
-
-[[record]]
-id = "matrix.fixed-array.static-representation"
-title = "Compose exact static-array JSON support through containing shapes"
-
-[record.payload]
-kind = "work"
-body_md = '''### Compose exact static-array JSON support through containing shapes
-
-Exact ordinary/preserve `n*n T` occurrences now use `[T; n]` across Rust, CBOR, wasm, component,
-cross-crate projection, matrix classification, and boundary vectors. The pinned serde/schemars
-versions only derive arrays through length 32. The generated `static_array` runtime recursively
-adapts an ordinary, `@duplicates preserve`, or `@duplicates reject` loose, nonempty, bounded,
-nullable, or exact collection tree containing a wide exact array or an exact natural-`any` position.
-Every node stays a JSON list;
-JSON stages loose data and restricted nodes re-enter their native checked `TryFrom<Vec<_>>` doors,
-while schemas retain each node's authored bounds. The shared descriptor covers direct field/newtype
-payloads, optional fields, aliases, and type-choice payloads, including a natural rather than tagged
-AnyCbor leaf.
-
-It is not a general container solution: map/table entries, open-struct map rest rows, and dynamic
-map rows remain outside the recursive descriptor. Captured open-array occurrence segments now use it
-at their derive-owned field seam, retaining the established named list shape, loose omission/defaulting,
-and restricted-carrier door. Duplicate-reject loose/nonempty/bounded/exact set carriers
-now enter their existing `OrderedSet` / `NonEmptyOrderedSet` / `BoundedOrderedSet`
-`TryFrom<Vec<_>>` door, preserve insertion order, and publish `uniqueItems: true` in list schemas.
-Optional+nullable
-(`? field: (exact-array / null)`) fields now compose their outer presence option with the recursive
-descriptor for the inner nullable value, preserving absent/present-null/present-value JSON and the
-optional nullable schema. With either JSON flag, the generator still rejects the remaining containers
-before codegen rather than emitting a crate that fails to compile.
-
-'''
-work_state = "ready"
-work_intent = "build_capability"
-work_kind = "feature"
-risk = "wrong_public_api"
-acceptance_md = '''Extend the JSON derives and schema handover through the remaining map-containing containers that hold a wide ordinary/preserve or duplicate-reject array: map/table entries, open-struct map rest rows, and dynamic map rows. Each newly admitted restricted carrier must stage loose data and enter its existing checked construction door; schemas must retain the outer bounds as well as each exact inner `minItems`/`maxItems`. Preserve CDDL `any`'s natural JSON rendering rather than falling back to AnyCbor's tagged codec. Add execution coverage for every newly admitted carrier and keep every residue rejected under either JSON flag until its generated crate compiles without serde/schemars' length-32 array traits.'''
-priority_band = "normal"
-priority_rationale_md = '''The native carrier is shipped, but JSON flags must not turn otherwise-supported CDDL nesting into a generated-crate compile failure. The remaining work is an adapter-composition design, not a reason to revert the representation.'''
 
 [[record]]
 id = "matrix.fixed-bytes.lowercase-base64-parser"

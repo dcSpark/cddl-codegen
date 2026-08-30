@@ -274,16 +274,24 @@ impl RustType {
 
     /// Whether this JSON-derived type would require serde/schemars traits on a wide (`> 32`)
     /// native exact array at a position our generated adapters do not yet own. The adapters cover
-    /// a direct static array plus every loose, nonempty, or bounded sequence/set tree. Maps still
-    /// refuse: their native carriers are not owned by the recursive descriptor. Keep this shape
+    /// a direct static array plus every loose, nonempty, or bounded sequence/set tree and map-value
+    /// tree. Object-map keys remain deliberately outside that ownership: JSON member names cannot
+    /// faithfully carry a native exact array. Pair maps are positional, so both sides are owned.
+    /// Keep this shape
     /// predicate in the IR, beside the carrier recognition,
     /// so a graceful parser/finalize refusal and the roadmap describe the same boundary.
     pub fn has_unadapted_wide_static_array_json_shape(&self) -> bool {
-        fn supported_sequence_tree(ty: &RustType) -> bool {
+        fn supported_tree(ty: &RustType) -> bool {
             match ty.conceptual_type.resolve_alias_shallow() {
-                ConceptualRustType::Array(inner) => supported_sequence_tree(inner),
-                ConceptualRustType::Optional(inner) => supported_sequence_tree(inner),
-                ConceptualRustType::Map(_, _) => false,
+                ConceptualRustType::Array(inner) => supported_tree(inner),
+                ConceptualRustType::Optional(inner) => supported_tree(inner),
+                ConceptualRustType::Map(key, value) => {
+                    (ty.is_preserve_pair_map()
+                        || (!key.contains_wide_static_array()
+                            && !key.contains_exact_natural_any_static_array()))
+                        && supported_tree(key)
+                        && supported_tree(value)
+                }
                 _ => true,
             }
         }
@@ -291,7 +299,7 @@ impl RustType {
         if !self.contains_wide_static_array() {
             return false;
         }
-        !supported_sequence_tree(self)
+        !supported_tree(self)
     }
 
     /// Whether this type contains an exact static array whose leaf element is CDDL `any`. Such an
@@ -321,20 +329,26 @@ impl RustType {
     }
 
     /// Natural JSON has a separate adapter family for an exact static array whose ELEMENT is CDDL
-    /// `any`. A direct `[any; N]` and every sequence/set tree are owned by the recursive
-    /// descriptor. Maps still refuse rather than falling back to
-    /// `AnyCbor`'s tagged serde/schema implementation.
+    /// `any`. A direct `[any; N]`, every sequence/set tree, and map-value tree are owned by the
+    /// recursive descriptor. Object-map keys remain refused; pair-map keys are positional and are
+    /// adapted too rather than falling back to `AnyCbor`'s tagged serde/schema implementation.
     pub fn has_unadapted_natural_any_static_array_json_shape(&self) -> bool {
-        fn supported_sequence_tree(ty: &RustType) -> bool {
+        fn supported_tree(ty: &RustType) -> bool {
             match ty.conceptual_type.resolve_alias_shallow() {
-                ConceptualRustType::Array(inner) => supported_sequence_tree(inner),
-                ConceptualRustType::Optional(inner) => supported_sequence_tree(inner),
-                ConceptualRustType::Map(_, _) => false,
+                ConceptualRustType::Array(inner) => supported_tree(inner),
+                ConceptualRustType::Optional(inner) => supported_tree(inner),
+                ConceptualRustType::Map(key, value) => {
+                    (ty.is_preserve_pair_map()
+                        || (!key.contains_wide_static_array()
+                            && !key.contains_exact_natural_any_static_array()))
+                        && supported_tree(key)
+                        && supported_tree(value)
+                }
                 _ => true,
             }
         }
 
-        self.contains_exact_natural_any_static_array() && !supported_sequence_tree(self)
+        self.contains_exact_natural_any_static_array() && !supported_tree(self)
     }
 
     /// Exact-array endpoints in the legacy occurrence-wrapper vocabulary. This is only for
