@@ -82,6 +82,15 @@ emission.preserve.status = "supported"
 emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
 [[support]]
+id = "ctl.ne.nint_minus_one"
+status = "supported"
+evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 11 foreign spec-derived vector(s); ruby=ok(validate) rust=ok"
+emission.json.status = "supported"
+emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.preserve.status = "supported"
+emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
+
+[[support]]
 id = "ctl.ne.one"
 status = "supported"
 evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok(validate) rust=ok"
@@ -139,8 +148,8 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 id = "dsl.custom_json"
 status = "supported"
 evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok (vendor profile: validity by cddl-codegen; ruby/rust informational)"
-emission.json.status = "supported"
-emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.json.status = "unsupported"
+emission.json.evidence = "probe (emission=json): cddl-codegen compiles but emitted round-trip tests fail (cargo test exit 101)"
 emission.preserve.status = "supported"
 emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
@@ -2067,8 +2076,8 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 id = "contain.occurrence-target.memberkey.type1.open_struct_bounded"
 status = "supported"
 evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
-emission.json.status = "supported"
-emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.json.status = "unsupported"
+emission.json.evidence = "probe (emission=json): cddl-codegen compiles but emitted round-trip tests fail (cargo test exit 101)"
 emission.preserve.status = "supported"
 emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
@@ -2076,8 +2085,8 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 id = "contain.occurrence-target.memberkey.type1.open_struct_bytes_key"
 status = "supported"
 evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 8 foreign spec-derived vector(s); ruby=ok rust=ok"
-emission.json.status = "supported"
-emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.json.status = "unsupported"
+emission.json.evidence = "probe (emission=json): cddl-codegen compiles but emitted round-trip tests fail (cargo test exit 101)"
 emission.preserve.status = "supported"
 emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
@@ -2113,8 +2122,8 @@ evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
 id = "contain.occurrence-target.memberkey.type1.open_struct_plus"
 status = "supported"
 evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm compiles (no minted wasm surface); accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
-emission.json.status = "supported"
-emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.json.status = "unsupported"
+emission.json.evidence = "probe (emission=json): cddl-codegen compiles but emitted round-trip tests fail (cargo test exit 101)"
 emission.preserve.status = "supported"
 emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
@@ -2122,8 +2131,8 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 id = "contain.occurrence-target.memberkey.type1.open_table"
 status = "supported"
 evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 6 foreign spec-derived vector(s); ruby=ok rust=ok"
-emission.json.status = "supported"
-emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.json.status = "unsupported"
+emission.json.evidence = "probe (emission=json): cddl-codegen compiles but emitted round-trip tests fail (cargo test exit 101)"
 emission.preserve.status = "supported"
 emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
@@ -2131,8 +2140,8 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 id = "contain.occurrence-target.memberkey.type1.open_table_catchall_bounded"
 status = "supported"
 evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
-emission.json.status = "supported"
-emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.json.status = "unsupported"
+emission.json.evidence = "probe (emission=json): cddl-codegen compiles but emitted round-trip tests fail (cargo test exit 101)"
 emission.preserve.status = "supported"
 emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
@@ -2140,8 +2149,8 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 id = "contain.occurrence-target.memberkey.type1.open_table_catchall_plus"
 status = "supported"
 evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
-emission.json.status = "supported"
-emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.json.status = "unsupported"
+emission.json.evidence = "probe (emission=json): cddl-codegen compiles but emitted round-trip tests fail (cargo test exit 101)"
 emission.preserve.status = "supported"
 emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
@@ -2149,8 +2158,8 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 id = "contain.occurrence-target.memberkey.type1.open_table_plus"
 status = "supported"
 evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 8 foreign spec-derived vector(s); ruby=ok rust=ok"
-emission.json.status = "supported"
-emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.json.status = "unsupported"
+emission.json.evidence = "probe (emission=json): cddl-codegen compiles but emitted round-trip tests fail (cargo test exit 101)"
 emission.preserve.status = "supported"
 emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
@@ -2158,8 +2167,8 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 id = "contain.occurrence-target.memberkey.type1.open_table_typed_bounded"
 status = "supported"
 evidence = "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok"
-emission.json.status = "supported"
-emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
+emission.json.status = "unsupported"
+emission.json.evidence = "probe (emission=json): cddl-codegen compiles but emitted round-trip tests fail (cargo test exit 101)"
 emission.preserve.status = "supported"
 emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
@@ -2274,15 +2283,6 @@ evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
 id = "contain.top-level.type2.unwrap"
 status = "unsupported"
 evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
-
-[[support]]
-id = "ctl.ne.nint_minus_one"
-status = "supported"
-evidence = "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 11 foreign spec-derived vector(s); ruby=ok(validate) rust=ok"
-emission.json.status = "supported"
-emission.json.evidence = "probe (emission=json): cddl-codegen exit 0; compiles; round-trips"
-emission.preserve.status = "supported"
-emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips"
 
 # --- per-control-op support, keyed by ctl.<name> (IANA registry; ruby/rust corroborate only) ---
 

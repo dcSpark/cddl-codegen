@@ -438,14 +438,18 @@
     },
     {
       "gate": "generated_local_scope_wide_crates_compile",
-      "warm_ms": 194000,
-      "n": 1,
-      "measured": "2026-08-17",
+      "warm_ms": 394000,
+      "n": 10,
+      "measured": "2026-08-30",
       "machine": "86216c55",
       "history": [
         {
           "date": "2026-08-17",
           "warm_ms": 194000
+        },
+        {
+          "date": "2026-08-30",
+          "warm_ms": 394000
         }
       ]
     },
@@ -838,15 +842,11 @@
     },
     {
       "gate": "recombination_crates_execute",
-      "warm_ms": 256000,
-      "n": 11,
-      "measured": "2026-08-19",
+      "warm_ms": 323000,
+      "n": 10,
+      "measured": "2026-08-30",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-08-14",
-          "warm_ms": 103000
-        },
         {
           "date": "2026-08-18",
           "warm_ms": 124000
@@ -862,6 +862,10 @@
         {
           "date": "2026-08-19",
           "warm_ms": 256000
+        },
+        {
+          "date": "2026-08-30",
+          "warm_ms": 323000
         }
       ]
     },
@@ -1033,15 +1037,11 @@
     },
     {
       "gate": "rust_oracle_fingerprint",
-      "warm_ms": 44000,
-      "n": 11,
-      "measured": "2026-08-15",
+      "warm_ms": 28000,
+      "n": 10,
+      "measured": "2026-08-30",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-08-05",
-          "warm_ms": 29000
-        },
         {
           "date": "2026-08-06",
           "warm_ms": 36000
@@ -1057,6 +1057,10 @@
         {
           "date": "2026-08-15",
           "warm_ms": 44000
+        },
+        {
+          "date": "2026-08-30",
+          "warm_ms": 28000
         }
       ]
     },
