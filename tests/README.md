@@ -2332,7 +2332,11 @@ beyond finite fixed domains need a future design rather than a guessed decoder. 
   arrays. It also executes dynamic loose/nonempty/bounded/exact/middle rows, nested reject carriers,
   and natural exact-`any` descendants. It also executes loose/nonempty/bounded unique and pair maps,
   duplicate pair retention, natural-`any` map values, and open-struct/open-table dynamic rows, with
-  inner exact and outer carrier schema bounds.
+  inner exact and outer carrier schema bounds. The focused preserve companion
+  `tests/static-array-map-preserve-e2e`
+  (`integration_tests::static_array_map_preserve_json_e2e`, compiled) executes
+  `OrderedHashMap` recursive deserialization and its wide exact-array schema bounds; its
+  `json_preserve` corpus-parity row also keeps the matching wasm counterpart live.
 - **Snapshots / cross-face** — `open_array_default` / `open_array_json` / `open_array_wasm` profile
   rows retain final-tail byte/API compatibility; `open_array_preserve` snapshots the middle capture
   input. The shared component build fixture wires the declared-major helper fragment and, together
