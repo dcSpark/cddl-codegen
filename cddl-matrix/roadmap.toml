@@ -232,6 +232,7 @@ entries = [
   "matrix.matching-semantics-boundary",
   "matrix.interaction-tuples-boundary",
   "matrix.over-acceptance-ast-notes",
+  "matrix.non-string-json-map-key-boundary",
   "matrix.wasm-macro-behavior-boundary",
   "matrix.extern-emitted-test-boundary",
   "matrix.extern-interface-sentinel-boundary",
@@ -413,39 +414,6 @@ authority_reference_id = "roadmap-findings-open-candidate-cddl-codegen-fixes-the
 rationale_md = '''cbor-any's self-describe tag is a complete-stream property rather than an ordinary generated value; retain the role-neutral graceful refusal unless a new explicit maintainer decision supersedes this boundary.
 '''
 permanence = "permanent"
-
-[[record]]
-id = "matrix.non-string-json-map-key-boundary"
-title = "Non-string CBOR map keys remain an intentional strict JSON boundary."
-
-[record.payload]
-kind = "matrix_policy"
-body_md = '''- **Non-string CBOR map keys remain an intentional strict JSON boundary.** JSON object member
-  names are strings, while CBOR tables may use bytes or composite keys. Generated serde derives
-  therefore retain serde_json's loud `key must be a string` failure for ordinary maps, and the
-  hand-written open-table/open-struct faces likewise strict-fail (`OpenTableKeyImageError`) rather
-  than silently mapping bytes to a text convention. A generated hex/base64 spelling would be a
-  lossy, non-obvious public mapping and is not a bug fix; it needs an explicit consumer/maintainer
-  API decision. The corpus JSON-profile residents execute under a coarser expected-red contract:
-  any runtime red is accepted, but a green result resurfaces for review. The six multifile
-  open-table placement residents and the JSON recombination bstr/bytes-table residents are
-  stronger probes: each executes and must retain its recorded failure signature. Every control
-  resurfaces a newly passing cell for review of whether this boundary contract changed before its
-  pin is removed.
-'''
-policy_kind = "boundary"
-authority_reference_id = "docs-output-format-typed-key-domains-in-json"
-rationale_md = '''A JSON object cannot injectively represent arbitrary CBOR map keys. Retain loud refusal until a consumer-driven API decision explicitly adopts and documents a distinct lossy key-image convention.'''
-permanence = "reopenable"
-
-[record.payload.reopening_signal]
-observer = "JSON API consumer or maintainer"
-dimension = "demand for a documented, intentionally lossy CBOR-map-to-JSON key convention"
-action_on_fire_md = '''Review a separately named JSON mapping API, its collision/loss semantics, migration impact, and complete map/open-table/open-struct execution coverage; do not silently change the existing derives.'''
-
-[record.payload.reopening_signal.predicate]
-predicate_kind = "event"
-event_md = '''A consumer or maintainer asks for a total JSON representation of non-string CBOR map keys and explicitly accepts its loss/collision contract.'''
 
 [[record]]
 id = "matrix.control-host-placement-space"
@@ -1500,6 +1468,39 @@ action_on_fire_md = '''design opt-in nominalization
 predicate_kind = "event"
 event_md = '''one crate carries more than a handful
 '''
+
+[[record]]
+id = "matrix.non-string-json-map-key-boundary"
+title = "Non-string CBOR map keys remain an intentional strict JSON boundary."
+
+[record.payload]
+kind = "matrix_policy"
+body_md = '''- **Non-string CBOR map keys remain an intentional strict JSON boundary.** JSON object member
+  names are strings, while CBOR tables may use bytes or composite keys. Generated serde derives
+  therefore retain serde_json's loud `key must be a string` failure for ordinary maps, and the
+  hand-written open-table/open-struct faces likewise strict-fail (`OpenTableKeyImageError`) rather
+  than silently mapping bytes to a text convention. A generated hex/base64 spelling would be a
+  lossy, non-obvious public mapping and is not a bug fix; it needs an explicit consumer/maintainer
+  API decision. The corpus JSON-profile residents execute under a coarser expected-red contract:
+  any runtime red is accepted, but a green result resurfaces for review. The six multifile
+  open-table placement residents and the JSON recombination bstr/bytes-table residents are
+  stronger probes: each executes and must retain its recorded failure signature. Every control
+  resurfaces a newly passing cell for review of whether this boundary contract changed before its
+  pin is removed.
+'''
+policy_kind = "boundary"
+authority_reference_id = "docs-output-format-typed-key-domains-in-json"
+rationale_md = '''A JSON object cannot injectively represent arbitrary CBOR map keys. Retain loud refusal until a consumer-driven API decision explicitly adopts and documents a distinct lossy key-image convention.'''
+permanence = "reopenable"
+
+[record.payload.reopening_signal]
+observer = "JSON API consumer or maintainer"
+dimension = "demand for a documented, intentionally lossy CBOR-map-to-JSON key convention"
+action_on_fire_md = '''Review a separately named JSON mapping API, its collision/loss semantics, migration impact, and complete map/open-table/open-struct execution coverage; do not silently change the existing derives.'''
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = '''A consumer or maintainer asks for a total JSON representation of non-string CBOR map keys and explicitly accepts its loss/collision contract.'''
 
 [[record]]
 id = "matrix.non-uint-range-upstream"
@@ -2654,13 +2655,6 @@ path = "draft/roadmaps/matrix-roadmap.md"
 heading = "Findings — open (candidate cddl-codegen fixes; the matrix's actual payoff)"
 
 [[reference]]
-id = "docs-output-format-typed-key-domains-in-json"
-source = "matrix.non-string-json-map-key-boundary"
-kind = "file_heading"
-path = "docs/docs/output_format.mdx"
-heading = "Typed key domains in JSON"
-
-[[reference]]
 id = "roadmap-wasm-abi-multifile-placement-matrices-remaining"
 source = "matrix.emission-input-mode-honesty"
 kind = "file_heading"
@@ -2807,6 +2801,13 @@ source = "matrix.named-rule-map-key-upstream"
 kind = "external_release"
 project = "rust cddl"
 release = "A published release resolves named-rule and parenthesized-choice map-key domains at the correct key and containing-rule positions."
+
+[[reference]]
+id = "docs-output-format-typed-key-domains-in-json"
+source = "matrix.non-string-json-map-key-boundary"
+kind = "file_heading"
+path = "docs/docs/output_format.mdx"
+heading = "Typed key domains in JSON"
 
 [[reference]]
 id = "release-rust-cddl-a-published-release-contains-commit-n4"
