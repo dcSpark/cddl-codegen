@@ -5077,6 +5077,12 @@ than flowing into it. `component_tests::component_crate_builds_for_wasm32_wasip2
 `BUILD_SMOKE_FIXTURES` set of representative fixtures; this asks the same question of all of them,
 and the answer differs, which is the whole argument for it.
 
+The corpus includes `cbor_host_placement`, the `.cbor` host-placement product: mandatory and optional
+members in three nominal records — direct and named array records plus one map record — with direct
+versus named-rule carriage. It keeps the controller payload to `uint`; dedicated `.cbor` fixtures own
+payload-shape coverage. This gate is the component-face compilation leg for all eight member positions,
+while the corpus snapshot and ordinary compile/test legs cover their respective faces.
+
 **`check`, not `build`.** The link is already asserted on the representative fixtures by the build
 smoke; the class corpus breadth catches is glue naming a trait, method or macro the bindings never
 minted, and that is a type-check failure. Probed rather than assumed — `cargo check` expands

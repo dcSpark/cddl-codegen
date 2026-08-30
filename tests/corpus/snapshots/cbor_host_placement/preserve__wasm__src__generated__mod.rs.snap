@@ -1,0 +1,236 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct CborArrayDirectHostPlacement(pub(crate) cddl_lib::CborArrayDirectHostPlacement);
+
+#[wasm_bindgen]
+impl CborArrayDirectHostPlacement {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CborArrayDirectHostPlacement, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn array_direct_mandatory(&self) -> u64 {
+        self.0.array_direct_mandatory
+    }
+
+    pub fn set_array_direct_optional(&mut self, array_direct_optional: u64) {
+        self.0.array_direct_optional = Some(array_direct_optional)
+    }
+
+    pub fn array_direct_optional(&self) -> Option<u64> {
+        self.0.array_direct_optional
+    }
+
+    pub fn new(array_direct_mandatory: u64) -> Self {
+        Self(cddl_lib::CborArrayDirectHostPlacement::new(
+            array_direct_mandatory,
+        ))
+    }
+}
+
+impl From<cddl_lib::CborArrayDirectHostPlacement> for CborArrayDirectHostPlacement {
+    fn from(native: cddl_lib::CborArrayDirectHostPlacement) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CborArrayDirectHostPlacement> for cddl_lib::CborArrayDirectHostPlacement {
+    fn from(wasm: CborArrayDirectHostPlacement) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::CborArrayDirectHostPlacement> for CborArrayDirectHostPlacement {
+    fn as_ref(&self) -> &cddl_lib::CborArrayDirectHostPlacement {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct CborArrayNamedHostPlacement(pub(crate) cddl_lib::CborArrayNamedHostPlacement);
+
+#[wasm_bindgen]
+impl CborArrayNamedHostPlacement {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CborArrayNamedHostPlacement, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn array_named_mandatory(&self) -> CborPayload {
+        self.0.array_named_mandatory.clone().into()
+    }
+
+    pub fn set_array_named_optional(&mut self, array_named_optional: &CborPayload) {
+        self.0.array_named_optional = Some(array_named_optional.clone().into())
+    }
+
+    pub fn array_named_optional(&self) -> Option<CborPayload> {
+        self.0
+            .array_named_optional
+            .clone()
+            .map(std::convert::Into::into)
+    }
+
+    pub fn new(array_named_mandatory: &CborPayload) -> Self {
+        Self(cddl_lib::CborArrayNamedHostPlacement::new(
+            array_named_mandatory.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::CborArrayNamedHostPlacement> for CborArrayNamedHostPlacement {
+    fn from(native: cddl_lib::CborArrayNamedHostPlacement) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CborArrayNamedHostPlacement> for cddl_lib::CborArrayNamedHostPlacement {
+    fn from(wasm: CborArrayNamedHostPlacement) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::CborArrayNamedHostPlacement> for CborArrayNamedHostPlacement {
+    fn as_ref(&self) -> &cddl_lib::CborArrayNamedHostPlacement {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct CborMapHostPlacement(pub(crate) cddl_lib::CborMapHostPlacement);
+
+#[wasm_bindgen]
+impl CborMapHostPlacement {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CborMapHostPlacement, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn map_direct_mandatory(&self) -> u64 {
+        self.0.map_direct_mandatory
+    }
+
+    pub fn map_named_mandatory(&self) -> CborPayload {
+        self.0.map_named_mandatory.clone().into()
+    }
+
+    pub fn set_map_direct_optional(&mut self, map_direct_optional: u64) {
+        self.0.map_direct_optional = Some(map_direct_optional)
+    }
+
+    pub fn map_direct_optional(&self) -> Option<u64> {
+        self.0.map_direct_optional
+    }
+
+    pub fn set_map_named_optional(&mut self, map_named_optional: &CborPayload) {
+        self.0.map_named_optional = Some(map_named_optional.clone().into())
+    }
+
+    pub fn map_named_optional(&self) -> Option<CborPayload> {
+        self.0
+            .map_named_optional
+            .clone()
+            .map(std::convert::Into::into)
+    }
+
+    pub fn new(map_direct_mandatory: u64, map_named_mandatory: &CborPayload) -> Self {
+        Self(cddl_lib::CborMapHostPlacement::new(
+            map_direct_mandatory,
+            map_named_mandatory.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::CborMapHostPlacement> for CborMapHostPlacement {
+    fn from(native: cddl_lib::CborMapHostPlacement) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CborMapHostPlacement> for cddl_lib::CborMapHostPlacement {
+    fn from(wasm: CborMapHostPlacement) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::CborMapHostPlacement> for CborMapHostPlacement {
+    fn as_ref(&self) -> &cddl_lib::CborMapHostPlacement {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct CborPayload(pub(crate) cddl_lib::CborPayload);
+
+#[wasm_bindgen]
+impl CborPayload {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CborPayload, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: u64) -> Self {
+        Self(cddl_lib::CborPayload::new(inner))
+    }
+
+    pub fn get(&self) -> u64 {
+        self.0.get()
+    }
+}
+
+impl From<cddl_lib::CborPayload> for CborPayload {
+    fn from(native: cddl_lib::CborPayload) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CborPayload> for cddl_lib::CborPayload {
+    fn from(wasm: CborPayload) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::CborPayload> for CborPayload {
+    fn as_ref(&self) -> &cddl_lib::CborPayload {
+        &self.0
+    }
+}

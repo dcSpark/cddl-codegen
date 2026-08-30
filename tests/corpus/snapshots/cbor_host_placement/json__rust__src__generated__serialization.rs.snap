@@ -1,0 +1,367 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use super::*;
+use crate::generated::error::*;
+use alloc::borrow::ToOwned;
+use alloc::string::String;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for CborArrayDirectHostPlacement {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(
+            1 + match &self.array_direct_optional {
+                Some(_) => 1,
+                None => 0,
+            },
+        ))?;
+        let mut array_direct_mandatory_inner_se = Serializer::new_vec();
+        array_direct_mandatory_inner_se.write_unsigned_integer(self.array_direct_mandatory)?;
+        let array_direct_mandatory_bytes = array_direct_mandatory_inner_se.finalize();
+        serializer.write_bytes(&array_direct_mandatory_bytes)?;
+        if let Some(field) = &self.array_direct_optional {
+            let mut array_direct_optional_inner_se = Serializer::new_vec();
+            array_direct_optional_inner_se.write_unsigned_integer(*field)?;
+            let array_direct_optional_bytes = array_direct_optional_inner_se.finalize();
+            serializer.write_bytes(&array_direct_optional_bytes)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for CborArrayDirectHostPlacement {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            let array_direct_mandatory = (|| -> Result<_, DeserializeError> {
+                let array_direct_mandatory_bytes = raw.bytes()?;
+                let inner_de = &mut Deserializer::from(array_direct_mandatory_bytes);
+                let array_direct_mandatory_payload = inner_de.unsigned_integer()?;
+                if !inner_de.as_slice().is_empty() {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+                }
+                Ok(array_direct_mandatory_payload)
+            })()
+            .map_err(|e| e.annotate("array_direct_mandatory"))?;
+            let array_direct_optional = if raw
+                .cbor_type()
+                .map(|ty| ty == cbor_event::Type::Bytes)
+                .unwrap_or(false)
+            {
+                (|| -> Result<_, DeserializeError> {
+                    let array_direct_optional_bytes = raw.bytes()?;
+                    let inner_de = &mut Deserializer::from(array_direct_optional_bytes);
+                    read_len.read_elems(1)?;
+                    let array_direct_optional_payload = inner_de.unsigned_integer()?;
+                    if !inner_de.as_slice().is_empty() {
+                        return Err(
+                            DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into()
+                        );
+                    }
+                    Ok(array_direct_optional_payload)
+                })()
+                .map_err(|e| e.annotate("array_direct_optional"))
+                .map(Some)
+            } else {
+                Ok(None)
+            }?;
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(CborArrayDirectHostPlacement {
+                array_direct_mandatory,
+                array_direct_optional,
+            })
+        })()
+        .map_err(|e| e.annotate("CborArrayDirectHostPlacement"))
+    }
+}
+
+impl cbor_event::se::Serialize for CborArrayNamedHostPlacement {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(
+            1 + match &self.array_named_optional {
+                Some(_) => 1,
+                None => 0,
+            },
+        ))?;
+        self.array_named_mandatory.serialize(serializer)?;
+        if let Some(field) = &self.array_named_optional {
+            field.serialize(serializer)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for CborArrayNamedHostPlacement {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            let array_named_mandatory = CborPayload::deserialize(raw)
+                .map_err(|e: DeserializeError| e.annotate("array_named_mandatory"))?;
+            let array_named_optional = if raw
+                .cbor_type()
+                .map(|ty| ty == cbor_event::Type::Bytes)
+                .unwrap_or(false)
+            {
+                (|| -> Result<_, DeserializeError> {
+                    read_len.read_elems(1)?;
+                    CborPayload::deserialize(raw)
+                })()
+                .map_err(|e| e.annotate("array_named_optional"))
+                .map(Some)
+            } else {
+                Ok(None)
+            }?;
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(CborArrayNamedHostPlacement {
+                array_named_mandatory,
+                array_named_optional,
+            })
+        })()
+        .map_err(|e| e.annotate("CborArrayNamedHostPlacement"))
+    }
+}
+
+impl cbor_event::se::Serialize for CborMapHostPlacement {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map(cbor_event::Len::Len(
+            2 + match &self.map_direct_optional {
+                Some(_) => 1,
+                None => 0,
+            } + match &self.map_named_optional {
+                Some(_) => 1,
+                None => 0,
+            },
+        ))?;
+        if let Some(field) = &self.map_named_optional {
+            serializer.write_text("map_named_optional")?;
+            field.serialize(serializer)?;
+        }
+        if let Some(field) = &self.map_direct_optional {
+            serializer.write_text("map_direct_optional")?;
+            let mut map_direct_optional_inner_se = Serializer::new_vec();
+            map_direct_optional_inner_se.write_unsigned_integer(*field)?;
+            let map_direct_optional_bytes = map_direct_optional_inner_se.finalize();
+            serializer.write_bytes(&map_direct_optional_bytes)?;
+        }
+        serializer.write_text("map_named_mandatory")?;
+        self.map_named_mandatory.serialize(serializer)?;
+        serializer.write_text("map_direct_mandatory")?;
+        let mut map_direct_mandatory_inner_se = Serializer::new_vec();
+        map_direct_mandatory_inner_se.write_unsigned_integer(self.map_direct_mandatory)?;
+        let map_direct_mandatory_bytes = map_direct_mandatory_inner_se.finalize();
+        serializer.write_bytes(&map_direct_mandatory_bytes)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for CborMapHostPlacement {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(2)?;
+            let mut map_named_optional = None;
+            let mut map_direct_optional = None;
+            let mut map_named_mandatory = None;
+            let mut map_direct_mandatory = None;
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into());
+                    }
+                    cbor_event::Type::Text => match raw.text()?.as_str() {
+                        "map_named_optional" => {
+                            if map_named_optional.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "map_named_optional".into(),
+                                ))
+                                .into());
+                            }
+                            map_named_optional = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    read_len.read_elems(1)?;
+                                    CborPayload::deserialize(raw)
+                                })()
+                                .map_err(|e| e.annotate("map_named_optional"))?,
+                            );
+                        }
+                        "map_direct_optional" => {
+                            if map_direct_optional.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "map_direct_optional".into(),
+                                ))
+                                .into());
+                            }
+                            map_direct_optional = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    let map_direct_optional_bytes = raw.bytes()?;
+                                    let inner_de =
+                                        &mut Deserializer::from(map_direct_optional_bytes);
+                                    read_len.read_elems(1)?;
+                                    let map_direct_optional_payload =
+                                        inner_de.unsigned_integer()?;
+                                    if !inner_de.as_slice().is_empty() {
+                                        return Err(DeserializeFailure::CBOR(
+                                            cbor_event::Error::TrailingData,
+                                        )
+                                        .into());
+                                    }
+                                    Ok(map_direct_optional_payload)
+                                })()
+                                .map_err(|e| e.annotate("map_direct_optional"))?,
+                            );
+                        }
+                        "map_named_mandatory" => {
+                            if map_named_mandatory.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "map_named_mandatory".into(),
+                                ))
+                                .into());
+                            }
+                            map_named_mandatory = Some(CborPayload::deserialize(raw).map_err(
+                                |e: DeserializeError| e.annotate("map_named_mandatory"),
+                            )?);
+                        }
+                        "map_direct_mandatory" => {
+                            if map_direct_mandatory.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "map_direct_mandatory".into(),
+                                ))
+                                .into());
+                            }
+                            map_direct_mandatory = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    let map_direct_mandatory_bytes = raw.bytes()?;
+                                    let inner_de =
+                                        &mut Deserializer::from(map_direct_mandatory_bytes);
+                                    let map_direct_mandatory_payload =
+                                        inner_de.unsigned_integer()?;
+                                    if !inner_de.as_slice().is_empty() {
+                                        return Err(DeserializeFailure::CBOR(
+                                            cbor_event::Error::TrailingData,
+                                        )
+                                        .into());
+                                    }
+                                    Ok(map_direct_mandatory_payload)
+                                })()
+                                .map_err(|e| e.annotate("map_direct_mandatory"))?,
+                            );
+                        }
+                        unknown_key => {
+                            return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                unknown_key.to_owned(),
+                            ))
+                            .into());
+                        }
+                    },
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                        }
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
+                    }
+                }
+                read += 1;
+            }
+            let map_direct_mandatory =
+                match map_direct_mandatory {
+                    Some(x) => x,
+                    None => {
+                        return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(
+                            String::from("map_direct_mandatory"),
+                        ))
+                        .into());
+                    }
+                };
+            let map_named_mandatory =
+                match map_named_mandatory {
+                    Some(x) => x,
+                    None => {
+                        return Err(DeserializeFailure::MandatoryFieldMissing(Key::Str(
+                            String::from("map_named_mandatory"),
+                        ))
+                        .into());
+                    }
+                };
+            read_len.finish()?;
+            Ok(Self {
+                map_direct_mandatory,
+                map_named_mandatory,
+                map_direct_optional,
+                map_named_optional,
+            })
+        })()
+        .map_err(|e| e.annotate("CborMapHostPlacement"))
+    }
+}
+
+impl cbor_event::se::Serialize for CborPayload {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        let mut inner_inner_se = Serializer::new_vec();
+        inner_inner_se.write_unsigned_integer(self.0)?;
+        let inner_bytes = inner_inner_se.finalize();
+        serializer.write_bytes(&inner_bytes)
+    }
+}
+
+impl Deserialize for CborPayload {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let inner_bytes = raw.bytes()?;
+            let inner_de = &mut Deserializer::from(inner_bytes);
+            let inner_payload = inner_de.unsigned_integer()?;
+            if !inner_de.as_slice().is_empty() {
+                return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());
+            }
+            Ok(Self(inner_payload))
+        })()
+        .map_err(|e| e.annotate("CborPayload"))
+    }
+}

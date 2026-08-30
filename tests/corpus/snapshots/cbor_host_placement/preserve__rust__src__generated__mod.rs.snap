@@ -1,0 +1,110 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+pub mod cbor_encodings;
+mod extern_interface_check;
+pub mod serialization;
+
+use cbor_encodings::{
+    CborArrayDirectHostPlacementEncoding, CborArrayNamedHostPlacementEncoding,
+    CborMapHostPlacementEncoding, CborPayloadEncoding,
+};
+
+#[derive(Clone, Debug)]
+pub struct CborArrayDirectHostPlacement {
+    pub array_direct_mandatory: u64,
+    pub array_direct_optional: Option<u64>,
+    pub encodings: Option<CborArrayDirectHostPlacementEncoding>,
+}
+
+impl CborArrayDirectHostPlacement {
+    pub fn new(array_direct_mandatory: u64) -> Self {
+        Self {
+            array_direct_mandatory,
+            array_direct_optional: None,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CborArrayNamedHostPlacement {
+    pub array_named_mandatory: CborPayload,
+    pub array_named_optional: Option<CborPayload>,
+    pub encodings: Option<CborArrayNamedHostPlacementEncoding>,
+}
+
+impl CborArrayNamedHostPlacement {
+    pub fn new(array_named_mandatory: CborPayload) -> Self {
+        Self {
+            array_named_mandatory,
+            array_named_optional: None,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CborMapHostPlacement {
+    pub map_direct_mandatory: u64,
+    pub map_named_mandatory: CborPayload,
+    pub map_direct_optional: Option<u64>,
+    pub map_named_optional: Option<CborPayload>,
+    pub encodings: Option<CborMapHostPlacementEncoding>,
+}
+
+impl CborMapHostPlacement {
+    pub fn new(map_direct_mandatory: u64, map_named_mandatory: CborPayload) -> Self {
+        Self {
+            map_direct_mandatory,
+            map_named_mandatory,
+            map_direct_optional: None,
+            map_named_optional: None,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CborPayload {
+    pub(crate) inner: u64,
+    pub encodings: Option<CborPayloadEncoding>,
+}
+
+impl CborPayload {
+    pub fn get(&self) -> u64 {
+        self.inner
+    }
+
+    pub fn new(inner: u64) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<u64> for CborPayload {
+    fn from(inner: u64) -> Self {
+        CborPayload::new(inner)
+    }
+}
+
+impl From<CborPayload> for u64 {
+    fn from(wrapper: CborPayload) -> Self {
+        wrapper.inner
+    }
+}

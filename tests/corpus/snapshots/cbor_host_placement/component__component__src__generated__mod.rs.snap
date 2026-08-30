@@ -1,0 +1,205 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type CborArrayDirectHostPlacement = WitCborArrayDirectHostPlacement;
+    type CborArrayNamedHostPlacement = WitCborArrayNamedHostPlacement;
+    type CborMapHostPlacement = WitCborMapHostPlacement;
+    type CborPayload = WitCborPayload;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitCborArrayDirectHostPlacement(pub RefCell<cddl_lib::CborArrayDirectHostPlacement>);
+
+impl wit_types::GuestCborArrayDirectHostPlacement for WitCborArrayDirectHostPlacement {
+    fn new(array_direct_mandatory: u64) -> Self {
+        let inner = cddl_lib::CborArrayDirectHostPlacement::new(array_direct_mandatory);
+        WitCborArrayDirectHostPlacement(RefCell::new(inner))
+    }
+
+    fn array_direct_mandatory(&self) -> u64 {
+        let me = self.0.borrow();
+        me.array_direct_mandatory
+    }
+
+    fn array_direct_optional(&self) -> Option<u64> {
+        let me = self.0.borrow();
+        me.array_direct_optional.as_ref().map(|x| *x)
+    }
+
+    fn set_array_direct_optional(&self, array_direct_optional: u64) {
+        self.0.borrow_mut().array_direct_optional = Some(array_direct_optional);
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::CborArrayDirectHostPlacement as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::CborArrayDirectHostPlacement, String> {
+        <cddl_lib::CborArrayDirectHostPlacement as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::CborArrayDirectHostPlacement::new(WitCborArrayDirectHostPlacement(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitCborArrayNamedHostPlacement(pub RefCell<cddl_lib::CborArrayNamedHostPlacement>);
+
+impl wit_types::GuestCborArrayNamedHostPlacement for WitCborArrayNamedHostPlacement {
+    fn new(array_named_mandatory: wit_types::CborPayloadBorrow<'_>) -> Self {
+        let array_named_mandatory = array_named_mandatory
+            .get::<WitCborPayload>()
+            .0
+            .borrow()
+            .clone();
+        let inner = cddl_lib::CborArrayNamedHostPlacement::new(array_named_mandatory);
+        WitCborArrayNamedHostPlacement(RefCell::new(inner))
+    }
+
+    fn array_named_mandatory(&self) -> wit_types::CborPayload {
+        let me = self.0.borrow();
+        wit_types::CborPayload::new(WitCborPayload(RefCell::new(
+            me.array_named_mandatory.clone(),
+        )))
+    }
+
+    fn array_named_optional(&self) -> Option<wit_types::CborPayload> {
+        let me = self.0.borrow();
+        me.array_named_optional
+            .as_ref()
+            .map(|x| wit_types::CborPayload::new(WitCborPayload(RefCell::new(x.clone()))))
+    }
+
+    fn set_array_named_optional(&self, array_named_optional: wit_types::CborPayloadBorrow<'_>) {
+        let array_named_optional = array_named_optional
+            .get::<WitCborPayload>()
+            .0
+            .borrow()
+            .clone();
+        self.0.borrow_mut().array_named_optional = Some(array_named_optional);
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::CborArrayNamedHostPlacement as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::CborArrayNamedHostPlacement, String> {
+        <cddl_lib::CborArrayNamedHostPlacement as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::CborArrayNamedHostPlacement::new(WitCborArrayNamedHostPlacement(RefCell::new(v))))
+            .map_err(err)
+    }
+}
+
+pub struct WitCborMapHostPlacement(pub RefCell<cddl_lib::CborMapHostPlacement>);
+
+impl wit_types::GuestCborMapHostPlacement for WitCborMapHostPlacement {
+    fn new(
+        map_direct_mandatory: u64,
+        map_named_mandatory: wit_types::CborPayloadBorrow<'_>,
+    ) -> Self {
+        let map_named_mandatory = map_named_mandatory
+            .get::<WitCborPayload>()
+            .0
+            .borrow()
+            .clone();
+        let inner = cddl_lib::CborMapHostPlacement::new(map_direct_mandatory, map_named_mandatory);
+        WitCborMapHostPlacement(RefCell::new(inner))
+    }
+
+    fn map_direct_mandatory(&self) -> u64 {
+        let me = self.0.borrow();
+        me.map_direct_mandatory
+    }
+
+    fn map_named_mandatory(&self) -> wit_types::CborPayload {
+        let me = self.0.borrow();
+        wit_types::CborPayload::new(WitCborPayload(RefCell::new(me.map_named_mandatory.clone())))
+    }
+
+    fn map_direct_optional(&self) -> Option<u64> {
+        let me = self.0.borrow();
+        me.map_direct_optional.as_ref().map(|x| *x)
+    }
+
+    fn set_map_direct_optional(&self, map_direct_optional: u64) {
+        self.0.borrow_mut().map_direct_optional = Some(map_direct_optional);
+    }
+
+    fn map_named_optional(&self) -> Option<wit_types::CborPayload> {
+        let me = self.0.borrow();
+        me.map_named_optional
+            .as_ref()
+            .map(|x| wit_types::CborPayload::new(WitCborPayload(RefCell::new(x.clone()))))
+    }
+
+    fn set_map_named_optional(&self, map_named_optional: wit_types::CborPayloadBorrow<'_>) {
+        let map_named_optional = map_named_optional
+            .get::<WitCborPayload>()
+            .0
+            .borrow()
+            .clone();
+        self.0.borrow_mut().map_named_optional = Some(map_named_optional);
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::CborMapHostPlacement as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::CborMapHostPlacement, String> {
+        <cddl_lib::CborMapHostPlacement as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::CborMapHostPlacement::new(WitCborMapHostPlacement(RefCell::new(v))))
+        .map_err(err)
+    }
+}
+
+pub struct WitCborPayload(pub RefCell<cddl_lib::CborPayload>);
+
+impl wit_types::GuestCborPayload for WitCborPayload {
+    fn new(inner: u64) -> Self {
+        let inner = cddl_lib::CborPayload::new(inner);
+        WitCborPayload(RefCell::new(inner))
+    }
+
+    fn get(&self) -> u64 {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::CborPayload as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::CborPayload, String> {
+        <cddl_lib::CborPayload as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::CborPayload::new(WitCborPayload(RefCell::new(v))))
+            .map_err(err)
+    }
+}

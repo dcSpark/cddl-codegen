@@ -1,0 +1,26 @@
+; `.cbor` host-placement product: occurrence (mandatory/optional) × representation
+; (array-record/map-record) × carriage (direct/named rule). Three nominal records are necessary:
+; direct and named array members have the same bytes head, so two optional members cannot share an
+; array record without entering the settled ambiguous-optional refusal; a map can own both because
+; its keys delimit its members. The `uint` controller is intentional: fixed, tagged, enum,
+; signed-int, inline-container, named-record, nested `.cbor`, non-empty, and rule-body payload
+; classes already have dedicated fixtures. This fixture individuates the member positions that
+; previously hid independent generation, compile, and framing failures.
+cbor_payload = bytes .cbor uint
+
+cbor_array_direct_host_placement = [
+  array_direct_mandatory: bytes .cbor uint,
+  ? array_direct_optional: bytes .cbor uint,
+]
+
+cbor_array_named_host_placement = [
+  array_named_mandatory: cbor_payload,
+  ? array_named_optional: cbor_payload,
+]
+
+cbor_map_host_placement = {
+  map_direct_mandatory: bytes .cbor uint,
+  map_named_mandatory: cbor_payload,
+  ? map_direct_optional: bytes .cbor uint,
+  ? map_named_optional: cbor_payload,
+}

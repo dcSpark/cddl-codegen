@@ -1,0 +1,44 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use crate::generated::serialization::{LenEncoding, StringEncoding};
+use alloc::vec::Vec;
+
+#[derive(Clone, Debug, Default)]
+pub struct CborArrayDirectHostPlacementEncoding {
+    pub len_encoding: LenEncoding,
+    pub array_direct_mandatory_bytes_encoding: StringEncoding,
+    pub array_direct_mandatory_encoding: Option<cbor_event::Sz>,
+    pub array_direct_optional_bytes_encoding: StringEncoding,
+    pub array_direct_optional_encoding: Option<cbor_event::Sz>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct CborArrayNamedHostPlacementEncoding {
+    pub len_encoding: LenEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct CborMapHostPlacementEncoding {
+    pub len_encoding: LenEncoding,
+    pub orig_deser_order: Vec<usize>,
+    pub map_direct_mandatory_bytes_encoding: StringEncoding,
+    pub map_direct_mandatory_encoding: Option<cbor_event::Sz>,
+    pub map_direct_mandatory_key_encoding: StringEncoding,
+    pub map_named_mandatory_key_encoding: StringEncoding,
+    pub map_direct_optional_bytes_encoding: StringEncoding,
+    pub map_direct_optional_encoding: Option<cbor_event::Sz>,
+    pub map_direct_optional_key_encoding: StringEncoding,
+    pub map_named_optional_key_encoding: StringEncoding,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct CborPayloadEncoding {
+    pub inner_bytes_encoding: StringEncoding,
+    pub inner_encoding: Option<cbor_event::Sz>,
+}

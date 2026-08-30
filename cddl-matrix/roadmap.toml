@@ -434,16 +434,19 @@ body_md = '''- **A supported control's HOST-PLACEMENT spelling space — one sup
   refuses. All were found by hand boundary-probing at pickup, none by a gate. The rule going
   forward: when a supported control or feature is found broken at a SECOND point of its spelling
   space, the closing change enumerates that op's full product into corpus fixtures rather than
-  fixing the one probed point — `.default` is the delivered model (`default_value`,
-  `default_mandatory`, `default_array_rep`, `default_scalar_kinds` jointly cover
-  occurrence × representation × operand kind × carriage, and flow into every corpus-input gate on
-  all faces). Enumerating every op's product up front is deferred: the supported-op count times
+  fixing the one probed point. `.default` and `.cbor` are the delivered models: the former's
+  `default_value`, `default_mandatory`, `default_array_rep`, and `default_scalar_kinds` cover
+  occurrence × representation × operand kind × carriage; `cbor_host_placement` covers
+  occurrence × representation × direct/named-rule carriage with a uint controller while the
+  payload-shape fixtures retain the other `.cbor` axes. Both flow into every corpus-input gate on
+  all faces. Enumerating every op's product up front is deferred: the supported-op count times
   the product is large, and one probed point per op is the measured-adequate posture for the ops
   with no breakage history. '''
 signal_md = '''Reopening signal for the mechanical version (a product-enumeration
-  authoring rule enforced per supported op): a SECOND op found broken at an unenumerated
-  host-placement point — measurable by whoever hits the break, and lying on the dimension the
-  deferred cost grows along (the count of ops with proven multi-point breakage; `.default` is one).
+  authoring rule enforced per supported op): the next supported op found broken at a second
+  unenumerated host-placement point — measurable by whoever hits the break, and lying on the
+  dimension the deferred cost grows along (the count of ops with proven multi-point breakage;
+  `.default` and `.cbor` are delivered).
 '''
 work_state = "deferred"
 work_intent = "build_system"
@@ -458,7 +461,7 @@ action_on_fire_md = '''enumerate that operator's full product
 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
-event_md = '''a second operator breaks outside its enumerated host placement
+event_md = '''a supported operator beyond `.default` and `.cbor` breaks at a second unenumerated host placement
 '''
 
 [[record]]

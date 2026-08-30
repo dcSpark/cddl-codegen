@@ -1755,6 +1755,246 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "cbor_host_placement.cbor_array_direct_host_placement"
+axis = "corpus"
+example = "cbor_array_direct_host_placement = [\n  array_direct_mandatory: bytes .cbor uint,\n  ? array_direct_optional: bytes .cbor uint,\n]"
+fixture = "cbor_host_placement"
+rule = "cbor_array_direct_host_placement"
+spec = "__probe_holder = [0, cbor_array_direct_host_placement]\ncbor_array_direct_host_placement = [\n  array_direct_mandatory: bytes .cbor uint,\n  ? array_direct_optional: bytes .cbor uint,\n]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820081431901c2"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200814319042c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200814319048f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008143190738"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081431907ba"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008143190d44"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008143190fac"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082431902ce43190991"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008243190b42431910c0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082431910d7431905bc"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "cbor_host_placement.cbor_array_named_host_placement"
+axis = "corpus"
+example = "cbor_payload = bytes .cbor uint\ncbor_array_named_host_placement = [\n  array_named_mandatory: cbor_payload,\n  ? array_named_optional: cbor_payload,\n]"
+fixture = "cbor_host_placement"
+rule = "cbor_array_named_host_placement"
+spec = "__probe_holder = [0, cbor_array_named_host_placement]\ncbor_payload = bytes .cbor uint\ncbor_array_named_host_placement = [\n  array_named_mandatory: cbor_payload,\n  ? array_named_optional: cbor_payload,\n]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82008143190476"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200814319052c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008143190bb2"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008143190f7a"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200814319122f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008242184f43190944"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008242186d431903eb"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200824218c34319073b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082431911a3431902a5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200824319120943190938"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "cbor_host_placement.cbor_map_host_placement"
+axis = "corpus"
+example = "cbor_payload = bytes .cbor uint\ncbor_map_host_placement = {\n  map_direct_mandatory: bytes .cbor uint,\n  map_named_mandatory: cbor_payload,\n  ? map_direct_optional: bytes .cbor uint,\n  ? map_named_optional: cbor_payload,\n}"
+fixture = "cbor_host_placement"
+rule = "cbor_map_host_placement"
+spec = "__probe_holder = [0, cbor_map_host_placement]\ncbor_payload = bytes .cbor uint\ncbor_map_host_placement = {\n  map_direct_mandatory: bytes .cbor uint,\n  map_named_mandatory: cbor_payload,\n  ? map_direct_optional: bytes .cbor uint,\n  ? map_named_optional: cbor_payload,\n}"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a2746d61705f6469726563745f6d616e6461746f727943190aaf736d61705f6e616d65645f6d616e6461746f727943190413"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a2746d61705f6469726563745f6d616e6461746f7279431911a5736d61705f6e616d65645f6d616e6461746f727943190d02"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a3746d61705f6469726563745f6d616e6461746f7279421884736d61705f6e616d65645f6d616e6461746f7279431903bf736d61705f6469726563745f6f7074696f6e616c43190e70"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a3746d61705f6469726563745f6d616e6461746f72794319031c736d61705f6e616d65645f6d616e6461746f727943190901726d61705f6e616d65645f6f7074696f6e616c43190269"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a3746d61705f6469726563745f6d616e6461746f72794319074d736d61705f6e616d65645f6d616e6461746f72794319115f736d61705f6469726563745f6f7074696f6e616c43190d00"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a3746d61705f6469726563745f6d616e6461746f727943190bd9736d61705f6e616d65645f6d616e6461746f7279431901fd726d61705f6e616d65645f6f7074696f6e616c43190e20"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a3746d61705f6469726563745f6d616e6461746f727943190d03736d61705f6e616d65645f6d616e6461746f727943190efe736d61705f6469726563745f6f7074696f6e616c43190b3b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a3746d61705f6469726563745f6d616e6461746f72794319105f736d61705f6e616d65645f6d616e6461746f727943190ed2726d61705f6e616d65645f6f7074696f6e616c4319084b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a3746d61705f6469726563745f6d616e6461746f72794319124a736d61705f6e616d65645f6d616e6461746f727943190ce7736d61705f6469726563745f6f7074696f6e616c43190750"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a4746d61705f6469726563745f6d616e6461746f727943190414736d61705f6e616d65645f6d616e6461746f727943190f0d736d61705f6469726563745f6f7074696f6e616c43190a51726d61705f6e616d65645f6f7074696f6e616c43190eba"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "cbor_host_placement.cbor_payload"
+axis = "corpus"
+example = "cbor_payload = bytes .cbor uint"
+fixture = "cbor_host_placement"
+rule = "cbor_payload"
+spec = "__probe_holder = [0, cbor_payload]\ncbor_payload = bytes .cbor uint"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200421854"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820043190651"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200431906a8"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200431908b0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820043190b0b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820043190e8c"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820043190fcf"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820043190fda"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200431910a1"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200431910b5"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "cbor_in_bytes.inner"
 axis = "corpus"
 example = "inner = [uint, text]"

@@ -1,0 +1,90 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+pub mod error;
+mod extern_interface_check;
+pub mod serialization;
+
+#[derive(Clone, Debug)]
+pub struct CborArrayDirectHostPlacement {
+    pub array_direct_mandatory: u64,
+    pub array_direct_optional: Option<u64>,
+}
+
+impl CborArrayDirectHostPlacement {
+    pub fn new(array_direct_mandatory: u64) -> Self {
+        Self {
+            array_direct_mandatory,
+            array_direct_optional: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CborArrayNamedHostPlacement {
+    pub array_named_mandatory: CborPayload,
+    pub array_named_optional: Option<CborPayload>,
+}
+
+impl CborArrayNamedHostPlacement {
+    pub fn new(array_named_mandatory: CborPayload) -> Self {
+        Self {
+            array_named_mandatory,
+            array_named_optional: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CborMapHostPlacement {
+    pub map_direct_mandatory: u64,
+    pub map_named_mandatory: CborPayload,
+    pub map_direct_optional: Option<u64>,
+    pub map_named_optional: Option<CborPayload>,
+}
+
+impl CborMapHostPlacement {
+    pub fn new(map_direct_mandatory: u64, map_named_mandatory: CborPayload) -> Self {
+        Self {
+            map_direct_mandatory,
+            map_named_mandatory,
+            map_direct_optional: None,
+            map_named_optional: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Copy)]
+pub struct CborPayload(pub(crate) u64);
+
+impl CborPayload {
+    pub fn get(&self) -> u64 {
+        self.0
+    }
+
+    pub fn new(inner: u64) -> Self {
+        Self(inner)
+    }
+}
+
+impl From<u64> for CborPayload {
+    fn from(inner: u64) -> Self {
+        CborPayload::new(inner)
+    }
+}
+
+impl From<CborPayload> for u64 {
+    fn from(wrapper: CborPayload) -> Self {
+        wrapper.0
+    }
+}

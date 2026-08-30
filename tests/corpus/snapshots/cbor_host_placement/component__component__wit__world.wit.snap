@@ -1,0 +1,48 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource cbor-array-direct-host-placement {
+    constructor(array-direct-mandatory: u64);
+    array-direct-mandatory: func() -> u64;
+    array-direct-optional: func() -> option<u64>;
+    set-array-direct-optional: func(array-direct-optional: u64);
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<cbor-array-direct-host-placement, string>;
+  }
+  resource cbor-array-named-host-placement {
+    constructor(array-named-mandatory: borrow<cbor-payload>);
+    array-named-mandatory: func() -> cbor-payload;
+    array-named-optional: func() -> option<cbor-payload>;
+    set-array-named-optional: func(array-named-optional: borrow<cbor-payload>);
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<cbor-array-named-host-placement, string>;
+  }
+  resource cbor-map-host-placement {
+    constructor(map-direct-mandatory: u64, map-named-mandatory: borrow<cbor-payload>);
+    map-direct-mandatory: func() -> u64;
+    map-named-mandatory: func() -> cbor-payload;
+    map-direct-optional: func() -> option<u64>;
+    set-map-direct-optional: func(map-direct-optional: u64);
+    map-named-optional: func() -> option<cbor-payload>;
+    set-map-named-optional: func(map-named-optional: borrow<cbor-payload>);
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<cbor-map-host-placement, string>;
+  }
+  resource cbor-payload {
+    constructor(inner: u64);
+    get: func() -> u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<cbor-payload, string>;
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}
