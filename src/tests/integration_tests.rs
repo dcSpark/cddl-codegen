@@ -12327,6 +12327,26 @@ fn open_array_json_e2e() {
 }
 
 #[test]
+fn static_array_map_preserve_json_e2e() {
+    // A minimal preserve fixture reaches the OrderedHashMap-backed recursive map adapter without
+    // mixing in the intentionally CBOR-only preserve shapes covered by open-array-json-e2e.
+    run_test(
+        "static-array-map-preserve-e2e",
+        &[
+            "--json-serde-derives=true",
+            "--json-schema-export=true",
+            "--preserve-encodings=true",
+            "--wasm=false",
+        ],
+        None,
+        &[],
+        &[],
+        false,
+        &[],
+    );
+}
+
+#[test]
 fn open_struct_map_ignore_e2e() {
     // Loose-CBOR open struct-map IGNORE flavor (`@ignore` on the rest row) value-level round-trip
     // vectors: unknown entries are typed-deserialized and DROPPED (stream position past nested
@@ -29830,8 +29850,9 @@ fn export_static_crate_writes_composed_runtime_and_manifest() {
     );
     let ohm_rs = read("ordered_hash_map.rs");
     assert!(
-        ohm_rs.contains("OrderedHashMap"),
-        "ordered_hash_map.rs must be present under --preserve-encodings:\n{ohm_rs}"
+        ohm_rs.contains("OrderedHashMap") && ohm_rs.contains("into_iter(self) -> Self::IntoIter"),
+        "ordered_hash_map.rs must expose the owning iteration the recursive map adapter needs \
+         under --preserve-encodings:\n{ohm_rs}"
     );
     let non_empty_rs = read("non_empty.rs");
     assert!(
@@ -29855,8 +29876,13 @@ fn export_static_crate_writes_composed_runtime_and_manifest() {
         static_array_rs.contains("struct RejectSet<")
             && static_array_rs.contains("OrderedSet::try_from(elements)")
             && static_array_rs.contains("NonEmptyOrderedSet::try_from(elements)")
-            && static_array_rs.contains("BoundedOrderedSet::try_from(elements)"),
-        "the serde static-array composition must include every ordered-set descriptor under \
+            && static_array_rs.contains("BoundedOrderedSet::try_from(elements)")
+            && static_array_rs.contains("for Map<Inner>")
+            && static_array_rs.contains("for NonEmptyMap<Inner>")
+            && static_array_rs.contains("for BoundedMap<Inner, MIN, MAX>")
+            && static_array_rs.contains("for PairMap<Key, Value>")
+            && static_array_rs.contains("for BoundedPairMap<Key, Value, MIN, MAX>"),
+        "the serde static-array composition must include every set and map descriptor under \
          --export-static-crate:\n{static_array_rs}"
     );
     // No module wiring is written — the target crate owns its declarations.

@@ -12,7 +12,6 @@ mod open_array_json {
     use crate::generated::non_empty_map::NonEmptyMap;
     use crate::generated::ordered_set::{BoundedOrderedSet, NonEmptyOrderedSet, OrderedSet};
     use crate::generated::pair_map::{BoundedPairMap, NonEmptyPairMap, PairMap};
-    use std::collections::BTreeMap;
 
     #[test]
     fn typed_tail_renders_as_array_and_round_trips() {
@@ -869,10 +868,11 @@ mod open_array_json {
 
     #[test]
     fn recursive_static_arrays_compose_through_every_map_carrier() {
-        let mut loose = BTreeMap::new();
-        loose.insert(1, [7; 64]);
-        let nonempty = NonEmptyMap::try_from(loose.clone()).unwrap();
-        let bounded = BoundedMap::try_from(loose.clone().into_iter().chain([(2, [8; 64])]).collect::<BTreeMap<_, _>>()).unwrap();
+        // `collect` deliberately leaves the loose builder at the generated table-map type, keeping
+        // this construction shared with the preserve-mode OrderedHashMap fixture.
+        let loose = [(1, [7; 64])].into_iter().collect();
+        let nonempty = NonEmptyMap::try_from(vec![(1, [7; 64])]).unwrap();
+        let bounded = BoundedMap::try_from(vec![(1, [7; 64]), (2, [8; 64])]).unwrap();
         let holder = WideMapHolder::new(loose, nonempty, bounded);
         let json = serde_json::to_string(&holder).unwrap();
         assert!(json.contains(r#""loose":{"1":[7,7"#), "unique maps remain objects: {json}");
@@ -920,9 +920,72 @@ mod open_array_json {
         assert_eq!(table_back.entries.get(&3).unwrap()[63], 4);
         assert_eq!(table_back.rest.get("x").unwrap()[63], 5);
 
-        let mut natural = BTreeMap::new();
-        natural.insert(1, std::array::from_fn(|_| AnyCbor::new_uint(6)));
+        let natural = [(1, std::array::from_fn(|_| AnyCbor::new_uint(6)))]
+            .into_iter()
+            .collect();
         let natural_json = serde_json::to_string(&WideAnyMapHolder::new(natural)).unwrap();
         assert!(natural_json.contains("[6,6"), "exact natural-any leaves stay natural: {natural_json}");
+    }
+
+    #[test]
+    fn bounded_dynamic_map_rows_use_checked_carriers_after_recursive_json_staging() {
+        let rest = WideOpenRestBounded::new(
+            1,
+            BoundedMap::try_from(vec![(2, [2; 64]), (3, [3; 64])]).unwrap(),
+        );
+        let rest_json = serde_json::to_value(&rest).unwrap();
+        let rest_back: WideOpenRestBounded = serde_json::from_value(rest_json.clone()).unwrap();
+        assert_eq!(rest_back.rest.get(&3).unwrap()[0], 3);
+
+        let mut rest_below = rest_json.clone();
+        rest_below.as_object_mut().unwrap().remove("3");
+        assert!(serde_json::from_value::<WideOpenRestBounded>(rest_below).is_err());
+        let mut rest_above = rest_json;
+        let another_value = rest_above["2"].clone();
+        rest_above
+            .as_object_mut()
+            .unwrap()
+            .insert("4".to_owned(), another_value);
+        assert!(serde_json::from_value::<WideOpenRestBounded>(rest_above).is_err());
+
+        let table = WideOpenTableBounded::new(
+            BoundedMap::try_from(vec![(2, [2; 64]), (3, [3; 64])]).unwrap(),
+            BoundedMap::try_from(vec![("x".to_owned(), [4; 64]), ("y".to_owned(), [5; 64])])
+                .unwrap(),
+        );
+        let table_json = serde_json::to_value(&table).unwrap();
+        let table_back: WideOpenTableBounded = serde_json::from_value(table_json.clone()).unwrap();
+        assert_eq!(table_back.entries.get(&2).unwrap()[63], 2);
+        assert_eq!(table_back.rest.get(&"y".to_owned()).unwrap()[63], 5);
+
+        for removed in ["2", "x"] {
+            let mut below = table_json.clone();
+            below.as_object_mut().unwrap().remove(removed);
+            assert!(serde_json::from_value::<WideOpenTableBounded>(below).is_err());
+        }
+        for (key, source) in [("4", "2"), ("z", "x")] {
+            let mut above = table_json.clone();
+            let another_value = above[source].clone();
+            above
+                .as_object_mut()
+                .unwrap()
+                .insert(key.to_owned(), another_value);
+            assert!(serde_json::from_value::<WideOpenTableBounded>(above).is_err());
+        }
+    }
+
+    #[test]
+    fn map_values_compose_duplicate_reject_exact_arrays() {
+        let rejected = OrderedSet::try_from(vec![[8; 64]]).unwrap();
+        let holder = WideRejectMapHolder::new([(1, rejected)].into_iter().collect());
+        let json = serde_json::to_string(&holder).unwrap();
+        assert!(json.contains(r#""value":{"1":[[8,8"#), "map value uses the exact-array view: {json}");
+        let back: WideRejectMapHolder = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.value.get(&1).unwrap().len(), 1);
+
+        let mut duplicate = serde_json::to_value(&holder).unwrap();
+        let row = duplicate["value"]["1"].as_array().unwrap()[0].clone();
+        duplicate["value"]["1"].as_array_mut().unwrap().push(row);
+        assert!(serde_json::from_value::<WideRejectMapHolder>(duplicate).is_err());
     }
 }

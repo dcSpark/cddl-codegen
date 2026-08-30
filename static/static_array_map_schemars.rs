@@ -2,7 +2,7 @@
 // member-name rule stays intact, then replace the value slot without asking schemars for `V`.
 fn recursive_object_map_schema<K, V, Inner>(generator: &mut schemars::SchemaGenerator) -> schemars::Schema
 where
-    K: schemars::JsonSchema,
+    K: Ord + schemars::JsonSchema,
     Inner: RecursiveSchema<V>,
 {
     let mut schema = <alloc::collections::BTreeMap<K, ()> as schemars::JsonSchema>::json_schema(generator);

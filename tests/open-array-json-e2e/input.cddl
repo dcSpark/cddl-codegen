@@ -85,11 +85,15 @@ wide_nonempty_pair_map = {+ uint => wide} ; @duplicates preserve
 wide_bounded_pair_map = {2*2 uint => wide} ; @duplicates preserve
 wide_pair_key = {* wide => uint} ; @duplicates preserve
 wide_any_map = {* uint => wide_any}
+wide_reject_map_value = {* uint => wide_reject_loose}
 wide_map_holder = [loose: wide_map, nonempty: wide_nonempty_map, bounded: wide_bounded_map]
 wide_pair_holder = [loose: wide_pair_map, nonempty: wide_nonempty_pair_map, bounded: wide_bounded_pair_map, key: wide_pair_key]
 wide_any_map_holder = [value: wide_any_map]
+wide_reject_map_holder = [value: wide_reject_map_value]
 wide_open_rest = { fixed: uint, * uint => wide }
 wide_open_table = { * uint => wide, * tstr => wide }
+wide_open_rest_bounded = { fixed: uint, 2*2 uint => wide }
+wide_open_table_bounded = { 2*2 uint => wide, 2*2 tstr => wide }
 ; Dynamic occurrence segments use the same recursive exact-array descriptor as declared fields.
 ; Loose remains omitted/defaulted; every restricted carrier stays required and crosses its checked
 ; door after JSON stages a list. The middle vector retains its positional suffix in the native/CBOR

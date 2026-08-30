@@ -152,3 +152,14 @@ impl<K, V> FromIterator<(K, V)> for OrderedHashMap<K, V> where K : Hash + Eq + O
         Self(hashlink::LinkedHashMap::from_iter(iter))
     }
 }
+
+/// Owning iteration is the counterpart to [`FromIterator`]: recursive adapter handovers consume
+/// a serde-staged map and rebuild it with transformed values while preserving entry order.
+impl<K, V> IntoIterator for OrderedHashMap<K, V> where K : Hash + Eq + Ord {
+    type Item = (K, V);
+    type IntoIter = hashlink::linked_hash_map::IntoIter<K, V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}

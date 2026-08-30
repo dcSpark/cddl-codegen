@@ -1,0 +1,5 @@
+; Minimal preserve-mode JSON fixture for recursively adapted map values. Keep the surface to one
+; ordinary table: other open-array-json-e2e rules deliberately exercise non-JSON preserve forms.
+wide = [64*64 uint]
+wide_map = {* uint => wide}
+wide_map_holder = [value: wide_map]
