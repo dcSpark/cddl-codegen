@@ -9,7 +9,7 @@ use clap::Parser;
 use crate::{
     api,
     cli::Cli,
-    intermediate::{GenericParamBinding, RustIdent, RustStructType},
+    intermediate::{ConceptualRustType, GenericParamBinding, RustIdent, RustStructType},
     utils::convert_to_camel_case,
 };
 
@@ -412,28 +412,235 @@ fn exact_outer_plain_group_references_retain_all_seam_diagnostics() {
 }
 
 #[test]
-fn inline_generic_choice_is_graceful_and_real_group_control_is_preserved() {
-    for (prefix, body) in [
-        ("", "p / tstr"),
-        ("", "#6.10(p) / tstr"),
-        ("", "(p) / tstr"),
-        ("", "[* p] / tstr"),
-        ("", "{ * p => uint } / tstr"),
-        ("", "{ * uint => p } / tstr"),
-        ("inner<x> = [x]\n", "inner<p> / tstr"),
-    ] {
-        let error = api::generated_strings(&cli_for(&format!(
-            "{prefix}A = (x: uint)\nchoice<p> = [value: {body}]\nchoice-uint = choice<uint>\n"
-        )))
-        .expect_err("inline parameter choice must refuse before generation")
-        .to_string();
+fn inline_generic_choice_substitutes_exact_bindings_and_reuses_concrete_unions() {
+    let source = "A = tstr\nchoice<a> = [value: a / A]\nchoice-uint = choice<uint>\n";
+    let cli = cli_for(source);
+    api::with_types(&cli, |types, _| {
+        let generic = types
+            .generic_def(&RustIdent::new(crate::intermediate::CDDLIdent::new(
+                "choice",
+            )))
+            .expect("generic definition must retain its inline-choice template");
+        let [template] = generic.inline_type_choices() else {
+            panic!(
+                "generic definition must retain exactly one inline-choice template; original: {:?}",
+                generic.original()
+            )
+        };
+        let variants = match template.template().variant() {
+            RustStructType::TypeChoice { variants } | RustStructType::CStyleEnum { variants } => {
+                variants
+            }
+            other => panic!("inline choice template was not an enum: {other:?}"),
+        };
+        assert_eq!(
+            variants[0].rust_type().generic_param_binding,
+            Some(GenericParamBinding::new(0)),
+            "the direct parameter arm must retain its exact lexical binding in the template"
+        );
         assert!(
-            error.contains("inline type choice containing scoped generic parameter `p`")
-                && error.contains("no instantiation-time union substitution model")
-                && error.contains("Move the choice to the concrete use site"),
-            "unexpected generic-choice refusal for `{body}`: {error}"
+            variants[1].rust_type().generic_param_binding.is_none(),
+            "an outer authored A must not be inferred as parameter a from its Rust identifier"
+        );
+
+        let resolved = types
+            .rust_structs()
+            .get(&RustIdent::new(crate::intermediate::CDDLIdent::new(
+                "choice-uint",
+            )))
+            .expect("concrete generic record must be registered");
+        let RustStructType::Record(record) = resolved.variant() else {
+            panic!("generic instance did not lower to a record")
+        };
+        let field = &record.fields[0].rust_type;
+        assert!(field.generic_param_binding.is_none());
+        assert_eq!(field.for_rust_member(types, false, &cli), "U64OrA");
+        let union = types
+            .rust_structs()
+            .get(&RustIdent::new(crate::intermediate::CDDLIdent::new(
+                "u64_or_a",
+            )))
+            .expect("substitution must materialize the concrete anonymous union");
+        let variants = match union.variant() {
+            RustStructType::TypeChoice { variants } | RustStructType::CStyleEnum { variants } => {
+                variants
+            }
+            other => panic!("concrete inline choice was not an enum: {other:?}"),
+        };
+        assert_eq!(
+            variants[0].rust_type().for_rust_member(types, false, &cli),
+            "u64"
+        );
+    })
+    .expect("direct generic inline choice must finalize");
+
+    // The existing provenance denominator applies at this new seam too: every claimant that
+    // normalizes to the parameter's Rust name, in either source order, must leave the concrete
+    // union exactly as the no-claimant control.
+    for &(parameter, claimant_name) in NORMALIZATION_PAIRS {
+        let subject = format!(
+            "choice<{parameter}> = [value: {parameter} / tstr]\nchoice-uint = choice<uint>\n"
+        );
+        let baseline = generated(&subject);
+        let baseline_mod = rust_mod(&baseline);
+        assert!(
+            baseline_mod.contains("pub value: U64OrText,")
+                && baseline_mod.contains("pub enum U64OrText")
+                && baseline_mod.contains("Text(String)"),
+            "direct parameter control must emit a U64 union:\n{baseline_mod}"
+        );
+        for claimant in Claimant::ALL
+            .iter()
+            .copied()
+            .filter(|c| !matches!(c, Claimant::None))
+        {
+            for claimant_first in [true, false] {
+                let declaration = claimant.source(claimant_name);
+                let source = if claimant_first {
+                    format!("{declaration}{subject}")
+                } else {
+                    format!("{subject}{declaration}")
+                };
+                let files = generated(&source);
+                let text = rust_mod(&files);
+                assert!(
+                    text.contains("pub value: U64OrText,")
+                        && text.contains("pub enum U64OrText")
+                        && text.contains("Text(String)"),
+                    "{claimant:?} (claimant_first={claimant_first}) changed the concrete generic choice:\n{text}"
+                );
+            }
+        }
+    }
+
+    let concrete_instances = "choice<p> = [value: p / tstr]\n\
+        choice-uint = choice<uint>\n\
+        choice-bytes = choice<bstr>\n\
+        choice-uint-again = choice<uint>\n";
+    let cli = cli_for(concrete_instances);
+    api::with_types(&cli, |types, _| {
+        let field_type = |name: &str| {
+            let record = types
+                .rust_structs()
+                .get(&RustIdent::new(crate::intermediate::CDDLIdent::new(name)))
+                .expect("concrete generic instance")
+                .variant();
+            let RustStructType::Record(record) = record else {
+                panic!("generic instance was not a record")
+            };
+            record.fields[0]
+                .rust_type
+                .for_rust_member(types, false, &cli)
+        };
+        let uint = field_type("choice-uint");
+        assert_eq!(uint, field_type("choice-uint-again"));
+        assert_ne!(uint, field_type("choice-bytes"));
+        assert!(
+            types
+                .rust_structs()
+                .contains_key(&RustIdent::new(crate::intermediate::CDDLIdent::new(uint))),
+            "the repeated concrete union must be registered exactly once under its field identifier"
+        );
+    })
+    .expect("distinct generic arguments must materialize distinct compatible unions");
+}
+
+#[test]
+fn generic_nested_record_field_containers_substitute_parameters() {
+    let source = "nested<p> = [\n\
+        values: [* p],\n\
+        lookup: { * p => p },\n\
+        maybe: p / null,\n\
+    ]\n\
+    nested-uint = nested<uint>\n";
+    let cli = cli_for(source);
+    api::with_types(&cli, |types, _| {
+        let resolved = types
+            .rust_structs()
+            .get(&RustIdent::new(crate::intermediate::CDDLIdent::new(
+                "nested-uint",
+            )))
+            .expect("concrete generic record must be registered");
+        let RustStructType::Record(record) = resolved.variant() else {
+            panic!("generic instance did not lower to a record")
+        };
+        let [values, lookup, maybe] = record.fields.as_slice() else {
+            panic!("nested generic record fields changed shape: {record:?}")
+        };
+        let ConceptualRustType::Array(element) = &values.rust_type.conceptual_type else {
+            panic!("nested generic array field did not remain an array")
+        };
+        assert_eq!(element.for_rust_member(types, false, &cli), "u64");
+        let ConceptualRustType::Map(domain, range) = &lookup.rust_type.conceptual_type else {
+            panic!("nested generic table field did not remain a map")
+        };
+        assert_eq!(domain.for_rust_member(types, false, &cli), "u64");
+        assert_eq!(range.for_rust_member(types, false, &cli), "u64");
+        let ConceptualRustType::Optional(element) = &maybe.rust_type.conceptual_type else {
+            panic!("nested generic optional field did not remain optional")
+        };
+        assert_eq!(element.for_rust_member(types, false, &cli), "u64");
+    })
+    .expect("nested generic field containers must substitute their parameter leaves");
+
+    let files = generated(source);
+    let generated = rust_mod(&files);
+    for expected in [
+        "pub values: Vec<u64>,",
+        "pub lookup: BTreeMap<u64, u64>,",
+        "pub maybe: Option<u64>,",
+    ] {
+        assert!(
+            generated.contains(expected),
+            "nested generic field container must use its concrete argument ({expected}):\n{generated}"
         );
     }
+}
+
+#[test]
+fn generic_inline_choice_nested_shapes_generate_and_keep_remaining_boundaries_loud() {
+    for body in [
+        "p / tstr",
+        "#6.10(p) / tstr",
+        "(p) / tstr",
+        "[* p] / tstr",
+        "{ * p => uint } / tstr",
+        "{ * uint => p } / tstr",
+    ] {
+        let files = generated(&format!(
+            "choice<p> = [value: {body}]\nchoice-uint = choice<uint>\n"
+        ));
+        let generated = files.values().cloned().collect::<Vec<_>>().join("\n");
+        assert!(
+            !generated.contains("GenericInlineChoice"),
+            "the parser-only template placeholder must never reach generated source ({body}):\n{generated}"
+        );
+    }
+
+    let nested_choice =
+        generated("choice<p> = [value: (p / tstr) / bstr]\nchoice-uint = choice<uint>\n");
+    let nested_generated = nested_choice
+        .values()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        !nested_generated.contains("GenericInlineChoice")
+            && nested_generated.contains("pub enum U64OrText")
+            && nested_generated.contains("pub enum U64OrTextOrBytes"),
+        "nested generic inline choices must resolve their definition-owned template dependencies:\n{nested_generated}"
+    );
+
+    let nested_error = api::generated_strings(&cli_for(
+        "inner<x> = [x]\nchoice<p> = [value: inner<p> / tstr]\nchoice-uint = choice<uint>\n",
+    ))
+    .expect_err("nested generic applications need their own instantiation owner")
+    .to_string();
+    assert!(
+        nested_error.contains("inline generic application `inner<…>`")
+            && nested_error.contains("nested generic-instance ownership is not modeled yet"),
+        "nested generic application must stay a scoped graceful refusal: {nested_error}"
+    );
 
     let group_error =
         api::generated_strings(&cli_for("A = (x: uint)\nchoice = [value: A / tstr]\n"))
@@ -443,4 +650,17 @@ fn inline_generic_choice_is_graceful_and_real_group_control_is_preserved() {
         group_error.contains("a type-choice arm cannot be the plain group `A`"),
         "real-group TYPE-choice control changed diagnostic: {group_error}"
     );
+
+    for source in [
+        "u64_or_text = uint .le 10 / tstr\nchoice<p> = [value: p / tstr]\nchoice-uint = choice<uint>\n",
+        "choice<p> = [value: p / tstr]\nchoice-uint = choice<uint>\nu64_or_text = uint .le 10 / tstr\n",
+    ] {
+        let error = api::generated_strings(&cli_for(source))
+            .expect_err("an authored union keeps its anonymous-choice collision authority")
+            .to_string();
+        assert!(
+            error.contains("generated Rust type `U64OrText` has incompatible registrations"),
+            "authored collision must remain loud and deterministic: {error}"
+        );
+    }
 }

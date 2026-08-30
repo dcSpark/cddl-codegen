@@ -238,6 +238,12 @@ pub struct IntermediateTypes<'a> {
     /// `RustType` keeps the selected binding, so this is only resolution context, never the sole
     /// provenance record.
     generic_param_scopes: Vec<Vec<(String, GenericParamBinding)>>,
+    /// Parser-only sidecars for anonymous type choices encountered while generic definitions are
+    /// parsed.  A choice cannot be registered yet because its arm types still carry lexical
+    /// bindings; `register_generic_def` transfers exactly the templates its constructed root
+    /// references, discarding classifier-only visits that never reach that root.
+    generic_inline_choice_scopes: Vec<GenericInlineChoiceScope>,
+    generic_inline_choice_templates: BTreeMap<RustIdent, GenericInlineTypeChoiceTemplate>,
     type_aliases: BTreeMap<AliasIdent, AliasInfo>,
     rust_structs: BTreeMap<RustIdent, RustStruct>,
     prelude_to_emit: BTreeSet<String>,
@@ -444,6 +450,16 @@ struct NominalMintClaim {
     site: String,
 }
 
+#[derive(Debug)]
+struct GenericInlineChoiceScope {
+    owner: RustIdent,
+    next_ordinal: usize,
+    /// A generic body can visit the same AST choice while it classifies then constructs a record.
+    /// Keep that choice's placeholder stable across the visits, just as the variant-mint ledger
+    /// keeps its derived variant names stable.
+    placeholders_by_choice: BTreeMap<usize, RustIdent>,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct VariantMintClaim {
     pub(crate) arm_ordinal: usize,
@@ -475,6 +491,8 @@ impl<'a> IntermediateTypes<'a> {
         Self {
             plain_groups: BTreeMap::new(),
             generic_param_scopes: Vec::new(),
+            generic_inline_choice_scopes: Vec::new(),
+            generic_inline_choice_templates: BTreeMap::new(),
             type_aliases: Self::aliases(),
             rust_structs,
             prelude_to_emit: BTreeSet::new(),
@@ -2971,6 +2989,67 @@ impl<'a> IntermediateTypes<'a> {
         result
     }
 
+    /// Own parser-only anonymous type-choice templates while a single generic definition body is
+    /// built.  The stack matches the lexical generic scope: prelude expansion can re-enter parsing,
+    /// and an inner definition must never donate a template to its caller.
+    pub fn with_generic_inline_choice_scope<R>(
+        &mut self,
+        owner: RustIdent,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        self.generic_inline_choice_scopes
+            .push(GenericInlineChoiceScope {
+                owner,
+                next_ordinal: 0,
+                placeholders_by_choice: BTreeMap::new(),
+            });
+        let result = f(self);
+        let scope = self
+            .generic_inline_choice_scopes
+            .pop()
+            .expect("generic inline choice scope must balance its parser entry");
+        // `register_generic_def` already transferred every placeholder reachable from the finished
+        // definition. Any remaining entry came from a classifier-only AST visit, so discard it
+        // with this lexical scope rather than leaving parser state to influence a later definition.
+        for placeholder in scope.placeholders_by_choice.into_values() {
+            self.generic_inline_choice_templates.remove(&placeholder);
+        }
+        result
+    }
+
+    /// Stage an inline type-choice template under the active generic definition and return its
+    /// private placeholder ident.  The placeholder never enters a generated file: generic
+    /// finalization replaces it with the concrete anonymous-union owner before registration.
+    pub fn register_generic_inline_type_choice_template(
+        &mut self,
+        choice_context: usize,
+        template: RustStruct,
+    ) -> RustIdent {
+        let scope = self
+            .generic_inline_choice_scopes
+            .last_mut()
+            .expect("generic inline type choice requires an active generic-definition scope");
+        if let Some(placeholder) = scope.placeholders_by_choice.get(&choice_context) {
+            return placeholder.clone();
+        }
+        scope.next_ordinal += 1;
+        let ordinal = scope.next_ordinal;
+        let placeholder = RustIdent::new(CDDLIdent::new(format!(
+            "{}GenericInlineChoice{ordinal}",
+            scope.owner
+        )));
+        let mut template = template;
+        template.ident = placeholder.clone();
+        self.generic_inline_choice_templates.insert(
+            placeholder.clone(),
+            GenericInlineTypeChoiceTemplate::new(placeholder.clone(), template),
+        );
+        scope
+            .placeholders_by_choice
+            .insert(choice_context, placeholder.clone());
+        placeholder
+    }
+
     /// The innermost lexical binding for this exact source token, if generic parsing is active.
     /// This is intentionally not a `RustIdent` query: case/separator normalization is an emitted
     /// spelling concern and must not alter CDDL lexical resolution.
@@ -3972,9 +4051,132 @@ impl<'a> IntermediateTypes<'a> {
         self.register_rust_struct(parent_visitor, rust_struct, cli);
     }
 
-    pub fn register_generic_def(&mut self, def: GenericDef) {
+    pub fn register_generic_def(&mut self, mut def: GenericDef) {
         let ident = def.orig.ident().clone();
+        let template_idents = self
+            .generic_inline_choice_templates
+            .keys()
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        let mut placeholders = Vec::new();
+        Self::collect_generic_inline_choice_placeholders(
+            &def.orig,
+            &template_idents,
+            &mut placeholders,
+        );
+        // A template can itself contain an inline choice. Pull the full reachable template tree
+        // into the definition, not merely the placeholders immediately named by its root.
+        let mut seen = BTreeSet::new();
+        let mut templates = Vec::new();
+        let mut next = 0;
+        while let Some(placeholder) = placeholders.get(next).cloned() {
+            next += 1;
+            if !seen.insert(placeholder.clone()) {
+                continue;
+            }
+            if let Some(template) = self.generic_inline_choice_templates.remove(&placeholder) {
+                Self::collect_generic_inline_choice_placeholders(
+                    &template.template,
+                    &template_idents,
+                    &mut placeholders,
+                );
+                templates.push(template);
+            }
+        }
+        if !templates.is_empty() {
+            def.set_inline_type_choices(templates);
+        }
         self.generic_defs.insert(ident, def);
+    }
+
+    fn collect_generic_inline_choice_placeholders(
+        rust_struct: &RustStruct,
+        template_idents: &BTreeSet<RustIdent>,
+        output: &mut Vec<RustIdent>,
+    ) {
+        fn collect_type(
+            ty: &RustType,
+            template_idents: &BTreeSet<RustIdent>,
+            output: &mut Vec<RustIdent>,
+        ) {
+            match &ty.conceptual_type {
+                ConceptualRustType::Rust(ident) if template_idents.contains(ident) => {
+                    output.push(ident.clone());
+                }
+                ConceptualRustType::Array(element) | ConceptualRustType::Optional(element) => {
+                    collect_type(element, template_idents, output);
+                }
+                ConceptualRustType::Map(domain, range) => {
+                    collect_type(domain, template_idents, output);
+                    collect_type(range, template_idents, output);
+                }
+                ConceptualRustType::Fixed(_)
+                | ConceptualRustType::Primitive(_)
+                | ConceptualRustType::Rust(_)
+                | ConceptualRustType::Alias(_, _)
+                | ConceptualRustType::Any => {}
+            }
+        }
+
+        match rust_struct.variant() {
+            RustStructType::Record(record) => {
+                for field in &record.fields {
+                    collect_type(&field.rust_type, template_idents, output);
+                }
+            }
+            RustStructType::Table { domain, range, .. } => {
+                collect_type(domain, template_idents, output);
+                collect_type(range, template_idents, output);
+            }
+            RustStructType::Array { element_type, .. } => {
+                collect_type(element_type, template_idents, output)
+            }
+            RustStructType::TypeChoice { variants } | RustStructType::CStyleEnum { variants } => {
+                for variant in variants {
+                    if let EnumVariantData::RustType(ty) = &variant.data {
+                        collect_type(ty, template_idents, output);
+                    }
+                }
+            }
+            RustStructType::Wrapper { wrapped, .. } => {
+                collect_type(wrapped, template_idents, output)
+            }
+            RustStructType::GroupChoice { .. }
+            | RustStructType::Extern
+            | RustStructType::RawBytesType => {}
+        }
+    }
+
+    /// Choose the ordinary anonymous-type-choice owner for a concrete candidate.  This is shared
+    /// by parser-time anonymous choices and generic-finalization templates so compatible choices
+    /// reuse their first owner while incompatible anonymous siblings mint deterministically; an
+    /// authored rule still keeps the established loud global-registration collision.
+    pub fn anonymous_type_choice_ident(
+        &self,
+        base_ident: &RustIdent,
+        candidate: &RustStruct,
+    ) -> RustIdent {
+        let sibling_base = format!("{}_inline_choice", base_ident);
+        let sibling_prefix = RustIdent::new(CDDLIdent::new(&sibling_base)).to_string();
+        if self.is_toplevel_rule(base_ident) {
+            return base_ident.clone();
+        }
+        self.rust_structs()
+            .iter()
+            .find(|(ident, existing)| {
+                !self.is_toplevel_rule(ident)
+                    && (ident.as_ref() == base_ident.as_ref()
+                        || ident.as_ref().starts_with(&sibling_prefix))
+                    && existing.structurally_equivalent(candidate)
+            })
+            .map(|(ident, _)| ident.clone())
+            .unwrap_or_else(|| {
+                if self.rust_struct(base_ident).is_some() {
+                    self.fresh_synthesized_ident(&sibling_base)
+                } else {
+                    base_ident.clone()
+                }
+            })
     }
 
     pub fn register_generic_instance(&mut self, instance: GenericInstance) {
@@ -4681,7 +4883,61 @@ impl<'a> IntermediateTypes<'a> {
         let mut minted_set_nominals: BTreeSet<RustIdent> = BTreeSet::new();
         for resolved_instance in resolved_generics {
             match resolved_instance {
-                GenericResolved::Resolved(rs) => self.register_rust_struct(parent_visitor, rs, cli),
+                GenericResolved::Resolved {
+                    mut resolved,
+                    inline_type_choices,
+                } => {
+                    // Register each concrete anonymous choice before the generic root that refers
+                    // to it.  This is the ordinary anonymous-choice ownership order, delayed only
+                    // until the exact lexical bindings have concrete arguments.  The shared chooser
+                    // preserves compatible reuse and deterministic incompatible siblings across
+                    // distinct generic instances as well as within one definition.
+                    let mut replacements = BTreeMap::new();
+                    let mut pending = inline_type_choices;
+                    while !pending.is_empty() {
+                        let pending_placeholders = pending
+                            .iter()
+                            .map(|choice| choice.placeholder.clone())
+                            .collect::<BTreeSet<_>>();
+                        let ready = pending.iter().position(|choice| {
+                            let mut dependencies = Vec::new();
+                            Self::collect_generic_inline_choice_placeholders(
+                                &choice.resolved,
+                                &pending_placeholders,
+                                &mut dependencies,
+                            );
+                            dependencies.is_empty()
+                        });
+                        let Some(ready) = ready else {
+                            return Err(
+                                "generic inline type-choice templates contain a cyclic placeholder dependency"
+                                    .into(),
+                            );
+                        };
+                        let mut inline_choice = pending.remove(ready);
+                        // A parent template may name a child template. Materialize children first,
+                        // then rewrite the parent before choosing its normal anonymous-owner name.
+                        GenericInstance::rewrite_inline_choice_placeholders(
+                            &mut inline_choice.resolved,
+                            &replacements,
+                        );
+                        inline_choice.resolved.ident =
+                            GenericInstance::anonymous_type_choice_base_ident(
+                                &inline_choice.resolved,
+                            );
+                        let base_ident = inline_choice.resolved.ident().clone();
+                        let concrete_ident =
+                            self.anonymous_type_choice_ident(&base_ident, &inline_choice.resolved);
+                        inline_choice.resolved.ident = concrete_ident.clone();
+                        self.register_rust_struct(parent_visitor, inline_choice.resolved, cli);
+                        replacements.insert(inline_choice.placeholder, concrete_ident);
+                    }
+                    GenericInstance::rewrite_inline_choice_placeholders(
+                        &mut resolved,
+                        &replacements,
+                    );
+                    self.register_rust_struct(parent_visitor, resolved, cli);
+                }
                 GenericResolved::SetNominal {
                     instance_ident,
                     canonical_ident,

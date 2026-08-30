@@ -7,9 +7,13 @@ pub enum EnumVariantData {
 }
 
 // rep is Optional - None means we just serialize raw, ie for type choices
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct EnumVariant {
     pub name: VariantIdent,
+    /// Whether `name` was derived from `data` rather than explicitly requested with `@name`.
+    /// Deferred generic inline choices rewrite a parser-only placeholder in `data` to a concrete
+    /// enum owner, and only a derived variant label may follow that rewrite.
+    pub derived_name: bool,
     pub data: EnumVariantData,
     pub serialize_as_embedded_group: bool,
     pub doc: Option<String>,
@@ -18,6 +22,24 @@ pub struct EnumVariant {
     /// still lives in `data`; the key is written before it on serialization and read+verified
     /// before it on deserialization. `None` for array reps, type choices, and keyless entries.
     pub key: Option<FixedValue>,
+}
+
+impl std::fmt::Debug for EnumVariant {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // `derived_name` is parser/materialization bookkeeping rather than a semantic IR field.
+        // Keeping it out of the debug projection preserves the IR snapshot contract, which records
+        // emitted-shape semantics rather than the path that settled a variant's spelling.
+        f.debug_struct("EnumVariant")
+            .field("name", &self.name)
+            .field("data", &self.data)
+            .field(
+                "serialize_as_embedded_group",
+                &self.serialize_as_embedded_group,
+            )
+            .field("doc", &self.doc)
+            .field("key", &self.key)
+            .finish()
+    }
 }
 
 impl EnumVariant {
@@ -29,6 +51,7 @@ impl EnumVariant {
     ) -> Self {
         Self {
             name,
+            derived_name: false,
             data: EnumVariantData::RustType(rust_type),
             serialize_as_embedded_group,
             doc,
@@ -43,11 +66,17 @@ impl EnumVariant {
     ) -> Self {
         Self {
             name,
+            derived_name: false,
             data: EnumVariantData::Inlined(embedded_record),
             serialize_as_embedded_group: false,
             doc,
             key: None,
         }
+    }
+
+    pub fn with_derived_name(mut self) -> Self {
+        self.derived_name = true;
+        self
     }
 
     /// Builder for the collapse site: attach the fixed member key of a collapsed map-rep arm.
@@ -1810,6 +1839,11 @@ impl RustRecord {
 pub struct GenericDef {
     generic_params: Vec<GenericParamBinding>,
     pub(super) orig: RustStruct,
+    /// Anonymous type choices parsed inside a generic record/collection body.  Their parser-time
+    /// arm types retain exact generic bindings, but their enum owner cannot be registered until an
+    /// instance supplies concrete arguments.  The placeholder is private to this definition and is
+    /// rewritten to the materialized anonymous enum before the resolved root is registered.
+    pub(super) inline_type_choices: Vec<GenericInlineTypeChoiceTemplate>,
 }
 
 impl GenericDef {
@@ -1817,13 +1851,51 @@ impl GenericDef {
         Self {
             generic_params,
             orig,
+            inline_type_choices: Vec::new(),
         }
+    }
+
+    pub(super) fn set_inline_type_choices(
+        &mut self,
+        inline_type_choices: Vec<GenericInlineTypeChoiceTemplate>,
+    ) {
+        self.inline_type_choices = inline_type_choices;
     }
 
     #[cfg(test)]
     #[allow(dead_code)]
     pub(crate) fn original(&self) -> &RustStruct {
         &self.orig
+    }
+
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub(crate) fn inline_type_choices(&self) -> &[GenericInlineTypeChoiceTemplate] {
+        &self.inline_type_choices
+    }
+}
+
+/// Parser-only anonymous type-choice template owned by a generic definition.  It deliberately
+/// stores an ordinary `RustStruct`: once its arm `RustType`s are substituted it goes through the
+/// same structural reuse and incompatible-registration checks as any other anonymous type choice.
+#[derive(Clone, Debug)]
+pub struct GenericInlineTypeChoiceTemplate {
+    pub(super) placeholder: RustIdent,
+    pub(super) template: RustStruct,
+}
+
+impl GenericInlineTypeChoiceTemplate {
+    pub fn new(placeholder: RustIdent, template: RustStruct) -> Self {
+        Self {
+            placeholder,
+            template,
+        }
+    }
+
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub(crate) fn template(&self) -> &RustStruct {
+        &self.template
     }
 }
 
@@ -1854,8 +1926,12 @@ pub struct GenericInstance {
 // so the size gap doesn't matter. Box the Resolved variant only if it ever lands in a hot collection.
 #[allow(clippy::large_enum_variant)]
 pub enum GenericResolved {
-    // resolved with types swapped to concrete instance
-    Resolved(RustStruct),
+    /// Resolved with types swapped to a concrete instance, plus the definition-owned inline
+    /// choices that must be materialized before this root can be registered.
+    Resolved {
+        resolved: RustStruct,
+        inline_type_choices: Vec<ResolvedGenericInlineTypeChoice>,
+    },
     /// A generic SET-NOMINAL instance (`set<key_hash>` → `SetKeyHash`; Phase 2.3): the instantiation
     /// mints ONE nominal wrapper struct under `canonical_ident`, DEDUPED across every spelling of the
     /// same instantiation. `finalize` registers the struct once per distinct `canonical_ident`, and
@@ -1879,6 +1955,15 @@ pub enum GenericResolved {
         // re-export glue emits `pub use crate::<base>RawBytes;`. None for the plain path.
         flavored_base: Option<RustIdent>,
     },
+}
+
+/// One concrete anonymous enum waiting for final registration.  `placeholder` is the parser-only
+/// ident that still appears in the resolved generic root; finalization chooses/reuses the concrete
+/// anonymous-owner ident and rewrites that reference before registering the root.
+#[derive(Debug, Clone)]
+pub struct ResolvedGenericInlineTypeChoice {
+    pub(super) placeholder: RustIdent,
+    pub(super) resolved: RustStruct,
 }
 
 impl GenericInstance {
@@ -2034,7 +2119,38 @@ impl GenericInstance {
                 resolved: instance,
             });
         }
-        Ok(GenericResolved::Resolved(instance))
+        let inline_type_choices = def
+            .inline_type_choices
+            .iter()
+            .map(|template| {
+                let mut resolved = template.template.clone();
+                match &mut resolved.variant {
+                    RustStructType::TypeChoice { variants }
+                    | RustStructType::CStyleEnum { variants } => {
+                        for variant in variants.iter_mut() {
+                            match &mut variant.data {
+                                EnumVariantData::RustType(ty) => {
+                                    *ty = Self::resolve_type(&resolved_args, ty)?;
+                                }
+                                EnumVariantData::Inlined(_) => unreachable!(
+                                    "an inline type-choice template has only type-bearing arms"
+                                ),
+                            }
+                        }
+                    }
+                    _ => unreachable!("generic inline choice template must be a type choice"),
+                }
+                resolved.ident = Self::anonymous_type_choice_base_ident(&resolved);
+                Ok(ResolvedGenericInlineTypeChoice {
+                    placeholder: template.placeholder.clone(),
+                    resolved,
+                })
+            })
+            .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
+        Ok(GenericResolved::Resolved {
+            resolved: instance,
+            inline_type_choices,
+        })
     }
 
     /// The concrete type arguments this instance was invoked with (`ext_set<pub_key>` → `[pub_key]`).
@@ -2098,7 +2214,101 @@ impl GenericInstance {
             resolved.generic_param_binding = None;
             return Ok(resolved);
         }
-        Ok(orig.clone())
+        let mut resolved = orig.clone();
+        match &mut resolved.conceptual_type {
+            ConceptualRustType::Array(element) | ConceptualRustType::Optional(element) => {
+                **element = Self::resolve_type(args, element)?;
+            }
+            ConceptualRustType::Map(domain, range) => {
+                **domain = Self::resolve_type(args, domain)?;
+                **range = Self::resolve_type(args, range)?;
+            }
+            // A conceptual alias stores only the type-tree, not a full RustType carrying a
+            // parameter binding.  Any parameter occurrence that reaches substitution is therefore
+            // represented by the Array/Map/Optional children above or the direct binding branch.
+            ConceptualRustType::Fixed(_)
+            | ConceptualRustType::Primitive(_)
+            | ConceptualRustType::Rust(_)
+            | ConceptualRustType::Alias(_, _)
+            | ConceptualRustType::Any => {}
+        }
+        Ok(resolved)
+    }
+
+    pub(super) fn anonymous_type_choice_base_ident(choice: &RustStruct) -> RustIdent {
+        let variants = match choice.variant() {
+            RustStructType::TypeChoice { variants } | RustStructType::CStyleEnum { variants } => {
+                variants
+            }
+            _ => unreachable!("generic inline choice template must be a type choice"),
+        };
+        let mut combined_name = String::new();
+        for variant in variants {
+            if !combined_name.is_empty() {
+                combined_name.push_str("Or");
+            }
+            combined_name.push_str(&variant.rust_type().for_variant().to_string());
+        }
+        RustIdent::new(CDDLIdent::new(&combined_name))
+    }
+
+    pub(super) fn rewrite_inline_choice_placeholders(
+        rust_struct: &mut RustStruct,
+        replacements: &BTreeMap<RustIdent, RustIdent>,
+    ) {
+        fn rewrite_type(ty: &mut RustType, replacements: &BTreeMap<RustIdent, RustIdent>) -> bool {
+            match &mut ty.conceptual_type {
+                ConceptualRustType::Rust(ident) => {
+                    if let Some(replacement) = replacements.get(ident) {
+                        *ident = replacement.clone();
+                        true
+                    } else {
+                        false
+                    }
+                }
+                ConceptualRustType::Array(element) | ConceptualRustType::Optional(element) => {
+                    rewrite_type(element, replacements)
+                }
+                ConceptualRustType::Map(domain, range) => {
+                    rewrite_type(domain, replacements) || rewrite_type(range, replacements)
+                }
+                ConceptualRustType::Fixed(_)
+                | ConceptualRustType::Primitive(_)
+                | ConceptualRustType::Alias(_, _)
+                | ConceptualRustType::Any => false,
+            }
+        }
+
+        match &mut rust_struct.variant {
+            RustStructType::Record(record) => {
+                for field in &mut record.fields {
+                    rewrite_type(&mut field.rust_type, replacements);
+                }
+            }
+            RustStructType::Table { domain, range, .. } => {
+                rewrite_type(domain, replacements);
+                rewrite_type(range, replacements);
+            }
+            RustStructType::Array { element_type, .. } => {
+                rewrite_type(element_type, replacements);
+            }
+            RustStructType::TypeChoice { variants } | RustStructType::CStyleEnum { variants } => {
+                for variant in variants {
+                    if let EnumVariantData::RustType(ty) = &mut variant.data
+                        && rewrite_type(ty, replacements)
+                        && variant.derived_name
+                    {
+                        variant.name = ty.for_variant();
+                    }
+                }
+            }
+            RustStructType::Wrapper { wrapped, .. } => {
+                rewrite_type(wrapped, replacements);
+            }
+            RustStructType::GroupChoice { .. }
+            | RustStructType::Extern
+            | RustStructType::RawBytesType => {}
+        }
     }
 
     /// Whether a generic argument ultimately names a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` struct. Follows

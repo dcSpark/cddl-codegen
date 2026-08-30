@@ -1,0 +1,220 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+extern crate alloc;
+use alloc::string::String;
+use alloc::vec::Vec;
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+pub mod cbor_encodings;
+mod extern_interface_check;
+pub mod serialization;
+
+use crate::generated::ordered_hash_map::OrderedHashMap;
+use crate::generated::serialization::StringEncoding;
+use cbor_encodings::{
+    ChoiceBytesEncoding, ChoiceU64Encoding, ChoiceUintAgainEncoding, ChoiceUintEncoding,
+    HolderEncoding, NestedChoiceUintEncoding, NestedUintEncoding,
+};
+
+#[derive(Clone, Debug)]
+pub enum BytesOrText {
+    P {
+        p: Vec<u8>,
+        p_encoding: StringEncoding,
+    },
+    Text {
+        text: String,
+        text_encoding: StringEncoding,
+    },
+}
+
+impl BytesOrText {
+    pub fn new_p(p: Vec<u8>) -> Self {
+        Self::P {
+            p,
+            p_encoding: StringEncoding::default(),
+        }
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text {
+            text,
+            text_encoding: StringEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ChoiceBytes {
+    pub value: BytesOrText,
+    pub encodings: Option<ChoiceBytesEncoding>,
+}
+
+impl ChoiceBytes {
+    pub fn new(value: BytesOrText) -> Self {
+        Self {
+            value,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ChoiceU64 {
+    pub value: U64OrText,
+    pub encodings: Option<ChoiceU64Encoding>,
+}
+
+impl ChoiceU64 {
+    pub fn new(value: U64OrText) -> Self {
+        Self {
+            value,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ChoiceUint {
+    pub value: U64OrText,
+    pub encodings: Option<ChoiceUintEncoding>,
+}
+
+impl ChoiceUint {
+    pub fn new(value: U64OrText) -> Self {
+        Self {
+            value,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ChoiceUintAgain {
+    pub value: U64OrText,
+    pub encodings: Option<ChoiceUintAgainEncoding>,
+}
+
+impl ChoiceUintAgain {
+    pub fn new(value: U64OrText) -> Self {
+        Self {
+            value,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Holder {
+    pub primary: ChoiceU64,
+    pub repeated: ChoiceUintAgain,
+    pub byte_value: ChoiceBytes,
+    pub encodings: Option<HolderEncoding>,
+}
+
+impl Holder {
+    pub fn new(primary: ChoiceU64, repeated: ChoiceUintAgain, byte_value: ChoiceBytes) -> Self {
+        Self {
+            primary,
+            repeated,
+            byte_value,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct NestedChoiceUint {
+    pub value: U64OrTextOrBytes,
+    pub encodings: Option<NestedChoiceUintEncoding>,
+}
+
+impl NestedChoiceUint {
+    pub fn new(value: U64OrTextOrBytes) -> Self {
+        Self {
+            value,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct NestedUint {
+    pub values: Vec<u64>,
+    pub lookup: OrderedHashMap<u64, u64>,
+    pub maybe: Option<u64>,
+    pub encodings: Option<NestedUintEncoding>,
+}
+
+impl NestedUint {
+    pub fn new(values: Vec<u64>, lookup: OrderedHashMap<u64, u64>, maybe: Option<u64>) -> Self {
+        Self {
+            values,
+            lookup,
+            maybe,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum U64OrText {
+    P {
+        p: u64,
+        p_encoding: Option<cbor_event::Sz>,
+    },
+    Text {
+        text: String,
+        text_encoding: StringEncoding,
+    },
+}
+
+impl U64OrText {
+    pub fn new_p(p: u64) -> Self {
+        Self::P {
+            p,
+            p_encoding: None,
+        }
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text {
+            text,
+            text_encoding: StringEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum U64OrTextOrBytes {
+    U64OrText(U64OrText),
+    Bytes {
+        bytes: Vec<u8>,
+        bytes_encoding: StringEncoding,
+    },
+}
+
+impl U64OrTextOrBytes {
+    pub fn new_u64_or_text(u64_or_text: U64OrText) -> Self {
+        Self::U64OrText(u64_or_text)
+    }
+
+    pub fn new_bytes(bytes: Vec<u8>) -> Self {
+        Self::Bytes {
+            bytes,
+            bytes_encoding: StringEncoding::default(),
+        }
+    }
+}

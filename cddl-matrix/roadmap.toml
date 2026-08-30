@@ -2045,30 +2045,41 @@ title = "Scoped source-symbol provenance versus normalized IR registries"
 
 [record.payload]
 kind = "work"
-body_md = '''- **Complete generic TYPE-choice substitution after the scoped-source binding delivery.** Exact
-  lexical source binding now keeps generic parameter occurrences distinct from authored and
-  synthesized claimants that normalize to the same `RustIdent`; the local
-  `scoped_symbol_provenance_tests::scoped_symbol_provenance_grid` covers case,
-  hyphen/underscore and camel-boundary pairs across claimant kinds, source order, homogeneous
-  occurrence, tag payload, and table key/value seams, with an IR pin for binding and post-substitution
-  cleanup. Real plain-group references retain their semantic rejections.
+body_md = '''- **Nested generic-instance ownership inside inline generic TYPE choices.** Exact lexical source
+  binding now keeps generic parameter occurrences distinct from authored and synthesized claimants
+  that normalize to the same `RustIdent`; definition-owned templates materialize direct, tagged,
+  parenthesized, array, map, and nested-choice parameter arms of an inline generic choice,
+  preserving concrete union reuse, collision checks, and the real plain-group rejection. Those claims are pinned by
+  `inline_generic_choice_substitutes_exact_bindings_and_reuses_concrete_unions`
+  and `generic_inline_choice_nested_shapes_generate_and_keep_remaining_boundaries_loud`.
 
-  The remaining TYPE-choice parameter cell is deliberately refused: an inline record-body choice
-  such as `choice<T> = [value: T / tstr]` mints an anonymous union outside the generic definition's
-  substitution owner. Build an explicit instantiation-time union representation, then extend the
-  same grid so a parameter arm generates while a real plain-group arm still rejects. Do not infer
-  the binding from a normalized registry when that work begins.
+  The narrow remaining refusal is a nested generic application whose argument reaches the outer
+  parameter: `inner<x> = [x]` plus `choice<p> = [value: inner<p> / tstr]`. Resolving the outer
+  template would need to own a child `GenericInstance` materialization, registration, and placeholder
+  rewrite without creating a dangling `inner<p>` instance or changing generic-instance naming and
+  collision semantics. Keep the present graceful diagnostic until that ownership model is explicit.
 '''
-work_state = "ready"
-work_intent = "build_system"
-work_kind = "missing_system"
+work_state = "deferred"
+work_intent = "build_capability"
+work_kind = "feature"
 risk = "valid_rejection"
-acceptance_md = '''Add an explicit instantiation-time union representation for inline generic TYPE choices; extend the existing provenance grid with a generating parameter-arm cell, while retaining its real-group TYPE-choice rejection control and exact-source binding assertions.
-'''
-priority_band = "high"
-priority_rationale_md = '''Inline generic TYPE choices remain a valid, currently refused construct whose concrete substitution model is absent. The delivered provenance grid establishes the lexical-binding denominator this future work must preserve, including the authored and synthesized outer-scope regressions.
+acceptance_md = '''Materialize child generic instances only while resolving their owning inline-choice
+template; add direct and nested-child regressions with distinct/reused concrete arguments, source
+order, exact binding, collision, and emitted-crate compilation checks; then retire only the
+`inner<p>`-inside-inline-choice refusal.
 '''
 admission_ids = ["testing.admission-path.scoped-symbol-provenance-grid"]
+
+[record.payload.reopening_signal]
+observer = "affected spec owner"
+dimension = "nested generic applications in inline generic type-choice arms"
+action_on_fire_md = '''design the child-instance owner and its registration/rewrite order
+'''
+
+[record.payload.reopening_signal.predicate]
+predicate_kind = "event"
+event_md = '''a committed consumer spec requires `inner<p>` (or equivalent) inside an inline generic type-choice arm
+'''
 
 [[record]]
 id = "matrix.signed-int-size-upstream"

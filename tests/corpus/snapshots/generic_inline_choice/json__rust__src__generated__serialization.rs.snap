@@ -1,0 +1,402 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+extern crate alloc;
+use super::*;
+use crate::generated::error::*;
+use alloc::collections::BTreeMap;
+use alloc::vec::Vec;
+use cbor_event::de::Deserializer;
+use cbor_event::se::{Serialize, Serializer};
+
+impl cbor_event::se::Serialize for BytesOrText {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            BytesOrText::P(p) => serializer.write_bytes(p),
+            BytesOrText::Text(text) => serializer.write_text(text),
+        }
+    }
+}
+
+impl Deserialize for BytesOrText {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::Bytes => Ok(BytesOrText::P(raw.bytes()?)),
+                cbor_event::Type::Text => Ok(BytesOrText::Text(raw.text()?)),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("BytesOrText"))
+    }
+}
+
+impl cbor_event::se::Serialize for ChoiceBytes {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(1))?;
+        self.value.serialize(serializer)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for ChoiceBytes {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let value =
+                BytesOrText::deserialize(raw).map_err(|e: DeserializeError| e.annotate("value"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(ChoiceBytes { value })
+        })()
+        .map_err(|e| e.annotate("ChoiceBytes"))
+    }
+}
+
+impl cbor_event::se::Serialize for ChoiceU64 {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(1))?;
+        self.value.serialize(serializer)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for ChoiceU64 {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let value =
+                U64OrText::deserialize(raw).map_err(|e: DeserializeError| e.annotate("value"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(ChoiceU64 { value })
+        })()
+        .map_err(|e| e.annotate("ChoiceU64"))
+    }
+}
+
+impl cbor_event::se::Serialize for ChoiceUint {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(1))?;
+        self.value.serialize(serializer)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for ChoiceUint {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let value =
+                U64OrText::deserialize(raw).map_err(|e: DeserializeError| e.annotate("value"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(ChoiceUint { value })
+        })()
+        .map_err(|e| e.annotate("ChoiceUint"))
+    }
+}
+
+impl cbor_event::se::Serialize for ChoiceUintAgain {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(1))?;
+        self.value.serialize(serializer)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for ChoiceUintAgain {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let value =
+                U64OrText::deserialize(raw).map_err(|e: DeserializeError| e.annotate("value"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(ChoiceUintAgain { value })
+        })()
+        .map_err(|e| e.annotate("ChoiceUintAgain"))
+    }
+}
+
+impl cbor_event::se::Serialize for Holder {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(3))?;
+        self.primary.serialize(serializer)?;
+        self.repeated.serialize(serializer)?;
+        self.byte_value.serialize(serializer)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for Holder {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(3)?;
+            read_len.finish()?;
+            let primary =
+                ChoiceU64::deserialize(raw).map_err(|e: DeserializeError| e.annotate("primary"))?;
+            let repeated = ChoiceUintAgain::deserialize(raw)
+                .map_err(|e: DeserializeError| e.annotate("repeated"))?;
+            let byte_value = ChoiceBytes::deserialize(raw)
+                .map_err(|e: DeserializeError| e.annotate("byte_value"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(Holder {
+                primary,
+                repeated,
+                byte_value,
+            })
+        })()
+        .map_err(|e| e.annotate("Holder"))
+    }
+}
+
+impl cbor_event::se::Serialize for NestedChoiceUint {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(1))?;
+        self.value.serialize(serializer)?;
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for NestedChoiceUint {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            read_len.finish()?;
+            let value = U64OrTextOrBytes::deserialize(raw)
+                .map_err(|e: DeserializeError| e.annotate("value"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(NestedChoiceUint { value })
+        })()
+        .map_err(|e| e.annotate("NestedChoiceUint"))
+    }
+}
+
+impl cbor_event::se::Serialize for NestedUint {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(3))?;
+        serializer.write_array(cbor_event::Len::Len(self.values.len() as u64))?;
+        for element in self.values.iter() {
+            serializer.write_unsigned_integer(*element)?;
+        }
+        serializer.write_map(cbor_event::Len::Len(self.lookup.len() as u64))?;
+        for (key, value) in self.lookup.iter() {
+            serializer.write_unsigned_integer(*key)?;
+            serializer.write_unsigned_integer(*value)?;
+        }
+        match &self.maybe {
+            Some(x) => {
+                serializer.write_unsigned_integer(*x)?;
+            }
+            None => {
+                serializer.write_special(cbor_event::Special::Null)?;
+            }
+        };
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for NestedUint {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(3)?;
+            read_len.finish()?;
+            let values = (|| -> Result<_, DeserializeError> {
+                let mut values_arr = Vec::new();
+                let len = raw.array()?;
+                while match len {
+                    cbor_event::Len::Len(n) => (values_arr.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    values_arr.push(raw.unsigned_integer()?);
+                }
+                Ok(values_arr)
+            })()
+            .map_err(|e| e.annotate("values"))?;
+            let lookup = (|| -> Result<_, DeserializeError> {
+                let mut lookup_table = BTreeMap::new();
+                let lookup_len = raw.map()?;
+                while match lookup_len {
+                    cbor_event::Len::Len(n) => (lookup_table.len() as u64) < n,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    if matches!(lookup_len, cbor_event::Len::Indefinite)
+                        && raw.cbor_type()? == cbor_event::Type::Special
+                        && raw.special_break()?
+                    {
+                        break;
+                    }
+                    let lookup_key = raw.unsigned_integer()?;
+                    let lookup_value = raw.unsigned_integer()?;
+                    if lookup_table.insert(lookup_key, lookup_value).is_some() {
+                        return Err(DeserializeFailure::DuplicateKey(Key::Uint(lookup_key)).into());
+                    }
+                }
+                Ok(lookup_table)
+            })()
+            .map_err(|e| e.annotate("lookup"))?;
+            let maybe = (|| -> Result<_, DeserializeError> {
+                Ok(match raw.cbor_type()? != cbor_event::Type::Special {
+                    true => Some(raw.unsigned_integer()?),
+                    false => {
+                        if raw.special()? != cbor_event::Special::Null {
+                            return Err(DeserializeFailure::ExpectedNull.into());
+                        }
+                        None
+                    }
+                })
+            })()
+            .map_err(|e| e.annotate("maybe"))?;
+            match len {
+                cbor_event::Len::Len(_) => (),
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => (),
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(NestedUint {
+                values,
+                lookup,
+                maybe,
+            })
+        })()
+        .map_err(|e| e.annotate("NestedUint"))
+    }
+}
+
+impl cbor_event::se::Serialize for U64OrText {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            U64OrText::P(p) => serializer.write_unsigned_integer(*p),
+            U64OrText::Text(text) => serializer.write_text(text),
+        }
+    }
+}
+
+impl Deserialize for U64OrText {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger => Ok(U64OrText::P(raw.unsigned_integer()?)),
+                cbor_event::Type::Text => Ok(U64OrText::Text(raw.text()?)),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("U64OrText"))
+    }
+}
+
+impl cbor_event::se::Serialize for U64OrTextOrBytes {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        match self {
+            U64OrTextOrBytes::U64OrText(u64_or_text) => u64_or_text.serialize(serializer),
+            U64OrTextOrBytes::Bytes(bytes) => serializer.write_bytes(bytes),
+        }
+    }
+}
+
+impl Deserialize for U64OrTextOrBytes {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            match raw.cbor_type()? {
+                cbor_event::Type::UnsignedInteger | cbor_event::Type::Text => {
+                    Ok(U64OrTextOrBytes::U64OrText(U64OrText::deserialize(raw)?))
+                }
+                cbor_event::Type::Bytes => Ok(U64OrTextOrBytes::Bytes(raw.bytes()?)),
+                _ => Err(DeserializeFailure::NoVariantMatched.into()),
+            }
+        })()
+        .map_err(|e| e.annotate("U64OrTextOrBytes"))
+    }
+}

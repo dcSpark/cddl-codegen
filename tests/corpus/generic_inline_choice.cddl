@@ -1,0 +1,24 @@
+; An inline type choice in a generic record body is owned by the generic definition until a
+; concrete instance substitutes its parameter arm. Different arguments produce distinct
+; anonymous unions, while repeated identical instances reuse the same compatible union.
+choice<p> = [value: p / tstr]
+
+choice_uint = choice<uint>
+choice_uint_again = choice<uint>
+choice_bytes = choice<bstr>
+
+nested_choice<p> = [value: (p / tstr) / bstr]
+nested_choice_uint = nested_choice<uint>
+
+nested<p> = [
+  values: [* p],
+  lookup: { * p => p },
+  maybe: p / null,
+]
+nested_uint = nested<uint>
+
+holder = [
+  primary: choice<uint>,
+  repeated: choice_uint_again,
+  byte_value: choice_bytes,
+]

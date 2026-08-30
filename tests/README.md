@@ -1307,9 +1307,15 @@ generic source binding. It derives the case, hyphen/underscore, and camel-bounda
 through the homogeneous occurrence, tag-payload, and table key/value seams, and compares each
 parameter target projection with its no-claimant control. Its IR companion pins that exact `a` binds
 parameter `a` while outer `A` remains outer `A`, then verifies the provenance is gone after concrete
-substitution. The remaining boundary is TYPE-choice *generation*: an inline choice containing a
-scoped parameter is deliberately a graceful refusal until a concrete instantiation-time union model
-exists; the grid retains both that refusal and the real plain-group TYPE-choice diagnostic.
+substitution. Definition-owned templates now materialize inline generic TYPE choices with direct,
+tagged, parenthesized, array, map, and nested-choice parameter arms; the grid also pins
+concrete-union reuse, incompatible authored collisions, and the real plain-group TYPE-choice
+diagnostic. `scoped_symbol_provenance_tests::inline_generic_choice_substitutes_exact_bindings_and_reuses_concrete_unions`
+and `scoped_symbol_provenance_tests::generic_inline_choice_nested_shapes_generate_and_keep_remaining_boundaries_loud`
+pin that model; the ordinary generic-record control verifies recursive substitution in array, map,
+and optional fields, and the corpus fixture compiles that full emitted crate. A nested generic
+application arm (`inner<a> / tstr`) remains a deliberate graceful refusal because it needs the outer
+template to own child-instance materialization.
 
 `rust_wasm_bindgen_feature_gated_crate_compiles_standalone` guards the rust crate's
 `--rust-wasm-feature` gate from the one direction no other build can witness: every

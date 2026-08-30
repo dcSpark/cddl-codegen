@@ -288,7 +288,7 @@ title = "Admission for matrix.scoped-symbol-provenance-grid."
 [record.payload]
 kind = "testing_system_admission"
 admission_kind = "independent_recurrence"
-claim_md = '''Two distinct normalized-registry claimants — an internal synthesized arm and an unrelated authored outer group — made the same scoped generic parameter inherit plain-group semantics. The delivered local provenance grid now detects both across normalization pairs, source order, claimant provenance, and the supported semantic seams; the remaining matrix work is generic TYPE-choice generation, not admission of this binding class.
+claim_md = '''Two distinct normalized-registry claimants — an internal synthesized arm and an unrelated authored outer group — made the same scoped generic parameter inherit plain-group semantics. The delivered local provenance grid now detects both across normalization pairs, source order, claimant provenance, and the supported semantic seams; definition-owned templates also materialize the supported inline generic TYPE-choice parameter arms without weakening real plain-group diagnostics. The remaining scoped boundary is child generic-instance ownership for `inner<p>` inside such an arm, not admission of this binding class.
 '''
 evidence_ids = ["testing.incident-observation.scoped-symbol-provenance-grid.authored-group-proof", "testing.incident-observation.scoped-symbol-provenance-grid.synthesized-arm-proof"]
 incident_ids = ["testing.incident-observation.scoped-symbol-provenance-grid.authored-group", "testing.incident-observation.scoped-symbol-provenance-grid.synthesized-arm"]

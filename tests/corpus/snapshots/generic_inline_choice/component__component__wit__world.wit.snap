@@ -1,0 +1,100 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+package cddl:cddl-lib@0.1.0;
+
+interface types {
+  resource bytes-or-text {
+    new-p: static func(p: list<u8>) -> bytes-or-text;
+    as-p: func() -> option<list<u8>>;
+    new-text: static func(text: string) -> bytes-or-text;
+    as-text: func() -> option<string>;
+    kind: func() -> bytes-or-text-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<bytes-or-text, string>;
+  }
+  enum bytes-or-text-kind {
+    p,
+    text,
+  }
+  resource choice-bytes {
+    constructor(value: borrow<bytes-or-text>);
+    value: func() -> bytes-or-text;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<choice-bytes, string>;
+  }
+  resource choice-u64 {
+    constructor(value: borrow<u64-or-text>);
+    value: func() -> u64-or-text;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<choice-u64, string>;
+  }
+  resource choice-uint {
+    constructor(value: borrow<u64-or-text>);
+    value: func() -> u64-or-text;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<choice-uint, string>;
+  }
+  resource choice-uint-again {
+    constructor(value: borrow<u64-or-text>);
+    value: func() -> u64-or-text;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<choice-uint-again, string>;
+  }
+  resource holder {
+    constructor(primary: borrow<choice-u64>, repeated: borrow<choice-uint-again>, byte-value: borrow<choice-bytes>);
+    primary: func() -> choice-u64;
+    repeated: func() -> choice-uint-again;
+    byte-value: func() -> choice-bytes;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<holder, string>;
+  }
+  resource nested-choice-uint {
+    constructor(value: borrow<u64-or-text-or-bytes>);
+    value: func() -> u64-or-text-or-bytes;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<nested-choice-uint, string>;
+  }
+  resource nested-uint {
+    constructor(values: list<u64>, lookup: list<tuple<u64, u64>>, maybe: option<u64>);
+    values: func() -> list<u64>;
+    lookup: func() -> list<tuple<u64, u64>>;
+    maybe: func() -> option<u64>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<nested-uint, string>;
+  }
+  resource u64-or-text {
+    new-p: static func(p: u64) -> u64-or-text;
+    as-p: func() -> option<u64>;
+    new-text: static func(text: string) -> u64-or-text;
+    as-text: func() -> option<string>;
+    kind: func() -> u64-or-text-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<u64-or-text, string>;
+  }
+  enum u64-or-text-kind {
+    p,
+    text,
+  }
+  resource u64-or-text-or-bytes {
+    new-u64-or-text: static func(u64-or-text: borrow<u64-or-text>) -> u64-or-text-or-bytes;
+    as-u64-or-text: func() -> option<u64-or-text>;
+    new-bytes: static func(bytes: list<u8>) -> u64-or-text-or-bytes;
+    as-bytes: func() -> option<list<u8>>;
+    kind: func() -> u64-or-text-or-bytes-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<u64-or-text-or-bytes, string>;
+  }
+  enum u64-or-text-or-bytes-kind {
+    u64-or-text,
+    bytes,
+  }
+}
+
+world cddl-lib-world {
+  export types;
+}
