@@ -2045,19 +2045,12 @@ title = "Scoped source-symbol provenance versus normalized IR registries"
 
 [record.payload]
 kind = "work"
-body_md = '''- **Nested generic-instance ownership inside inline generic TYPE choices.** Exact lexical source
-  binding now keeps generic parameter occurrences distinct from authored and synthesized claimants
-  that normalize to the same `RustIdent`; definition-owned templates materialize direct, tagged,
-  parenthesized, array, map, and nested-choice parameter arms of an inline generic choice,
-  preserving concrete union reuse, collision checks, and the real plain-group rejection. Those claims are pinned by
-  `inline_generic_choice_substitutes_exact_bindings_and_reuses_concrete_unions`
-  and `generic_inline_choice_nested_shapes_generate_and_keep_remaining_boundaries_loud`.
-
-  The narrow remaining refusal is a nested generic application whose argument reaches the outer
-  parameter: `inner<x> = [x]` plus `choice<p> = [value: inner<p> / tstr]`. Resolving the outer
-  template would need to own a child `GenericInstance` materialization, registration, and placeholder
-  rewrite without creating a dangling `inner<p>` instance or changing generic-instance naming and
-  collision semantics. Keep the present graceful diagnostic until that ownership model is explicit.
+body_md = '''- **Nested generic-instance ownership inside inline generic TYPE choices.** A nested generic
+  application whose argument reaches the outer parameter remains refused: `inner<x> = [x]` plus
+  `choice<p> = [value: inner<p> / tstr]`. The outer template must own child `GenericInstance`
+  materialization, registration, and placeholder rewrite without creating a dangling `inner<p>`
+  instance or changing generic-instance naming and collision semantics. Keep the present graceful
+  diagnostic until that ownership model is explicit.
 '''
 work_state = "deferred"
 work_intent = "build_capability"
