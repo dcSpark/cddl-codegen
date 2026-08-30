@@ -32,6 +32,21 @@
             "status": "supported"
           }
         },
+        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 11 foreign spec-derived vector(s); ruby=ok(validate) rust=ok",
+        "id": "ctl.ne.nint_minus_one",
+        "status": "supported"
+      },
+      {
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
         "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok(validate) rust=ok",
         "id": "ctl.ne.one",
         "status": "supported"
@@ -114,8 +129,8 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
+            "evidence": "probe (emission=json): cddl-codegen compiles but emitted round-trip tests fail (cargo test exit 101)",
+            "status": "unsupported"
           },
           "preserve": {
             "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
@@ -3174,8 +3189,8 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
+            "evidence": "probe (emission=json): cddl-codegen compiles but emitted round-trip tests fail (cargo test exit 101)",
+            "status": "unsupported"
           },
           "preserve": {
             "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
@@ -3189,8 +3204,8 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
+            "evidence": "probe (emission=json): cddl-codegen compiles but emitted round-trip tests fail (cargo test exit 101)",
+            "status": "unsupported"
           },
           "preserve": {
             "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
@@ -3244,8 +3259,8 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
+            "evidence": "probe (emission=json): cddl-codegen compiles but emitted round-trip tests fail (cargo test exit 101)",
+            "status": "unsupported"
           },
           "preserve": {
             "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
@@ -3259,8 +3274,8 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
+            "evidence": "probe (emission=json): cddl-codegen compiles but emitted round-trip tests fail (cargo test exit 101)",
+            "status": "unsupported"
           },
           "preserve": {
             "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
@@ -3274,8 +3289,8 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
+            "evidence": "probe (emission=json): cddl-codegen compiles but emitted round-trip tests fail (cargo test exit 101)",
+            "status": "unsupported"
           },
           "preserve": {
             "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
@@ -3289,8 +3304,8 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
+            "evidence": "probe (emission=json): cddl-codegen compiles but emitted round-trip tests fail (cargo test exit 101)",
+            "status": "unsupported"
           },
           "preserve": {
             "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
@@ -3304,8 +3319,8 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
+            "evidence": "probe (emission=json): cddl-codegen compiles but emitted round-trip tests fail (cargo test exit 101)",
+            "status": "unsupported"
           },
           "preserve": {
             "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
@@ -3319,8 +3334,8 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
+            "evidence": "probe (emission=json): cddl-codegen compiles but emitted round-trip tests fail (cargo test exit 101)",
+            "status": "unsupported"
           },
           "preserve": {
             "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
@@ -3490,21 +3505,6 @@
         "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
         "id": "contain.top-level.type2.unwrap",
         "status": "unsupported"
-      },
-      {
-        "emission": {
-          "json": {
-            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
-          },
-          "preserve": {
-            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
-            "status": "supported"
-          }
-        },
-        "evidence": "probe: cddl-codegen exit 0; compiles; round-trips; wasm round-trips; accepts 11 foreign spec-derived vector(s); ruby=ok(validate) rust=ok",
-        "id": "ctl.ne.nint_minus_one",
-        "status": "supported"
       },
       {
         "evidence": "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok",
