@@ -24241,11 +24241,98 @@ fn shallow_any_still_parses() {
 /// failure that now generates fine fails the gate as "resurfaced" (the gap closed — re-probe so the
 /// emission verdict flips to supported), so the verdicts can't rot.
 ///
-/// One emission-unsupported flavor is deliberately NOT a generation-level expectation: a verdict
-/// whose evidence records "generates but does not compile" (the verify.ts probe's verbatim clause
-/// for a cell that generates at exit 0 and fails `cargo check`). Its divergence is a compile-level
-/// fact this generation-only sweep cannot observe in either direction, so the expectation is
-/// skipped where it is derived — see the comment at that site for the loudness argument.
+/// Two emission-unsupported flavors are deliberately NOT generation-level expectations: the
+/// verify.ts evidence records either "generates but does not compile" or "compiles but emitted
+/// round-trip tests fail". Both divergences happen after successful generation, at `cargo check` or
+/// emitted-test execution respectively, so this generation-only sweep cannot observe them in either
+/// direction. The fail-closed stage classifier below excludes both where the expectation is derived.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum EmissionUnsupportedStage {
+    Generation,
+    PostGeneration,
+}
+
+/// Classify the exact unsupported-emission taxonomy `verify.ts::codegenVerdict` records. This
+/// generation-only gate must never turn an unrecognized post-generation failure into a false
+/// expected generator refusal: evidence wording drift is an error until its stage is reviewed.
+fn unsupported_emission_stage(evidence: &str) -> Result<EmissionUnsupportedStage, String> {
+    let (_, detail) = evidence.split_once("): cddl-codegen ").ok_or_else(|| {
+        format!("missing `probe (emission=…): cddl-codegen` evidence prefix: {evidence:?}")
+    })?;
+
+    fn nonzero_exit(detail: &str, prefix: &str) -> bool {
+        detail
+            .strip_prefix(prefix)
+            .and_then(|value| value.strip_suffix(')'))
+            .and_then(|value| value.parse::<i32>().ok())
+            .is_some_and(|exit| exit != 0)
+    }
+
+    if detail == "panic (exit 101)" || nonzero_exit(detail, "rejected at parse/lex (exit ") {
+        Ok(EmissionUnsupportedStage::Generation)
+    } else if nonzero_exit(detail, "generates but does not compile (cargo check exit ")
+        || nonzero_exit(
+            detail,
+            "compiles but emitted round-trip tests fail (cargo test exit ",
+        )
+    {
+        Ok(EmissionUnsupportedStage::PostGeneration)
+    } else {
+        Err(format!(
+            "unknown unsupported emission evidence taxonomy: {evidence:?}; expected one of \
+             `panic (exit 101)`, `rejected at parse/lex (exit N)`, \
+             `generates but does not compile (cargo check exit N)`, or \
+             `compiles but emitted round-trip tests fail (cargo test exit N)`"
+        ))
+    }
+}
+
+#[cfg(test)]
+mod unsupported_emission_stage_tests {
+    use super::{EmissionUnsupportedStage, unsupported_emission_stage};
+
+    fn evidence(detail: &str) -> String {
+        format!("probe (emission=json): cddl-codegen {detail}")
+    }
+
+    #[test]
+    fn classifies_every_verify_unsupported_evidence_arm() {
+        for (detail, expected) in [
+            ("panic (exit 101)", EmissionUnsupportedStage::Generation),
+            (
+                "rejected at parse/lex (exit 1)",
+                EmissionUnsupportedStage::Generation,
+            ),
+            (
+                "generates but does not compile (cargo check exit 101)",
+                EmissionUnsupportedStage::PostGeneration,
+            ),
+            (
+                "compiles but emitted round-trip tests fail (cargo test exit 101)",
+                EmissionUnsupportedStage::PostGeneration,
+            ),
+        ] {
+            assert_eq!(unsupported_emission_stage(&evidence(detail)), Ok(expected));
+        }
+    }
+
+    #[test]
+    fn refuses_unknown_or_malformed_evidence_instead_of_guessing_a_stage() {
+        for detail in [
+            "exit 0; compiles; round-trips",
+            "generates but does not compile (cargo check exit 0)",
+            "compiles but emitted round-trip tests fail (cargo test exit nope)",
+            "a newly worded unsupported failure",
+        ] {
+            assert!(
+                unsupported_emission_stage(&evidence(detail)).is_err(),
+                "unknown taxonomy must fail closed: {detail}"
+            );
+        }
+        assert!(unsupported_emission_stage("compiles but emitted round-trip tests fail").is_err());
+    }
+}
+
 #[test]
 #[ignore]
 fn all_supported_constructs_generate_all_profiles() {
@@ -24282,25 +24369,19 @@ fn all_supported_constructs_generate_all_profiles() {
                     .and_then(|v| v.as_str())
                     .unwrap_or("emission profile is unsupported")
                     .to_string();
-                // An emission-unsupported verdict has TWO flavors, and only one is a
-                // generation-level expectation. The probe's own evidence clause distinguishes
-                // them: "generates but does not compile" (verify.ts's emission probe, verbatim)
-                // marks a cell whose generation SUCCEEDS and whose divergence lives at `cargo
-                // check` — a compile-level fact this generation-only sweep cannot see, owned by
-                // the verify.ts probe that minted the verdict. Registering
-                // it here would demand generation FAIL and misread honesty as staleness. Skipping
-                // the expectation keeps both directions loud: if generation ever starts failing,
-                // the cell lands in `failures` (a class change worth a re-probe); when the
-                // compile defect is fixed, the verify.ts re-probe flips the verdict to supported
-                // and the `DECODE_CONFORMANCE_PRESERVE_SKIP` stale guard trips in the same run.
-                // No annotation currently carries this flavor — the cell that introduced it
-                // (`contain.group-choice-arm.type2.value.float_same_major_array`/preserve, an
-                // E0533 from the brute-force arm-success return) is fixed and its verdict is
-                // `supported`. The branch stays because the flavor is a property of verify.ts's
-                // emission probe, not of that one cell: the next compile-level divergence mints
-                // the same clause and must land here rather than in `expected_fail`.
-                if reason.contains("generates but does not compile") {
-                    continue;
+                match unsupported_emission_stage(&reason).unwrap_or_else(|error| {
+                    panic!(
+                        "matrix emission evidence for `{id}`/{profile} must classify by \
+                         verify.ts's unsupported-stage taxonomy: {error}"
+                    )
+                }) {
+                    // A post-generation verdict proves the generator SUCCEEDED; making it an
+                    // expectation here would demand the opposite and report its honest green
+                    // generation as a resurfaced failure. If it ever starts failing generation it
+                    // lands in `failures`; if the check/test defect is fixed, verify.ts flips the
+                    // evidence to supported. Both stage changes therefore remain loud.
+                    EmissionUnsupportedStage::PostGeneration => continue,
+                    EmissionUnsupportedStage::Generation => {}
                 }
                 expected_fail.insert((profile.to_string(), id.to_string()), reason);
             }
