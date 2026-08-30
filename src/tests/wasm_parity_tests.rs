@@ -307,6 +307,20 @@ const CORPUS_PARITY_INPUTS: &[CorpusParityInput] = &[
         )],
     ),
     (
+        // The focused preserve JSON fixture is an ordinary table with a wide exact-array value.
+        // Its integration gate is rust-only to execute serde/schema behaviour; this axis forces
+        // wasm on under the same preserve + JSON flags to cover the generated counterpart too.
+        "static-array-map-preserve-e2e",
+        &[(
+            "json_preserve",
+            &[
+                "--preserve-encodings=true",
+                "--json-serde-derives=true",
+                "--json-schema-export=true",
+            ],
+        )],
+    ),
+    (
         // The fixture's checked scalar wrappers expose ordinary wasm classes. Its integration gate
         // is rust-only so it can focus on serde/schema agreement; this parity row turns wasm back
         // on under the same JSON flags and differentials every generated boundary door.
