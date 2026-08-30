@@ -5234,6 +5234,22 @@ impl<'a> IntermediateTypes<'a> {
                     float_key_rejections.insert(float_set_elem_msg(&rule_ident));
                 }
             }
+            // A nominal wrapper over an ARRAY still routes its inner through the reject-set
+            // uniqueness carrier when the rule selected `@duplicates reject`. The ordinary Array
+            // branch above cannot see that element because this surface is a Wrapper (not a
+            // transparent alias), notably the flat repeated-group carrier. Its element needs the
+            // same `Ord` demand for `OrderedSet::try_from(Vec<_>)` to compile.
+            if let RustStructType::Wrapper { wrapped, .. } = rust_struct.variant()
+                && rust_struct.config().duplicates
+                    == Some(crate::comment_ast::DuplicatesPolicy::Reject)
+                && !rust_struct.config().set_nominal
+                && let ConceptualRustType::Array(element_type) = &wrapped.conceptual_type
+            {
+                element_type.visit_types(self, &mut |ty| mark_key_demand(ty, &mut key_demand, ord));
+                if key_contains_float(&element_type.conceptual_type, self) {
+                    float_key_rejections.insert(float_set_elem_msg(&rule_ident));
+                }
+            }
             // A SET NOMINAL wrapper (Phase 2.2/2.3) derives always-on encodings-ignored
             // `PartialEq/Eq/PartialOrd/Ord/Hash`, and its inner collection (`OrderedSet<Elem>` under
             // reject, `Vec<Elem>` under preserve) propagates every one of those bounds onto `Elem`.
@@ -7805,12 +7821,13 @@ impl<'a> IntermediateTypes<'a> {
     }
 
     /// Whether `ident` names a top-level CDDL rule (as opposed to a struct synthesized during IR
-    /// build — an embedded record, inline group, etc.). `scopes` is populated by `mark_scope`,
-    /// which `api::with_types` calls once per parsed rule, so its key set is exactly the top-level
-    /// rules. Used by the `--emit-tests-conformance` oracle: only a real rule name can be aliased as
-    /// the validator's synthetic root, so synthesized structs get no conformance call.
+    /// build — an embedded record, inline group, etc.). A synthesized type may inherit its owner's
+    /// module scope so it emits beside that owner, so scope membership alone is deliberately not
+    /// evidence of source-rule ownership. `rule_source_names` is populated only for real rules by
+    /// `api::with_types`. Used by the `--emit-tests-conformance` oracle: only a real rule name can
+    /// be aliased as the validator's synthetic root, so synthesized structs get no conformance call.
     pub fn is_toplevel_rule(&self, ident: &RustIdent) -> bool {
-        self.scopes.contains_key(ident)
+        self.rule_source_names.contains_key(ident)
     }
 
     /// Record that a non-embeddable multi-arm group-choice arm in rule `owner` (source name) has
@@ -7825,6 +7842,31 @@ impl<'a> IntermediateTypes<'a> {
         self.group_choice_arm_claims.get(ident).map(|s| s.as_str())
     }
 
+    /// Whether `ident` is already spoken for by any type-like parser product, including a
+    /// synthesized product that has no authored rule scope. Callers that mint a stable public type
+    /// name must reject rather than borrow or suffix a claimant: a suffix would make the generated
+    /// API depend on source ordering.
+    pub fn generated_type_ident_is_claimed(&self, ident: &RustIdent) -> bool {
+        self.rust_structs.contains_key(ident)
+            || self.plain_groups.contains_key(ident)
+            || self.scopes.contains_key(ident)
+            || self.generic_defs.contains_key(ident)
+            || self.generic_instances.contains_key(ident)
+            || self.group_choice_arm_claims.contains_key(ident)
+            || self.generic_inline_choice_templates.contains_key(ident)
+            || self.generic_inline_choice_scopes.iter().any(|scope| {
+                scope
+                    .placeholders_by_choice
+                    .values()
+                    .any(|placeholder| placeholder == ident)
+            })
+            || self
+                .type_aliases
+                .contains_key(&AliasIdent::Rust(ident.clone()))
+            || self.nominal_mint_claims.contains_key(ident)
+            || self.prelude_cddl_name(ident).is_some()
+    }
+
     /// An ident guaranteed not to name anything the IR already knows, derived deterministically from
     /// `base`.
     ///
@@ -7836,26 +7878,9 @@ impl<'a> IntermediateTypes<'a> {
     /// arm removes it again immediately, and a non-embeddable arm that needed one has, by
     /// construction, also recorded a rejection that aborts before emission.
     pub fn fresh_synthesized_ident(&self, base: &str) -> RustIdent {
-        let taken = |ident: &RustIdent| {
-            self.rust_structs.contains_key(ident)
-                || self.plain_groups.contains_key(ident)
-                || self.scopes.contains_key(ident)
-                || self.generic_instances.contains_key(ident)
-                || self.group_choice_arm_claims.contains_key(ident)
-                || self.generic_inline_choice_templates.contains_key(ident)
-                || self.generic_inline_choice_scopes.iter().any(|scope| {
-                    scope
-                        .placeholders_by_choice
-                        .values()
-                        .any(|placeholder| placeholder == ident)
-                })
-                || self
-                    .type_aliases
-                    .contains_key(&AliasIdent::Rust(ident.clone()))
-        };
         let mut candidate = RustIdent::new(CDDLIdent::new(base));
         let mut suffix = 0u32;
-        while taken(&candidate) {
+        while self.generated_type_ident_is_claimed(&candidate) {
             suffix += 1;
             candidate = RustIdent::new(CDDLIdent::new(format!("{base}_{suffix}")));
         }

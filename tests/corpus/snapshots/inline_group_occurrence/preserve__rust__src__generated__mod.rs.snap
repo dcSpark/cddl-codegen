@@ -1,0 +1,72 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::too_many_arguments,
+    clippy::large_enum_variant,
+    clippy::result_large_err
+)]
+
+extern crate alloc;
+use alloc::string::String;
+use alloc::vec::Vec;
+pub mod error;
+pub mod ordered_hash_map;
+extern crate derivative;
+pub mod cbor_encodings;
+mod extern_interface_check;
+pub mod serialization;
+
+use cbor_encodings::{InlineGroupOccurrenceEncoding, InlineGroupOccurrenceItemEncoding};
+
+#[derive(Clone, Debug)]
+pub struct InlineGroupOccurrence {
+    pub(crate) inner: Vec<InlineGroupOccurrenceItem>,
+    pub encodings: Option<InlineGroupOccurrenceEncoding>,
+}
+
+impl InlineGroupOccurrence {
+    pub fn get(&self) -> &Vec<InlineGroupOccurrenceItem> {
+        &self.inner
+    }
+
+    pub fn new(inner: Vec<InlineGroupOccurrenceItem>) -> Self {
+        Self {
+            inner,
+            encodings: None,
+        }
+    }
+}
+
+impl From<Vec<InlineGroupOccurrenceItem>> for InlineGroupOccurrence {
+    fn from(inner: Vec<InlineGroupOccurrenceItem>) -> Self {
+        InlineGroupOccurrence::new(inner)
+    }
+}
+
+impl From<InlineGroupOccurrence> for Vec<InlineGroupOccurrenceItem> {
+    fn from(wrapper: InlineGroupOccurrence) -> Self {
+        wrapper.inner
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct InlineGroupOccurrenceItem {
+    pub a: u64,
+    pub b: String,
+    pub encodings: Option<InlineGroupOccurrenceItemEncoding>,
+}
+
+impl InlineGroupOccurrenceItem {
+    pub fn new(a: u64, b: String) -> Self {
+        Self {
+            a,
+            b,
+            encodings: None,
+        }
+    }
+}

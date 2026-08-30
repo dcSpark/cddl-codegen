@@ -801,15 +801,32 @@ fn exact_homogeneous_array_lengths_refuse_above_wasm32_floor_at_every_route() {
 }
 
 /// A count-permitting occurrence of a multi-item plain group repeats the group's sequence FLAT.
-/// It cannot use the ordinary `Vec<Pg>` carrier: `Pg::serialize` writes its own array header, so
-/// that carrier silently changes `[a, b, a, b]` into `[[a, b], [a, b]]`. Until a dedicated flat
-/// occurrence carrier exists, every positive-count spelling refuses and the nested-array spelling
-/// is an executable remedy. Exact once remains the ordinary conformant splice, while exact zero is
-/// representable without ever serializing a `Pg` value.
+/// Its nominal sole-array owner must therefore use the structural Array codec's embedded-group path:
+/// `[a, b, a, b]`, never `[[a, b], [a, b]]`. Mixed or nested placements still lack that owner and
+/// must refuse rather than silently selecting the nested collection codec.
 #[test]
-fn homogeneous_plain_group_occurrences_reject_the_nested_wire_rewrite() {
+fn homogeneous_plain_group_occurrences_use_flat_array_codec() {
     const GROUP: &str = "pg = (a: uint, b: tstr)\n";
     const ALIAS: &str = "pg = (a: uint, b: tstr)\npg_alias = pg\n";
+
+    let flat = expect_generates(
+        "plain_group_repeat_flat_wire",
+        &format!("{GROUP}holder = [* pg]\n"),
+        &[],
+    );
+    let generated = flat
+        .get("rust/src/generated/serialization.rs")
+        .expect("flat-group owner must generate its serialization module");
+    assert!(
+        generated.contains("serializer.write_array(cbor_event::Len::Len(2 * self.0.len() as u64))")
+            && generated.contains("element.serialize_as_embedded_group(serializer)?")
+            && generated.contains("Pg::deserialize_as_embedded_group("),
+        "the sole named array must count and encode the plain group's members flat, got:\n{generated}"
+    );
+    assert!(
+        !generated.contains("element.serialize(serializer)?"),
+        "the flat-group owner must not write a nested array per element, got:\n{generated}"
+    );
 
     for (tag, spec) in [
         ("bare", format!("{GROUP}holder = [* pg]\n")),
@@ -818,26 +835,12 @@ fn homogeneous_plain_group_occurrences_reject_the_nested_wire_rewrite() {
         ("one_or_more", format!("{GROUP}holder = [+ pg]\n")),
         ("bounded", format!("{GROUP}holder = [2*3 pg]\n")),
         ("alias", format!("{ALIAS}holder = [* pg_alias]\n")),
-        ("member_inline", format!("{GROUP}outer = [items: [* pg]]\n")),
         (
             "reversed",
             "holder = [* pg]\npg = (a: uint, b: tstr)\n".to_owned(),
         ),
     ] {
-        let msg = expect_graceful_rejection(&format!("plain_group_repeat_{tag}"), &spec, &[]);
-        assert!(
-            msg.contains("a homogeneous array occurrence cannot repeat the plain group `pg`"),
-            "{tag}: rejection must name the exact semantic boundary, got: {msg}"
-        );
-        assert!(
-            msg.contains("concatenate the group's member sequence flat")
-                && msg.contains("nested array"),
-            "{tag}: rejection must explain the wrong-wire consequence, got: {msg}"
-        );
-        assert!(
-            msg.contains("wrapped = [pg]") && msg.contains("[* wrapped]"),
-            "{tag}: rejection must give the explicit nested-array remedy, got: {msg}"
-        );
+        expect_generates(&format!("plain_group_repeat_{tag}"), &spec, &[]);
     }
 
     for (profile, extra) in [
@@ -845,36 +848,22 @@ fn homogeneous_plain_group_occurrences_reject_the_nested_wire_rewrite() {
         ("wasm", &["--wasm=true"][..]),
         ("json", &["--json-serde-derives=true"][..]),
     ] {
-        let msg = expect_graceful_rejection(
+        expect_generates(
             &format!("plain_group_repeat_{profile}"),
             &format!("{GROUP}holder = [* pg]\n"),
             extra,
         );
-        assert!(
-            msg.contains("a homogeneous array occurrence cannot repeat the plain group `pg`"),
-            "{profile}: the parse-time refusal must be profile-independent, got: {msg}"
-        );
     }
 
-    for (tag, spec) in [
-        (
-            "nested_remedy",
-            format!("{GROUP}wrapped = [pg]\nholder = [* wrapped]\n"),
-        ),
-        ("exact_once", format!("{GROUP}holder = [pg]\n")),
-        ("record_splice", format!("{GROUP}holder = [x: uint, pg]\n")),
-        ("scalar_repeat", "holder = [* uint]\n".to_owned()),
-        ("exact_zero", format!("{GROUP}holder = [0*0 pg]\n")),
-        (
-            "generic_parameter",
-            "set<a> = #6.258([* a]) / [* a] ; @duplicates reject\n\
-             set_u64 = set<uint>\n\
-             holder = [value: set_u64]\n"
-                .to_owned(),
-        ),
-    ] {
-        expect_generates(&format!("plain_group_repeat_{tag}"), &spec, &[]);
-    }
+    let nested = expect_graceful_rejection(
+        "plain_group_repeat_nested",
+        &format!("{GROUP}outer = [items: [* pg]]\n"),
+        &[],
+    );
+    assert!(
+        nested.contains("anonymous array has no nominal owner for the standalone flat-group codec"),
+        "a nested repeated group must refuse rather than choose a nested wire rewrite, got: {nested}"
+    );
 }
 
 /// A tag's payload is a TYPE denoting one data item. A plain group is not a type and therefore
@@ -7691,8 +7680,9 @@ fn bounded_open_array_tail_is_checked_on_every_constructor_face() {
 /// An occurrence marker on an inline (parenthesized) group — `[* (int, tstr)]`, `{ * (k: int) }` —
 /// used to be silently dropped by `flatten_group_entries`, narrowing the group to exactly-once and
 /// generating a decoder that rejects spec-valid CBOR with any other repetition count (invisible to
-/// round-trip tests). This pins the graceful rejection AND every boundary the fix must preserve:
-///   - array `* / + / ? / 2*5` on an inline group → Err (the marker admits ≠ 1 reps);
+/// round-trip tests). A named sole array now owns a flat item codec; this pins that support and the
+/// boundaries it must preserve:
+///   - array `* / + / ? / 2*5` on an inline group → Ok through the flat owner;
 ///   - array `1*1 (…)` → Ok (exactly-once IS the semantics, so flattening stays sound);
 ///   - map `{ * (k: int) }` / `{ ? (k: int, j: tstr) }` → Err (bypassed the f18d764 keyed-field fix
 ///     because the inline-group wrapper hid the occurrence);
@@ -7702,7 +7692,7 @@ fn bounded_open_array_tail_is_checked_on_every_constructor_face() {
 ///     detection fires on the inner `k => v`);
 ///   - named `pair = (int, tstr)` + `a = [* pair]` → Ok (the workaround the message recommends).
 #[test]
-fn occurrence_marker_on_inline_group_rejects_gracefully() {
+fn occurrence_marker_on_inline_group_uses_flat_owner_codec() {
     fn run(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
         let path = std::env::temp_dir().join(format!(
             "cddl_codegen_inline_occur_{}_{}.cddl",
@@ -7723,19 +7713,24 @@ fn occurrence_marker_on_inline_group_rejects_gracefully() {
         result
     }
 
-    // Array side: every occurrence marker admitting ≠ 1 reps must reject, citing the rule + the
-    // "inline group" hint so the message is actionable.
+    // A sole named ARRAY owns an item type and emits the group's members directly into its outer
+    // array. This source assertion is the no-nested-wire contract; the integration fixture executes
+    // the corresponding foreign bytes.
     for (spec, tag) in [
         ("a = [* (int, tstr)]\n", "arr_star"),
         ("a = [+ (int, tstr)]\n", "arr_plus"),
         ("a = [? (int, tstr)]\n", "arr_opt"),
         ("a = [2*5 (int, tstr)]\n", "arr_bounded"),
     ] {
-        let msg =
-            run(spec, tag).expect_err("an occurrence marker on an inline array group must reject");
+        let files = run(spec, tag)
+            .unwrap_or_else(|error| panic!("an inline flat-group owner must generate: {error}"));
+        let serialization = files
+            .get("rust/src/generated/serialization.rs")
+            .expect("inline flat-group owner serialization module");
         assert!(
-            msg.contains("inline group") && msg.contains("rule `a`"),
-            "rejection should name the rule and the inline group, got: {msg}"
+            serialization.contains("element.serialize_as_embedded_group(serializer)?")
+                && !serialization.contains("element.serialize(serializer)?"),
+            "{tag}: the inline owner must encode each item as an embedded group, got:\n{serialization}"
         );
     }
 
@@ -7765,9 +7760,8 @@ fn occurrence_marker_on_inline_group_rejects_gracefully() {
     run("a = { * (int => tstr) }\n", "map_table")
         .expect("`{ * (int => tstr) }` is a parenthesized table and must still generate");
 
-    // The recommended workaround must generate under DEFAULT (wasm) flags. Naming the group alone
-    // is insufficient: RFC 8610 still gives `[* pair]` flat group-concatenation semantics, which the
-    // homogeneous carrier cannot represent. The extra array rule makes each repetition one item.
+    // An explicitly framed item remains a valid nested-array alternative under DEFAULT (wasm)
+    // flags. It is a distinct wire form from the native flat carrier above.
     run(
         "pair = (int, tstr)\npair_item = [pair]\na = [* pair_item]\n",
         "named_workaround",
@@ -8216,9 +8210,8 @@ fn collapse_blank_runs(body: &str) -> String {
 /// under `--preserve-encodings`, a generic-instance assert under `--wasm=true`), and the
 /// formerly-homogeneous-ELEMENT spelling was worse than a panic: exit 0 emitting
 /// `pub type KvAlias = Kv;` with no `Kv` at all, a crate that fails `cargo check` with E0425 while
-/// the tool reported success. That occurrence is now refused for the deeper wire reason pinned by
-/// `homogeneous_plain_group_occurrences_reject_the_nested_wire_rewrite`; it is not a supported
-/// array-position spelling.
+/// the tool reported success. It now resolves through the named flat-array owner, whose wire
+/// contract is pinned by `homogeneous_plain_group_occurrences_use_flat_array_codec`.
 ///
 /// Pins every supported array-position spelling on every profile, at alias depth 2 and under a
 /// reversed rule order, and — the part that makes "supported" mean something — that the alias spelling's emitted
@@ -10103,16 +10096,21 @@ fn occurrence_on_single_entry_group_choice_arm_rejects_gracefully() {
     }
 
     // A sole count-permitting plain-group entry is a homogeneous occurrence, not an array-record
-    // rest tail. It reaches the flat-concatenation refusal owned by the dedicated occurrence test.
-    let sole_repeat = run(
+    // rest tail. Its nominal owner now selects the flat embedded-group codec; it must not regress
+    // to a nested `Vec<Kv>` element codec while the group-choice-arm refusals above remain intact.
+    let sole_repeat = emit(
         &format!("{GROUP}t = [ * kv ]\n"),
         "single_choice_plain_group_repeat",
         &[],
     )
-    .expect_err("a sole repeated plain group must reject at the homogeneous occurrence seam");
+    .expect("a sole repeated plain group must own the flat array codec");
+    let sole_serialization = sole_repeat
+        .get("rust/src/generated/serialization.rs")
+        .expect("sole repeated plain group serialization module");
     assert!(
-        sole_repeat.contains("a homogeneous array occurrence cannot repeat the plain group `kv`"),
-        "the sole repeated-group neighbour should keep its semantic refusal, got: {sole_repeat}"
+        sole_serialization.contains("element.serialize_as_embedded_group(serializer)?")
+            && !sole_serialization.contains("element.serialize(serializer)?"),
+        "the sole repeated group must retain flat wire encoding, got:\n{sole_serialization}"
     );
 
     // One message per problem: the neighbouring refusals keep their own text and this guard

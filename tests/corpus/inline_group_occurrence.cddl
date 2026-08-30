@@ -1,0 +1,3 @@
+; A sole named ARRAY whose repeated parenthesized group owns the RFC 8610 flat codec.
+; The generated public carrier is InlineGroupOccurrence over InlineGroupOccurrenceItem values.
+inline_group_occurrence = [* (a: uint, b: tstr)]

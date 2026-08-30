@@ -313,12 +313,10 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    positions, and occurrence bounds were compared against total array item count instead of
    repetition count. Ruby accepts all the spec-valid instances. FIXED in `local-fixes` @ `773b723`;
    `contain.occurrence-target.grpent.inline_group.exactly_once_array` is re-minted with real accept
-   vectors against that build. The named repeated-group cell
-   (`contain.occurrence-target.grpent.groupname`) no longer has a cddl-codegen decode row: RFC 8610
-   requires flat group concatenation there, while cddl-codegen cannot yet represent that occurrence
-   without silently substituting nested arrays, so the generator now rejects the cell and the
-   supported-catalog projection excludes it. The upstream validator fix remains real; it certifies
-   the spec shape independently rather than making this generator support it.
+   vectors against that build. cddl-codegen now owns the matching flat repeated-group codec for a
+   named sole-array group occurrence and for the equivalent parenthesized inline spelling; its
+   decode rows use the same corrected oracle. The upstream validator fix remains real and certifies
+   the spec shape independently.
 3. **non-uint-endpoint range blanket rejection** (released 0.10.x — a 0.10.0 regression): every
    instance validated against a range whose endpoints are not uint is rejected, valid or invalid
    (`invalid cddl range. upper and lower values must be uint types`) — float ranges (`0.5..10.5`)
@@ -642,12 +640,11 @@ and the inverse, don't *invent* a gap from a degenerate example.**
   The one
   exception: **tag-content** accepts an inline composite. So `type2.map` is supported as
   tag-content, unsupported inline elsewhere, and works everywhere via a named reference — the
-  per-(feature, role) verdict genuinely differs, which is the whole point. An inline parenthesized
-  group carrying an occurrence marker (`[* (int, tstr)]`) is a distinct path: it is rejected
-  gracefully (not a panic — `roadmap.toml`'s `findings-open` section). Naming the group alone does
-  not change RFC 8610's flat repetition semantics; the supported nested-array remedy first gives it
-  an array type (`pair = (int, tstr)`, `pair-item = [pair]`), then repeats that type
-  (`a = [* pair-item]`).
+  per-(feature, role) verdict genuinely differs, which is the whole point. A named sole-array
+  parenthesized group occurrence (`[* (int, tstr)]`) is another distinct path: cddl-codegen
+  materializes an `OwnerItem` plain group and gives the named owner a nominal flat codec. Mixed
+  array placements, group-choice arms, multi-choice groups, zero-permitting map repetition, and
+  zero-width repeated groups remain graceful rejections.
 - **Supported fixed values are nominal at the TOP level and inline at MEMBER position.** A named
   scalar/text/bytes/bool/null/undefined fixed rule (`x = true`, `x = undefined`, `x = 5`,
   `x = "v"`, `x = h'CAFE'`, or `x = 'raw'`) is a singleton type with a

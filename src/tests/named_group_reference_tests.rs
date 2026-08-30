@@ -312,7 +312,6 @@ const PLACEMENTS: &[Placement] = &[
     },
 ];
 
-const HOMOGENEOUS_OCCURRENCE: &str = "homogeneous array occurrence cannot repeat the plain group";
 const TAGGED_GROUP_PAYLOAD: &str = "a CBOR tag payload cannot be the plain group";
 
 macro_rules! live {
@@ -359,9 +358,9 @@ const COORDINATES: &[Coordinate] = &[
         "homogeneous array",
         "grpent.groupname (sole homogeneous element)",
         "ngr_homogeneous_direct_",
-        Verdict::Reject(HOMOGENEOUS_OCCURRENCE),
-        "homogeneous_plain_group_occurrences_reject_the_nested_wire_rewrite",
-        None
+        Verdict::Accept,
+        "homogeneous_plain_group_occurrences_use_flat_array_codec",
+        Some(RootLiveness::Struct)
     ),
     live!(
         "named-group-homogeneous-keyed",
@@ -370,9 +369,9 @@ const COORDINATES: &[Coordinate] = &[
         "homogeneous array",
         "ValueMemberKey (homogeneous occurrence with member key)",
         "ngr_homogeneous_keyed_",
-        Verdict::Reject(HOMOGENEOUS_OCCURRENCE),
-        "homogeneous_plain_group_occurrences_reject_the_nested_wire_rewrite",
-        None
+        Verdict::Accept,
+        "homogeneous_plain_group_occurrences_use_flat_array_codec",
+        Some(RootLiveness::Struct)
     ),
     live!(
         "named-group-homogeneous-optional",
@@ -381,9 +380,9 @@ const COORDINATES: &[Coordinate] = &[
         "homogeneous array",
         "ValueMemberKey (count-permitting occurrence)",
         "ngr_homogeneous_optional_",
-        Verdict::Reject(HOMOGENEOUS_OCCURRENCE),
-        "homogeneous_plain_group_occurrences_reject_the_nested_wire_rewrite",
-        None
+        Verdict::Accept,
+        "homogeneous_plain_group_occurrences_use_flat_array_codec",
+        Some(RootLiveness::Struct)
     ),
     na!(
         "named-group-homogeneous-rest",
@@ -411,9 +410,9 @@ const COORDINATES: &[Coordinate] = &[
         "homogeneous array",
         "grpent.groupname via transparent alias",
         "ngr_homogeneous_alias_",
-        Verdict::Reject(HOMOGENEOUS_OCCURRENCE),
-        "homogeneous_plain_group_occurrences_reject_the_nested_wire_rewrite",
-        None
+        Verdict::Accept,
+        "homogeneous_plain_group_occurrences_use_flat_array_codec",
+        Some(RootLiveness::Struct)
     ),
     // heterogeneous array-record field/splice
     live!(

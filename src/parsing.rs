@@ -3421,6 +3421,229 @@ pub(crate) fn multiline_group_trailing_directive_rejection(
     })
 }
 
+/// The pinned parser drops a comment on the line after a repeated inline group's closing `)` and
+/// before its enclosing array's `]`: it reaches neither the inline group's `comments_after_group`
+/// slot nor its `OptionalComma`. The ordinary parser seam still reads both slots (so a future parser
+/// fix is honored as a graceful rejection there); this source-span guard covers the current orphaned
+/// spelling before IR construction can silently lose its directives.
+pub(crate) fn inline_group_occurrence_trailing_directive_rejection(
+    cddl: &cddl::ast::CDDL,
+    buffer: &str,
+) -> Option<String> {
+    cddl.rules.iter().find_map(|rule| {
+        let Rule::Type { rule, .. } = rule else {
+            return None;
+        };
+        let [choice] = rule.value.type_choices.as_slice() else {
+            return None;
+        };
+        if choice.type1.operator.is_some() {
+            return None;
+        }
+        let Type2::Array { group, .. } = &choice.type1.type2 else {
+            return None;
+        };
+        let [group_choice] = group.group_choices.as_slice() else {
+            return None;
+        };
+        let [
+            (
+                GroupEntry::InlineGroup {
+                    occur: Some(occur),
+                    span: inline_span,
+                    ..
+                },
+                _,
+            ),
+        ] = group_choice.group_entries.as_slice()
+        else {
+            return None;
+        };
+        let trailing = buffer.get(inline_span.1..group_choice.span.1)?;
+        let metadata = trailing
+            .lines()
+            .filter_map(|line| line.trim_start().strip_prefix(';'))
+            .map(|comment| metadata_from_comments(&[comment]))
+            .fold(RuleMetadata::default(), |acc, found| {
+                merge_metadata(&acc, &found)
+            });
+        let directives = metadata.all_directives();
+        if directives.is_empty() {
+            return None;
+        }
+        let found = directives
+            .iter()
+            .map(|directive| format!("`{directive}`"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        if matches!(
+            occur.occur,
+            Occur::Exact {
+                lower: Some(1),
+                upper: Some(1),
+                ..
+            }
+        ) {
+            return Some(inline_group_exact_once_directive_message(
+                &rule.name.to_string(),
+                &found,
+            ));
+        }
+        let item_ident = RustIdent::new(CDDLIdent::new(format!("{}Item", rule.name)));
+        Some(inline_group_occurrence_directive_message(
+            &rule.name.to_string(),
+            item_ident.as_ref(),
+            &found,
+        ))
+    })
+}
+
+fn inline_group_exact_once_directive_message(source: &str, found: &str) -> String {
+    format!(
+        "rule `{source}`: the `1*1` inline group's entry carries {found}, but that occurrence \
+         flattens directly into the owner record and synthesizes no separate item type. Directives \
+         and documentation that apply to the outer rule belong after the closing `]` (for example \
+         `{source} = [1*1 (a: uint, b: tstr)] ; @doc <text>`); to configure a separately named \
+         type, define a named plain group and use that rule instead."
+    )
+}
+
+/// The same pinned-parser hole exists for a direct named plain-group occurrence (`[* pair]`): a
+/// comment after `pair` and before the enclosing `]` is absent from its ordinary entry slots. Keep
+/// this source guard restricted to a group name declared in this input, so it cannot broaden the
+/// rejection to ordinary homogeneous array elements that do not use the flat-group carrier.
+pub(crate) fn named_plain_group_occurrence_trailing_directive_rejection(
+    cddl: &cddl::ast::CDDL,
+    buffer: &str,
+) -> Option<String> {
+    let mut plain_group_sources = cddl
+        .rules
+        .iter()
+        .filter_map(|rule| match rule {
+            Rule::Group { rule, .. } => Some(rule.name.to_string()),
+            Rule::Type { .. } => None,
+        })
+        .map(|name| (name.clone(), name))
+        .collect::<BTreeMap<_, _>>();
+    let simple_aliases = cddl
+        .rules
+        .iter()
+        .filter_map(|rule| {
+            let Rule::Type { rule, .. } = rule else {
+                return None;
+            };
+            let [choice] = rule.value.type_choices.as_slice() else {
+                return None;
+            };
+            if choice.type1.operator.is_some() {
+                return None;
+            }
+            let Type2::Typename {
+                ident,
+                generic_args,
+                ..
+            } = &choice.type1.type2
+            else {
+                return None;
+            };
+            generic_args
+                .is_none()
+                .then(|| (rule.name.to_string(), ident.to_string()))
+        })
+        .collect::<BTreeMap<_, _>>();
+    // Alias resolution is closed and monotonic: only aliases whose chain reaches an authored plain
+    // group are admitted, so a normal homogeneous named-type array remains outside this guard.
+    loop {
+        let newly_resolved = simple_aliases
+            .iter()
+            .filter_map(|(alias, target)| {
+                (!plain_group_sources.contains_key(alias))
+                    .then(|| {
+                        plain_group_sources
+                            .get(target)
+                            .map(|source| (alias.clone(), source.clone()))
+                    })
+                    .flatten()
+            })
+            .collect::<Vec<_>>();
+        if newly_resolved.is_empty() {
+            break;
+        }
+        plain_group_sources.extend(newly_resolved);
+    }
+    cddl.rules.iter().find_map(|rule| {
+        let Rule::Type { rule, .. } = rule else {
+            return None;
+        };
+        let [choice] = rule.value.type_choices.as_slice() else {
+            return None;
+        };
+        if choice.type1.operator.is_some() {
+            return None;
+        }
+        let Type2::Array { group, .. } = &choice.type1.type2 else {
+            return None;
+        };
+        let [group_choice] = group.group_choices.as_slice() else {
+            return None;
+        };
+        let [(
+            GroupEntry::TypeGroupname {
+                ge:
+                    TypeGroupnameEntry {
+                        occur: Some(occur),
+                        name,
+                        ..
+                    },
+                ..
+            },
+            _,
+        )] = group_choice.group_entries.as_slice()
+        else {
+            return None;
+        };
+        let group_source = plain_group_sources.get(&name.to_string())?;
+        if matches!(
+            occur.occur,
+            Occur::Exact {
+                lower: Some(1),
+                upper: Some(1),
+                ..
+            }
+        )
+        {
+            return None;
+        }
+        let metadata = buffer
+            .get(name.span.1..group_choice.span.1)?
+            .lines()
+            .filter_map(|line| line.trim_start().strip_prefix(';'))
+            .map(|comment| metadata_from_comments(&[comment]))
+            .fold(RuleMetadata::default(), |acc, found| {
+                merge_metadata(&acc, &found)
+            });
+        let found = metadata
+            .all_directives()
+            .into_iter()
+            .map(|directive| format!("`{directive}`"))
+            .collect::<Vec<_>>();
+        if found.is_empty() {
+            return None;
+        }
+        let owner = rule.name.to_string();
+        let group_source = group_source.clone();
+        Some(format!(
+            "rule `{owner}`: the repeated named plain-group occurrence `{group_source}` carries {}, \
+             but that entry declares no field or independently configurable type. Directives and \
+             documentation that apply to the outer rule belong after the closing `]` (for example \
+             `{owner} = [* {group_source}] ; @doc <text>`); directives for the repeated item belong \
+             on the named plain-group rule `{group_source} = (…)`. Remove `@name` here: it cannot \
+             rename either generated surface.",
+            found.join(", ")
+        ))
+    })
+}
+
 /// The four-part detection condition for one group rule, split out so it is unit-testable against a
 /// hand-built (span, buffer) pair. `span` is the rule's own span into `buffer`.
 fn multiline_group_trailing_directive_offence(
@@ -4827,6 +5050,11 @@ enum GroupParsingType {
     /// (`+` / `n*m`) — a LENGTH constraint belonging to the enclosing array type, kept separate
     /// from the element so it can never be misread as an element VALUE bound.
     HomogenousArray(RustType, Option<(Option<i128>, Option<i128>)>),
+    /// An RFC 8610 repeated plain group in a named ARRAY. The element still uses the ordinary
+    /// Array representation (and therefore its existing flat embedded-group codec), but the
+    /// owning rule must be a `Wrapper` rather than a transparent collection alias: only the
+    /// wrapper owns a standalone codec for the flattened wire shape.
+    FlatGroupArray(RustType, Option<(Option<i128>, Option<i128>)>),
     /// Pairs are the same e.g. field:{ *text => uint }. The third field is the occurrence-count
     /// bounds (a cardinality constraint on the table itself). `None` is the unbounded `*` table;
     /// `+` / `1*` retains `NonEmptyMap` and every other representable window uses `BoundedMap`.
@@ -5274,17 +5502,147 @@ fn parse_group_type<'a>(
     group_choice: &'a GroupChoice<'a>,
     rep: Representation,
     rule_name: Option<&RustIdent>,
+    generic_definition: bool,
     cli: &Cli,
 ) -> GroupParsingType {
     let entries = flatten_group_entries(&group_choice.group_entries, rep);
     match rep {
         Representation::Array => {
+            // RFC 8610 repeats a parenthesized GROUP by concatenating its members into the outer
+            // array: `[* (a: uint, b: tstr)]` writes `[a, b, a, b]`, not `[[a, b], [a, b]]`.
+            // The existing structural Array codec already selects `serialize_as_embedded_group` /
+            // `deserialize_as_embedded_group` for a materialized plain-group element, including
+            // its fixed-width header arithmetic. What it cannot provide through an alias is a
+            // standalone codec: `pub type Pairs = Vec<Pair>` would dispatch to Vec and nest each
+            // Pair. Materialize one internal plain group and tell the named-rule seam to make the
+            // outer owner a Wrapper over that ordinary structural Array.
+            //
+            // This is intentionally only a named ARRAY rule. An anonymous occurrence has no
+            // nominal codec owner, and a repeated inline group mixed with other entries remains a
+            // source-level boundary rather than silently reinterpreting the surrounding record.
+            if let (
+                Some(owner),
+                [
+                    (
+                        GroupEntry::InlineGroup {
+                            occur: Some(occur),
+                            group,
+                            comments_after_group,
+                            ..
+                        },
+                        optional_comma,
+                    ),
+                ],
+            ) = (rule_name, entries.as_slice())
+                && group.group_choices.len() == 1
+            {
+                // The synthesized `OwnerItem` is a concrete record. A generic definition would
+                // have to retain it as a definition-owned template and substitute the outer
+                // parameters into every instance; materializing it here leaves unresolved
+                // generic parameters in a non-generic struct and later aborts in generation.
+                // Keep the boundary at the source seam until that template ownership exists.
+                if generic_definition {
+                    types.record_rejection(format!(
+                        "generic rule `{}`: a repeated inline group (`[* (…)]` / `+` / `?` / `n*m`) \
+                         is unsupported because generic substitution for its synthesized repeated-group \
+                         item is not supported. Name a non-generic concrete rule at the use site instead.",
+                        source_rule_name_of(types, owner)
+                    ));
+                    return GroupParsingType::HomogenousArray(
+                        ConceptualRustType::Primitive(Primitive::U64).into(),
+                        None,
+                    );
+                }
+                let bounds = match occur.occur {
+                    Occur::ZeroOrMore { .. } => (None, None),
+                    Occur::Exact { lower, upper, .. } => (
+                        lower.filter(|lower| *lower != 0).map(|lower| lower as i128),
+                        upper.map(|upper| upper as i128),
+                    ),
+                    Occur::Optional { .. } => (None, Some(1)),
+                    Occur::OneOrMore { .. } => (Some(1), None),
+                };
+                reject_out_of_range_occurrence_bounds(types, Some(bounds));
+                let item_ident = RustIdent::new(CDDLIdent::new(format!("{owner}Item")));
+                let entry_metadata =
+                    inline_group_occurrence_metadata(comments_after_group, optional_comma);
+                if reject_inline_group_occurrence_directives(
+                    types,
+                    owner,
+                    &item_ident,
+                    &entry_metadata,
+                ) {
+                    return GroupParsingType::HomogenousArray(
+                        ConceptualRustType::Primitive(Primitive::U64).into(),
+                        Some(bounds),
+                    );
+                }
+                // Every authored rule ident is scope-marked before parsing begins, which makes this
+                // check source-order independent. A derived public item name must never take a
+                // numeric suffix: an unrelated rule edit must not change the generated API.
+                if types.generated_type_ident_is_claimed(&item_ident) {
+                    let owner_source = source_rule_name_of(types, owner);
+                    let claimant = types
+                        .source_rule_name(&item_ident)
+                        .unwrap_or(item_ident.as_ref());
+                    types.record_rejection(format!(
+                        "rule `{owner_source}`: repeated inline group materialization needs the generated \
+                         item type `{item_ident}`, but that name is already claimed by `{claimant}`. Rename \
+                         the authored claimant; generated flat-group item names are stable public API and \
+                         cannot take an order-dependent numeric suffix."
+                    ));
+                    return GroupParsingType::HomogenousArray(
+                        ConceptualRustType::Primitive(Primitive::U64).into(),
+                        Some(bounds),
+                    );
+                }
+                // A directory input owns every file's generated module independently. The flat
+                // group's public item is part of its owner's API, so give it the owner's module
+                // scope before it materializes; otherwise it falls back to generated root while
+                // the wrapper that names it lives in (say) `generated/flat`.
+                let item_scope = types.scope(owner).clone();
+                types.mark_scope(item_ident.clone(), item_scope);
+                types.mark_plain_group(
+                    item_ident.clone(),
+                    // This internal item is already being materialized below, unlike a freely
+                    // defined group rule whose AST body must be retained until a later use picks
+                    // its representation. `None` is the existing "already materialized" plain
+                    // group marker used by group-choice arms.
+                    PlainGroupInfo::new(None, RuleMetadata::default()),
+                );
+                parse_group(
+                    types,
+                    parent_visitor,
+                    group,
+                    &item_ident,
+                    Representation::Array,
+                    None,
+                    None,
+                    &RuleMetadata::default(),
+                    cli,
+                );
+                let item_type: RustType = ConceptualRustType::Rust(item_ident.clone()).into();
+                // The outer decoder advances by each materialized group's mandatory width. A
+                // zero-width group could succeed without consuming input, so an unbounded outer
+                // decode would never terminate. Use the IR authority after materialization, not a
+                // syntactic optionality guess, because nested plain groups contribute their own
+                // mandatory width.
+                if item_type.expanded_mandatory_field_count(types) == 0 {
+                    types.record_rejection(format!(
+                        "rule `{}`: a zero-width repeated group is unsupported — each successful \
+                         repetition must consume at least one CBOR item so the flat array decoder can \
+                         advance. Make one group member mandatory or use a separately framed array item.",
+                        source_rule_name_of(types, owner)
+                    ));
+                }
+                return GroupParsingType::FlatGroupArray(item_type, Some(bounds));
+            }
             // An unflattened `InlineGroup` here is a parenthesized group carrying an occurrence
             // marker that would be silently narrowed (`[* (int, tstr)]`), or a multi-choice group.
             // Fall through to `Heterogenous` so `parse_record_from_group_choice` rejects it
             // gracefully rather than panicking on the unsupported element.
             if entries.len() == 1 && !matches!(entries[0].0, GroupEntry::InlineGroup { .. }) {
-                let (entry, _has_comma) = entries[0];
+                let (entry, optional_comma) = entries[0];
                 let (elem_type, occur) = match entry {
                     GroupEntry::ValueMemberKey { ge, .. } => (
                         rust_type(types, parent_visitor, &ge.entry_type, cli),
@@ -5355,36 +5713,45 @@ fn parse_group_type<'a>(
                          it is a different spec, not an equivalent one."
                     ));
                 }
-                // RFC 8610 occurrence semantics repeat a GROUP by concatenating its member
-                // sequence. The ordinary homogeneous collection lowering cannot represent that:
-                // `Vec<Pg>` calls `Pg::serialize` for every element, and that standalone impl
-                // writes an array header, silently changing `[a, b, a, b]` into
-                // `[[a, b], [a, b]]`. Refuse every window that permits a positive repetition
-                // until a dedicated flat-group carrier exists. Exact once is the already-supported
-                // embedded splice below; exact zero is also sound because no `Pg` value can ever
-                // be serialized through the carrier.
-                let permits_positive_count = !matches!(
-                    bounds,
-                    None | Some((Some(1), Some(1))) | Some((None, Some(0)))
-                );
-                if permits_positive_count
-                    && let Some(group_name) = resolved_plain_group_source_name(types, &elem_type)
-                {
-                    let site = rejection_site(types, rule_name, "inline array");
-                    types.record_rejection(format!(
-                        "{site}: a homogeneous array occurrence cannot repeat the plain group \
-                         `{group_name}` — RFC 8610 occurrence semantics concatenate the group's \
-                         member sequence flat, but the available collection carrier would \
-                         serialize each group value as its own nested array, silently changing \
-                         the wire. To request nested arrays explicitly, write \
-                         `wrapped = [{group_name}]`, then repeat that type (`[* wrapped]`). Flat \
-                         repeated-group support requires a dedicated occurrence carrier."
-                    ));
+                // The named plain-group spelling (`pair = (a, b)`, `pairs = [* pair]`) shares the
+                // inline form's flat wire algorithm. Keep exact once on the existing splice path;
+                // every other occurrence is a nominal wrapper so `pairs` owns its standalone codec.
+                let repeated_plain_group_source =
+                    (!matches!(bounds, None | Some((Some(1), Some(1)))))
+                        .then(|| resolved_plain_group_source_name(types, &elem_type))
+                        .flatten();
+                let is_repeated_plain_group = repeated_plain_group_source.is_some();
+                if let Some(group_source) = repeated_plain_group_source {
+                    let Some(owner) = rule_name else {
+                        types.record_rejection(format!(
+                            "inline array: the repeated plain group `{group_source}` has RFC 8610 flat \
+                             concatenation semantics, but this anonymous array has no nominal owner for the \
+                             standalone flat-group codec. Name this array as its own rule (for example \
+                             `pairs = [* {group_source}]`) or frame each group as an array item before repeating it."
+                        ));
+                        return GroupParsingType::HomogenousArray(elem_type, bounds);
+                    };
+                    let entry_metadata = group_entry_rule_metadata(entry, optional_comma);
+                    if reject_named_plain_group_occurrence_directives(
+                        types,
+                        owner,
+                        &group_source,
+                        &entry_metadata,
+                    ) {
+                        return GroupParsingType::HomogenousArray(
+                            ConceptualRustType::Primitive(Primitive::U64).into(),
+                            bounds,
+                        );
+                    }
                 }
                 match bounds {
                     // no bounds
                     Some((None, None)) => {
-                        return GroupParsingType::HomogenousArray(elem_type, None);
+                        return if is_repeated_plain_group {
+                            GroupParsingType::FlatGroupArray(elem_type, None)
+                        } else {
+                            GroupParsingType::HomogenousArray(elem_type, None)
+                        };
                     }
                     None => {
                         // if the only element is a basic group we don't need to create a new group but can just
@@ -5428,7 +5795,11 @@ fn parse_group_type<'a>(
                         }
                     }
                     Some(bounds) => {
-                        return GroupParsingType::HomogenousArray(elem_type, Some(bounds));
+                        return if is_repeated_plain_group {
+                            GroupParsingType::FlatGroupArray(elem_type, Some(bounds))
+                        } else {
+                            GroupParsingType::HomogenousArray(elem_type, Some(bounds))
+                        };
                     }
                 }
             }
@@ -5938,6 +6309,129 @@ fn group_entry_rule_metadata(entry: &GroupEntry, optional_comma: &OptionalComma)
     metadata_from_comments(&combined_comments.unwrap_or_default())
 }
 
+/// Read the only two comment slots the pinned CDDL AST can associate with a repeated inline group
+/// entry. This is intentionally separate from [`group_entry_rule_metadata`]: an `InlineGroup` has
+/// no ordinary entry-trailing slot, and that helper rightly refuses to pretend it does.
+fn inline_group_occurrence_metadata(
+    comments_after_group: &Option<Comments>,
+    optional_comma: &OptionalComma,
+) -> RuleMetadata {
+    let combined_comments =
+        combine_comments(comments_after_group, &optional_comma.trailing_comments);
+    metadata_from_comments(&combined_comments.unwrap_or_default())
+}
+
+/// A repeated inline group's entry is structural syntax, not a separately nameable declaration.
+/// Reject every populated metadata field rather than silently assigning a directive to neither the
+/// owner wrapper nor its fixed-name synthesized item. The exhaustive destructure is load-bearing:
+/// adding a `RuleMetadata` field forces a conscious decision here.
+fn reject_inline_group_occurrence_directives(
+    types: &mut IntermediateTypes,
+    owner: &RustIdent,
+    item_ident: &RustIdent,
+    metadata: &RuleMetadata,
+) -> bool {
+    let RuleMetadata {
+        name,
+        rust_name,
+        newtype,
+        no_alias,
+        key_demand,
+        used_as_elem,
+        copy,
+        raw_bytes_flavor,
+        ignore,
+        duplicates,
+        custom_json,
+        no_json_schema_export,
+        custom_serialize,
+        custom_deserialize,
+        custom_encodings,
+        custom_wire_major,
+        extern_companions,
+        comment,
+    } = metadata;
+    let found = [
+        ("@name", name.is_some()),
+        ("@rust_name", rust_name.is_some()),
+        ("@newtype", newtype.is_some()),
+        ("@no_alias", *no_alias),
+        ("@used_as_key", key_demand.is_some()),
+        ("@used_as_elem", *used_as_elem),
+        ("@copy", *copy),
+        ("@raw_bytes_flavor", *raw_bytes_flavor),
+        ("@ignore", *ignore),
+        ("@duplicates", duplicates.is_some()),
+        ("@custom_json", *custom_json),
+        ("@no_json_schema_export", *no_json_schema_export),
+        ("@custom_serialize", custom_serialize.is_some()),
+        ("@custom_deserialize", custom_deserialize.is_some()),
+        ("@custom_encodings", custom_encodings.is_some()),
+        ("@custom_wire_major", custom_wire_major.is_some()),
+        ("@extern_companions", extern_companions.is_some()),
+        ("@doc", comment.is_some()),
+    ]
+    .into_iter()
+    .filter_map(|(directive, written)| written.then_some(format!("`{directive}`")))
+    .collect::<Vec<_>>();
+    if found.is_empty() {
+        return false;
+    }
+    let source = source_rule_name_of(types, owner);
+    types.record_rejection(inline_group_occurrence_directive_message(
+        &source,
+        item_ident.as_ref(),
+        &found.join(", "),
+    ));
+    true
+}
+
+fn inline_group_occurrence_directive_message(
+    source: &str,
+    item_ident: &str,
+    found: &str,
+) -> String {
+    format!(
+        "rule `{source}`: the repeated inline group's entry carries {found}, but that entry declares no \
+         independently configurable type. The synthesized item name is fixed as `{item_ident}`. \
+         Directives and documentation that apply to the outer rule belong after the closing `]` \
+         (for example `{source} = [* (a: uint, b: tstr)] ; @doc <text>`); `@name` cannot rename \
+         the synthesized item. To configure a separately named repeated item, define a named plain \
+         group and repeat that rule instead."
+    )
+}
+
+/// The entry naming a plain group is likewise structural in the nominal flat carrier: it repeats
+/// values of the named group but creates neither a field nor another configurable type. Reuse
+/// `all_directives`, whose own exhaustive metadata classification makes a newly added directive
+/// fail closed here too.
+fn reject_named_plain_group_occurrence_directives(
+    types: &mut IntermediateTypes,
+    owner: &RustIdent,
+    group_source: &str,
+    metadata: &RuleMetadata,
+) -> bool {
+    let found = metadata
+        .all_directives()
+        .into_iter()
+        .map(|directive| format!("`{directive}`"))
+        .collect::<Vec<_>>();
+    if found.is_empty() {
+        return false;
+    }
+    let owner_source = source_rule_name_of(types, owner);
+    types.record_rejection(format!(
+        "rule `{owner_source}`: the repeated named plain-group occurrence `{group_source}` carries {}, \
+         but that entry declares no field or independently configurable type. Directives and \
+         documentation that apply to the outer rule belong after the closing `]` (for example \
+         `{owner_source} = [* {group_source}] ; @doc <text>`); directives for the repeated item \
+         belong on the named plain-group rule `{group_source} = (…)`. Remove `@name` here: it \
+         cannot rename either generated surface.",
+        found.join(", ")
+    ));
+    true
+}
+
 /// The `@name` that names a MEMBER-position anonymous heterogeneous inline composite (array or
 /// map), read from the one comment slot
 /// that spelling puts it in: the enclosing group entry's trailing comments (plus the trailing-comma
@@ -6251,6 +6745,7 @@ fn rust_type_from_type2(
                         group_choice,
                         Representation::Array,
                         None,
+                        false,
                         cli,
                     ) {
                         GroupParsingType::HomogenousArray(element_type, bounds) => {
@@ -6278,7 +6773,8 @@ fn rust_type_from_type2(
                                 None => array_type,
                             }
                         }
-                        GroupParsingType::HomogenousMap(_, _, _) => unreachable!(),
+                        GroupParsingType::FlatGroupArray(_, _)
+                        | GroupParsingType::HomogenousMap(_, _, _) => unreachable!(),
                         GroupParsingType::Heterogenous => {
                             let mut rule_metadata = RuleMetadata::from(
                                 get_comment_after(parent_visitor, &CDDLType::from(type2), None)
@@ -6379,6 +6875,7 @@ fn rust_type_from_type2(
                         group_choice,
                         Representation::Map,
                         None,
+                        false,
                         cli,
                     ) {
                         // Table map - homogenous key/value types
@@ -6452,6 +6949,7 @@ fn rust_type_from_type2(
                             types.new_type(&cddl_ident, cli)
                         }
                         GroupParsingType::WrappedBasicGroup(_)
+                        | GroupParsingType::FlatGroupArray(_, _)
                         | GroupParsingType::HomogenousArray(_, _) => unreachable!(),
                     }
                 }
@@ -9313,209 +9811,263 @@ fn parse_group_choice(
     } else {
         rule_metadata
     };
-    let rust_struct =
-        match parse_group_type(types, parent_visitor, group_choice, rep, Some(name), cli) {
-            GroupParsingType::HomogenousArray(element_type, bounds) => {
-                // Array-shaped collection: `@duplicates reject` is LIVE (rides the alias built in
-                // `register_rust_struct`), `preserve` is the default (accepted no-op). Nothing to
-                // reject here. `@ignore` never applies to an array collection (it is the open
-                // struct-MAP rest-row flavor) — reject a rule-position `@ignore` loudly.
-                if rule_metadata.ignore {
-                    reject_ignore_not_applicable(types, name);
-                }
-                // A plain group used as the array element (`pair = (int, tstr)`, `a = [* pair]`) must be
-                // registered as a concrete Array-rep rust struct, exactly like the anonymous member-array
-                // path (`rust_type_from_type2`'s `Type2::Array` arm) and the record path both do. Without
-                // this the element ident stays an unregistered plain group and `is_enum`/`for_rust_member`
-                // trip their "must be a struct or a generic instance" assert at generation time.
-                // Aliases resolve first — an alias is transparent, so `a = [* kv_alias]` materializes
-                // the group exactly like `a = [* kv]`. Without the resolution the run exited 0 having
-                // emitted `pub type KvAlias = Kv;` with no `Kv` anywhere: a crate that does not compile.
-                if element_type.generic_param_binding.is_none()
-                    && let ConceptualRustType::Rust(element_ident) =
-                        element_type.conceptual_type.resolve_alias_shallow()
-                {
-                    types.set_rep_if_plain_group(
-                        parent_visitor,
-                        element_ident,
-                        Representation::Array,
-                        cli,
-                    );
-                }
-                // A named homogeneous-array rule does not travel through the member `Type1`
-                // walker below, so validate its exact occurrence count here as well. Keep the
-                // effective rule policy: exact reject sets stay BoundedOrderedSet rather than
-                // becoming Rust arrays and therefore have no static-array object-size demand.
+    let group_parsing_type = parse_group_type(
+        types,
+        parent_visitor,
+        group_choice,
+        rep,
+        Some(name),
+        generic_params.is_some(),
+        cli,
+    );
+    if let GroupParsingType::FlatGroupArray(element_type, bounds) = &group_parsing_type {
+        // A transparent collection alias would inherit Vec's standalone codec and nest each group
+        // value. The wrapper owns the structural Array's existing flat embedded-group codec.
+        if rule_metadata.ignore {
+            reject_ignore_not_applicable(types, name);
+        }
+        // The named and aliased plain-group spellings reach this seam without the member-position
+        // walker that normally materializes a plain group. Resolve aliases first so they materialize
+        // the referenced group with Array representation too.
+        if element_type.generic_param_binding.is_none()
+            && let ConceptualRustType::Rust(element_ident) =
+                element_type.conceptual_type.resolve_alias_shallow()
+        {
+            types.set_rep_if_plain_group(parent_visitor, element_ident, Representation::Array, cli);
+        }
+        // Every repetition must advance the outer decoder. The materialized IR, rather than a
+        // syntactic optionality guess, decides whether an embedded decode consumes an item.
+        if element_type.expanded_mandatory_field_count(types) == 0 {
+            types.record_rejection(format!(
+                "rule `{}`: a zero-width repeated group is unsupported — each successful \
+                 repetition must consume at least one CBOR item so the flat array decoder can \
+                 advance. Make one group member mandatory or use a separately framed array item.",
+                source_rule_name_of(types, name)
+            ));
+        }
+        let effective_metadata = single_arm_array_effective_metadata(&rule_metadata, tag, name);
+        let mut array_type: RustType =
+            ConceptualRustType::Array(Box::new(element_type.clone())).into();
+        if let Some(bounds) = bounds {
+            array_type = array_type.with_bounds(*bounds);
+        }
+        if let Some(Err(length)) = array_type.exact_homogeneous_array_len() {
+            types.record_rejection(exact_homogeneous_array_length_rejection(length));
+        }
+        let rust_struct = RustStruct::new_wrapper(
+            name.clone(),
+            tag,
+            Some(&effective_metadata),
+            array_type,
+            None,
+        );
+        match generic_params {
+            Some(params) => types.register_generic_def(GenericDef::new(params, rust_struct)),
+            None => types.register_rust_struct(parent_visitor, rust_struct, cli),
+        };
+        return;
+    }
+    let rust_struct = match group_parsing_type {
+        GroupParsingType::HomogenousArray(element_type, bounds) => {
+            // Array-shaped collection: `@duplicates reject` is LIVE (rides the alias built in
+            // `register_rust_struct`), `preserve` is the default (accepted no-op). Nothing to
+            // reject here. `@ignore` never applies to an array collection (it is the open
+            // struct-MAP rest-row flavor) — reject a rule-position `@ignore` loudly.
+            if rule_metadata.ignore {
+                reject_ignore_not_applicable(types, name);
+            }
+            // A plain group used as the array element (`pair = (int, tstr)`, `a = [* pair]`) must be
+            // registered as a concrete Array-rep rust struct, exactly like the anonymous member-array
+            // path (`rust_type_from_type2`'s `Type2::Array` arm) and the record path both do. Without
+            // this the element ident stays an unregistered plain group and `is_enum`/`for_rust_member`
+            // trip their "must be a struct or a generic instance" assert at generation time.
+            // Aliases resolve first — an alias is transparent, so `a = [* kv_alias]` materializes
+            // the group exactly like `a = [* kv]`. Without the resolution the run exited 0 having
+            // emitted `pub type KvAlias = Kv;` with no `Kv` anywhere: a crate that does not compile.
+            if element_type.generic_param_binding.is_none()
+                && let ConceptualRustType::Rust(element_ident) =
+                    element_type.conceptual_type.resolve_alias_shallow()
+            {
+                types.set_rep_if_plain_group(
+                    parent_visitor,
+                    element_ident,
+                    Representation::Array,
+                    cli,
+                );
+            }
+            // A named homogeneous-array rule does not travel through the member `Type1`
+            // walker below, so validate its exact occurrence count here as well. Keep the
+            // effective rule policy: exact reject sets stay BoundedOrderedSet rather than
+            // becoming Rust arrays and therefore have no static-array object-size demand.
+            let effective_metadata = single_arm_array_effective_metadata(&rule_metadata, tag, name);
+            let array_type =
+                RustType::new(ConceptualRustType::Array(Box::new(element_type.clone())))
+                    .with_bounds(bounds.unwrap_or((None, None)))
+                    .with_duplicates_policy(effective_metadata.duplicates);
+            if let Some(Err(length)) = array_type.exact_homogeneous_array_len() {
+                types.record_rejection(exact_homogeneous_array_length_rejection(length));
+            }
+            // Covers non-generic set rules (Phase 2.2) and generic single-arm set DEFS (Phase 2.3):
+            // a generic def stores the wrapper (param element) as a `GenericDef`, and each
+            // instantiation mints one nominal per `<def>_<args>` in `GenericInstance::resolve`.
+            let is_set_nominal =
+                tag.is_some_and(|t| well_known_tag_default_duplicates(t, true).is_some());
+            if is_set_nominal {
+                // A single-arm mandatory-tag 258 SET rule (`#6.258([* a])`) NOMINALIZES into a
+                // `Wrapper` struct owning its `{tag, len, elem}` encodings (Phase 2.2), exactly like
+                // the two-arm idiom but with a MANDATORY tag (grammar decides the record: `Option<Sz>`,
+                // NOT the two-arm `TagPresenceEncoding`). The registry set-semantics default (reject)
+                // rides `single_arm_array_effective_metadata` and the `Wrapper` register arm threads it
+                // onto the stored inner array type, selecting the `OrderedSet`/`NonEmptyOrderedSet`
+                // twin. `@newtype` carries a custom getter on the wrapper; a bare set nominal emits no
+                // inherent `get()` (it would shadow `OrderedSet::get(index)` through `Deref`).
                 let effective_metadata =
                     single_arm_array_effective_metadata(&rule_metadata, tag, name);
-                let array_type =
-                    RustType::new(ConceptualRustType::Array(Box::new(element_type.clone())))
-                        .with_bounds(bounds.unwrap_or((None, None)))
-                        .with_duplicates_policy(effective_metadata.duplicates);
-                if let Some(Err(length)) = array_type.exact_homogeneous_array_len() {
-                    types.record_rejection(exact_homogeneous_array_length_rejection(length));
+                let mut array_type: RustType =
+                    ConceptualRustType::Array(Box::new(element_type)).into();
+                if let Some(bounds) = bounds {
+                    array_type = array_type.with_bounds(bounds);
                 }
-                // Covers non-generic set rules (Phase 2.2) and generic single-arm set DEFS (Phase 2.3):
-                // a generic def stores the wrapper (param element) as a `GenericDef`, and each
-                // instantiation mints one nominal per `<def>_<args>` in `GenericInstance::resolve`.
-                let is_set_nominal =
-                    tag.is_some_and(|t| well_known_tag_default_duplicates(t, true).is_some());
-                if is_set_nominal {
-                    // A single-arm mandatory-tag 258 SET rule (`#6.258([* a])`) NOMINALIZES into a
-                    // `Wrapper` struct owning its `{tag, len, elem}` encodings (Phase 2.2), exactly like
-                    // the two-arm idiom but with a MANDATORY tag (grammar decides the record: `Option<Sz>`,
-                    // NOT the two-arm `TagPresenceEncoding`). The registry set-semantics default (reject)
-                    // rides `single_arm_array_effective_metadata` and the `Wrapper` register arm threads it
-                    // onto the stored inner array type, selecting the `OrderedSet`/`NonEmptyOrderedSet`
-                    // twin. `@newtype` carries a custom getter on the wrapper; a bare set nominal emits no
-                    // inherent `get()` (it would shadow `OrderedSet::get(index)` through `Deref`).
-                    let effective_metadata =
-                        single_arm_array_effective_metadata(&rule_metadata, tag, name);
-                    let mut array_type: RustType =
-                        ConceptualRustType::Array(Box::new(element_type)).into();
-                    if let Some(bounds) = bounds {
-                        array_type = array_type.with_bounds(bounds);
-                    }
-                    RustStruct::new_wrapper(
-                        name.clone(),
-                        tag,
-                        Some(&effective_metadata),
-                        array_type,
-                        None,
-                    )
-                    .as_set_nominal()
-                } else if rule_metadata.newtype.is_some() || tag.is_some() {
-                    // generate newtype over array — on `@newtype`, and UNCONDITIONALLY when the rule
-                    // carries a TAG. A tagged transparent alias (`pub type TaggedArr = Vec<u64>;` with
-                    // the tag riding the alias entry) mints no type to hang the tag on, so
-                    // `TaggedArr::to_cbor_bytes` would be `Vec<u64>`'s — writing the BARE array while
-                    // every embed site of the rule writes `write_tag(n)` first and every embed site's
-                    // decoder requires it. Same reasoning as the single-type tag rule and the `.cbor`
-                    // rule body; `register_type_alias`'s wire-facts assert makes the alias spelling
-                    // unrepresentable rather than merely unused, and `@newtype` is redundant here.
-                    // Route through the SAME effective-metadata helper the
-                    // plain single-arm array path uses so a single-arm tag-258 `@newtype` wrapper
-                    // (`#6.258([* a]) ; @newtype`) picks up the registry's set-semantics default
-                    // (reject) and fires the single-arm defaulting notice, exactly as the non-newtype
-                    // flavor does — no-op for a non-258 tag or an explicit directive. The effective
-                    // `@duplicates` policy lands in the wrapper's struct config; the register-side
-                    // `Wrapper` arm then threads it onto the stored inner collection type so generation
-                    // selects the `OrderedSet` twin.
-                    let effective_metadata =
-                        single_arm_array_effective_metadata(&rule_metadata, tag, name);
-                    let mut array_type: RustType =
-                        ConceptualRustType::Array(Box::new(element_type)).into();
-                    if let Some(bounds) = bounds {
-                        array_type = array_type.with_bounds(bounds);
-                    }
-                    RustStruct::new_wrapper(
-                        name.clone(),
-                        tag,
-                        Some(&effective_metadata),
-                        array_type,
-                        None,
-                    )
-                } else {
-                    // Array - homogeneous element type with proper occurence operator. A single-arm
-                    // tag-258 set picks up the registry's reject default via the helper (no-op for a
-                    // non-258 tag or an explicit directive).
-                    let effective_metadata =
-                        single_arm_array_effective_metadata(&rule_metadata, tag, name);
-                    RustStruct::new_array(
-                        name.clone(),
-                        tag,
-                        Some(&effective_metadata),
-                        element_type,
-                        bounds,
-                    )
+                RustStruct::new_wrapper(
+                    name.clone(),
+                    tag,
+                    Some(&effective_metadata),
+                    array_type,
+                    None,
+                )
+                .as_set_nominal()
+            } else if rule_metadata.newtype.is_some() || tag.is_some() {
+                // generate newtype over array — on `@newtype`, and UNCONDITIONALLY when the rule
+                // carries a TAG. A tagged transparent alias (`pub type TaggedArr = Vec<u64>;` with
+                // the tag riding the alias entry) mints no type to hang the tag on, so
+                // `TaggedArr::to_cbor_bytes` would be `Vec<u64>`'s — writing the BARE array while
+                // every embed site of the rule writes `write_tag(n)` first and every embed site's
+                // decoder requires it. Same reasoning as the single-type tag rule and the `.cbor`
+                // rule body; `register_type_alias`'s wire-facts assert makes the alias spelling
+                // unrepresentable rather than merely unused, and `@newtype` is redundant here.
+                // Route through the SAME effective-metadata helper the
+                // plain single-arm array path uses so a single-arm tag-258 `@newtype` wrapper
+                // (`#6.258([* a]) ; @newtype`) picks up the registry's set-semantics default
+                // (reject) and fires the single-arm defaulting notice, exactly as the non-newtype
+                // flavor does — no-op for a non-258 tag or an explicit directive. The effective
+                // `@duplicates` policy lands in the wrapper's struct config; the register-side
+                // `Wrapper` arm then threads it onto the stored inner collection type so generation
+                // selects the `OrderedSet` twin.
+                let effective_metadata =
+                    single_arm_array_effective_metadata(&rule_metadata, tag, name);
+                let mut array_type: RustType =
+                    ConceptualRustType::Array(Box::new(element_type)).into();
+                if let Some(bounds) = bounds {
+                    array_type = array_type.with_bounds(bounds);
                 }
+                RustStruct::new_wrapper(
+                    name.clone(),
+                    tag,
+                    Some(&effective_metadata),
+                    array_type,
+                    None,
+                )
+            } else {
+                // Array - homogeneous element type with proper occurence operator. A single-arm
+                // tag-258 set picks up the registry's reject default via the helper (no-op for a
+                // non-258 tag or an explicit directive).
+                let effective_metadata =
+                    single_arm_array_effective_metadata(&rule_metadata, tag, name);
+                RustStruct::new_array(
+                    name.clone(),
+                    tag,
+                    Some(&effective_metadata),
+                    element_type,
+                    bounds,
+                )
             }
-            GroupParsingType::HomogenousMap(key_type, value_type, bounds) => {
-                // `@ignore` is the open struct-map rest-row flavor and does not apply to a TABLE rule
-                // (`{ * k => v }`, no fixed keys) — reject a rule-position `@ignore` loudly.
-                if rule_metadata.ignore {
-                    reject_ignore_not_applicable(types, name);
-                }
-                // A table's single row carries a trailing comment slot DISJOINT from the rule's own (a
-                // rule-trailing `@duplicates` reaches `rule_metadata`; the same directive spelled on the
-                // row does not reach it). Nothing a named table's row slot can carry is honored, so the
-                // slot's whole job here is to refuse loudly rather than swallow: a custom (de)serializer
-                // pair (a TYPE-level override; a row declares no type), its `@custom_encodings`
-                // declarations, and `@duplicates` (whose honored spelling is the rule slot).
-                // (`InlineGroup` is skipped: `group_entry_rule_metadata` panics on one, and a
-                // parenthesized table row `{ * (k => v) }` has no entry slot of its own anyway.)
-                if let [(row_ge, row_comma)] =
-                    flatten_group_entries(&group_choice.group_entries, Representation::Map)[..]
-                    && !matches!(row_ge, GroupEntry::InlineGroup { .. })
-                {
-                    let row_metadata = group_entry_rule_metadata(row_ge, row_comma);
-                    let src = types
-                        .source_rule_name(name)
-                        .map(str::to_owned)
-                        .unwrap_or_else(|| name.to_string());
-                    reject_custom_codec_on_row_entry(
-                        types,
-                        &format!("table row (`* k => v`) of rule `{src}`"),
-                        "Name the table's key or value type as its own rule and put the pair there \
+        }
+        GroupParsingType::HomogenousMap(key_type, value_type, bounds) => {
+            // `@ignore` is the open struct-map rest-row flavor and does not apply to a TABLE rule
+            // (`{ * k => v }`, no fixed keys) — reject a rule-position `@ignore` loudly.
+            if rule_metadata.ignore {
+                reject_ignore_not_applicable(types, name);
+            }
+            // A table's single row carries a trailing comment slot DISJOINT from the rule's own (a
+            // rule-trailing `@duplicates` reaches `rule_metadata`; the same directive spelled on the
+            // row does not reach it). Nothing a named table's row slot can carry is honored, so the
+            // slot's whole job here is to refuse loudly rather than swallow: a custom (de)serializer
+            // pair (a TYPE-level override; a row declares no type), its `@custom_encodings`
+            // declarations, and `@duplicates` (whose honored spelling is the rule slot).
+            // (`InlineGroup` is skipped: `group_entry_rule_metadata` panics on one, and a
+            // parenthesized table row `{ * (k => v) }` has no entry slot of its own anyway.)
+            if let [(row_ge, row_comma)] =
+                flatten_group_entries(&group_choice.group_entries, Representation::Map)[..]
+                && !matches!(row_ge, GroupEntry::InlineGroup { .. })
+            {
+                let row_metadata = group_entry_rule_metadata(row_ge, row_comma);
+                let src = types
+                    .source_rule_name(name)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| name.to_string());
+                reject_custom_codec_on_row_entry(
+                    types,
+                    &format!("table row (`* k => v`) of rule `{src}`"),
+                    "Name the table's key or value type as its own rule and put the pair there \
                      (`k = text ; @custom_serialize <fn> @custom_deserialize <fn>`, then \
                      `{ * k => v }`).",
-                        &row_metadata,
-                    );
-                    // …and a `@custom_encodings` declaration with no pair to describe is dropped the
-                    // same way.
-                    reject_custom_encodings_without_pair(
-                        types,
-                        &format!("the table row (`* k => v`) of rule `{src}`"),
-                        &row_metadata,
-                    );
-                    // A `@duplicates` written on the row is read into `row_metadata` and dropped —
-                    // BOTH policies, `preserve` and the explicit `reject` alike (the rule slot is what
-                    // `register_rust_struct` reads). An ANONYMOUS inline table honors this slot
-                    // precisely because it has no rule slot to carry the policy; a named table has one,
-                    // so a second honored spelling would only invite the two to drift. Reject it and
-                    // point at the rule slot.
-                    if row_metadata.duplicates.is_some() {
-                        types.record_rejection(format!(
-                            "@duplicates on the table row (`* k => v`) of rule `{src}`: a named \
+                    &row_metadata,
+                );
+                // …and a `@custom_encodings` declaration with no pair to describe is dropped the
+                // same way.
+                reject_custom_encodings_without_pair(
+                    types,
+                    &format!("the table row (`* k => v`) of rule `{src}`"),
+                    &row_metadata,
+                );
+                // A `@duplicates` written on the row is read into `row_metadata` and dropped —
+                // BOTH policies, `preserve` and the explicit `reject` alike (the rule slot is what
+                // `register_rust_struct` reads). An ANONYMOUS inline table honors this slot
+                // precisely because it has no rule slot to carry the policy; a named table has one,
+                // so a second honored spelling would only invite the two to drift. Reject it and
+                // point at the rule slot.
+                if row_metadata.duplicates.is_some() {
+                    types.record_rejection(format!(
+                        "@duplicates on the table row (`* k => v`) of rule `{src}`: a named \
                          table's duplicates policy is read from the RULE's own trailing slot, not \
                          from the row's, so it is not honored here. Move it after the closing \
                          brace (`{src} = {{ * k => v }} ; @duplicates <policy>`). (An ANONYMOUS \
                          inline table — one written directly at a member, element or union-arm \
                          type — does carry the policy on its row, because it has no rule slot.)"
-                        ));
-                    }
+                    ));
                 }
-                // Table collection: `reject` is today's default (accepted no-op) and `preserve` is
-                // LIVE — the policy rides the transparent alias built in `register_rust_struct`,
-                // swapping the member to the `PairMap`/`NonEmptyPairMap` vec-of-pairs twin. That is the
-                // RULE slot's reading; the row slot's is rejected above.
-                // Same registration gap as the array arm above: a plain group used as a table key or
-                // value (`pair = (int, tstr)`, `a = { * int => pair }`) must be registered as a concrete
-                // Array-rep rust struct — a CBOR map value can only be one item, so the group is encoded
-                // as a nested array, exactly the interpretation the table alias (`BTreeMap<Int, Pair>`)
-                // already commits to. Without this the ident stays an unregistered plain group and
-                // `is_enum` trips its "must be a struct or a generic instance" assert at generation time.
-                for member in [&key_type, &value_type] {
-                    if member.generic_param_binding.is_none()
-                        && let ConceptualRustType::Rust(member_ident) = &member.conceptual_type
-                    {
-                        types.set_rep_if_plain_group(
-                            parent_visitor,
-                            member_ident,
-                            Representation::Array,
-                            cli,
-                        );
-                    }
+            }
+            // Table collection: `reject` is today's default (accepted no-op) and `preserve` is
+            // LIVE — the policy rides the transparent alias built in `register_rust_struct`,
+            // swapping the member to the `PairMap`/`NonEmptyPairMap` vec-of-pairs twin. That is the
+            // RULE slot's reading; the row slot's is rejected above.
+            // Same registration gap as the array arm above: a plain group used as a table key or
+            // value (`pair = (int, tstr)`, `a = { * int => pair }`) must be registered as a concrete
+            // Array-rep rust struct — a CBOR map value can only be one item, so the group is encoded
+            // as a nested array, exactly the interpretation the table alias (`BTreeMap<Int, Pair>`)
+            // already commits to. Without this the ident stays an unregistered plain group and
+            // `is_enum` trips its "must be a struct or a generic instance" assert at generation time.
+            for member in [&key_type, &value_type] {
+                if member.generic_param_binding.is_none()
+                    && let ConceptualRustType::Rust(member_ident) = &member.conceptual_type
+                {
+                    types.set_rep_if_plain_group(
+                        parent_visitor,
+                        member_ident,
+                        Representation::Array,
+                        cli,
+                    );
                 }
-                // A tag forces the wrapper for the reason the array sibling above states: a tagged
-                // transparent map alias drops the tag from the rule's own standalone
-                // `to/from_cbor_bytes` while every embed site writes and requires it. This holds for
-                // EVERY duplicates policy, `preserve` included: the register-side `Wrapper` arm threads
-                // the policy onto the stored inner map type, so the wrapper's member is the
-                // `PairMap`/`NonEmptyPairMap` vec-of-pairs twin and its wasm boundary names the
-                // `PairMapKToV` structural class (minted by the config-aware wasm walk beside the
-                // default-flavored `MapKToV`).
-                if rule_metadata.newtype.is_some()
+            }
+            // A tag forces the wrapper for the reason the array sibling above states: a tagged
+            // transparent map alias drops the tag from the rule's own standalone
+            // `to/from_cbor_bytes` while every embed site writes and requires it. This holds for
+            // EVERY duplicates policy, `preserve` included: the register-side `Wrapper` arm threads
+            // the policy onto the stored inner map type, so the wrapper's member is the
+            // `PairMap`/`NonEmptyPairMap` vec-of-pairs twin and its wasm boundary names the
+            // `PairMapKToV` structural class (minted by the config-aware wasm walk beside the
+            // default-flavored `MapKToV`).
+            if rule_metadata.newtype.is_some()
                     || tag.is_some()
                     // A complete pair owns the WHOLE table item, not either entry position. A
                     // transparent table alias has no trait-impl site, so it cannot truthfully own
@@ -9528,57 +10080,58 @@ fn parse_group_choice(
                     // by this table-only ownership seam.
                     || (rule_metadata.custom_serialize.is_some()
                         && rule_metadata.custom_deserialize.is_some())
-                {
-                    // generate a nominal owner over map
-                    let mut map_type: RustType =
-                        ConceptualRustType::Map(Box::new(key_type), Box::new(value_type)).into();
-                    if let Some(bounds) = bounds {
-                        map_type = map_type.with_bounds(bounds);
-                    }
-                    RustStruct::new_wrapper(name.clone(), tag, Some(&rule_metadata), map_type, None)
-                } else {
-                    // Table map - homogeneous key/value types
-                    RustStruct::new_table(
-                        name.clone(),
-                        tag,
-                        Some(&rule_metadata),
-                        key_type,
-                        value_type,
-                        bounds,
-                    )
+            {
+                // generate a nominal owner over map
+                let mut map_type: RustType =
+                    ConceptualRustType::Map(Box::new(key_type), Box::new(value_type)).into();
+                if let Some(bounds) = bounds {
+                    map_type = map_type.with_bounds(bounds);
                 }
+                RustStruct::new_wrapper(name.clone(), tag, Some(&rule_metadata), map_type, None)
+            } else {
+                // Table map - homogeneous key/value types
+                RustStruct::new_table(
+                    name.clone(),
+                    tag,
+                    Some(&rule_metadata),
+                    key_type,
+                    value_type,
+                    bounds,
+                )
             }
-            GroupParsingType::Heterogenous | GroupParsingType::WrappedBasicGroup(_) => {
-                // A heterogenous struct/record (or a single wrapped basic group) is not a collection,
-                // so `@duplicates` can never apply here. A rule-position `@ignore` is a misplacement too:
-                // the valid `@ignore` sits on the `* k => v` ENTRY (read in `recognize_rest_row` off the
-                // entry-trailing slot), NOT on the rule (the two slots are disjoint — a rule directive is
-                // never stolen by the last entry, nor an entry directive by the rule).
-                if rule_metadata.duplicates.is_some() {
-                    reject_duplicates_not_applicable(types, name);
-                }
-                if rule_metadata.ignore {
-                    reject_ignore_not_applicable(types, name);
-                }
-                assert!(
-                    rule_metadata.newtype.is_none(),
-                    "Can only use @newtype on primtives + heterogenious arrays/maps"
-                );
-                // Heterogenous map or array with defined key/value pairs in the cddl like a struct
-                let record = parse_record_from_group_choice(
-                    types,
-                    rep,
-                    parent_visitor,
-                    name,
-                    group_choice,
-                    in_choice_arm,
-                    tag.is_some(),
-                    cli,
-                );
-                // We need to store this in IntermediateTypes so we can refer from one struct to another.
-                RustStruct::new_record(name.clone(), tag, Some(&rule_metadata), record)
+        }
+        GroupParsingType::Heterogenous | GroupParsingType::WrappedBasicGroup(_) => {
+            // A heterogenous struct/record (or a single wrapped basic group) is not a collection,
+            // so `@duplicates` can never apply here. A rule-position `@ignore` is a misplacement too:
+            // the valid `@ignore` sits on the `* k => v` ENTRY (read in `recognize_rest_row` off the
+            // entry-trailing slot), NOT on the rule (the two slots are disjoint — a rule directive is
+            // never stolen by the last entry, nor an entry directive by the rule).
+            if rule_metadata.duplicates.is_some() {
+                reject_duplicates_not_applicable(types, name);
             }
-        };
+            if rule_metadata.ignore {
+                reject_ignore_not_applicable(types, name);
+            }
+            assert!(
+                rule_metadata.newtype.is_none(),
+                "Can only use @newtype on primtives + heterogenious arrays/maps"
+            );
+            // Heterogenous map or array with defined key/value pairs in the cddl like a struct
+            let record = parse_record_from_group_choice(
+                types,
+                rep,
+                parent_visitor,
+                name,
+                group_choice,
+                in_choice_arm,
+                tag.is_some(),
+                cli,
+            );
+            // We need to store this in IntermediateTypes so we can refer from one struct to another.
+            RustStruct::new_record(name.clone(), tag, Some(&rule_metadata), record)
+        }
+        GroupParsingType::FlatGroupArray(_, _) => unreachable!("handled above"),
+    };
     match generic_params {
         Some(params) => types.register_generic_def(GenericDef::new(params, rust_struct)),
         None => types.register_rust_struct(parent_visitor, rust_struct, cli),

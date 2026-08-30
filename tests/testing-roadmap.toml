@@ -81,6 +81,7 @@ entries = [
   "testing.duplicates.member-position-extension",
   "part-md-mdmap",
   "testing.rustfmt-seam-error-leg-still-witness-needs-subprocess",
+  "testing.transparent-collection-aliases-own-standalone-codecs",
   "testing.container-construct-conceptual-type-visitor-walks-flat-combinatorial",
   "part-what-hand-per-construct-buy-established-escape-produced",
   "part-cheap-system-matrix-shape-pairs-compiled-wasm-side",
@@ -5694,6 +5695,23 @@ authority_reference_id = "testing-roadmap-declined-decided-with-a-reopening-sign
 permanence = "permanent"
 
 [[record]]
+id = "testing.transparent-collection-aliases-own-standalone-codecs"
+title = "Transparent top-level homogeneous collection aliases over generated record elements can compile and work as members while lacking an owned standalone codec."
+
+[record.payload]
+kind = "work"
+body_md = '''Add a generated-crate API inventory that enumerates supported transparent named homogeneous collection aliases whose elements resolve to generated record or plain-group-backed types, then exercises each advertised standalone serialization and deserialization door under the applicable profiles. Keep the member-position and structural compilation controls as complementary evidence; they do not establish that a top-level alias owns a usable standalone codec. Include `pair = (a: uint, b: tstr)`, `pair_item = [pair]`, and `nested_pairs = [* pair_item]` as the direct control: the collection compiles and embeds, but `NestedPairs::from_cbor_bytes` currently cannot resolve because the transparent `Vec<PairItem>` alias has no generated standalone decode implementation. Decide and document whether these aliases must gain nominal codec ownership or their standalone API must be explicitly unavailable before turning the control green.
+'''
+work_state = "ready"
+work_intent = "build_system"
+work_kind = "coverage_cell"
+risk = "compile_failure"
+acceptance_md = '''The generated-crate inventory must classify every supported transparent named homogeneous collection alias whose element resolves to a generated record or plain group under default, preserve, JSON, and wasm-bearing profiles. For every alias that advertises standalone `to_cbor_bytes` / `from_cbor_bytes`, compile and execute both directions against a foreign-wire vector; an alias without an owned standalone codec must not advertise those doors, and the inventory must name that intentional boundary. The direct `nested_pairs` control must prove the chosen contract without relying only on member-position compilation.
+'''
+priority_rationale_md = '''The direct control is an advertised generated-crate API boundary that can compile in member position while failing only when a consumer calls its standalone codec. It is lower priority than a known wire-corruption or generator-panic defect because an explicit nominal wrapper is available today, but it needs systematic coverage before another transparent-alias expansion turns that workaround into a silent consumer regression.
+'''
+
+[[record]]
 id = "testing.transparent-tag-set-idiom-recognized-shape-boundary-request"
 title = "Transparent tag-set idiom — recognized-shape boundary (REQUEST-08)."
 
@@ -7128,15 +7146,15 @@ heading = "Integration tests (`integration_tests.rs`)"
 id = "testing-scoped-symbol-provenance-synthesized-regression"
 source = "testing.incident-observation.scoped-symbol-provenance-grid.synthesized-arm"
 kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::homogeneous_plain_group_occurrences_reject_the_nested_wire_rewrite"
-symbol = "tests::robustness_tests::homogeneous_plain_group_occurrences_reject_the_nested_wire_rewrite"
+test_id = "rust-test:cddl-codegen#tests::robustness_tests::homogeneous_plain_group_occurrences_use_flat_array_codec"
+symbol = "tests::robustness_tests::homogeneous_plain_group_occurrences_use_flat_array_codec"
 
 [[reference]]
 id = "testing-homogeneous-plain-group-occurrences-reject-the-nested-wire-rewrite"
 source = "testing.incident-observation.scoped-symbol-provenance-grid.synthesized-arm-proof"
 kind = "test_symbol"
-test_id = "rust-test:cddl-codegen#tests::robustness_tests::homogeneous_plain_group_occurrences_reject_the_nested_wire_rewrite"
-symbol = "tests::robustness_tests::homogeneous_plain_group_occurrences_reject_the_nested_wire_rewrite"
+test_id = "rust-test:cddl-codegen#tests::robustness_tests::homogeneous_plain_group_occurrences_use_flat_array_codec"
+symbol = "tests::robustness_tests::homogeneous_plain_group_occurrences_use_flat_array_codec"
 
 [[reference]]
 id = "gate-lint-doc-citations-n4"

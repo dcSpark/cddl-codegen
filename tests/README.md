@@ -2949,10 +2949,12 @@ the `group.choice` row's accept vectors (a reverted key-dropping decoder mis-dec
 `{"a": n}` foreign bytes and fails the replay gate), with the emitted key-write/key-verify guarded
 against an unreviewed re-bless by `integration_tests::corpus_group_choice_map_key_written_and_verified`.
 The array-side sibling — `[* (int, tstr)]` silently narrowing the inline-group occurrence to
-exactly-once, rejecting the spec-valid `[]` — is now **fixed** too: an occurrence marker on an inline
-group is rejected gracefully at generation time. The projected robustness fixtures
-(`tests/matrix_reject/contain.occurrence-target.grpent.inline_group.*.cddl`) pin the unsupported cells,
-so they project no decode-conformance obligation (no catalog row) rather than a `class="bug"` reject.
+exactly-once, rejecting the spec-valid `[]` — is now **fixed** by a nominal flat-group wrapper: a
+sole repeated inline group (and the direct or aliased named-group spelling) round-trips foreign flat
+bytes through the owned standalone codec, while nested arrays, non-divisible definite lengths, and
+zero-width repeated groups reject. The focused emitted-crate pin
+`integration_tests::repeated_plain_groups_own_a_flat_array_codec` covers default and preserve;
+the matrix rows supply the broader profile and decode-conformance obligations.
 The bare-TYPE array-field instance of the same class — `[uint, tstr, * bytes]` narrowing `* bytes` to
 one mandatory item, rejecting spec-valid zero- and two-bytes instances — was this sweep's third catch
 (mintable only once the fully-fixed rust oracle stopped contesting the candidates) and is rejected

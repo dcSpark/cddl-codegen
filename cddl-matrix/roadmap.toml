@@ -926,11 +926,9 @@ Two or more occurrence members are supported when every member has a unique expl
 finite exact `N*N` window other than `1*1`: each is a separate flat `[T; N]` and exact count is
 its wire boundary, including adjacent and same-major segments.
 
-Still rejected gracefully: variable-cardinality multiple occurrence-bearing members; inline-group and group-choice-arm
-occurrences; and plain-group occurrences, including a sole homogeneous `[* pg]` — RFC 8610 repeats
-that group by concatenating its member sequence flat, while the ordinary collection carrier would
-serialize each group value as a nested array. Supporting it needs a dedicated flat, arity-aware
-occurrence carrier rather than `Vec<Pg>`. A variable middle occurrence with an optional, multi-item, undeclared
+Still rejected gracefully: variable-cardinality multiple occurrence-bearing members; group-choice-arm occurrences;
+and repeated inline/plain groups when mixed with other ARRAY members or otherwise outside the nominal sole-array
+carrier described by `matrix.inline-group-occurrence-carrier`. A variable middle occurrence with an optional, multi-item, undeclared
 custom-owned, or direct opaque-extern wire head on its repeated element or suffix, or a same-major suffix
 outside the delivered finite fixed-domain class (`[uint, * bytes, bytes]`). A mandatory outer tag or `.cbor` frame supplies a proven wire head and is therefore
 admissible even when its inner codec is custom- or extern-owned. Those boundaries are
@@ -1111,30 +1109,28 @@ event_md = '''one committed spec requires ten
 
 [[record]]
 id = "matrix.inline-group-occurrence-carrier"
-title = "Honor zero-permitting occurrences on inline parenthesized groups when a carrier exists"
+title = "Residual repeated-group placements outside the nominal flat carrier"
 
 [record.payload]
 kind = "work"
-body_md = '''### Honor zero-permitting occurrences on inline parenthesized groups when a carrier exists
+body_md = '''### Residual repeated-group placements outside the nominal flat carrier
 
-An occurrence marker on an inline (parenthesized) group — `a = [* (int, tstr)]` — is **rejected
-  gracefully** (pinned by `contain.occurrence-target.grpent.inline_group.{plus_array,optional_array,bounded_array,zero_map}`
-  in `tests/matrix_reject/`) rather than silently narrowed to an exactly-once record. Boundaries
-  kept: `[1*1 (…)]` still generates (exactly-once IS the semantics, so flattening the group away is
-  sound); on the MAP side `+` / `n*m` with a lower bound ≥ 1 still collapse to a mandatory field;
-  and the parenthesized table `{ * (int => tstr) }` still generates a `BTreeMap`. Naming the group
-  alone does not make a repeated GROUP into a one-item collection element: `pair = (int, tstr)`,
-  `a = [* pair]` also requires flat concatenation and is rejected. The supported nested-array remedy
-  is `pair-item = [pair]`, then `a = [* pair-item]`. Real flat, arity-aware support for the inline
-  occurrence is a candidate feature; flipping a row to `ok` must not decay back to silent narrowing
-  (unsupported rows carry no decode-conformance row; `project_decode_conformance.ts` enforces that
-  boundary).
+The named sole-array carrier now supports `a = [* (int, tstr)]`, `+`, `?`, and non-`1*1` windows,
+plus direct and aliased named plain groups, through an owned nominal wrapper over the existing
+structural Array codec. `[1*1 (…)]` remains an ordinary splice; lower-bound-at-least-one MAP
+markers still collapse under unique keys; and `{ * (int => tstr) }` remains a table.
+
+Remaining work is limited to placements that do not have one nominal collection owner: a repeated
+inline group leading, middle, or trailing among other ARRAY members; an occurrence in a group-choice
+arm; a multi-choice parenthesized group; zero-permitting MAP repetition; and a repeated group whose
+materialized body has zero mandatory CBOR width. Each must remain a graceful source diagnostic until
+its decoder progress and ownership rules are designed and tested.
 '''
 work_state = "ready"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-acceptance_md = '''Add a flat, arity-aware carrier only for representable inline parenthesized-group markers, preserve exactly-once flattening, preserve the lower-bound-at-least-one keyed-map collapse and the working array-framed named-type remedy, and add positive plus refusal vectors that prevent silent narrowing or nested-array substitution.
+acceptance_md = '''Keep every residual placement as a graceful diagnostic until its distinct ownership and decoder-progress design has executable foreign-wire evidence. Preserve exactly-once flattening, the lower-bound-at-least-one keyed-map collapse, and the nested-array distinction.
 '''
 priority_band = "low"
 priority_rationale_md = '''The work is sound, but explicit array framing is already a complete nested-array remedy; true flat repetition needs a distinct carrier and follows the selected occurrence carriers in priority.

@@ -12,9 +12,9 @@
 ; Profile-independent: the defect and its fix are the same site under `--preserve-encodings`, which
 ; reads the length through `array_sz()` but keeps the same per-element accounting.
 ;
-; The formerly adjacent bare `[* coords]` control is now a graceful rejection: RFC 8610 repeats its
-; group members flat, while the available homogeneous carrier would write nested arrays. That
-; semantic boundary lives in `homogeneous_plain_group_occurrences_reject_the_nested_wire_rewrite`.
+; The adjacent bare `[* coords]` spelling now owns a nominal flat-array codec: RFC 8610 repeats its
+; group members flat without the nested array header a transparent collection alias would write.
+; That semantic boundary lives in `homogeneous_plain_group_occurrences_use_flat_array_codec`.
 ; The MAP positions stay as controls: a table's length counts ENTRIES, not items, so a wrapped group
 ; in either the key or the value role costs one slot no matter what it expands to.
 coords = (uint, uint)

@@ -9869,6 +9869,393 @@ mod __cbor_root_wrap_pin {
     }
 }
 
+/// A count-permitting parenthesized group in a named ARRAY is a flat repeated GROUP, not an array
+/// of nested arrays. The owner must therefore be nominal: a transparent `Vec<Item>` alias would
+/// inherit `Vec`'s codec and insert one array header per item.
+///
+/// This is deliberately an emitted-crate wire test rather than a source snapshot. The failure this
+/// covers is an API/codec ownership error that compiles cleanly: `Vec<Pair>` round-trips bytes it
+/// produced itself, but changes RFC 8610's `[a, b, a, b]` into `[[a, b], [a, b]]` and rejects valid
+/// foreign flat bytes.
+#[test]
+fn repeated_plain_groups_own_a_flat_array_codec() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_flat_group_occurrence_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let target_dir = scratch.join("target");
+    let input = scratch.join("input.cddl");
+    std::fs::write(
+        &input,
+        "inline_pairs = [* (a: uint, b: tstr)]\n\
+         pair = (a: uint, b: tstr)\n\
+         pair_alias = pair\n\
+         named_pairs = [* pair]\n\
+         aliased_pairs = [* pair_alias]\n\
+         plus_pairs = [+ (a: uint, b: tstr)]\n\
+         optional_pairs = [? (a: uint, b: tstr)]\n\
+         bounded_pairs = [2*3 (a: uint, b: tstr)]\n\
+         zero_pairs = [0*0 (a: uint, b: tstr)]\n\
+         two_pairs = [2*2 (a: uint, b: tstr)]\n\
+         exact_once_pairs = [1*1 (a: uint, b: tstr)]\n\
+         tagged_pairs = #6.42([* (a: uint, b: tstr)])\n\
+         newtype_pairs = [* (a: uint, b: tstr)] ; @newtype entries\n\
+         unique_pairs = [* (a: uint, b: tstr)] ; @duplicates reject\n",
+    )
+    .unwrap();
+
+    const PIN: &str = r##"
+#[cfg(test)]
+mod __flat_group_occurrence_pin {
+    use super::*;
+    use super::serialization::{Deserialize, ToCBORBytes};
+
+    const EMPTY: &[u8] = &[0x80];
+    const TWO_FLAT: &[u8] = &[0x84, 0x01, 0x61, 0x61, 0x02, 0x61, 0x62];
+    const TWO_NESTED: &[u8] = &[0x82, 0x82, 0x01, 0x61, 0x61, 0x82, 0x02, 0x61, 0x62];
+    const ODD: &[u8] = &[0x83, 0x01, 0x61, 0x61, 0x02];
+    const TAGGED_TWO_FLAT: &[u8] = &[0xd8, 0x2a, 0x84, 0x01, 0x61, 0x61, 0x02, 0x61, 0x62];
+
+    fn item(a: u64, b: &str) -> InlinePairsItem {
+        InlinePairsItem::new(a, b.into())
+    }
+
+    #[test]
+    fn loose_flat_codec_round_trips_foreign_flat_bytes_and_rejects_nested() {
+        let zero = InlinePairs::new(vec![]);
+        assert_eq!(zero.to_cbor_bytes(), EMPTY);
+        assert_eq!(InlinePairs::from_cbor_bytes(EMPTY).expect("empty flat carrier").to_cbor_bytes(), EMPTY);
+        let two = InlinePairs::new(vec![item(1, "a"), item(2, "b")]);
+        assert_eq!(two.to_cbor_bytes(), TWO_FLAT);
+        assert_eq!(InlinePairs::from_cbor_bytes(TWO_FLAT).expect("foreign flat bytes").to_cbor_bytes(), TWO_FLAT);
+        assert!(InlinePairs::from_cbor_bytes(TWO_NESTED).is_err(), "nested-array spelling is distinct");
+        assert!(InlinePairs::from_cbor_bytes(ODD).is_err(), "a definite count must divide the group width");
+    }
+
+    #[test]
+    fn named_and_alias_group_references_use_the_same_flat_codec() {
+        assert_eq!(NamedPairs::from_cbor_bytes(TWO_FLAT).expect("named group").to_cbor_bytes(), TWO_FLAT);
+        assert_eq!(AliasedPairs::from_cbor_bytes(TWO_FLAT).expect("aliased group").to_cbor_bytes(), TWO_FLAT);
+    }
+
+    #[test]
+    fn occurrence_bounds_count_group_values_not_flat_members() {
+        assert!(PlusPairs::from_cbor_bytes(EMPTY).is_err());
+        assert!(OptionalPairs::from_cbor_bytes(TWO_FLAT).is_err());
+        assert!(BoundedPairs::from_cbor_bytes(TWO_FLAT).is_ok());
+        assert!(BoundedPairs::from_cbor_bytes(&[0x82, 0x01, 0x61, 0x61]).is_err());
+    }
+
+    #[test]
+    fn exact_zero_and_static_exact_carriers_count_group_values() {
+        let zero = ZeroPairs::new([]);
+        assert_eq!(zero.to_cbor_bytes(), EMPTY);
+        assert!(ZeroPairs::from_cbor_bytes(EMPTY).is_ok());
+        assert!(ZeroPairs::from_cbor_bytes(TWO_FLAT).is_err());
+
+        let two = TwoPairs::new([
+            TwoPairsItem::new(1, "a".into()),
+            TwoPairsItem::new(2, "b".into()),
+        ]);
+        assert_eq!(two.to_cbor_bytes(), TWO_FLAT);
+        assert!(TwoPairs::from_cbor_bytes(TWO_FLAT).is_ok());
+        assert!(TwoPairs::from_cbor_bytes(EMPTY).is_err());
+        assert!(TwoPairs::from_cbor_bytes(&[0x82, 0x01, 0x61, 0x61]).is_err());
+    }
+
+    #[test]
+    fn owner_metadata_stays_on_the_flat_carrier() {
+        let tagged = TaggedPairs::new(vec![
+            TaggedPairsItem::new(1, "a".into()),
+            TaggedPairsItem::new(2, "b".into()),
+        ]);
+        assert_eq!(tagged.to_cbor_bytes(), TAGGED_TWO_FLAT);
+        assert!(TaggedPairs::from_cbor_bytes(TAGGED_TWO_FLAT).is_ok());
+
+        let newtype = NewtypePairs::new(vec![]);
+        assert!(newtype.entries().is_empty());
+    }
+
+}
+"##;
+
+    for (leg, extra) in [
+        ("plain", &[][..]),
+        ("preserve", &["--preserve-encodings=true"][..]),
+    ] {
+        let out = scratch.join(leg);
+        let mut cmd = codegen_cmd();
+        cmd.arg(format!("--input={}", input.display()))
+            .arg(format!("--output={}", out.display()))
+            .arg("--wasm=false");
+        for arg in extra {
+            cmd.arg(arg);
+        }
+        let generated = cmd.output().unwrap();
+        assert!(
+            generated.status.success(),
+            "{leg}: flat repeated-group generation failed:\n{}",
+            String::from_utf8_lossy(&generated.stderr)
+        );
+        let generated_mod = out.join("rust/src/generated/mod.rs");
+        let source = std::fs::read_to_string(&generated_mod).unwrap();
+        assert!(
+            source.contains("pub struct InlinePairs") && !source.contains("pub type InlinePairs"),
+            "{leg}: flat carrier must own a standalone wrapper codec:\n{source}"
+        );
+        assert!(
+            source.contains("pub struct ExactOncePairs")
+                && !source.contains("pub struct ExactOncePairsItem"),
+            "{leg}: exact `1*1` must stay a splice into its owner rather than minting an item:\n{source}"
+        );
+        assert!(
+            source.contains("pub fn entries(") && source.contains("OrderedSet<UniquePairsItem>"),
+            "{leg}: tag/newtype/duplicates metadata must stay on the nominal flat owner:\n{source}"
+        );
+        std::fs::write(&generated_mod, format!("{source}\n{PIN}")).unwrap();
+        let tested = tool_cmd("cargo")
+            .args(["test", "__flat_group_occurrence_pin"])
+            .current_dir(out.join("rust"))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        assert!(
+            tested.status.success(),
+            "{leg}: generated flat repeated-group wire pin failed:\n--- stdout ---\n{}\n--- stderr ---\n{}",
+            String::from_utf8_lossy(&tested.stdout),
+            String::from_utf8_lossy(&tested.stderr)
+        );
+    }
+
+    for (name, cddl) in [
+        (
+            "inline_all_optional",
+            "all_optional = [* (? a: uint, ? b: tstr)]\n",
+        ),
+        (
+            "named_all_optional",
+            "optional_pair = (? a: uint, ? b: tstr)\n\
+             optional_pair_values = [* optional_pair]\n",
+        ),
+    ] {
+        let rejected = scratch.join(format!("{name}.cddl"));
+        std::fs::write(&rejected, cddl).unwrap();
+        let rejection = codegen_cmd()
+            .arg(format!("--input={}", rejected.display()))
+            .arg(format!(
+                "--output={}",
+                scratch.join(format!("{name}_out")).display()
+            ))
+            .arg("--wasm=false")
+            .output()
+            .unwrap();
+        assert!(
+            !rejection.status.success()
+                && String::from_utf8_lossy(&rejection.stderr).contains("zero-width repeated group"),
+            "{name}: all-optional repeated group must reject before generation:\n{}",
+            String::from_utf8_lossy(&rejection.stderr)
+        );
+    }
+
+    let generic = scratch.join("generic_inline_group.cddl");
+    std::fs::write(
+        &generic,
+        "pairs<t> = [* (a: t, b: tstr)]\n\
+         pairs_uint = pairs<uint>\n",
+    )
+    .unwrap();
+    let generic_rejection = codegen_cmd()
+        .arg(format!("--input={}", generic.display()))
+        .arg(format!(
+            "--output={}",
+            scratch.join("generic_inline_group_out").display()
+        ))
+        .arg("--wasm=false")
+        .output()
+        .unwrap();
+    assert!(
+        !generic_rejection.status.success()
+            && String::from_utf8_lossy(&generic_rejection.stderr).contains(
+                "generic substitution for its synthesized repeated-group item is not supported"
+            ),
+        "generic inline repeated group must reject before generation rather than panicking:\n{}",
+        String::from_utf8_lossy(&generic_rejection.stderr)
+    );
+
+    // All authored rules are scope-marked before parsing. Both source orders must therefore reject
+    // the collision, rather than allowing whichever rule happens to parse first to own the stable
+    // generated `PairsItem` API name.
+    for (name, cddl) in [
+        (
+            "authored_item_first",
+            "pairs-item = uint\n\
+             pairs = [* (a: uint, b: tstr)]\n",
+        ),
+        (
+            "generated_item_first",
+            "pairs = [* (a: uint, b: tstr)]\n\
+             pairs-item = uint\n",
+        ),
+    ] {
+        let collision = scratch.join(format!("{name}.cddl"));
+        std::fs::write(&collision, cddl).unwrap();
+        let collision_rejection = codegen_cmd()
+            .arg(format!("--input={}", collision.display()))
+            .arg(format!(
+                "--output={}",
+                scratch.join(format!("{name}_out")).display()
+            ))
+            .arg("--wasm=false")
+            .output()
+            .unwrap();
+        assert!(
+            !collision_rejection.status.success()
+                && String::from_utf8_lossy(&collision_rejection.stderr)
+                    .contains("repeated inline group materialization needs the generated item type `PairsItem`"),
+            "{name}: authored generated-item collision must reject before overwriting a type:\n{}",
+            String::from_utf8_lossy(&collision_rejection.stderr)
+        );
+    }
+
+    // A file in a directory input owns a generated module. The public repeated-group item is part
+    // of the wrapper's API and must live beside it, not silently fall back to generated root.
+    let scoped_input = scratch.join("scoped_input");
+    std::fs::create_dir_all(&scoped_input).unwrap();
+    std::fs::write(
+        scoped_input.join("flat.cddl"),
+        "pairs = [* (a: uint, b: tstr)]\n",
+    )
+    .unwrap();
+    // A second file activates directory-input module scopes; a one-file directory intentionally
+    // remains root-scoped for backwards compatibility.
+    std::fs::write(scoped_input.join("root.cddl"), "root = uint\n").unwrap();
+    let scoped_out = scratch.join("scoped_out");
+    let scoped_generation = codegen_cmd()
+        .arg(format!("--input={}", scoped_input.display()))
+        .arg(format!("--output={}", scoped_out.display()))
+        .arg("--wasm=false")
+        .output()
+        .unwrap();
+    assert!(
+        scoped_generation.status.success(),
+        "directory-input flat-group generation failed:\n{}",
+        String::from_utf8_lossy(&scoped_generation.stderr)
+    );
+    let scoped_module =
+        std::fs::read_to_string(scoped_out.join("rust/src/generated/flat/mod.rs")).unwrap();
+    assert!(
+        scoped_module.contains("pub struct Pairs")
+            && scoped_module.contains("pub struct PairsItem"),
+        "flat-group wrapper and generated item must share module `flat`:\n{scoped_module}"
+    );
+    let scoped_check = tool_cmd("cargo")
+        .arg("check")
+        .current_dir(scoped_out.join("rust"))
+        .env("CARGO_TARGET_DIR", &target_dir)
+        .output()
+        .unwrap();
+    assert!(
+        scoped_check.status.success(),
+        "directory-input flat-group crate failed to compile:\n{}",
+        String::from_utf8_lossy(&scoped_check.stderr)
+    );
+
+    let directive_input = scratch.join("inline_group_directives.cddl");
+    std::fs::write(
+        &directive_input,
+        "pairs = [* (a: uint, b: tstr)\n\
+           ; @name RepeatedItem @doc repeated item docs @newtype @duplicates preserve @ignore @custom_serialize ser @custom_deserialize de @custom_encodings none @custom_wire_major array\n\
+         ]\n",
+    )
+    .unwrap();
+    let directive_rejection = codegen_cmd()
+        .arg(format!("--input={}", directive_input.display()))
+        .arg(format!(
+            "--output={}",
+            scratch.join("inline_group_directives_out").display()
+        ))
+        .arg("--wasm=false")
+        .output()
+        .unwrap();
+    let directive_stderr = String::from_utf8_lossy(&directive_rejection.stderr);
+    assert!(
+        !directive_rejection.status.success()
+            && directive_stderr.contains("synthesized item name is fixed as `PairsItem`")
+            && directive_stderr.contains("`@name`")
+            && directive_stderr.contains("`@doc`")
+            && directive_stderr.contains("`@newtype`")
+            && directive_stderr.contains("`@duplicates`")
+            && directive_stderr.contains("`@ignore`")
+            && directive_stderr.contains("`@custom_serialize`")
+            && directive_stderr.contains("`@custom_deserialize`")
+            && directive_stderr.contains("`@custom_encodings`")
+            && directive_stderr.contains("`@custom_wire_major`"),
+        "directives on a repeated inline-group entry must reject rather than disappear:\n{directive_stderr}"
+    );
+
+    let exact_once_directive = scratch.join("exact_once_inline_group_directive.cddl");
+    std::fs::write(
+        &exact_once_directive,
+        "exact-one = [1*1 (a: uint, b: tstr)\n\
+           ; @doc exact-once item docs\n\
+         ]\n",
+    )
+    .unwrap();
+    let exact_once_rejection = codegen_cmd()
+        .arg(format!("--input={}", exact_once_directive.display()))
+        .arg(format!(
+            "--output={}",
+            scratch
+                .join("exact_once_inline_group_directive_out")
+                .display()
+        ))
+        .arg("--wasm=false")
+        .output()
+        .unwrap();
+    let exact_once_stderr = String::from_utf8_lossy(&exact_once_rejection.stderr);
+    assert!(
+        !exact_once_rejection.status.success()
+            && exact_once_stderr.contains("synthesizes no separate item type")
+            && !exact_once_stderr.contains("ExactOneItem"),
+        "an exact-once splice must reject its dropped directive without claiming a synthesized item:\n{exact_once_stderr}"
+    );
+
+    let named_directive = scratch.join("named_plain_group_occurrence_directive.cddl");
+    std::fs::write(
+        &named_directive,
+        "pair = (a: uint, b: tstr)\n\
+         pairs = [* pair\n\
+           ; @doc repeated pair docs @name renamed @newtype\n\
+         ]\n",
+    )
+    .unwrap();
+    let named_rejection = codegen_cmd()
+        .arg(format!("--input={}", named_directive.display()))
+        .arg(format!(
+            "--output={}",
+            scratch
+                .join("named_plain_group_occurrence_directive_out")
+                .display()
+        ))
+        .arg("--wasm=false")
+        .output()
+        .unwrap();
+    let named_stderr = String::from_utf8_lossy(&named_rejection.stderr);
+    assert!(
+        !named_rejection.status.success()
+            && named_stderr.contains("repeated named plain-group occurrence `pair`")
+            && named_stderr.contains("`@doc`")
+            && named_stderr.contains("`@name`")
+            && named_stderr.contains("`@newtype`"),
+        "directives on a repeated named plain-group entry must reject rather than disappear:\n{named_stderr}"
+    );
+}
+
 /// A TAGGED rule body agrees with itself: a tagged collection and a tagged `T / null` root each
 /// write and accept the spec's TAGGED form standalone, reject the bare untagged form, and produce
 /// byte-for-byte what an embed site of the same rule round-trips.

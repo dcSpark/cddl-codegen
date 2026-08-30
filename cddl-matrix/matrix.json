@@ -2987,9 +2987,19 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.occurrence-target.grpent.groupname",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
@@ -2997,14 +3007,34 @@
         "status": "unsupported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 9 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.occurrence-target.grpent.inline_group",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.occurrence-target.grpent.inline_group.bounded_array",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "emission": {
@@ -3022,14 +3052,34 @@
         "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 7 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.occurrence-target.grpent.inline_group.optional_array",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
-        "evidence": "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok",
+        "emission": {
+          "json": {
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          },
+          "preserve": {
+            "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
+          }
+        },
+        "evidence": "probe (cell): cddl-codegen exit 0; compiles=ok; round-trips=ok; wasm round-trips; accepts 10 foreign spec-derived vector(s); ruby=ok rust=ok",
         "id": "contain.occurrence-target.grpent.inline_group.plus_array",
-        "status": "unsupported"
+        "status": "supported"
       },
       {
         "emission": {

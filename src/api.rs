@@ -903,6 +903,22 @@ pub fn with_types<R>(
     {
         return Err(msg.into());
     }
+    // A repeated inline group has an analogous orphaned-comment spelling: the pinned parser drops
+    // a directive between that group's closing `)` and its enclosing array's `]`. Reject from the
+    // source buffer before IR construction, where neither the owner nor the synthesized item could
+    // honestly claim it.
+    if let Some(msg) = parsing::inline_group_occurrence_trailing_directive_rejection(
+        &cddl,
+        input_files_content.as_str(),
+    ) {
+        return Err(msg.into());
+    }
+    if let Some(msg) = parsing::named_plain_group_occurrence_trailing_directive_rejection(
+        &cddl,
+        input_files_content.as_str(),
+    ) {
+        return Err(msg.into());
+    }
     // Incremental type-choice extension (`a = int` + `a /= tstr`) is resolved HERE, at the AST
     // level: the extension statements' arms are appended to the first statement's and the
     // extension statements are removed, leaving one type rule indistinguishable from the folded

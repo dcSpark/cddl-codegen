@@ -881,9 +881,10 @@ majors and stops at the major-disjoint suffix; a fixed-domain loop instead tries
 once and rewinds only when it fails, which is safe because the statically enumerated domains are
 disjoint. An exact loop consumes its declared count and then reads that same suffix. None speculates
 by parsing the suffix to choose between successful interpretations. General same-major/value-
-discriminator designs, multiple occurrences, inline-group occurrences,
-group-choice-arm occurrences, a segment inside a plain group's body, a fixed-value element type like
-`* 5`, and a **plain-group element type** remain graceful rejections naming a supported remedy. A
+discriminator designs, multiple occurrences, inline-group occurrences that are mixed with other array
+members or have multiple group choices, group-choice-arm occurrences, a segment inside a plain group's
+body, a fixed-value element type like `* 5`, and a **plain-group element type** outside a sole named
+homogeneous-array rule remain graceful rejections naming a supported remedy. A
 declared custom head still has to be disjoint from the other effective boundary set; custom-, tagged-,
 float-, primitive-, and extern-owned same-major value discrimination is not inferred. The declaration is not consumed by a final tail, an exact
 count-delimited window, optional-prefix lookahead, or a mandatory generated outer frame that already
@@ -895,8 +896,10 @@ type, so the bare and alias (`* kv_alias`) spellings refuse alike. A tag payload
 `* #6.10(kv)` reaches the separate plain-group tag-payload refusal; frame first, then tag (`* #6.10(w)`
 where `w = [kv]`). The remedy the message names is the group's array framing: `w = [kv]`, then
 `t = [ c: uint, * w ]`. A single **mandatory** splice (`t = [ c: uint, kv ]`) stays supported, but
-the sole-element homogeneous array (`[* kv]`) also refuses: repeating a group concatenates its members,
-whereas a homogeneous collection element is one item. Use `w = [kv]`, then `[* w]`; the full
+the same repeated-group spelling in an open-array rest-tail or mixed placement refuses: repeating a group concatenates its members,
+whereas an ordinary homogeneous collection element is one item. A complete named rule whose sole
+array entry is the repeated group is the deliberate exception: `items = [* kv]` (or `items = [* (a: uint, b: uint)]`) has a
+generated wrapper that owns the flat codec and counts group values, not flattened members. The full
 splice-position matrix is [Plain group placement](current_capacities#plain-group-placement).
 
 **The `rest` field.** A loose `*` / `0*` segment is `pub Vec<T>`, excluded from `new()` and defaulting

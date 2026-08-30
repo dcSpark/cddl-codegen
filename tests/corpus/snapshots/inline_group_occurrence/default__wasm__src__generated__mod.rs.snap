@@ -1,0 +1,146 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+#![allow(
+    clippy::len_without_is_empty,
+    clippy::too_many_arguments,
+    clippy::new_without_default
+)]
+pub mod collections;
+
+use wasm_bindgen::prelude::{JsError, wasm_bindgen};
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct InlineGroupOccurrence(pub(crate) cddl_lib::InlineGroupOccurrence);
+
+#[wasm_bindgen]
+impl InlineGroupOccurrence {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<InlineGroupOccurrence, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new(inner: &InlineGroupOccurrenceItemList) -> Self {
+        Self(cddl_lib::InlineGroupOccurrence::new(inner.clone().into()))
+    }
+
+    pub fn get(&self) -> InlineGroupOccurrenceItemList {
+        self.0.get().clone().into()
+    }
+}
+
+impl From<cddl_lib::InlineGroupOccurrence> for InlineGroupOccurrence {
+    fn from(native: cddl_lib::InlineGroupOccurrence) -> Self {
+        Self(native)
+    }
+}
+
+impl From<InlineGroupOccurrence> for cddl_lib::InlineGroupOccurrence {
+    fn from(wasm: InlineGroupOccurrence) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::InlineGroupOccurrence> for InlineGroupOccurrence {
+    fn as_ref(&self) -> &cddl_lib::InlineGroupOccurrence {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct InlineGroupOccurrenceItem(pub(crate) cddl_lib::InlineGroupOccurrenceItem);
+
+#[wasm_bindgen]
+impl InlineGroupOccurrenceItem {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<InlineGroupOccurrenceItem, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn a(&self) -> u64 {
+        self.0.a
+    }
+
+    pub fn b(&self) -> String {
+        self.0.b.clone()
+    }
+
+    pub fn new(a: u64, b: String) -> Self {
+        Self(cddl_lib::InlineGroupOccurrenceItem::new(a, b))
+    }
+}
+
+impl From<cddl_lib::InlineGroupOccurrenceItem> for InlineGroupOccurrenceItem {
+    fn from(native: cddl_lib::InlineGroupOccurrenceItem) -> Self {
+        Self(native)
+    }
+}
+
+impl From<InlineGroupOccurrenceItem> for cddl_lib::InlineGroupOccurrenceItem {
+    fn from(wasm: InlineGroupOccurrenceItem) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::InlineGroupOccurrenceItem> for InlineGroupOccurrenceItem {
+    fn as_ref(&self) -> &cddl_lib::InlineGroupOccurrenceItem {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct InlineGroupOccurrenceItemList(pub(crate) Vec<cddl_lib::InlineGroupOccurrenceItem>);
+
+#[wasm_bindgen]
+impl InlineGroupOccurrenceItemList {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> InlineGroupOccurrenceItem {
+        self.0[index].clone().into()
+    }
+
+    pub fn add(&mut self, elem: &InlineGroupOccurrenceItem) {
+        self.0.push(elem.clone().into());
+    }
+}
+
+impl From<Vec<cddl_lib::InlineGroupOccurrenceItem>> for InlineGroupOccurrenceItemList {
+    fn from(native: Vec<cddl_lib::InlineGroupOccurrenceItem>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<InlineGroupOccurrenceItemList> for Vec<cddl_lib::InlineGroupOccurrenceItem> {
+    fn from(wasm: InlineGroupOccurrenceItemList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<Vec<cddl_lib::InlineGroupOccurrenceItem>> for InlineGroupOccurrenceItemList {
+    fn as_ref(&self) -> &Vec<cddl_lib::InlineGroupOccurrenceItem> {
+        &self.0
+    }
+}

@@ -87,7 +87,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
 | `grpent.groupname` | ➕ | Group-name reference entry | supported, no corpus fixture (cddl-codegen exit 0) |
-| `grpent.inline_group` | ✅ | Inline (parenthesized) group entry | `inline_group.cddl` |
+| `grpent.inline_group` | ✅ | Inline (parenthesized) group entry | `inline_group.cddl` — also ✅ @occurrence-target (`inline_group_occurrence.cddl`) |
 | `grpent.member` | ➕ | Member entry (optional occur + optional memberkey + type) | supported, no corpus fixture (cddl-codegen exit 0) |
 
 ### `memberkey` (4)
@@ -371,7 +371,7 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `genericparm.type` | · |  |  |  |  |  |  |  |  |  |
 | `group.choice` | · |  |  |  |  |  |  |  |  |  |
 | `grpchoice.sequence` |  |  |  |  |  |  | ✅ |  |  |  |
-| `grpent.groupname` |  | ✅ |  |  |  |  | ✅ | ➖ |  |  |
+| `grpent.groupname` |  | ✅ |  |  |  |  | ✅ | ◐ |  |  |
 | `grpent.inline_group` | · | ✅ |  |  |  |  | ➖ | ◐ |  |  |
 | `grpent.member` |  |  |  |  |  |  | ✅ | ✅ |  |  |
 | `memberkey.bareword` |  |  |  | · |  |  | ✅ | ✅ |  |  |
@@ -430,9 +430,9 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 | `value.text` | · | ✅ | ✅ | · |  | · |  | · |  |  |
 
 - Modelled `(role × feature)` cells: **71** (over 150 shape-granular containment rows).
-- Exercised by the corpus **and** modelled: **39**.
+- Exercised by the corpus **and** modelled: **40**.
 - Exercised by the corpus, modelled by **nothing**: **181** (the `·` cells).
-- Modelled but not exercised by any corpus fixture: **32**.
+- Modelled but not exercised by any corpus fixture: **31**.
 
 ## Notable findings
 
@@ -448,13 +448,13 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 
 - Features: **124** — ✅ 80 covered · ➕ 32 supported-untested · ⚠️ 1 partial · ➖ 11 not supported
 - Control operators: **37** — ✅ 9 covered · ➕ 0 supported-untested · ➖ 28 not supported (cddl-codegen implements 9 of 37)
-- Corpus fixtures: 108
+- Corpus fixtures: 109
 
 **Per-cell coverage (role × feature).** Where a construct's support *differs by role*,
 coverage is keyed on the (role × feature) cell, derived from a real `cddl`-crate AST walk
 (`cddl-matrix/examples/ast_roles.rs`) and cross-checked against the matrix's per-cell support verdict — so a
 ➖ standalone type still surfaces its supported member/choice role (e.g. `prelude.null` ➖ as a top-level
-type, ✅ as a choice-member). **4 such cells** are mapped (appended as "also ✅ @role" on the
+type, ✅ as a choice-member). **5 such cells** are mapped (appended as "also ✅ @role" on the
 rows above); constructs whose support doesn't vary by role stay feature-axis (the role is unremarkably
 top-level). The full role × feature picture — every construct the corpus exercises or the containment
 relation models, in every role — is rendered above in **§ Role × feature containment grid**, joined from

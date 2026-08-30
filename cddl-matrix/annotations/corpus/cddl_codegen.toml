@@ -316,6 +316,14 @@ fixture = "generics.cddl"
 id = "grpent.inline_group"
 fixture = "inline_group.cddl"
 
+# The count-permitting named ARRAY form has its own corpus fixture because it owns a nominal flat
+# codec, unlike the exactly-once grouping fixture above. This keeps default, preserve, JSON, wasm,
+# and component compilation on the feature's actual public surface.
+[[cover]]
+id = "grpent.inline_group"
+fixture = "inline_group_occurrence.cddl"
+role = "role.occurrence-target"
+
 # ---- CDDL_CODEGEN profile (comment DSL) — each dsl_*.cddl isolates one directive ----
 # (The ext.* sentinels have no corpus fixture — they break feature_corpus_compiles, so they're ➕
 #  supported-but-untested in the corpus, covered by tests/extern-deps + tests/raw-bytes instead.)

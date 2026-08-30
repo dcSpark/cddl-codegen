@@ -1,0 +1,101 @@
+---
+source: src/tests/snapshot_tests.rs
+expression: content
+---
+// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+use core::cell::RefCell;
+
+wit_bindgen::generate!({
+    path: "wit",
+    world: "cddl-lib-world",
+});
+
+use exports::cddl::cddl_lib::types as wit_types;
+
+struct Component;
+
+impl wit_types::Guest for Component {
+    type InlineGroupOccurrence = WitInlineGroupOccurrence;
+    type InlineGroupOccurrenceItem = WitInlineGroupOccurrenceItem;
+}
+
+export!(Component);
+
+/// Every fallible door on this face reports through the rust crate's own error `Display`,
+/// so a WIT `result<_, string>` carries the same text a native caller would see.
+fn err<E: core::fmt::Display>(e: E) -> String {
+    e.to_string()
+}
+
+pub struct WitInlineGroupOccurrence(pub RefCell<cddl_lib::InlineGroupOccurrence>);
+
+impl wit_types::GuestInlineGroupOccurrence for WitInlineGroupOccurrence {
+    fn new(inner: Vec<wit_types::InlineGroupOccurrenceItemBorrow<'_>>) -> Self {
+        let inner = inner
+            .into_iter()
+            .map(|x| x.get::<WitInlineGroupOccurrenceItem>().0.borrow().clone())
+            .collect::<Vec<_>>();
+        let inner = cddl_lib::InlineGroupOccurrence::new(inner);
+        WitInlineGroupOccurrence(RefCell::new(inner))
+    }
+
+    fn get(&self) -> Vec<wit_types::InlineGroupOccurrenceItem> {
+        let me = self.0.borrow();
+        let inner = me.get().clone();
+        inner
+            .iter()
+            .map(|x| {
+                wit_types::InlineGroupOccurrenceItem::new(WitInlineGroupOccurrenceItem(
+                    RefCell::new(x.clone()),
+                ))
+            })
+            .collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::InlineGroupOccurrence as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::InlineGroupOccurrence, String> {
+        <cddl_lib::InlineGroupOccurrence as cddl_lib::serialization::Deserialize>::from_cbor_bytes(
+            &bytes,
+        )
+        .map(|v| wit_types::InlineGroupOccurrence::new(WitInlineGroupOccurrence(RefCell::new(v))))
+        .map_err(err)
+    }
+}
+
+pub struct WitInlineGroupOccurrenceItem(pub RefCell<cddl_lib::InlineGroupOccurrenceItem>);
+
+impl wit_types::GuestInlineGroupOccurrenceItem for WitInlineGroupOccurrenceItem {
+    fn new(a: u64, b: String) -> Self {
+        let inner = cddl_lib::InlineGroupOccurrenceItem::new(a, b);
+        WitInlineGroupOccurrenceItem(RefCell::new(inner))
+    }
+
+    fn a(&self) -> u64 {
+        let me = self.0.borrow();
+        me.a
+    }
+
+    fn b(&self) -> String {
+        let me = self.0.borrow();
+        me.b.clone()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::InlineGroupOccurrenceItem as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::InlineGroupOccurrenceItem, String> {
+        <cddl_lib::InlineGroupOccurrenceItem as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::InlineGroupOccurrenceItem::new(WitInlineGroupOccurrenceItem(RefCell::new(v))))
+            .map_err(err)
+    }
+}

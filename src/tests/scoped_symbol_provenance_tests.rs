@@ -368,13 +368,27 @@ fn scoped_parameter_never_materializes_a_colliding_plain_group() {
 }
 
 #[test]
-fn exact_outer_plain_group_references_retain_all_seam_diagnostics() {
+fn exact_outer_plain_group_references_retain_unsupported_seam_diagnostics() {
+    for claimant_first in [true, false] {
+        let claimant = "A = (x: uint)\n";
+        let subject = "subject<a> = [* A]\nsubject-uint = subject<uint>\n";
+        let source = if claimant_first {
+            format!("{claimant}{subject}")
+        } else {
+            format!("{subject}{claimant}")
+        };
+        let files = generated(&source);
+        let serialization = files
+            .get("rust/src/generated/serialization.rs")
+            .expect("flat repeated plain group serialization module");
+        assert!(
+            serialization.contains("element.serialize_as_embedded_group(serializer)?")
+                && !serialization.contains("element.serialize(serializer)?"),
+            "homogeneous occurrence (claimant_first={claimant_first}) must retain flat wire encoding:\n{serialization}"
+        );
+    }
+
     let seams = [
-        (
-            "homogeneous occurrence",
-            "[* A]",
-            "a homogeneous array occurrence cannot repeat the plain group `A`",
-        ),
         (
             "tag payload",
             "[value: #6.10(A)]",
