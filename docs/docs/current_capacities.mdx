@@ -117,14 +117,20 @@ sidebar_position: 3
   argument set and reuses it for repeated instances. Direct parameter occurrences and occurrences
   nested in tags, parentheses, arrays, maps, and nested choices substitute through that template.
 
+  A generic definition can also own a nested generic application whose argument reaches its lexical
+  parameter: `inner<x> = [x]` plus `outer<p> = [value: inner<p>]` materializes the ordinary concrete
+  child (`InnerU64` for `outer<uint>`) before registering the parent. The same ownership applies in
+  a definition-owned inline type choice (`inner<p> / tstr`), including repeated/different arguments,
+  nested children, and transparent generic collection children. An inline type choice used as the
+  argument of such a child (`inner<(p / tstr)>`) remains a narrow graceful refusal because the child
+  and anonymous choice do not yet have one shared concrete identity.
+
   A generic definition's **top-level** body must still be a shape that registers a struct for its
   arguments to substitute into. Four body shapes are rejected gracefully at parse: another named
   type (`bar<V> = foo<V, uint>`), a `T / null` optional collapse (`foo<T> = T / null` — spell the
   `/ null` at each use site), group choices (`g<T> = [ (a: T) // (b: uint) ]` — give each arm its
   own named group), and a non-tag-set type choice (`xs<a> = #6.258([+ a]) / [* a]`, whose arms
-  differ by more than the tag). A nested generic application in an inline choice arm
-  (`choice<p> = [value: inner<p> / tstr]`) remains a graceful refusal until the outer template can
-  own child-instance materialization. A `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule is likewise rejected
+  differ by more than the tag). A `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule is likewise rejected
   if given generic parameters — a raw-bytes type is its own bytes and has no element type for a
   parameter to name (a `_CDDL_CODEGEN_EXTERN_TYPE_` rule may be generic, since it names an
   arbitrary hand-written type).

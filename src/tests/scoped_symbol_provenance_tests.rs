@@ -743,15 +743,25 @@ fn generic_inline_choice_nested_shapes_generate_and_keep_remaining_boundaries_lo
         "nested generic inline choices must resolve their definition-owned template dependencies:\n{nested_generated}"
     );
 
-    let nested_error = api::generated_strings(&cli_for(
+    let nested_child = generated(
         "inner<x> = [x]\nchoice<p> = [value: inner<p> / tstr]\nchoice-uint = choice<uint>\n",
+    );
+    assert!(
+        rust_mod(&nested_child).contains("pub struct InnerU64")
+            && rust_mod(&nested_child).contains("pub enum InnerU64OrText")
+            && !rust_mod(&nested_child).contains("GenericChildInstance"),
+        "nested generic application must materialize its concrete child before the inline choice:\n{}",
+        rust_mod(&nested_child)
+    );
+
+    let cross_template_error = api::generated_strings(&cli_for(
+        "inner<x> = [x]\nchoice<p> = [value: inner<(p / tstr)>]\nchoice-uint = choice<uint>\n",
     ))
-    .expect_err("nested generic applications need their own instantiation owner")
+    .expect_err("an inline choice passed as a child generic argument stays a narrow refusal")
     .to_string();
     assert!(
-        nested_error.contains("inline generic application `inner<…>`")
-            && nested_error.contains("nested generic-instance ownership is not modeled yet"),
-        "nested generic application must stay a scoped graceful refusal: {nested_error}"
+        cross_template_error.contains("definition-owned inline type choice"),
+        "cross-template child argument must remain explicit: {cross_template_error}"
     );
 
     let group_error =
@@ -775,4 +785,95 @@ fn generic_inline_choice_nested_shapes_generate_and_keep_remaining_boundaries_lo
             "authored collision must remain loud and deterministic: {error}"
         );
     }
+}
+
+#[test]
+fn definition_owned_nested_generic_children_materialize_through_the_ordinary_instance_queue() {
+    let cases: &[(&str, &str, &[&str])] = &[
+        (
+            "direct record field",
+            "inner<x> = [x]\nouter<p> = [value: inner<p>]\nouter-uint = outer<uint>\n",
+            &[
+                "pub struct InnerU64",
+                "pub struct OuterUint",
+                "pub value: InnerU64",
+            ],
+        ),
+        (
+            "direct record field with forward child definition",
+            "outer<p> = [value: inner<p>]\nouter-uint = outer<uint>\ninner<x> = [x]\n",
+            &[
+                "pub struct InnerU64",
+                "pub struct OuterUint",
+                "pub value: InnerU64",
+            ],
+        ),
+        (
+            "repeated and distinct child arguments",
+            "inner<x> = [x]\nouter<p> = [left: inner<p>, right: inner<p>]\nouter-uint = outer<uint>\nouter-text = outer<tstr>\n",
+            &[
+                "pub struct InnerU64",
+                "pub struct InnerText",
+                "pub left: InnerU64",
+                "pub right: InnerU64",
+            ],
+        ),
+        (
+            "two outer arguments",
+            "pair<a, b> = [a, b]\nouter<p, q> = [value: pair<p, q>]\nouter-uint-text = outer<uint, tstr>\n",
+            &[
+                "pub struct PairU64Text",
+                "pub struct OuterUintText",
+                "pub value: PairU64Text",
+            ],
+        ),
+        (
+            "two-level child chain",
+            "leaf<x> = [x]\nmid<x> = [value: leaf<x>]\nouter<p> = [value: mid<p>]\nouter-uint = outer<uint>\n",
+            &[
+                "pub struct LeafU64",
+                "pub struct MidU64",
+                "pub struct OuterUint",
+            ],
+        ),
+        (
+            "transparent collection child",
+            "items<x> = [* x]\nouter<p> = [value: items<p>]\nouter-uint = outer<uint>\n",
+            &["pub type ItemsU64 = Vec<u64>;", "pub value: ItemsU64"],
+        ),
+    ];
+    for (name, source, expected) in cases {
+        let files = generated(source);
+        let module = rust_mod(&files);
+        for fragment in (*expected).iter() {
+            assert!(
+                module.contains(fragment),
+                "{name} lost `{fragment}`:\n{module}"
+            );
+        }
+        assert!(
+            !module.contains("GenericChildInstance") && !module.contains("GenericInlineChoice"),
+            "{name} leaked a parser-private deferred placeholder:\n{module}"
+        );
+    }
+
+    let source = "inner<x> = [x]\nouter<p> = [value: inner<p>]\nouter-uint = outer<uint>\n";
+    api::with_types(&cli_for(source), |types, _| {
+        let generic = types
+            .generic_def(&RustIdent::new(crate::intermediate::CDDLIdent::new("outer")))
+            .expect("outer generic definition");
+        assert_eq!(
+            generic.child_instances().len(),
+            1,
+            "the parser must retain one definition-owned child rather than globally registering InnerP"
+        );
+        assert!(
+            types.rust_structs().keys().all(|ident| {
+                !ident.to_string().contains("GenericChildInstance")
+                    && !ident.to_string().contains("GenericInlineChoice")
+            }),
+            "finalized products must contain no deferred placeholders"
+        );
+    })
+    .expect("direct nested child must finalize without the old generation panic");
 }

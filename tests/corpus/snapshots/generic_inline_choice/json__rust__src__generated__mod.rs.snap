@@ -38,6 +38,17 @@ impl BytesOrText {
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct ChainOuterUint {
+    pub value: MidU64,
+}
+
+impl ChainOuterUint {
+    pub fn new(value: MidU64) -> Self {
+        Self { value }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct ChoiceBytes {
     pub value: BytesOrText,
 }
@@ -82,6 +93,50 @@ impl ChoiceUintAgain {
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct CollectionOuterUint {
+    pub value: Vec<u64>,
+}
+
+impl CollectionOuterUint {
+    pub fn new(value: Vec<u64>) -> Self {
+        Self { value }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct DirectOuterBytes {
+    pub value: InnerBytes,
+}
+
+impl DirectOuterBytes {
+    pub fn new(value: InnerBytes) -> Self {
+        Self { value }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct DirectOuterUint {
+    pub value: InnerU64,
+}
+
+impl DirectOuterUint {
+    pub fn new(value: InnerU64) -> Self {
+        Self { value }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct DirectOuterUintAgain {
+    pub value: InnerU64,
+}
+
+impl DirectOuterUintAgain {
+    pub fn new(value: InnerU64) -> Self {
+        Self { value }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct Holder {
     pub primary: ChoiceU64,
     pub repeated: ChoiceUintAgain,
@@ -99,6 +154,69 @@ impl Holder {
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct InlineChildUint {
+    pub value: InnerU64OrText,
+}
+
+impl InlineChildUint {
+    pub fn new(value: InnerU64OrText) -> Self {
+        Self { value }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct InnerBytes {
+    pub x: Vec<u8>,
+}
+
+impl InnerBytes {
+    pub fn new(x: Vec<u8>) -> Self {
+        Self { x }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct InnerU64 {
+    pub x: u64,
+}
+
+impl InnerU64 {
+    pub fn new(x: u64) -> Self {
+        Self { x }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub enum InnerU64OrText {
+    InnerU64(InnerU64),
+    Text(String),
+}
+
+impl InnerU64OrText {
+    pub fn new_inner_u64(inner_u64: InnerU64) -> Self {
+        Self::InnerU64(inner_u64)
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text(text)
+    }
+}
+
+/// Synthesized convenience alias for an anonymous generic-collection instance (not a CDDL rule name).
+pub type ItemsU64 = Vec<u64>;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct LeafU64 {
+    pub x: u64,
+}
+
+impl LeafU64 {
+    pub fn new(x: u64) -> Self {
+        Self { x }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct MapChoicesUint {
     pub lookup: BTreeMap<U64OrText, U64OrBytes>,
 }
@@ -106,6 +224,17 @@ pub struct MapChoicesUint {
 impl MapChoicesUint {
     pub fn new(lookup: BTreeMap<U64OrText, U64OrBytes>) -> Self {
         Self { lookup }
+    }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct MidU64 {
+    pub value: LeafU64,
+}
+
+impl MidU64 {
+    pub fn new(value: LeafU64) -> Self {
+        Self { value }
     }
 }
 

@@ -74,6 +74,77 @@ expression: ir
         },
     },
     RustIdent(
+        "ChainOuterUint",
+    ): RustStruct {
+        ident: RustIdent(
+            "ChainOuterUint",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "value",
+                        source_index: 0,
+                        rust_type: RustType {
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "MidU64",
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            custom_encodings: None,
+                            custom_wire_major: None,
+                            extern_companions: None,
+                            comment: None,
+                        },
+                    },
+                ],
+                forbidden_fields: [],
+                rest: None,
+                typed_row: None,
+            },
+        ),
+    },
+    RustIdent(
         "ChoiceBytes",
     ): RustStruct {
         ident: RustIdent(
@@ -358,6 +429,300 @@ expression: ir
         ),
     },
     RustIdent(
+        "CollectionOuterUint",
+    ): RustStruct {
+        ident: RustIdent(
+            "CollectionOuterUint",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "value",
+                        source_index: 0,
+                        rust_type: RustType {
+                            conceptual_type: Array(
+                                RustType {
+                                    conceptual_type: Primitive(
+                                        U64,
+                                    ),
+                                    encodings: [],
+                                    config: RustTypeSerializeConfig {
+                                        default: None,
+                                        bounds: None,
+                                        duplicates: None,
+                                        float_bounds: None,
+                                        basic_override: false,
+                                    },
+                                },
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            custom_encodings: None,
+                            custom_wire_major: None,
+                            extern_companions: None,
+                            comment: None,
+                        },
+                    },
+                ],
+                forbidden_fields: [],
+                rest: None,
+                typed_row: None,
+            },
+        ),
+    },
+    RustIdent(
+        "DirectOuterBytes",
+    ): RustStruct {
+        ident: RustIdent(
+            "DirectOuterBytes",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "value",
+                        source_index: 0,
+                        rust_type: RustType {
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "InnerBytes",
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            custom_encodings: None,
+                            custom_wire_major: None,
+                            extern_companions: None,
+                            comment: None,
+                        },
+                    },
+                ],
+                forbidden_fields: [],
+                rest: None,
+                typed_row: None,
+            },
+        ),
+    },
+    RustIdent(
+        "DirectOuterUint",
+    ): RustStruct {
+        ident: RustIdent(
+            "DirectOuterUint",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "value",
+                        source_index: 0,
+                        rust_type: RustType {
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "InnerU64",
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            custom_encodings: None,
+                            custom_wire_major: None,
+                            extern_companions: None,
+                            comment: None,
+                        },
+                    },
+                ],
+                forbidden_fields: [],
+                rest: None,
+                typed_row: None,
+            },
+        ),
+    },
+    RustIdent(
+        "DirectOuterUintAgain",
+    ): RustStruct {
+        ident: RustIdent(
+            "DirectOuterUintAgain",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "value",
+                        source_index: 0,
+                        rust_type: RustType {
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "InnerU64",
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            custom_encodings: None,
+                            custom_wire_major: None,
+                            extern_companions: None,
+                            comment: None,
+                        },
+                    },
+                ],
+                forbidden_fields: [],
+                rest: None,
+                typed_row: None,
+            },
+        ),
+    },
+    RustIdent(
         "Holder",
     ): RustStruct {
         ident: RustIdent(
@@ -511,6 +876,289 @@ expression: ir
         ),
     },
     RustIdent(
+        "InlineChildUint",
+    ): RustStruct {
+        ident: RustIdent(
+            "InlineChildUint",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "value",
+                        source_index: 0,
+                        rust_type: RustType {
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "InnerU64OrText",
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            custom_encodings: None,
+                            custom_wire_major: None,
+                            extern_companions: None,
+                            comment: None,
+                        },
+                    },
+                ],
+                forbidden_fields: [],
+                rest: None,
+                typed_row: None,
+            },
+        ),
+    },
+    RustIdent(
+        "InnerBytes",
+    ): RustStruct {
+        ident: RustIdent(
+            "InnerBytes",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "x",
+                        source_index: 0,
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                Bytes,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            custom_encodings: None,
+                            custom_wire_major: None,
+                            extern_companions: None,
+                            comment: None,
+                        },
+                    },
+                ],
+                forbidden_fields: [],
+                rest: None,
+                typed_row: None,
+            },
+        ),
+    },
+    RustIdent(
+        "InnerU64",
+    ): RustStruct {
+        ident: RustIdent(
+            "InnerU64",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "x",
+                        source_index: 0,
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                U64,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            custom_encodings: None,
+                            custom_wire_major: None,
+                            extern_companions: None,
+                            comment: None,
+                        },
+                    },
+                ],
+                forbidden_fields: [],
+                rest: None,
+                typed_row: None,
+            },
+        ),
+    },
+    RustIdent(
+        "InnerU64OrText",
+    ): RustStruct {
+        ident: RustIdent(
+            "InnerU64OrText",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: TypeChoice {
+            variants: [
+                EnumVariant {
+                    name: RustStruct(
+                        RustIdent(
+                            "InnerU64",
+                        ),
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "InnerU64",
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+                EnumVariant {
+                    name: Custom(
+                        "Text",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Primitive(
+                                Str,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+            ],
+        },
+    },
+    RustIdent(
         "Int",
     ): RustStruct {
         ident: RustIdent(
@@ -530,6 +1178,111 @@ expression: ir
             set_nominal: false,
         },
         variant: Extern,
+    },
+    RustIdent(
+        "ItemsU64",
+    ): RustStruct {
+        ident: RustIdent(
+            "ItemsU64",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Array {
+            element_type: RustType {
+                conceptual_type: Primitive(
+                    U64,
+                ),
+                encodings: [],
+                config: RustTypeSerializeConfig {
+                    default: None,
+                    bounds: None,
+                    duplicates: None,
+                    float_bounds: None,
+                    basic_override: false,
+                },
+            },
+            bounds: None,
+        },
+    },
+    RustIdent(
+        "LeafU64",
+    ): RustStruct {
+        ident: RustIdent(
+            "LeafU64",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "x",
+                        source_index: 0,
+                        rust_type: RustType {
+                            conceptual_type: Primitive(
+                                U64,
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            custom_encodings: None,
+                            custom_wire_major: None,
+                            extern_companions: None,
+                            comment: None,
+                        },
+                    },
+                ],
+                forbidden_fields: [],
+                rest: None,
+                typed_row: None,
+            },
+        ),
     },
     RustIdent(
         "MapChoicesUint",
@@ -589,6 +1342,77 @@ expression: ir
                                         basic_override: false,
                                     },
                                 },
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                        optional: false,
+                        key: None,
+                        rule_metadata: RuleMetadata {
+                            name: None,
+                            rust_name: None,
+                            newtype: None,
+                            no_alias: false,
+                            key_demand: None,
+                            used_as_elem: false,
+                            copy: false,
+                            raw_bytes_flavor: false,
+                            ignore: false,
+                            duplicates: None,
+                            custom_json: false,
+                            no_json_schema_export: false,
+                            custom_serialize: None,
+                            custom_deserialize: None,
+                            custom_encodings: None,
+                            custom_wire_major: None,
+                            extern_companions: None,
+                            comment: None,
+                        },
+                    },
+                ],
+                forbidden_fields: [],
+                rest: None,
+                typed_row: None,
+            },
+        ),
+    },
+    RustIdent(
+        "MidU64",
+    ): RustStruct {
+        ident: RustIdent(
+            "MidU64",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [
+                    RustField {
+                        name: "value",
+                        source_index: 0,
+                        rust_type: RustType {
+                            conceptual_type: Rust(
+                                RustIdent(
+                                    "LeafU64",
+                                ),
                             ),
                             encodings: [],
                             config: RustTypeSerializeConfig {

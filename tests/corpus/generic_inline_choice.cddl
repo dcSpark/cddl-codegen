@@ -25,3 +25,25 @@ holder = [
   repeated: choice_uint_again,
   byte_value: choice_bytes,
 ]
+
+; Definition-owned nested applications are staged privately while their outer parameter is lexical,
+; then materialize through the ordinary concrete generic-instance path. These rules cover the direct
+; field sibling of the inline-choice case, repeated/distinct concrete children, a two-level chain,
+; and a transparent collection child.
+inner<x> = [x]
+direct_outer<p> = [value: inner<p>]
+direct_outer_uint = direct_outer<uint>
+direct_outer_uint_again = direct_outer<uint>
+direct_outer_bytes = direct_outer<bstr>
+
+inline_child<p> = [value: inner<p> / tstr]
+inline_child_uint = inline_child<uint>
+
+leaf<x> = [x]
+mid<x> = [value: leaf<x>]
+chain_outer<p> = [value: mid<p>]
+chain_outer_uint = chain_outer<uint>
+
+items<x> = [* x]
+collection_outer<p> = [value: items<p>]
+collection_outer_uint = collection_outer<uint>

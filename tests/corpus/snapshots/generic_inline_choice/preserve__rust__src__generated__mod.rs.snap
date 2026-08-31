@@ -24,8 +24,11 @@ pub mod serialization;
 use crate::generated::ordered_hash_map::OrderedHashMap;
 use crate::generated::serialization::StringEncoding;
 use cbor_encodings::{
-    ChoiceBytesEncoding, ChoiceU64Encoding, ChoiceUintAgainEncoding, ChoiceUintEncoding,
-    HolderEncoding, MapChoicesUintEncoding, NestedChoiceUintEncoding, NestedUintEncoding,
+    ChainOuterUintEncoding, ChoiceBytesEncoding, ChoiceU64Encoding, ChoiceUintAgainEncoding,
+    ChoiceUintEncoding, CollectionOuterUintEncoding, DirectOuterBytesEncoding,
+    DirectOuterUintAgainEncoding, DirectOuterUintEncoding, HolderEncoding, InlineChildUintEncoding,
+    InnerBytesEncoding, InnerU64Encoding, LeafU64Encoding, MapChoicesUintEncoding, MidU64Encoding,
+    NestedChoiceUintEncoding, NestedUintEncoding,
 };
 
 #[derive(Clone, Debug)]
@@ -52,6 +55,21 @@ impl BytesOrText {
         Self::Text {
             text,
             text_encoding: StringEncoding::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ChainOuterUint {
+    pub value: MidU64,
+    pub encodings: Option<ChainOuterUintEncoding>,
+}
+
+impl ChainOuterUint {
+    pub fn new(value: MidU64) -> Self {
+        Self {
+            value,
+            encodings: None,
         }
     }
 }
@@ -117,6 +135,66 @@ impl ChoiceUintAgain {
 }
 
 #[derive(Clone, Debug)]
+pub struct CollectionOuterUint {
+    pub value: Vec<u64>,
+    pub encodings: Option<CollectionOuterUintEncoding>,
+}
+
+impl CollectionOuterUint {
+    pub fn new(value: Vec<u64>) -> Self {
+        Self {
+            value,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct DirectOuterBytes {
+    pub value: InnerBytes,
+    pub encodings: Option<DirectOuterBytesEncoding>,
+}
+
+impl DirectOuterBytes {
+    pub fn new(value: InnerBytes) -> Self {
+        Self {
+            value,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct DirectOuterUint {
+    pub value: InnerU64,
+    pub encodings: Option<DirectOuterUintEncoding>,
+}
+
+impl DirectOuterUint {
+    pub fn new(value: InnerU64) -> Self {
+        Self {
+            value,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct DirectOuterUintAgain {
+    pub value: InnerU64,
+    pub encodings: Option<DirectOuterUintAgainEncoding>,
+}
+
+impl DirectOuterUintAgain {
+    pub fn new(value: InnerU64) -> Self {
+        Self {
+            value,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Holder {
     pub primary: ChoiceU64,
     pub repeated: ChoiceUintAgain,
@@ -136,6 +214,82 @@ impl Holder {
 }
 
 #[derive(Clone, Debug)]
+pub struct InlineChildUint {
+    pub value: InnerU64OrText,
+    pub encodings: Option<InlineChildUintEncoding>,
+}
+
+impl InlineChildUint {
+    pub fn new(value: InnerU64OrText) -> Self {
+        Self {
+            value,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct InnerBytes {
+    pub x: Vec<u8>,
+    pub encodings: Option<InnerBytesEncoding>,
+}
+
+impl InnerBytes {
+    pub fn new(x: Vec<u8>) -> Self {
+        Self { x, encodings: None }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct InnerU64 {
+    pub x: u64,
+    pub encodings: Option<InnerU64Encoding>,
+}
+
+impl InnerU64 {
+    pub fn new(x: u64) -> Self {
+        Self { x, encodings: None }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum InnerU64OrText {
+    InnerU64(InnerU64),
+    Text {
+        text: String,
+        text_encoding: StringEncoding,
+    },
+}
+
+impl InnerU64OrText {
+    pub fn new_inner_u64(inner_u64: InnerU64) -> Self {
+        Self::InnerU64(inner_u64)
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self::Text {
+            text,
+            text_encoding: StringEncoding::default(),
+        }
+    }
+}
+
+/// Synthesized convenience alias for an anonymous generic-collection instance (not a CDDL rule name).
+pub type ItemsU64 = Vec<u64>;
+
+#[derive(Clone, Debug)]
+pub struct LeafU64 {
+    pub x: u64,
+    pub encodings: Option<LeafU64Encoding>,
+}
+
+impl LeafU64 {
+    pub fn new(x: u64) -> Self {
+        Self { x, encodings: None }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct MapChoicesUint {
     pub lookup: OrderedHashMap<U64OrText, U64OrBytes>,
     pub encodings: Option<MapChoicesUintEncoding>,
@@ -145,6 +299,21 @@ impl MapChoicesUint {
     pub fn new(lookup: OrderedHashMap<U64OrText, U64OrBytes>) -> Self {
         Self {
             lookup,
+            encodings: None,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MidU64 {
+    pub value: LeafU64,
+    pub encodings: Option<MidU64Encoding>,
+}
+
+impl MidU64 {
+    pub fn new(value: LeafU64) -> Self {
+        Self {
+            value,
             encodings: None,
         }
     }

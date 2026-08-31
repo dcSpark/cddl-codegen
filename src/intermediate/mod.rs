@@ -244,6 +244,7 @@ pub struct IntermediateTypes<'a> {
     /// references, discarding classifier-only visits that never reach that root.
     generic_inline_choice_scopes: Vec<GenericInlineChoiceScope>,
     generic_inline_choice_templates: BTreeMap<RustIdent, GenericInlineTypeChoiceTemplate>,
+    generic_child_instance_templates: BTreeMap<RustIdent, GenericChildInstanceTemplate>,
     type_aliases: BTreeMap<AliasIdent, AliasInfo>,
     rust_structs: BTreeMap<RustIdent, RustStruct>,
     prelude_to_emit: BTreeSet<String>,
@@ -454,10 +455,12 @@ struct NominalMintClaim {
 struct GenericInlineChoiceScope {
     owner: RustIdent,
     next_ordinal: usize,
+    next_child_ordinal: usize,
     /// A generic body can visit the same AST choice while it classifies then constructs a record.
     /// Keep that choice's placeholder stable across the visits, just as the variant-mint ledger
     /// keeps its derived variant names stable.
     placeholders_by_choice: BTreeMap<usize, RustIdent>,
+    child_placeholders_by_application: BTreeMap<usize, RustIdent>,
 }
 
 #[derive(Clone, Debug)]
@@ -493,6 +496,7 @@ impl<'a> IntermediateTypes<'a> {
             generic_param_scopes: Vec::new(),
             generic_inline_choice_scopes: Vec::new(),
             generic_inline_choice_templates: BTreeMap::new(),
+            generic_child_instance_templates: BTreeMap::new(),
             type_aliases: Self::aliases(),
             rust_structs,
             prelude_to_emit: BTreeSet::new(),
@@ -3043,7 +3047,9 @@ impl<'a> IntermediateTypes<'a> {
             .push(GenericInlineChoiceScope {
                 owner,
                 next_ordinal: 0,
+                next_child_ordinal: 0,
                 placeholders_by_choice: BTreeMap::new(),
+                child_placeholders_by_application: BTreeMap::new(),
             });
         let result = f(self);
         let scope = self
@@ -3055,6 +3061,9 @@ impl<'a> IntermediateTypes<'a> {
         // with this lexical scope rather than leaving parser state to influence a later definition.
         for placeholder in scope.placeholders_by_choice.into_values() {
             self.generic_inline_choice_templates.remove(&placeholder);
+        }
+        for placeholder in scope.child_placeholders_by_application.into_values() {
+            self.generic_child_instance_templates.remove(&placeholder);
         }
         result
     }
@@ -3096,6 +3105,104 @@ impl<'a> IntermediateTypes<'a> {
             .expect("generic inline type choice scope must remain active while staging template")
             .placeholders_by_choice
             .insert(choice_context, placeholder.clone());
+        placeholder
+    }
+
+    /// Whether a generic-application argument must stay owned by the active generic definition.
+    /// The exact binding marker, not an emitted Rust identifier, is the authority; a nested child
+    /// placeholder has the same deferred ownership requirement.
+    pub fn generic_child_instance_is_deferred(&self, generic_args: &[RustType]) -> bool {
+        fn deferred(
+            ty: &RustType,
+            placeholders: &BTreeMap<RustIdent, GenericChildInstanceTemplate>,
+        ) -> bool {
+            if ty.generic_param_binding.is_some() {
+                return true;
+            }
+            match &ty.conceptual_type {
+                ConceptualRustType::Rust(ident) => placeholders.contains_key(ident),
+                ConceptualRustType::Array(element) | ConceptualRustType::Optional(element) => {
+                    deferred(element, placeholders)
+                }
+                ConceptualRustType::Map(domain, range) => {
+                    deferred(domain, placeholders) || deferred(range, placeholders)
+                }
+                ConceptualRustType::Fixed(_)
+                | ConceptualRustType::Primitive(_)
+                | ConceptualRustType::Alias(_, _)
+                | ConceptualRustType::Any => false,
+            }
+        }
+        generic_args
+            .iter()
+            .any(|arg| deferred(arg, &self.generic_child_instance_templates))
+    }
+
+    /// An inline type-choice used as a generic argument is a separate template whose concrete
+    /// anonymous-owner identity is not available while the child application is staged. This is
+    /// the deliberately narrow remaining cross-template boundary; callers reject it rather than
+    /// leaking an `OuterGenericInlineChoice…` pseudo-instance into the global registry.
+    pub fn generic_child_instance_has_inline_choice_argument(
+        &self,
+        generic_args: &[RustType],
+    ) -> bool {
+        fn contains(
+            ty: &RustType,
+            placeholders: &BTreeMap<RustIdent, GenericInlineTypeChoiceTemplate>,
+        ) -> bool {
+            match &ty.conceptual_type {
+                ConceptualRustType::Rust(ident) => placeholders.contains_key(ident),
+                ConceptualRustType::Array(element) | ConceptualRustType::Optional(element) => {
+                    contains(element, placeholders)
+                }
+                ConceptualRustType::Map(domain, range) => {
+                    contains(domain, placeholders) || contains(range, placeholders)
+                }
+                ConceptualRustType::Fixed(_)
+                | ConceptualRustType::Primitive(_)
+                | ConceptualRustType::Alias(_, _)
+                | ConceptualRustType::Any => false,
+            }
+        }
+        generic_args
+            .iter()
+            .any(|arg| contains(arg, &self.generic_inline_choice_templates))
+    }
+
+    /// Stage a generic application below the active definition and return its private placeholder.
+    /// The AST address only deduplicates repeat parser visits of one occurrence; it never reaches a
+    /// generated name or diagnostic.
+    pub fn register_generic_child_instance_template(
+        &mut self,
+        application_context: usize,
+        generic_ident: RustIdent,
+        generic_args: Vec<RustType>,
+    ) -> RustIdent {
+        let (owner, ordinal) = {
+            let scope = self
+                .generic_inline_choice_scopes
+                .last_mut()
+                .expect("deferred generic child requires an active generic-definition scope");
+            if let Some(placeholder) = scope
+                .child_placeholders_by_application
+                .get(&application_context)
+            {
+                return placeholder.clone();
+            }
+            scope.next_child_ordinal += 1;
+            (scope.owner.clone(), scope.next_child_ordinal)
+        };
+        let placeholder =
+            self.fresh_synthesized_ident(&format!("{owner}GenericChildInstance{ordinal}"));
+        self.generic_child_instance_templates.insert(
+            placeholder.clone(),
+            GenericChildInstanceTemplate::new(placeholder.clone(), generic_ident, generic_args),
+        );
+        self.generic_inline_choice_scopes
+            .last_mut()
+            .expect("generic child scope must remain active while staging template")
+            .child_placeholders_by_application
+            .insert(application_context, placeholder.clone());
         placeholder
     }
 
@@ -4102,40 +4209,161 @@ impl<'a> IntermediateTypes<'a> {
 
     pub fn register_generic_def(&mut self, mut def: GenericDef) {
         let ident = def.orig.ident().clone();
-        let template_idents = self
+        let inline_template_idents = self
             .generic_inline_choice_templates
             .keys()
             .cloned()
             .collect::<BTreeSet<_>>();
-        let mut placeholders = Vec::new();
+        let child_template_idents = self
+            .generic_child_instance_templates
+            .keys()
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        let mut inline_placeholders = Vec::new();
+        let mut child_placeholders = Vec::new();
         Self::collect_generic_inline_choice_placeholders(
             &def.orig,
-            &template_idents,
-            &mut placeholders,
+            &inline_template_idents,
+            &mut inline_placeholders,
         );
-        // A template can itself contain an inline choice. Pull the full reachable template tree
-        // into the definition, not merely the placeholders immediately named by its root.
-        let mut seen = BTreeSet::new();
-        let mut templates = Vec::new();
-        let mut next = 0;
-        while let Some(placeholder) = placeholders.get(next).cloned() {
-            next += 1;
-            if !seen.insert(placeholder.clone()) {
+        Self::collect_generic_child_instance_placeholders(
+            &def.orig,
+            &child_template_idents,
+            &mut child_placeholders,
+        );
+        // Inline choices and child applications can depend on one another. Transfer exactly their
+        // reachable closure into this definition; classifier-only visits remain parser-local.
+        let mut seen_inline = BTreeSet::new();
+        let mut seen_child = BTreeSet::new();
+        let mut inline_templates = Vec::new();
+        let mut child_templates = Vec::new();
+        let mut next_inline = 0;
+        let mut next_child = 0;
+        while next_inline < inline_placeholders.len() || next_child < child_placeholders.len() {
+            if let Some(placeholder) = inline_placeholders.get(next_inline).cloned() {
+                next_inline += 1;
+                if !seen_inline.insert(placeholder.clone()) {
+                    continue;
+                }
+                if let Some(template) = self.generic_inline_choice_templates.remove(&placeholder) {
+                    Self::collect_generic_inline_choice_placeholders(
+                        &template.template,
+                        &inline_template_idents,
+                        &mut inline_placeholders,
+                    );
+                    Self::collect_generic_child_instance_placeholders(
+                        &template.template,
+                        &child_template_idents,
+                        &mut child_placeholders,
+                    );
+                    inline_templates.push(template);
+                }
                 continue;
             }
-            if let Some(template) = self.generic_inline_choice_templates.remove(&placeholder) {
-                Self::collect_generic_inline_choice_placeholders(
-                    &template.template,
-                    &template_idents,
-                    &mut placeholders,
-                );
-                templates.push(template);
+            let placeholder = child_placeholders[next_child].clone();
+            next_child += 1;
+            if !seen_child.insert(placeholder.clone()) {
+                continue;
+            }
+            if let Some(template) = self.generic_child_instance_templates.remove(&placeholder) {
+                for arg in &template.generic_args {
+                    Self::collect_generic_child_instance_placeholders_in_type(
+                        arg,
+                        &child_template_idents,
+                        &mut child_placeholders,
+                    );
+                }
+                child_templates.push(template);
             }
         }
-        if !templates.is_empty() {
-            def.set_inline_type_choices(templates);
+        if !inline_templates.is_empty() {
+            def.set_inline_type_choices(inline_templates);
+        }
+        if !child_templates.is_empty() {
+            def.set_child_instances(child_templates);
         }
         self.generic_defs.insert(ident, def);
+    }
+
+    fn collect_generic_child_instance_placeholders(
+        rust_struct: &RustStruct,
+        template_idents: &BTreeSet<RustIdent>,
+        output: &mut Vec<RustIdent>,
+    ) {
+        fn collect_type(
+            ty: &RustType,
+            template_idents: &BTreeSet<RustIdent>,
+            output: &mut Vec<RustIdent>,
+        ) {
+            IntermediateTypes::collect_generic_child_instance_placeholders_in_type(
+                ty,
+                template_idents,
+                output,
+            );
+        }
+        match rust_struct.variant() {
+            RustStructType::Record(record) => {
+                for field in &record.fields {
+                    collect_type(&field.rust_type, template_idents, output);
+                }
+            }
+            RustStructType::Table { domain, range, .. } => {
+                collect_type(domain, template_idents, output);
+                collect_type(range, template_idents, output);
+            }
+            RustStructType::Array { element_type, .. } => {
+                collect_type(element_type, template_idents, output)
+            }
+            RustStructType::TypeChoice { variants } | RustStructType::CStyleEnum { variants } => {
+                for variant in variants {
+                    if let EnumVariantData::RustType(ty) = &variant.data {
+                        collect_type(ty, template_idents, output);
+                    }
+                }
+            }
+            RustStructType::Wrapper { wrapped, .. } => {
+                collect_type(wrapped, template_idents, output)
+            }
+            RustStructType::GroupChoice { .. }
+            | RustStructType::Extern
+            | RustStructType::RawBytesType => {}
+        }
+    }
+
+    fn collect_generic_child_instance_placeholders_in_type(
+        ty: &RustType,
+        template_idents: &BTreeSet<RustIdent>,
+        output: &mut Vec<RustIdent>,
+    ) {
+        match &ty.conceptual_type {
+            ConceptualRustType::Rust(ident) if template_idents.contains(ident) => {
+                output.push(ident.clone())
+            }
+            ConceptualRustType::Array(element) | ConceptualRustType::Optional(element) => {
+                Self::collect_generic_child_instance_placeholders_in_type(
+                    element,
+                    template_idents,
+                    output,
+                );
+            }
+            ConceptualRustType::Map(domain, range) => {
+                Self::collect_generic_child_instance_placeholders_in_type(
+                    domain,
+                    template_idents,
+                    output,
+                );
+                Self::collect_generic_child_instance_placeholders_in_type(
+                    range,
+                    template_idents,
+                    output,
+                );
+            }
+            ConceptualRustType::Fixed(_)
+            | ConceptualRustType::Primitive(_)
+            | ConceptualRustType::Rust(_)
+            | ConceptualRustType::Alias(_, _)
+            | ConceptualRustType::Any => {}
+        }
     }
 
     fn collect_generic_inline_choice_placeholders(
@@ -4918,24 +5146,84 @@ impl<'a> IntermediateTypes<'a> {
         if self.has_rejections() {
             return Err(self.rejections_error());
         }
-        // resolve generics
-        // resolve then register in 2 phases to get around borrow checker
-        let resolved_generics = self
+        // Resolve concrete generic instances in deterministic waves. A definition-owned child
+        // application can register a new ordinary instance while its parent resolves, so a
+        // one-shot snapshot would leave that child dangling. `BTreeSet` gives source-order-free
+        // work selection and `completed` makes repeated compatible children a no-op.
+        let mut pending_generics = self
             .generic_instances
-            .values()
-            .map(|instance| instance.resolve(self, cli))
-            .collect::<Result<Vec<_>, _>>()?;
+            .keys()
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        let mut completed_generics = BTreeSet::new();
         // Dedup guard for generic SET-NOMINAL instantiations: every spelling of `set<key_hash>`
         // resolves to the same `canonical_ident` (`SetKeyHash`), which must mint exactly ONE nominal
         // wrapper struct. A named binding whose own ident differs (`named_set` → `NamedSet`) then
         // aliases transparently to it.
         let mut minted_set_nominals: BTreeSet<RustIdent> = BTreeSet::new();
-        for resolved_instance in resolved_generics {
+        while let Some(instance_ident) = pending_generics.pop_first() {
+            if !completed_generics.insert(instance_ident.clone()) {
+                continue;
+            }
+            let resolved_instance = self
+                .generic_instances
+                .get(&instance_ident)
+                .expect("queued generic instance must remain registered")
+                .resolve(self, cli)?;
             match resolved_instance {
                 GenericResolved::Resolved {
                     mut resolved,
                     inline_type_choices,
+                    child_instances,
                 } => {
+                    // Resolve child templates from their private dependency graph before deriving
+                    // an identity. A nested `outer<inner<p>>` first resolves `inner<uint>`, then
+                    // uses that ordinary concrete ident in `outer<…>`'s canonical fragment.
+                    let mut child_replacements = BTreeMap::new();
+                    let mut pending_children = child_instances;
+                    while !pending_children.is_empty() {
+                        let pending_placeholders = pending_children
+                            .iter()
+                            .map(|child| child.placeholder.clone())
+                            .collect::<BTreeSet<_>>();
+                        let ready = pending_children.iter().position(|child| {
+                            !child.generic_args.iter().any(|arg| {
+                                let mut dependencies = Vec::new();
+                                Self::collect_generic_child_instance_placeholders_in_type(
+                                    arg,
+                                    &pending_placeholders,
+                                    &mut dependencies,
+                                );
+                                !dependencies.is_empty()
+                            })
+                        });
+                        let Some(ready) = ready else {
+                            return Err("generic child-instance templates contain a cyclic placeholder dependency".into());
+                        };
+                        let mut child = pending_children.remove(ready);
+                        for arg in &mut child.generic_args {
+                            GenericInstance::rewrite_deferred_placeholders_in_type(
+                                arg,
+                                &child_replacements,
+                            );
+                        }
+                        let canonical_ident =
+                            RustIdent::new(crate::parsing::generic_instance_canonical_cddl_ident(
+                                &CDDLIdent::new(child.generic_ident.to_string()),
+                                &child.generic_args,
+                            ));
+                        self.register_generic_instance(GenericInstance::new(
+                            canonical_ident.clone(),
+                            child.generic_ident,
+                            child.generic_args,
+                            true,
+                            canonical_ident.clone(),
+                        ));
+                        if !completed_generics.contains(&canonical_ident) {
+                            pending_generics.insert(canonical_ident.clone());
+                        }
+                        child_replacements.insert(child.placeholder, canonical_ident);
+                    }
                     // Register each concrete anonymous choice before the generic root that refers
                     // to it.  This is the ordinary anonymous-choice ownership order, delayed only
                     // until the exact lexical bindings have concrete arguments.  The shared chooser
@@ -4964,6 +5252,10 @@ impl<'a> IntermediateTypes<'a> {
                             );
                         };
                         let mut inline_choice = pending.remove(ready);
+                        GenericInstance::rewrite_inline_choice_placeholders(
+                            &mut inline_choice.resolved,
+                            &child_replacements,
+                        );
                         // A parent template may name a child template. Materialize children first,
                         // then rewrite the parent before choosing its normal anonymous-owner name.
                         GenericInstance::rewrite_inline_choice_placeholders(
@@ -4981,6 +5273,10 @@ impl<'a> IntermediateTypes<'a> {
                         self.register_rust_struct(parent_visitor, inline_choice.resolved, cli);
                         replacements.insert(inline_choice.placeholder, concrete_ident);
                     }
+                    GenericInstance::rewrite_inline_choice_placeholders(
+                        &mut resolved,
+                        &child_replacements,
+                    );
                     GenericInstance::rewrite_inline_choice_placeholders(
                         &mut resolved,
                         &replacements,

@@ -6647,7 +6647,7 @@ fn exact_homogeneous_array_length_rejection(length: i128) -> String {
 /// The ONE owner of this spelling so every call site — anonymous use
 /// (`generic_instance_or_new_type`) and named binding (`foo = bar<text>`) — derives the SAME
 /// instantiation identity, which the Phase 2.3 set-nominal dedup keys on.
-fn generic_instance_canonical_cddl_ident(
+pub(crate) fn generic_instance_canonical_cddl_ident(
     cddl_ident: &CDDLIdent,
     generic_args: &[RustType],
 ) -> CDDLIdent {
@@ -6677,6 +6677,23 @@ fn generic_instance_or_new_type(
                 .iter()
                 .map(|a| rust_type_from_type1(types, parent_visitor, &a.arg, cli))
                 .collect::<Vec<_>>();
+            if types.generic_child_instance_has_inline_choice_argument(&generic_args) {
+                types.record_rejection(
+                    "a generic application whose argument is a definition-owned inline type choice is unsupported: the child instance and anonymous choice would need a shared cross-template concrete identity. Move the choice to a concrete use site or give it a concrete named rule.".to_owned(),
+                );
+                return ConceptualRustType::Fixed(FixedValue::Null).into();
+            }
+            // A child application such as `inner<p>` belongs to the surrounding generic
+            // definition, not to the parser's global instance registry. Its concrete identity is
+            // unknowable until an outer instance supplies the exact lexical binding for `p`.
+            if types.generic_child_instance_is_deferred(&generic_args) {
+                let placeholder = types.register_generic_child_instance_template(
+                    args as *const GenericArgs as usize,
+                    RustIdent::new(cddl_ident),
+                    generic_args,
+                );
+                return RustType::new(ConceptualRustType::Rust(placeholder));
+            }
             let instance_cddl_ident =
                 generic_instance_canonical_cddl_ident(&cddl_ident, &generic_args);
             let instance_ident = RustIdent::new(instance_cddl_ident.clone());
@@ -7148,22 +7165,6 @@ fn rust_type(
                 return ConceptualRustType::Optional(Box::new(inner_rust_type)).into();
             }
         }
-        // A generic application whose ARGUMENT is a parameter (`inner<p> / tstr`) needs a second
-        // level of instantiation ownership: resolving the outer definition would otherwise have to
-        // materialize and register an `inner<concrete>` instance on behalf of this anonymous union.
-        // That is deliberately narrower than the ordinary parameter-arm template below.  Refuse
-        // before `create_variants_from_type_choices` can register a dangling `inner<p>` instance;
-        // the future action is recorded in the matrix roadmap under the scoped provenance work.
-        if let Some((generic, parameter)) = inline_choice_scoped_generic_application(types, t) {
-            types.record_rejection(format!(
-                "an inline generic application `{generic}<…>` whose argument references scoped generic \
-                 parameter `{parameter}` is unsupported inside a type-choice arm — the outer inline \
-                 choice now owns direct parameter substitution, but nested generic-instance ownership \
-                 is not modeled yet. Give the nested application its own concrete named rule, or move \
-                 the choice to the concrete use site."
-            ));
-            return ConceptualRustType::Fixed(FixedValue::Null).into();
-        }
         // An inline choice directly owned by a generic definition cannot be registered while its
         // variants still name lexical parameters.  Retain the parsed variants in that definition's
         // parser-only sidecar and leave a private placeholder in the containing record/collection;
@@ -7219,171 +7220,6 @@ fn rust_type(
         );
         types.new_type(&CDDLIdent::new(combined_ident.to_string()), cli)
     }
-}
-
-/// Find a generic application inside an inline choice whose argument reaches the active lexical
-/// parameter scope.  Direct parameter arms are representable by the definition-owned template; an
-/// application such as `inner<p>` would additionally need the outer instance to own *another*
-/// generic-instance registration, so it stays a deliberate graceful boundary for now.
-fn inline_choice_scoped_generic_application(
-    types: &IntermediateTypes,
-    ty: &Type,
-) -> Option<(String, String)> {
-    fn type1_parameter(types: &IntermediateTypes, type1: &Type1) -> Option<String> {
-        type2_parameter(types, &type1.type2).or_else(|| {
-            type1
-                .operator
-                .as_ref()
-                .and_then(|operator| type2_parameter(types, &operator.type2))
-        })
-    }
-
-    fn type_parameter(types: &IntermediateTypes, ty: &Type) -> Option<String> {
-        ty.type_choices
-            .iter()
-            .find_map(|choice| type1_parameter(types, &choice.type1))
-    }
-
-    fn group_parameter(types: &IntermediateTypes, group: &Group) -> Option<String> {
-        group.group_choices.iter().find_map(|choice| {
-            choice
-                .group_entries
-                .iter()
-                .find_map(|(entry, _)| match entry {
-                    GroupEntry::ValueMemberKey { ge, .. } => ge
-                        .member_key
-                        .as_ref()
-                        .and_then(|key| match key {
-                            MemberKey::Type1 { t1, .. } => type1_parameter(types, t1),
-                            _ => None,
-                        })
-                        .or_else(|| type_parameter(types, &ge.entry_type)),
-                    GroupEntry::TypeGroupname { ge, .. } => types
-                        .active_generic_param_binding(&ge.name.to_string())
-                        .map(|_| ge.name.to_string())
-                        .or_else(|| {
-                            ge.generic_args.as_ref().and_then(|args| {
-                                args.args
-                                    .iter()
-                                    .find_map(|arg| type1_parameter(types, &arg.arg))
-                            })
-                        }),
-                    GroupEntry::InlineGroup { group, .. } => group_parameter(types, group),
-                })
-        })
-    }
-
-    fn type2_parameter(types: &IntermediateTypes, type2: &Type2) -> Option<String> {
-        match type2 {
-            Type2::Typename {
-                ident,
-                generic_args,
-                ..
-            }
-            | Type2::Unwrap {
-                ident,
-                generic_args,
-                ..
-            }
-            | Type2::ChoiceFromGroup {
-                ident,
-                generic_args,
-                ..
-            } => types
-                .active_generic_param_binding(&ident.to_string())
-                .map(|_| ident.to_string())
-                .or_else(|| {
-                    generic_args.as_ref().and_then(|args| {
-                        args.args
-                            .iter()
-                            .find_map(|arg| type1_parameter(types, &arg.arg))
-                    })
-                }),
-            Type2::TaggedData { t, .. } => type_parameter(types, t),
-            Type2::ParenthesizedType { pt, .. } => type_parameter(types, pt),
-            Type2::Map { group, .. }
-            | Type2::Array { group, .. }
-            | Type2::ChoiceFromInlineGroup { group, .. } => group_parameter(types, group),
-            _ => None,
-        }
-    }
-
-    fn generic_application(types: &IntermediateTypes, ty: &Type) -> Option<(String, String)> {
-        fn type1_application(types: &IntermediateTypes, type1: &Type1) -> Option<(String, String)> {
-            type2_application(types, &type1.type2).or_else(|| {
-                type1
-                    .operator
-                    .as_ref()
-                    .and_then(|operator| type2_application(types, &operator.type2))
-            })
-        }
-
-        fn group_application(types: &IntermediateTypes, group: &Group) -> Option<(String, String)> {
-            group.group_choices.iter().find_map(|choice| {
-                choice
-                    .group_entries
-                    .iter()
-                    .find_map(|(entry, _)| match entry {
-                        GroupEntry::ValueMemberKey { ge, .. } => ge
-                            .member_key
-                            .as_ref()
-                            .and_then(|key| match key {
-                                MemberKey::Type1 { t1, .. } => type1_application(types, t1),
-                                _ => None,
-                            })
-                            .or_else(|| generic_application(types, &ge.entry_type)),
-                        GroupEntry::TypeGroupname { ge, .. } => {
-                            ge.generic_args.as_ref().and_then(|args| {
-                                args.args.iter().find_map(|arg| {
-                                    type1_parameter(types, &arg.arg)
-                                        .map(|parameter| (ge.name.to_string(), parameter))
-                                        .or_else(|| type1_application(types, &arg.arg))
-                                })
-                            })
-                        }
-                        GroupEntry::InlineGroup { group, .. } => group_application(types, group),
-                    })
-            })
-        }
-
-        fn type2_application(types: &IntermediateTypes, type2: &Type2) -> Option<(String, String)> {
-            match type2 {
-                Type2::Typename {
-                    ident,
-                    generic_args,
-                    ..
-                }
-                | Type2::Unwrap {
-                    ident,
-                    generic_args,
-                    ..
-                }
-                | Type2::ChoiceFromGroup {
-                    ident,
-                    generic_args,
-                    ..
-                } => generic_args.as_ref().and_then(|args| {
-                    args.args.iter().find_map(|arg| {
-                        type1_parameter(types, &arg.arg)
-                            .map(|parameter| (ident.to_string(), parameter))
-                            .or_else(|| type1_application(types, &arg.arg))
-                    })
-                }),
-                Type2::TaggedData { t, .. } => generic_application(types, t),
-                Type2::ParenthesizedType { pt, .. } => generic_application(types, pt),
-                Type2::Map { group, .. }
-                | Type2::Array { group, .. }
-                | Type2::ChoiceFromInlineGroup { group, .. } => group_application(types, group),
-                _ => None,
-            }
-        }
-
-        ty.type_choices
-            .iter()
-            .find_map(|choice| type1_application(types, &choice.type1))
-    }
-
-    generic_application(types, ty)
 }
 
 /// Return an exact-source generic parameter used anywhere beneath an inline choice.  Every AST

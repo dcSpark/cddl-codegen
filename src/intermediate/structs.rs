@@ -1844,6 +1844,10 @@ pub struct GenericDef {
     /// instance supplies concrete arguments.  The placeholder is private to this definition and is
     /// rewritten to the materialized anonymous enum before the resolved root is registered.
     pub(super) inline_type_choices: Vec<GenericInlineTypeChoiceTemplate>,
+    /// Nested generic applications whose arguments depend on this definition's exact lexical
+    /// bindings.  They are parser-private templates rather than global instances: an `inner<p>`
+    /// occurrence becomes `inner<uint>` only when a concrete `outer<uint>` supplies `p`.
+    pub(super) child_instances: Vec<GenericChildInstanceTemplate>,
 }
 
 impl GenericDef {
@@ -1852,6 +1856,7 @@ impl GenericDef {
             generic_params,
             orig,
             inline_type_choices: Vec::new(),
+            child_instances: Vec::new(),
         }
     }
 
@@ -1860,6 +1865,13 @@ impl GenericDef {
         inline_type_choices: Vec<GenericInlineTypeChoiceTemplate>,
     ) {
         self.inline_type_choices = inline_type_choices;
+    }
+
+    pub(super) fn set_child_instances(
+        &mut self,
+        child_instances: Vec<GenericChildInstanceTemplate>,
+    ) {
+        self.child_instances = child_instances;
     }
 
     #[cfg(test)]
@@ -1872,6 +1884,36 @@ impl GenericDef {
     #[allow(dead_code)]
     pub(crate) fn inline_type_choices(&self) -> &[GenericInlineTypeChoiceTemplate] {
         &self.inline_type_choices
+    }
+
+    #[cfg(test)]
+    #[allow(dead_code)]
+    pub(crate) fn child_instances(&self) -> &[GenericChildInstanceTemplate] {
+        &self.child_instances
+    }
+}
+
+/// Parser-only nested generic application owned by one generic definition. `placeholder` is
+/// returned to the enclosing type tree until finalization has substituted the owning instance's
+/// exact bindings and registered the ordinary concrete child instance.
+#[derive(Clone, Debug)]
+pub struct GenericChildInstanceTemplate {
+    pub(super) placeholder: RustIdent,
+    pub(super) generic_ident: RustIdent,
+    pub(super) generic_args: Vec<RustType>,
+}
+
+impl GenericChildInstanceTemplate {
+    pub fn new(
+        placeholder: RustIdent,
+        generic_ident: RustIdent,
+        generic_args: Vec<RustType>,
+    ) -> Self {
+        Self {
+            placeholder,
+            generic_ident,
+            generic_args,
+        }
     }
 }
 
@@ -1931,6 +1973,7 @@ pub enum GenericResolved {
     Resolved {
         resolved: RustStruct,
         inline_type_choices: Vec<ResolvedGenericInlineTypeChoice>,
+        child_instances: Vec<ResolvedGenericChildInstance>,
     },
     /// A generic SET-NOMINAL instance (`set<key_hash>` → `SetKeyHash`; Phase 2.3): the instantiation
     /// mints ONE nominal wrapper struct under `canonical_ident`, DEDUPED across every spelling of the
@@ -1964,6 +2007,16 @@ pub enum GenericResolved {
 pub struct ResolvedGenericInlineTypeChoice {
     pub(super) placeholder: RustIdent,
     pub(super) resolved: RustStruct,
+}
+
+/// A definition-owned child application after its owner's bindings have been substituted. Its
+/// arguments may still name another child placeholder; finalization resolves that dependency in
+/// deterministic child-first order before deriving the ordinary concrete instance identity.
+#[derive(Debug, Clone)]
+pub struct ResolvedGenericChildInstance {
+    pub(super) placeholder: RustIdent,
+    pub(super) generic_ident: RustIdent,
+    pub(super) generic_args: Vec<RustType>,
 }
 
 impl GenericInstance {
@@ -2147,9 +2200,25 @@ impl GenericInstance {
                 })
             })
             .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
+        let child_instances = def
+            .child_instances
+            .iter()
+            .map(|template| {
+                Ok(ResolvedGenericChildInstance {
+                    placeholder: template.placeholder.clone(),
+                    generic_ident: template.generic_ident.clone(),
+                    generic_args: template
+                        .generic_args
+                        .iter()
+                        .map(|arg| Self::resolve_type(&resolved_args, arg))
+                        .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?,
+                })
+            })
+            .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
         Ok(GenericResolved::Resolved {
             resolved: instance,
             inline_type_choices,
+            child_instances,
         })
     }
 
@@ -2313,6 +2382,39 @@ impl GenericInstance {
             RustStructType::GroupChoice { .. }
             | RustStructType::Extern
             | RustStructType::RawBytesType => {}
+        }
+    }
+
+    /// Rewrite parser-private deferred child/inline placeholders in one type tree. Both sidecar
+    /// kinds use `Rust(placeholder)` while they are private, so one exact traversal preserves the
+    /// established recursive collection behavior.
+    pub(super) fn rewrite_deferred_placeholders_in_type(
+        ty: &mut RustType,
+        replacements: &BTreeMap<RustIdent, RustIdent>,
+    ) -> bool {
+        match &mut ty.conceptual_type {
+            ConceptualRustType::Rust(ident) => {
+                if let Some(replacement) = replacements.get(ident) {
+                    *ident = replacement.clone();
+                    true
+                } else {
+                    false
+                }
+            }
+            ConceptualRustType::Array(element) | ConceptualRustType::Optional(element) => {
+                Self::rewrite_deferred_placeholders_in_type(element, replacements)
+            }
+            ConceptualRustType::Map(domain, range) => {
+                let domain_changed =
+                    Self::rewrite_deferred_placeholders_in_type(domain, replacements);
+                let range_changed =
+                    Self::rewrite_deferred_placeholders_in_type(range, replacements);
+                domain_changed || range_changed
+            }
+            ConceptualRustType::Fixed(_)
+            | ConceptualRustType::Primitive(_)
+            | ConceptualRustType::Alias(_, _)
+            | ConceptualRustType::Any => false,
         }
     }
 

@@ -92,7 +92,6 @@ kinds: a defect in a projection (buildable now) and known incompletenesses of th
 entries = [
   "matrix.grammar-derived-legality",
   "matrix.resolved-type-group-name-legality",
-  "matrix.scoped-symbol-provenance-grid",
   "matrix.per-value-encoding-reachability",
   "matrix.emission-narrowing-fixture-floor",
   "matrix.tag-registry-boundary",
@@ -1998,41 +1997,6 @@ action_md = '''Create and file a durable ruby report.
 '''
 
 [[record]]
-id = "matrix.scoped-symbol-provenance-grid"
-title = "Scoped source-symbol provenance versus normalized IR registries"
-
-[record.payload]
-kind = "work"
-body_md = '''- **Nested generic-instance ownership inside inline generic TYPE choices.** A nested generic
-  application whose argument reaches the outer parameter remains refused: `inner<x> = [x]` plus
-  `choice<p> = [value: inner<p> / tstr]`. The outer template must own child `GenericInstance`
-  materialization, registration, and placeholder rewrite without creating a dangling `inner<p>`
-  instance or changing generic-instance naming and collision semantics. Keep the present graceful
-  diagnostic until that ownership model is explicit.
-'''
-work_state = "deferred"
-work_intent = "build_capability"
-work_kind = "feature"
-risk = "valid_rejection"
-acceptance_md = '''Materialize child generic instances only while resolving their owning inline-choice
-template; add direct and nested-child regressions with distinct/reused concrete arguments, source
-order, exact binding, collision, and emitted-crate compilation checks; then retire only the
-`inner<p>`-inside-inline-choice refusal.
-'''
-admission_ids = ["testing.admission-path.scoped-symbol-provenance-grid"]
-
-[record.payload.reopening_signal]
-observer = "affected spec owner"
-dimension = "nested generic applications in inline generic type-choice arms"
-action_on_fire_md = '''design the child-instance owner and its registration/rewrite order
-'''
-
-[record.payload.reopening_signal.predicate]
-predicate_kind = "event"
-event_md = '''a committed consumer spec requires `inner<p>` (or equivalent) inside an inline generic type-choice arm
-'''
-
-[[record]]
 id = "matrix.signed-int-size-upstream"
 title = "Signed int .size close-out"
 
@@ -2572,16 +2536,6 @@ target = "matrix.multi-choice-group-rule"
 source = "matrix.refusal-spelling-space"
 kind = "parent_of"
 target = "matrix.catalog-build.refusal-spelling"
-
-[[relation]]
-source = "matrix.resolved-type-group-name-legality"
-kind = "parent_of"
-target = "matrix.scoped-symbol-provenance-grid"
-
-[[relation]]
-source = "matrix.scoped-symbol-provenance-grid"
-kind = "parent_of"
-target = "testing.admission-path.scoped-symbol-provenance-grid"
 
 [[relation]]
 source = "matrix.undefined-ciborium-upstream"

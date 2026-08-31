@@ -1313,9 +1313,15 @@ concrete-union reuse, incompatible authored collisions, and the real plain-group
 diagnostic. `scoped_symbol_provenance_tests::inline_generic_choice_substitutes_exact_bindings_and_reuses_concrete_unions`
 and `scoped_symbol_provenance_tests::generic_inline_choice_nested_shapes_generate_and_keep_remaining_boundaries_loud`
 pin that model; the ordinary generic-record control verifies recursive substitution in array, map,
-and optional fields, and the corpus fixture compiles that full emitted crate. A nested generic
-application arm (`inner<a> / tstr`) remains a deliberate graceful refusal because it needs the outer
-template to own child-instance materialization.
+and optional fields, and the corpus fixture compiles that full emitted crate.
+`scoped_symbol_provenance_tests::definition_owned_nested_generic_children_materialize_through_the_ordinary_instance_queue`
+adds the direct-field panic regression and its inline-choice sibling: a definition-owned
+`inner<p>` is private until concrete substitution, then enters the ordinary generic-instance queue.
+It covers source order, repeated/distinct and multi-parameter children, a two-level chain, and a
+transparent collection child; finalized products cannot retain either private placeholder or a
+generic binding. The one remaining narrow refusal is an inline type choice used *as* a child generic
+argument (`inner<(p / tstr)>`), which would require a shared concrete identity across the two
+definition-owned template kinds.
 
 `rust_wasm_bindgen_feature_gated_crate_compiles_standalone` guards the rust crate's
 `--rust-wasm-feature` gate from the one direction no other build can witness: every

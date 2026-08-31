@@ -23,14 +23,26 @@ fn _assert_serialize<T: cbor_event::se::Serialize>() {}
 fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
 #[allow(dead_code)]
 fn _extern_interface_self_check() {
+    _assert_serialize::<crate::generated::ChainOuterUint>();
+    _assert_deserialize::<crate::generated::ChainOuterUint>();
     _assert_serialize::<crate::generated::ChoiceBytes>();
     _assert_deserialize::<crate::generated::ChoiceBytes>();
     _assert_serialize::<crate::generated::ChoiceUint>();
     _assert_deserialize::<crate::generated::ChoiceUint>();
     _assert_serialize::<crate::generated::ChoiceUintAgain>();
     _assert_deserialize::<crate::generated::ChoiceUintAgain>();
+    _assert_serialize::<crate::generated::CollectionOuterUint>();
+    _assert_deserialize::<crate::generated::CollectionOuterUint>();
+    _assert_serialize::<crate::generated::DirectOuterBytes>();
+    _assert_deserialize::<crate::generated::DirectOuterBytes>();
+    _assert_serialize::<crate::generated::DirectOuterUint>();
+    _assert_deserialize::<crate::generated::DirectOuterUint>();
+    _assert_serialize::<crate::generated::DirectOuterUintAgain>();
+    _assert_deserialize::<crate::generated::DirectOuterUintAgain>();
     _assert_serialize::<crate::generated::Holder>();
     _assert_deserialize::<crate::generated::Holder>();
+    _assert_serialize::<crate::generated::InlineChildUint>();
+    _assert_deserialize::<crate::generated::InlineChildUint>();
     _assert_serialize::<crate::generated::MapChoicesUint>();
     _assert_deserialize::<crate::generated::MapChoicesUint>();
     _assert_serialize::<crate::generated::NestedChoiceUint>();

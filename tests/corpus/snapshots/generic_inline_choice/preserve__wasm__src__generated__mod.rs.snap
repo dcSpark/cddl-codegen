@@ -87,6 +87,49 @@ pub enum BytesOrTextKind {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct ChainOuterUint(pub(crate) cddl_lib::ChainOuterUint);
+
+#[wasm_bindgen]
+impl ChainOuterUint {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<ChainOuterUint, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn value(&self) -> MidU64 {
+        self.0.value.clone().into()
+    }
+
+    pub fn new(value: &MidU64) -> Self {
+        Self(cddl_lib::ChainOuterUint::new(value.clone().into()))
+    }
+}
+
+impl From<cddl_lib::ChainOuterUint> for ChainOuterUint {
+    fn from(native: cddl_lib::ChainOuterUint) -> Self {
+        Self(native)
+    }
+}
+
+impl From<ChainOuterUint> for cddl_lib::ChainOuterUint {
+    fn from(wasm: ChainOuterUint) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::ChainOuterUint> for ChainOuterUint {
+    fn as_ref(&self) -> &cddl_lib::ChainOuterUint {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct ChoiceBytes(pub(crate) cddl_lib::ChoiceBytes);
 
 #[wasm_bindgen]
@@ -259,6 +302,178 @@ impl AsRef<cddl_lib::ChoiceUintAgain> for ChoiceUintAgain {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct CollectionOuterUint(pub(crate) cddl_lib::CollectionOuterUint);
+
+#[wasm_bindgen]
+impl CollectionOuterUint {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<CollectionOuterUint, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn value(&self) -> Vec<u64> {
+        self.0.value.clone()
+    }
+
+    pub fn new(value: Vec<u64>) -> Self {
+        Self(cddl_lib::CollectionOuterUint::new(value))
+    }
+}
+
+impl From<cddl_lib::CollectionOuterUint> for CollectionOuterUint {
+    fn from(native: cddl_lib::CollectionOuterUint) -> Self {
+        Self(native)
+    }
+}
+
+impl From<CollectionOuterUint> for cddl_lib::CollectionOuterUint {
+    fn from(wasm: CollectionOuterUint) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::CollectionOuterUint> for CollectionOuterUint {
+    fn as_ref(&self) -> &cddl_lib::CollectionOuterUint {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct DirectOuterBytes(pub(crate) cddl_lib::DirectOuterBytes);
+
+#[wasm_bindgen]
+impl DirectOuterBytes {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<DirectOuterBytes, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn value(&self) -> InnerBytes {
+        self.0.value.clone().into()
+    }
+
+    pub fn new(value: &InnerBytes) -> Self {
+        Self(cddl_lib::DirectOuterBytes::new(value.clone().into()))
+    }
+}
+
+impl From<cddl_lib::DirectOuterBytes> for DirectOuterBytes {
+    fn from(native: cddl_lib::DirectOuterBytes) -> Self {
+        Self(native)
+    }
+}
+
+impl From<DirectOuterBytes> for cddl_lib::DirectOuterBytes {
+    fn from(wasm: DirectOuterBytes) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::DirectOuterBytes> for DirectOuterBytes {
+    fn as_ref(&self) -> &cddl_lib::DirectOuterBytes {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct DirectOuterUint(pub(crate) cddl_lib::DirectOuterUint);
+
+#[wasm_bindgen]
+impl DirectOuterUint {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<DirectOuterUint, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn value(&self) -> InnerU64 {
+        self.0.value.clone().into()
+    }
+
+    pub fn new(value: &InnerU64) -> Self {
+        Self(cddl_lib::DirectOuterUint::new(value.clone().into()))
+    }
+}
+
+impl From<cddl_lib::DirectOuterUint> for DirectOuterUint {
+    fn from(native: cddl_lib::DirectOuterUint) -> Self {
+        Self(native)
+    }
+}
+
+impl From<DirectOuterUint> for cddl_lib::DirectOuterUint {
+    fn from(wasm: DirectOuterUint) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::DirectOuterUint> for DirectOuterUint {
+    fn as_ref(&self) -> &cddl_lib::DirectOuterUint {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct DirectOuterUintAgain(pub(crate) cddl_lib::DirectOuterUintAgain);
+
+#[wasm_bindgen]
+impl DirectOuterUintAgain {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<DirectOuterUintAgain, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn value(&self) -> InnerU64 {
+        self.0.value.clone().into()
+    }
+
+    pub fn new(value: &InnerU64) -> Self {
+        Self(cddl_lib::DirectOuterUintAgain::new(value.clone().into()))
+    }
+}
+
+impl From<cddl_lib::DirectOuterUintAgain> for DirectOuterUintAgain {
+    fn from(native: cddl_lib::DirectOuterUintAgain) -> Self {
+        Self(native)
+    }
+}
+
+impl From<DirectOuterUintAgain> for cddl_lib::DirectOuterUintAgain {
+    fn from(wasm: DirectOuterUintAgain) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::DirectOuterUintAgain> for DirectOuterUintAgain {
+    fn as_ref(&self) -> &cddl_lib::DirectOuterUintAgain {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct Holder(pub(crate) cddl_lib::Holder);
 
 #[wasm_bindgen]
@@ -308,6 +523,250 @@ impl From<Holder> for cddl_lib::Holder {
 
 impl AsRef<cddl_lib::Holder> for Holder {
     fn as_ref(&self) -> &cddl_lib::Holder {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct InlineChildUint(pub(crate) cddl_lib::InlineChildUint);
+
+#[wasm_bindgen]
+impl InlineChildUint {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<InlineChildUint, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn value(&self) -> InnerU64OrText {
+        self.0.value.clone().into()
+    }
+
+    pub fn new(value: &InnerU64OrText) -> Self {
+        Self(cddl_lib::InlineChildUint::new(value.clone().into()))
+    }
+}
+
+impl From<cddl_lib::InlineChildUint> for InlineChildUint {
+    fn from(native: cddl_lib::InlineChildUint) -> Self {
+        Self(native)
+    }
+}
+
+impl From<InlineChildUint> for cddl_lib::InlineChildUint {
+    fn from(wasm: InlineChildUint) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::InlineChildUint> for InlineChildUint {
+    fn as_ref(&self) -> &cddl_lib::InlineChildUint {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct InnerBytes(pub(crate) cddl_lib::InnerBytes);
+
+#[wasm_bindgen]
+impl InnerBytes {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<InnerBytes, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn x(&self) -> Vec<u8> {
+        self.0.x.clone()
+    }
+
+    pub fn new(x: Vec<u8>) -> Self {
+        Self(cddl_lib::InnerBytes::new(x))
+    }
+}
+
+impl From<cddl_lib::InnerBytes> for InnerBytes {
+    fn from(native: cddl_lib::InnerBytes) -> Self {
+        Self(native)
+    }
+}
+
+impl From<InnerBytes> for cddl_lib::InnerBytes {
+    fn from(wasm: InnerBytes) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::InnerBytes> for InnerBytes {
+    fn as_ref(&self) -> &cddl_lib::InnerBytes {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct InnerU64(pub(crate) cddl_lib::InnerU64);
+
+#[wasm_bindgen]
+impl InnerU64 {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<InnerU64, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn x(&self) -> u64 {
+        self.0.x
+    }
+
+    pub fn new(x: u64) -> Self {
+        Self(cddl_lib::InnerU64::new(x))
+    }
+}
+
+impl From<cddl_lib::InnerU64> for InnerU64 {
+    fn from(native: cddl_lib::InnerU64) -> Self {
+        Self(native)
+    }
+}
+
+impl From<InnerU64> for cddl_lib::InnerU64 {
+    fn from(wasm: InnerU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::InnerU64> for InnerU64 {
+    fn as_ref(&self) -> &cddl_lib::InnerU64 {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct InnerU64OrText(pub(crate) cddl_lib::InnerU64OrText);
+
+#[wasm_bindgen]
+impl InnerU64OrText {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<InnerU64OrText, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn new_inner_u64(inner_u64: &InnerU64) -> Self {
+        Self(cddl_lib::InnerU64OrText::new_inner_u64(
+            inner_u64.clone().into(),
+        ))
+    }
+
+    pub fn new_text(text: String) -> Self {
+        Self(cddl_lib::InnerU64OrText::new_text(text))
+    }
+
+    pub fn kind(&self) -> InnerU64OrTextKind {
+        match &self.0 {
+            cddl_lib::InnerU64OrText::InnerU64(_) => InnerU64OrTextKind::InnerU64,
+            cddl_lib::InnerU64OrText::Text { .. } => InnerU64OrTextKind::Text,
+        }
+    }
+
+    pub fn as_inner_u64(&self) -> Option<InnerU64> {
+        match &self.0 {
+            cddl_lib::InnerU64OrText::InnerU64(inner_u64) => Some(inner_u64.clone().into()),
+            _ => None,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<String> {
+        match &self.0 {
+            cddl_lib::InnerU64OrText::Text { text, .. } => Some(text.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl From<cddl_lib::InnerU64OrText> for InnerU64OrText {
+    fn from(native: cddl_lib::InnerU64OrText) -> Self {
+        Self(native)
+    }
+}
+
+impl From<InnerU64OrText> for cddl_lib::InnerU64OrText {
+    fn from(wasm: InnerU64OrText) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::InnerU64OrText> for InnerU64OrText {
+    fn as_ref(&self) -> &cddl_lib::InnerU64OrText {
+        &self.0
+    }
+}
+
+#[wasm_bindgen]
+pub enum InnerU64OrTextKind {
+    InnerU64,
+    Text,
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct LeafU64(pub(crate) cddl_lib::LeafU64);
+
+#[wasm_bindgen]
+impl LeafU64 {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<LeafU64, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn x(&self) -> u64 {
+        self.0.x
+    }
+
+    pub fn new(x: u64) -> Self {
+        Self(cddl_lib::LeafU64::new(x))
+    }
+}
+
+impl From<cddl_lib::LeafU64> for LeafU64 {
+    fn from(native: cddl_lib::LeafU64) -> Self {
+        Self(native)
+    }
+}
+
+impl From<LeafU64> for cddl_lib::LeafU64 {
+    fn from(wasm: LeafU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::LeafU64> for LeafU64 {
+    fn as_ref(&self) -> &cddl_lib::LeafU64 {
         &self.0
     }
 }
@@ -445,6 +904,49 @@ impl From<MapU64ToU64> for OrderedHashMap<u64, u64> {
 
 impl AsRef<OrderedHashMap<u64, u64>> for MapU64ToU64 {
     fn as_ref(&self) -> &OrderedHashMap<u64, u64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MidU64(pub(crate) cddl_lib::MidU64);
+
+#[wasm_bindgen]
+impl MidU64 {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<MidU64, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn value(&self) -> LeafU64 {
+        self.0.value.clone().into()
+    }
+
+    pub fn new(value: &LeafU64) -> Self {
+        Self(cddl_lib::MidU64::new(value.clone().into()))
+    }
+}
+
+impl From<cddl_lib::MidU64> for MidU64 {
+    fn from(native: cddl_lib::MidU64) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MidU64> for cddl_lib::MidU64 {
+    fn from(wasm: MidU64) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::MidU64> for MidU64 {
+    fn as_ref(&self) -> &cddl_lib::MidU64 {
         &self.0
     }
 }

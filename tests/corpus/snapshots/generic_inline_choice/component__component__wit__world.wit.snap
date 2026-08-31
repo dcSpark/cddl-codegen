@@ -21,6 +21,12 @@ interface types {
     p,
     text,
   }
+  resource chain-outer-uint {
+    constructor(value: borrow<mid-u64>);
+    value: func() -> mid-u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<chain-outer-uint, string>;
+  }
   resource choice-bytes {
     constructor(value: borrow<bytes-or-text>);
     value: func() -> bytes-or-text;
@@ -45,6 +51,30 @@ interface types {
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<choice-uint-again, string>;
   }
+  resource collection-outer-uint {
+    constructor(value: list<u64>);
+    value: func() -> list<u64>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<collection-outer-uint, string>;
+  }
+  resource direct-outer-bytes {
+    constructor(value: borrow<inner-bytes>);
+    value: func() -> inner-bytes;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<direct-outer-bytes, string>;
+  }
+  resource direct-outer-uint {
+    constructor(value: borrow<inner-u64>);
+    value: func() -> inner-u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<direct-outer-uint, string>;
+  }
+  resource direct-outer-uint-again {
+    constructor(value: borrow<inner-u64>);
+    value: func() -> inner-u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<direct-outer-uint-again, string>;
+  }
   resource holder {
     constructor(primary: borrow<choice-u64>, repeated: borrow<choice-uint-again>, byte-value: borrow<choice-bytes>);
     primary: func() -> choice-u64;
@@ -53,11 +83,54 @@ interface types {
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<holder, string>;
   }
+  resource inline-child-uint {
+    constructor(value: borrow<inner-u64-or-text>);
+    value: func() -> inner-u64-or-text;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<inline-child-uint, string>;
+  }
+  resource inner-bytes {
+    constructor(x: list<u8>);
+    x: func() -> list<u8>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<inner-bytes, string>;
+  }
+  resource inner-u64 {
+    constructor(x: u64);
+    x: func() -> u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<inner-u64, string>;
+  }
+  resource inner-u64-or-text {
+    new-inner-u64: static func(inner-u64: borrow<inner-u64>) -> inner-u64-or-text;
+    as-inner-u64: func() -> option<inner-u64>;
+    new-text: static func(text: string) -> inner-u64-or-text;
+    as-text: func() -> option<string>;
+    kind: func() -> inner-u64-or-text-kind;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<inner-u64-or-text, string>;
+  }
+  enum inner-u64-or-text-kind {
+    inner-u64,
+    text,
+  }
+  resource leaf-u64 {
+    constructor(x: u64);
+    x: func() -> u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<leaf-u64, string>;
+  }
   resource map-choices-uint {
     constructor(lookup: list<tuple<borrow<u64-or-text>, borrow<u64-or-bytes>>>);
     lookup: func() -> list<tuple<u64-or-text, u64-or-bytes>>;
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<map-choices-uint, string>;
+  }
+  resource mid-u64 {
+    constructor(value: borrow<leaf-u64>);
+    value: func() -> leaf-u64;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<mid-u64, string>;
   }
   resource nested-choice-uint {
     constructor(value: borrow<u64-or-text-or-bytes>);
