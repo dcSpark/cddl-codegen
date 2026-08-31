@@ -133,4 +133,4 @@ wit-parser = "=0.247.0"
 # FALSE ORACLE for worlds exporting resources (it fails a package that resolves, encodes, validates
 # and builds).
 wit-component = "=0.247.0"
-wasmparser = "=0.247.0"
+wasmparser = "=0.258.0"
