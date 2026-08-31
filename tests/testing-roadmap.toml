@@ -141,6 +141,7 @@ entries = [
   "testing.emitted-shape-lint-classes-outside-clippy-all-beyond",
   "testing.unused-imports-generated-crates-trait-import-class-name",
   "testing.mechanical-layers-two-review-owned-design-rules-tests",
+  "testing.name-keyed-ir-registration-claim-matrix",
   "testing.add-profile-wrapper-participation-grid-participation-differs-across",
   "testing.extern-deps-wasm-boundary-surface-packaging-json-gen",
   "testing.generic-raw-bytes-base-refused-generic-extern-base",
@@ -288,7 +289,7 @@ title = "Admission for scoped source-symbol provenance regressions."
 [record.payload]
 kind = "testing_system_admission"
 admission_kind = "independent_recurrence"
-claim_md = '''Two distinct normalized-registry claimants — an internal synthesized arm and an unrelated authored outer group — made the same scoped generic parameter inherit plain-group semantics. The delivered local provenance grid now detects both across normalization pairs, source order, claimant provenance, and the supported semantic seams; definition-owned templates materialize inline generic TYPE-choice parameter arms and nested child generic instances without weakening real plain-group diagnostics. The direct-field exit-101 regression and its inline-choice sibling prove child templates stay definition-owned until exact binding substitution, then use the ordinary concrete GenericInstance path. The only retained boundary is an inline type choice used as a child generic argument, which requires a shared cross-template concrete identity.
+claim_md = '''Two distinct normalized-registry claimants — an internal synthesized arm and an unrelated authored outer group — made the same scoped generic parameter inherit plain-group semantics. The delivered local provenance grid now detects both across normalization pairs, source order, claimant provenance, and the supported semantic seams; definition-owned templates materialize inline generic TYPE-choice parameter arms and nested child generic instances without weakening real plain-group diagnostics. The direct-field exit-101 regression and its inline-choice sibling prove child templates stay definition-owned until exact binding substitution, then use the ordinary concrete GenericInstance path. Collision coverage is pinned by `nested_child_instance_cannot_overwrite_a_completed_incompatible_instance`: a child whose canonical name meets a different completed generic instance must reject in both source orders instead of replacing the first wire shape. The only retained boundary is an inline type choice used as a child generic argument, which requires a shared cross-template concrete identity.
 '''
 evidence_ids = ["testing.incident-observation.scoped-symbol-provenance-grid.authored-group-proof", "testing.incident-observation.scoped-symbol-provenance-grid.synthesized-arm-proof"]
 incident_ids = ["testing.incident-observation.scoped-symbol-provenance-grid.authored-group", "testing.incident-observation.scoped-symbol-provenance-grid.synthesized-arm"]
@@ -2991,6 +2992,20 @@ boundary_md = '''This control owns the exact known position/shape grid. It does 
 '''
 
 [[record]]
+id = "testing.guard.name-keyed-ir-registration-claim-matrix"
+title = "Current control for testing.name-keyed-ir-registration-claim-matrix."
+
+[record.payload]
+kind = "control"
+control_kind = "test"
+control_state = "live"
+reference_ids = ["testing-nested-child-instance-incompatible-overwrite-regression"]
+claim_md = '''The exact generic-instance regression preserves the first incompatible claimant and requires a loud rejection in both source orders; it does not inventory every name-keyed IR registration seam.
+'''
+boundary_md = '''This control owns the observed generic child-versus-completed-instance collision only. It does not provide the deferred registry inventory, prove that every insertion has one registration owner, or cover a future phase-late claimant route in another registry.
+'''
+
+[[record]]
 id = "testing.guard.observed-baseline-comments-beside-gate-floors-rot-silently"
 title = "Current control for testing.observed-baseline-comments-beside-gate-floors-rot-silently."
 
@@ -3968,6 +3983,58 @@ action_on_fire_md = '''Add the position to the appropriate projected leg in the 
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
 event_md = '''a new emitter path collects cross-module references outside field, alias-target, group-choice-ctor, or the excluded-shape named/aliased/unreferenced grid
+'''
+
+[[record]]
+id = "testing.name-keyed-ir-registration-claim-matrix"
+title = "Name-keyed IR registration claims need a systematic compatible-versus-incompatible replacement matrix."
+
+[record.payload]
+kind = "work"
+body_md = '''- **Name-keyed IR registration claims need a systematic compatible-versus-incompatible
+  replacement matrix.** Cycle 14's collision review found `register_generic_instance` inserting by
+  canonical `RustIdent` with last-writer-wins semantics. A definition-owned `foo<p>` child could
+  materialize after an independently completed `bar<uint>` binding had already claimed `FooU64`;
+  the later incompatible instance silently replaced the first wire shape while registered parents
+  kept pointing at the shared name. The centralized registration seam now preserves compatible
+  reuse, rejects an incompatible claim, and the focused
+  `nested_child_instance_cannot_overwrite_a_completed_incompatible_instance` regression pins both
+  source orders.
+
+  No existing pending item would have found this systematically. The emitted duplicate-ident
+  backstop sees only the one definition left after replacement; `synthesized_name_interaction_sweep`
+  enumerates wasm collection-wrapper names rather than IR registry mutation; and
+  `testing.duplicates.dedicated-generic-collision-message` is message polish for a set nominal
+  colliding with another naming family. The scoped-provenance acceptance explicitly required
+  collision coverage, which is why semantic review and the exact regression closed this incident,
+  but acceptance prose is not a standing detector for the next registry.
+
+  The missing mechanical layer is a registry-claim matrix derived from an explicit inventory of
+  every name-keyed IR registration owner that admits more than one claimant. For each owner it must
+  exercise compatible idempotent reuse and incompatible claims in both orders, assert the first
+  claimant remains registered after rejection, and include any phase-late route that can register
+  while finalization is already draining a work queue. Its inventory guard must make a new raw
+  name-keyed insertion seam fail until it is either proved single-claimant or added to the matrix.
+  Build that system if this class recurs; meanwhile the exact generic-instance regression is the
+  control and the working rule is one registration owner per name family, never an unchecked
+  replacement.
+'''
+work_state = "armed"
+work_intent = "build_system"
+work_kind = "missing_system"
+risk = "silent_wrong_bytes"
+control_ids = ["testing.guard.name-keyed-ir-registration-claim-matrix"]
+
+[record.payload.promotion_trigger]
+observer = "fresh-evidence submitter for testing.name-keyed-ir-registration-claim-matrix"
+dimension = "unchecked incompatible replacement at a name-keyed IR registration seam"
+observable = "A second name-keyed IR registry accepts an incompatible later claimant without a loud rejection, outside the exact generic-instance regression."
+action_on_fire_md = '''Set testing.name-keyed-ir-registration-claim-matrix to ready and build the explicit registry inventory plus compatible/incompatible, both-order, first-owner-retention, and phase-late claim matrix before fixing the new seam.
+'''
+
+[record.payload.promotion_trigger.predicate]
+predicate_kind = "manual"
+review_procedure_md = '''Reproduce the later claimant replacing an incompatible first claimant, identify the owning name-keyed registry and registration phase, and confirm that nested_child_instance_cannot_overwrite_a_completed_incompatible_instance does not already exercise the seam. A source read without an executable conflicting pair does not fire the trigger.
 '''
 
 [[record]]
@@ -7226,6 +7293,13 @@ source = "testing.multifile-reference-position-coverage-two-position-keyed-escap
 kind = "test_symbol"
 test_id = "rust-test:cddl-codegen#tests::snapshot_tests::extern_generic_scoped_alias_imports"
 symbol = "tests::snapshot_tests::extern_generic_scoped_alias_imports"
+
+[[reference]]
+id = "testing-nested-child-instance-incompatible-overwrite-regression"
+source = "testing.name-keyed-ir-registration-claim-matrix"
+kind = "test_symbol"
+test_id = "rust-test:cddl-codegen#tests::scoped_symbol_provenance_tests::nested_child_instance_cannot_overwrite_a_completed_incompatible_instance"
+symbol = "tests::scoped_symbol_provenance_tests::nested_child_instance_cannot_overwrite_a_completed_incompatible_instance"
 
 [[reference]]
 id = "gate-corpus-decode-replay-n2"

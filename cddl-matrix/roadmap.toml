@@ -183,6 +183,7 @@ entries = [
   "matrix.bignum-key-tag-upstream",
   "matrix.undefined-validator-upstream",
   "matrix.undefined-ciborium-upstream",
+  "matrix.nested-generic-reference-substitution-upstream",
   "matrix.fixed-bytes.lowercase-base64-parser",
   "matrix.fixed-bytes.validator-corroboration",
   "matrix.tag-map-key-upstream",
@@ -1343,6 +1344,55 @@ due_action_md = '''Perform the ordered closeout actions only after fresh evidenc
 action_id = "file-report"
 action_md = '''Create and file a durable report.
 '''
+
+[[record]]
+id = "matrix.nested-generic-reference-substitution-upstream"
+title = "Close out rust cddl nested generic-reference substitution."
+legacy_aliases = ["README gap #19"]
+
+[record.payload]
+kind = "matrix_external_closeout"
+body_md = '''- When rust-cddl substitutes an outer parameter through a nested generic reference (README gap
+  #19), re-run the direct-field, inline-choice, non-empty collection, and two-level chain vectors.
+  Require all four exact vectors to pass the rust oracle before removing their
+  `CORPUS_DECODE_ACCEPT_ORACLE_GAP_EXEMPT` entries; a changed rejection signature or a chain that no
+  longer aborts but still rejects is not closure. Re-mint `generic_inline_choice`, run the catalog
+  projection and corpus decode replay, update the current oracle-state wording in
+  `cddl-matrix/README.md` and `tests/README.md`, then delete the local draft investigation note.
+'''
+closeout_state = "due"
+upstream_owner_reference_id = "release-rust-cddl-a-published-release-substitutes-nested-generic-references"
+current_upstream_state_md = '''The pinned ac1b98ec07184236517da4511b1bbea239e35190 validator leaves the outer parameter unresolved in direct and inline-choice children, matches zero collection elements, and stack-overflows through a two-level chain. A local investigation note exists under draft, but no durable upstream report or issue has been filed.
+'''
+verification_md = '''Create and file a durable report; require rust acceptance of generic_inline_choice.direct_outer_uint/8200818101, inline_child_uint/8200818101, collection_outer_uint/820081820102, and chain_outer_uint/820081818101; remove only those exact accept-gap exemptions, re-mint generic_inline_choice, run project_decode_conformance.ts and check.ts full --only corpus_decode_replay, and update the two current-state docs. A signature-only change is not closure.
+'''
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "release-rust-cddl-a-published-release-substitutes-nested-generic-references"
+external_predicate_md = '''A published rust-cddl release substitutes outer parameters through direct, inline-choice, collection, and transitive nested generic references without rejection or stack overflow.
+'''
+verification_md = '''Require all four exact corpus vectors to pass the rust oracle; remove only their exact accept-gap exemptions, re-mint generic_inline_choice, run project_decode_conformance.ts and check.ts full --only corpus_decode_replay, and update cddl-matrix/README.md and tests/README.md.
+'''
+due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
+'''
+
+[[record.payload.action]]
+action_id = "file-report"
+action_md = '''Turn the draft investigation note into a durable upstream report and file it.
+'''
+
+[[record.payload.action]]
+action_id = "signature-only-change"
+action_md = '''Retain the closeout and all four exemptions; update only the exact stale-signature evidence after reproducing the new behavior.
+'''
+
+[[record.payload.branch]]
+branch_id = "signature-only-change"
+predicate_md = '''A published validator changes one of the rejection or abort signatures but still does not accept all four exact vectors.
+'''
+
+[[record.payload.branch.action]]
+action_id = "signature-only-change"
 
 [[record]]
 id = "matrix.nint-capability"
@@ -2717,6 +2767,13 @@ source = "matrix.named-rule-map-key-upstream"
 kind = "external_release"
 project = "rust cddl"
 release = "A published release resolves named-rule and parenthesized-choice map-key domains at the correct key and containing-rule positions."
+
+[[reference]]
+id = "release-rust-cddl-a-published-release-substitutes-nested-generic-references"
+source = "matrix.nested-generic-reference-substitution-upstream"
+kind = "external_release"
+project = "rust cddl"
+release = "A published release substitutes outer parameters through direct, inline-choice, collection, and transitive nested generic references without rejection or stack overflow."
 
 [[reference]]
 id = "docs-output-format-typed-key-domains-in-json"
