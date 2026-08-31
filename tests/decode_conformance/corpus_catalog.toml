@@ -7050,6 +7050,66 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "inline_group_occurrence.inline_group_occurrence"
+axis = "corpus"
+example = "inline_group_occurrence = [* (a: uint, b: tstr)]"
+fixture = "inline_group_occurrence"
+rule = "inline_group_occurrence"
+spec = "__probe_holder = [0, inline_group_occurrence]\ninline_group_occurrence = [* (a: uint, b: tstr)]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820080"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008218e663746963"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008219025563746963"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "82008219069463746963"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190b1e63746963"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190e5063746963"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200841905156374696319010863746163"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200881902996374696319100463746163190e8d63746f6519073963746963"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820088190859637469631911fb63746163190f2b63746f65190cd963746963"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820088190d7063746963190d706374616319126263746f65190ffe63746963"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "int_alias.bare_int"
 axis = "corpus"
 example = "bare_int = int"
