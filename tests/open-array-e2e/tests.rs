@@ -286,6 +286,75 @@ mod open_array {
         );
     }
 
+    // --- optional fixed fields after a variable segment ---
+
+    #[test]
+    fn final_optional_is_owner_delimited_when_absent_or_present_after_empty_and_populated_segments() {
+        for (wire, expected_numbers, expected_label) in [
+            (bytes("80"), vec![], None),
+            (bytes("82 01 02"), vec![1, 2], None),
+            (bytes("81 6178"), vec![], Some("x")),
+            (bytes("83 01 02 6178"), vec![1, 2], Some("x")),
+            (bytes("9f 01 02 6178 ff"), vec![1, 2], Some("x")),
+        ] {
+            let decoded = FinalOptional::from_cbor_bytes(&wire).unwrap();
+            assert_eq!(decoded.numbers, expected_numbers);
+            assert_eq!(decoded.label.as_deref(), expected_label);
+            let reparsed = FinalOptional::from_cbor_bytes(&decoded.to_cbor_bytes()).unwrap();
+            assert_eq!(reparsed.numbers, decoded.numbers);
+            assert_eq!(reparsed.label, decoded.label);
+        }
+    }
+
+    #[test]
+    fn optional_chain_keeps_each_optional_and_the_mandatory_suffix_in_its_authored_slot() {
+        for (wire, expected_numbers, expected_label, expected_blob) in [
+            (bytes("81 ca 09"), vec![], None, None),
+            (bytes("82 6178 ca 09"), vec![], Some("x"), None),
+            (bytes("82 41aa ca 09"), vec![], None, Some(vec![0xaa])),
+            (bytes("83 6178 41aa ca 09"), vec![], Some("x"), Some(vec![0xaa])),
+            (bytes("85 01 02 6178 41aa ca 09"), vec![1, 2], Some("x"), Some(vec![0xaa])),
+            (bytes("9f 01 02 6178 41aa ca 09 ff"), vec![1, 2], Some("x"), Some(vec![0xaa])),
+        ] {
+            let decoded = OptionalChain::from_cbor_bytes(&wire).unwrap();
+            assert_eq!(decoded.numbers, expected_numbers);
+            assert_eq!(decoded.label.as_deref(), expected_label);
+            assert_eq!(decoded.blob, expected_blob);
+            assert_eq!(decoded.suffix, 9);
+            let reparsed = OptionalChain::from_cbor_bytes(&decoded.to_cbor_bytes()).unwrap();
+            assert_eq!(reparsed.numbers, decoded.numbers);
+            assert_eq!(reparsed.label, decoded.label);
+            assert_eq!(reparsed.blob, decoded.blob);
+        }
+
+        let mut constructed = OptionalChain::new(9);
+        constructed.numbers = vec![1, 2];
+        constructed.label = Some("x".to_owned());
+        constructed.blob = Some(vec![0xaa]);
+        assert_eq!(constructed.to_cbor_bytes(), bytes("85 01 02 6178 41aa ca 09"));
+        let round = OptionalChain::from_cbor_bytes(&constructed.to_cbor_bytes()).unwrap();
+        assert_eq!(round.numbers, vec![1, 2]);
+        assert_eq!(round.label.as_deref(), Some("x"));
+        assert_eq!(round.blob, Some(vec![0xaa]));
+
+        // The uint after a text optional cannot become a hidden second segment item: the segment
+        // leaves text in place, the text optional is read, and the mandatory tagged suffix owns
+        // the next item and rejects this unframed uint.
+        assert_decode_reject_reason::<OptionalChain>(
+            &bytes("84 01 6178 02 ca09"),
+            "expected `Tag' byte received `UnsignedInteger'",
+        );
+    }
+
+    #[test]
+    fn optional_chain_leaves_the_outer_sibling_unread() {
+        let outer = OuterOptionalChain::from_cbor_bytes(&bytes("82 83 01 6178 ca09 1863")).unwrap();
+        assert_eq!(outer.optional_chain.numbers, vec![1]);
+        assert_eq!(outer.optional_chain.label.as_deref(), Some("x"));
+        assert!(outer.optional_chain.blob.is_none());
+        assert_eq!(outer.index_1, 99);
+    }
+
     #[test]
     fn multiple_exact_segments_own_adjacent_same_major_boundaries() {
         let wire = bytes("88 07 41aa 41bb 6178 01 02 03 09");

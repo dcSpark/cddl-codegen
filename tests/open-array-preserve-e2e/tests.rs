@@ -117,6 +117,18 @@ mod open_array_preserve {
     }
 
     #[test]
+    fn optional_after_segment_preserves_and_canonicalizes_without_moving_the_presence_read() {
+        // [2(as 0x1802), "x"] — the segment sidecar owns only the uint width; the following
+        // optional text stays at its authored boundary in both preserve and canonical forms.
+        let wire = bytes("82 1802 6178");
+        let value = OptionalMiddle::from_cbor_bytes(&wire).unwrap();
+        assert_eq!(value.numbers, vec![2]);
+        assert_eq!(value.label.as_deref(), Some("x"));
+        assert_eq!(value.to_cbor_bytes(), wire);
+        assert_eq!(value.to_canonical_cbor_bytes(), bytes("82 02 6178"));
+    }
+
+    #[test]
     fn multiple_variable_segments_preserve_each_sidecar_and_canonicalize_in_place() {
         // [7, 2(as 0x1802), 1000(as 0x1903e8), "a"/"b"(two-byte text args)].
         // Both segment-local sidecars must replay independently; canonical form only normalizes

@@ -108,6 +108,11 @@ short_any_tail = [2*2 any]
 short_any_outer_tail = [* short_any_tail]
 wide_tail_natural_any = [prefix: uint, * short_any_outer_tail]
 middle_bounded = [uint, 2*3 uint, tstr] ; shared BoundedVec JSON/schema surface before suffix
+optional_segment = [
+  * uint ; @name numbers
+  , ? label: tstr
+  , suffix: #6.10(uint)
+]
 exact_middle = [uint, 2*2 uint, uint] ; exact same-major middle keeps that shared surface
 exact_segments = [
   prefix: uint

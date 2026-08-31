@@ -14224,6 +14224,7 @@ fn emit_tests_open_struct_ignore_execute() {
 ///
 /// Generation is non-preserve because `@ignore` is rejected under `--preserve-encodings`; capture's
 /// preserve fidelity mint is exercised separately by the open struct-map rest execute gate.
+/// Optional-after-segment records retain their independent optional fields alongside the captured segment.
 #[test]
 fn emit_tests_open_array_execute() {
     if !tool_exists("cargo") {
@@ -14283,6 +14284,9 @@ fn emit_tests_open_array_execute() {
         "roundtrip_multi_mixed",
         "roundtrip_multi_exact_variable",
         "roundtrip_multi_suffix",
+        "roundtrip_final_optional",
+        "roundtrip_optional_chain",
+        "roundtrip_outer_optional_chain",
         "roundtrip_ign",
     ] {
         assert!(

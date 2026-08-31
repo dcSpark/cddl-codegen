@@ -1038,6 +1038,107 @@ impl Deserialize for MultiParts {
     }
 }
 
+impl cbor_event::se::Serialize for OptionalMiddle {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(
+                    match &self.label {
+                        Some(_) => 1,
+                        None => 0,
+                    } + self.numbers.len() as u64,
+                ),
+        )?;
+        for (i, element) in self.numbers.iter().enumerate() {
+            let numbers_elem_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.numbers_elem_encodings.get(i))
+                .cloned()
+                .unwrap_or_default();
+            serializer
+                .write_unsigned_integer_sz(*element, fit_sz(*element, numbers_elem_encoding))?;
+        }
+        if let Some(field) = &self.label {
+            serializer.write_text_sz(
+                field,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.label_encoding.clone())
+                    .unwrap_or_default()
+                    .to_str_len_sz(field.len() as u64),
+            )?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for OptionalMiddle {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            let mut numbers = Vec::new();
+            let mut numbers_elem_encodings = Vec::new();
+            while (match len {
+                cbor_event::LenSz::Len(n, _) => read_len.read() < n,
+                cbor_event::LenSz::Indefinite => raw.as_slice().first() != Some(&0xff),
+            }) && raw.cbor_type()? == cbor_event::Type::UnsignedInteger
+            {
+                read_len.read_elems(1)?;
+                let (numbers_elem, numbers_elem_encoding) =
+                    raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                numbers.push(numbers_elem);
+                numbers_elem_encodings.push(numbers_elem_encoding);
+            }
+            let (label, label_encoding) = if raw
+                .cbor_type()
+                .map(|ty| ty == cbor_event::Type::Text)
+                .unwrap_or(false)
+            {
+                (|| -> Result<_, DeserializeError> {
+                    read_len.read_elems(1)?;
+                    raw.text_sz()
+                        .map_err(Into::<DeserializeError>::into)
+                        .map(|(s, enc)| (s, StringEncoding::from(enc)))
+                })()
+                .map_err(|e| e.annotate("label"))
+                .map(|(label, label_encoding)| (Some(label), label_encoding))
+            } else {
+                Ok((None, StringEncoding::default()))
+            }?;
+            match len {
+                cbor_event::LenSz::Len(_, _) => read_len.finish()?,
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(OptionalMiddle {
+                numbers,
+                label,
+                encodings: Some(OptionalMiddleEncoding {
+                    numbers_elem_encodings,
+                    len_encoding,
+                    label_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("OptionalMiddle"))
+    }
+}
+
 impl cbor_event::se::Serialize for Outer {
     fn serialize<'se>(
         &self,

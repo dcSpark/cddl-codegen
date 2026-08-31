@@ -147,6 +147,24 @@ impl OptFixedMember {
 }
 
 #[derive(Clone, Debug)]
+pub struct OptionalSegment {
+    pub label: Option<String>,
+    pub suffix: u64,
+    /// Captured major-disjoint occurrence-segment elements before a later possible-next member (CDDL `* t`). Serialized at its authored source position; defaults empty.
+    pub numbers: Vec<u64>,
+}
+
+impl OptionalSegment {
+    pub fn new(suffix: u64) -> Self {
+        Self {
+            label: None,
+            suffix,
+            numbers: Vec::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Required {
     pub index_0: u64,
     /// Captured one-or-more trailing array elements beyond the declared members (CDDL `+ t` / `1* t` rest tail). Serialized after the declared members; never empty.

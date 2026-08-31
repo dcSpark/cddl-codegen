@@ -21,6 +21,7 @@ impl wit_types::Guest for Component {
     type MiddleOccurrence = WitMiddleOccurrence;
     type MultipleVariableOccurrence = WitMultipleVariableOccurrence;
     type OccurrenceHolder = WitOccurrenceHolder;
+    type OptionalSegmentOccurrence = WitOptionalSegmentOccurrence;
 }
 
 export!(Component);
@@ -318,5 +319,45 @@ impl wit_types::GuestOccurrenceHolder for WitOccurrenceHolder {
         )
         .map(|v| wit_types::OccurrenceHolder::new(WitOccurrenceHolder(RefCell::new(v))))
         .map_err(err)
+    }
+}
+
+pub struct WitOptionalSegmentOccurrence(pub RefCell<cddl_lib::OptionalSegmentOccurrence>);
+
+impl wit_types::GuestOptionalSegmentOccurrence for WitOptionalSegmentOccurrence {
+    fn new(suffix: u64) -> Self {
+        let inner = cddl_lib::OptionalSegmentOccurrence::new(suffix);
+        WitOptionalSegmentOccurrence(RefCell::new(inner))
+    }
+
+    fn label(&self) -> Option<String> {
+        let me = self.0.borrow();
+        me.label.as_ref().map(|x| x.clone())
+    }
+
+    fn set_label(&self, label: String) {
+        self.0.borrow_mut().label = Some(label);
+    }
+
+    fn suffix(&self) -> u64 {
+        let me = self.0.borrow();
+        me.suffix
+    }
+
+    fn numbers(&self) -> Vec<u64> {
+        let me = self.0.borrow();
+        me.numbers.iter().map(|x| *x).collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::OptionalSegmentOccurrence as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::OptionalSegmentOccurrence, String> {
+        <cddl_lib::OptionalSegmentOccurrence as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::OptionalSegmentOccurrence::new(WitOptionalSegmentOccurrence(RefCell::new(v))))
+            .map_err(err)
     }
 }

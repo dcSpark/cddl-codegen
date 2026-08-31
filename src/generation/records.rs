@@ -17,9 +17,9 @@ const IGNORE_LOSSINESS_DOC_ARRAY: &str = "Open array with an ignored rest tail: 
      that carried extra trailing elements.";
 
 /// The array `@ignore` breadcrumb for a safe non-final occurrence segment. `@ignore` is admitted
-/// only on the historic major-disjoint form, so its dropped values occur before one mandatory fixed
-/// suffix (multiple occurrence segments are capture-only).
-const IGNORE_LOSSINESS_DOC_ARRAY_MIDDLE: &str = "Open array with an ignored major-disjoint occurrence segment: tolerates matching elements before its mandatory fixed suffix on deserialize and DROPS them, and re-serializes only the declared members. Byte round-trips do NOT hold for wire data that carried dropped occurrence-segment elements.";
+/// only on a major-disjoint possible-next form, so its dropped values occur before a later proven
+/// boundary (multiple occurrence segments are capture-only).
+const IGNORE_LOSSINESS_DOC_ARRAY_MIDDLE: &str = "Open array with an ignored major-disjoint occurrence segment: tolerates matching elements before its later possible-next member on deserialize and DROPS them, and re-serializes only the declared members. Byte round-trips do NOT hold for wire data that carried dropped occurrence-segment elements.";
 
 /// True for an array occurrence segment that has no later live wire member (and vacuously for map
 /// rows). A later exact-zero segment owns no items, so it does not turn the preceding segment into
@@ -3715,7 +3715,7 @@ pub(super) fn codegen_struct(
             ));
             wasm_new_comments.push(if !array_segment_is_final(record, rest) {
                 format!(
-                    "* `{first_arg}` - the first major-disjoint occurrence-segment element before its mandatory fixed suffix (CDDL `+ t` / `1* t`: the segment holds at least one element)"
+                    "* `{first_arg}` - the first major-disjoint occurrence-segment element before its later possible-next member (CDDL `+ t` / `1* t`: the segment holds at least one element)"
                 )
             } else {
                 format!(
@@ -3750,14 +3750,14 @@ pub(super) fn codegen_struct(
             wasm_new_comments.push(if !array_segment_is_final(record, rest) {
                 if rest.has_exact_occurrence_window() {
                     format!(
-                        "* `{}` - the complete checked exact-count occurrence-segment wrapper before its mandatory fixed suffix (its CDDL occurrence window is enforced before construction)",
+                        "* `{}` - the complete checked exact-count occurrence-segment wrapper before its later authored member (its CDDL occurrence window is enforced before construction)",
                         rest.field_name
                     )
                 } else {
-                format!(
-                    "* `{}` - the complete checked major-disjoint occurrence-segment wrapper before its mandatory fixed suffix (its CDDL occurrence window is enforced before construction)",
-                    rest.field_name
-                )
+                    format!(
+                        "* `{}` - the complete checked major-disjoint occurrence-segment wrapper before its later possible-next member (its CDDL occurrence window is enforced before construction)",
+                        rest.field_name
+                    )
                 }
             } else {
                 format!(
@@ -3828,21 +3828,25 @@ pub(super) fn codegen_struct(
                          its occurrence window is enforced before construction."
                     }
                 } else if rest.is_array_tail() && !array_segment_is_final(record, rest) {
-                    if rest.is_non_empty_array_tail() {
-                        "The captured one-or-more major-disjoint occurrence segment before its \
-                         mandatory fixed suffix (CDDL `+ t` / `1* t`), as the restricted wasm list \
+                    if array_segment_uses_fixed_domain_retry(types, record, rest) {
+                        "The captured finite fixed-domain occurrence segment before its mandatory \
+                         fixed suffix, as the wasm list wrapper; the decoder retries the repeated \
+                         element and restores the suffix cursor."
+                    } else if rest.is_non_empty_array_tail() {
+                        "The captured one-or-more major-disjoint occurrence segment before its later \
+                         possible-next member (CDDL `+ t` / `1* t`), as the restricted wasm list \
                          wrapper."
                     } else if rest.is_restricted() {
                         if rest.has_exact_occurrence_window() {
-                            "The captured bounded exact-count occurrence segment before its mandatory \
-                             fixed suffix, as its checked wasm list wrapper."
+                            "The captured bounded exact-count occurrence segment before a later \
+                             authored member, as its checked wasm list wrapper."
                         } else {
-                            "The captured bounded major-disjoint occurrence segment before its mandatory \
-                             fixed suffix, as its checked wasm list wrapper."
+                            "The captured bounded major-disjoint occurrence segment before a later \
+                             possible-next member, as its checked wasm list wrapper."
                         }
                     } else {
-                        "The captured major-disjoint occurrence segment before its mandatory fixed \
-                         suffix (CDDL `* t`), as the wasm list wrapper."
+                        "The captured major-disjoint occurrence segment before a later possible-next \
+                         member (CDDL `* t`), as the wasm list wrapper."
                     }
                 } else if rest.is_non_empty_array_tail() {
                     "The captured one-or-more trailing array elements beyond the declared members \
@@ -4303,21 +4307,21 @@ pub(super) fn codegen_struct(
                      position; defaults empty."
                 }
             } else if rest.is_non_empty_array_tail() {
-                "Captured one-or-more major-disjoint occurrence-segment elements before the mandatory \
-                 fixed suffix (CDDL `+ t` / `1* t`). Serialized at its authored source position; never \
+                "Captured one-or-more major-disjoint occurrence-segment elements before a later \
+                 possible-next member (CDDL `+ t` / `1* t`). Serialized at its authored source position; never \
                  empty."
             } else if rest.is_restricted() {
                 if rest.has_exact_occurrence_window() {
-                    "Captured exact-count occurrence-segment elements before the mandatory fixed suffix, \
+                    "Captured exact-count occurrence-segment elements before a later authored member, \
                      whose inclusive CDDL occurrence window is enforced by this checked carrier. Serialized \
                      at its authored source position; supplied complete to `new()`."
                 } else {
-                    "Captured major-disjoint occurrence-segment elements before the mandatory fixed suffix, \
+                    "Captured major-disjoint occurrence-segment elements before a later possible-next member, \
                      whose inclusive CDDL occurrence window is enforced by this checked carrier. Serialized \
                      at its authored source position; supplied complete to `new()`."
                 }
             } else {
-                "Captured major-disjoint occurrence-segment elements before the mandatory fixed suffix \
+                "Captured major-disjoint occurrence-segment elements before a later possible-next member \
                  (CDDL `* t`). Serialized at its authored source position; defaults empty."
             }
         } else if rest.is_non_empty_array_tail() {
@@ -4507,7 +4511,7 @@ pub(super) fn codegen_struct(
             new_arg_count += 1;
             native_new_comments.push(if !array_segment_is_final(record, rest) {
                 format!(
-                    "* `{first_arg}` - the first major-disjoint occurrence-segment element before its mandatory fixed suffix (CDDL `+ t` / `1* t`: the segment holds at least one element)"
+                    "* `{first_arg}` - the first major-disjoint occurrence-segment element before its later possible-next member (CDDL `+ t` / `1* t`: the segment holds at least one element)"
                 )
             } else {
                 format!(
@@ -4529,27 +4533,27 @@ pub(super) fn codegen_struct(
             }
             if !multi_array_segments {
                 native_new_comments.push(if !array_segment_is_final(record, rest) {
-                if rest.has_exact_occurrence_window() {
-                    format!(
-                        "* `{}` - the complete checked exact-count occurrence-segment carrier before its mandatory fixed suffix (its CDDL occurrence window is enforced by this carrier)",
-                        rest.field_name
-                    )
-                } else if array_segment_uses_fixed_domain_retry(types, record, rest) {
-                    format!(
-                        "* `{}` - the complete checked finite fixed-domain occurrence-segment carrier before its mandatory fixed suffix (the retry decoder preserves the suffix cursor; its CDDL occurrence window is enforced by this carrier)",
-                        rest.field_name
-                    )
+                    if rest.has_exact_occurrence_window() {
+                        format!(
+                            "* `{}` - the complete checked exact-count occurrence-segment carrier before its later authored member (its CDDL occurrence window is enforced by this carrier)",
+                            rest.field_name
+                        )
+                    } else if array_segment_uses_fixed_domain_retry(types, record, rest) {
+                        format!(
+                            "* `{}` - the complete checked finite fixed-domain occurrence-segment carrier before its mandatory fixed suffix (the retry decoder preserves the suffix cursor; its CDDL occurrence window is enforced by this carrier)",
+                            rest.field_name
+                        )
+                    } else {
+                        format!(
+                            "* `{}` - the complete checked major-disjoint occurrence-segment carrier before its later possible-next member (its CDDL occurrence window is enforced by this carrier)",
+                            rest.field_name
+                        )
+                    }
                 } else {
-                format!(
-                    "* `{}` - the complete checked major-disjoint occurrence-segment carrier before its mandatory fixed suffix (its CDDL occurrence window is enforced by this carrier)",
-                    rest.field_name
-                )
-                }
-            } else {
-                format!(
-                    "* `{}` - the complete checked trailing-array carrier (its CDDL occurrence window is enforced by this carrier)",
-                    rest.field_name
-                )
+                    format!(
+                        "* `{}` - the complete checked trailing-array carrier (its CDDL occurrence window is enforced by this carrier)",
+                        rest.field_name
+                    )
                 });
             }
             native_new_block.line(format!("{},", rest.field_name));

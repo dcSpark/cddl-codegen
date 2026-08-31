@@ -22,6 +22,19 @@ middle_required = [uint, + bytes, tstr]
 middle_bounded = [uint, 2*3 bytes, tstr]
 middle_max = [uint, *2 bytes, tstr]
 middle_zero = [uint, *0 bytes, tstr]
+; An optional fixed field after a variable segment is itself a possible-next head.
+; Its absent path exposes the later suffix (or the owner boundary), so every exposed head is disjoint from uint and the segment remains a distinct named carrier.
+final_optional = [
+  * uint ; @name numbers
+  , ? label: tstr
+]
+optional_chain = [
+  * uint ; @name numbers
+  , ? label: tstr
+  , ? blob: bytes
+  , suffix: #6.10(uint)
+]
+outer_optional_chain = [optional_chain, uint]
 exact_middle = [uint, 2*2 uint, uint] ; count-delimited same-major exact segment
 exact_zero_middle = [uint, 0*0 uint, uint] ; exact-zero leaves same-major suffix in place
 ; Every occurrence member is an exact named boundary.  Adjacent `absent`/`values` uses the same

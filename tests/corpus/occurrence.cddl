@@ -51,3 +51,9 @@ multiple_variable_occurrence = [
   , * uint ; @name numbers
   , * tstr ; @name labels
 ]
+
+optional_segment_occurrence = [
+  * uint ; @name numbers
+  , ? label: tstr
+  , suffix: #6.10(uint)
+]

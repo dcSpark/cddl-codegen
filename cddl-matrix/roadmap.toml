@@ -910,17 +910,19 @@ body_md = '''### Honor the remaining ambiguous same-major occurrences on heterog
 Current support is owner-, count-, or major-delimited. A final occurrence consumes to its owner
 boundary; an exact `N*N` occurrence owns its count; and a variable middle occurrence is accepted when
 its effective majors are disjoint from every possible-next live member. That proof walks through
-zero-minimum segments, skips maximum-zero segments, and stops at a positive-minimum segment or a
-mandatory single-item fixed field. Two or more segments are separate flat, uniquely `@name`d
+zero-minimum segments and optional single-item fixed fields, skips maximum-zero segments, and stops
+at a positive-minimum segment or a mandatory single-item fixed field. Optional fixed heads are
+generator-owned-only. Two or more segments are separate flat, uniquely `@name`d
 carriers (`Vec`, `NonEmptyVec`, `[T; N]`, or `BoundedVec`), with complete source-ordered construction
 across Rust, wasm, JSON, and component. Generator-owned heads, mandatory tag/`.cbor` framing, and
 consumed transparent `@custom_wire_major` declarations can prove the boundary. The one-segment
 finite fixed-domain retry remains the delivered same-major exception.
 
 Remaining work is general same-major/value-level discrimination or a residue representation beyond
-that finite fixed-domain exception, plus variable boundaries whose possible-next heads are optional,
-multi-item, field-local custom-owned, or otherwise unproven. Group-choice-arm and mixed repeated-
-group placements remain owned by their separate group-placement work. Any expansion here must obey
+that finite fixed-domain exception, plus overlapping optional heads, mandatory or optional multi-item,
+field-local custom-owned, or otherwise unproven possible-next boundaries.
+Group-choice-arm and mixed repeated-group placements remain owned by their separate group-placement work.
+Any expansion here must obey
 RFC 8610 greedy non-backtracking matching, keep construction unable to create bytes that decode into
 a different value, and cover serialization, deserialization, every generated projection, matrix
 classification, and spec-derived boundary vectors.
@@ -1547,6 +1549,10 @@ spec-valid adjacency only when its carrier and lookahead/residue policy preserve
 intrinsically overlapping spellings remain intentional refusals, not decoder-heuristic work. Any
 newly honored shape must prove that boundary through serialization/deserialization and the applicable
 Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived-vector surfaces.
+
+A variable ARRAY segment may now precede zero or more optional fixed fields when the repeated head is disjoint from every generator-proven optional head and every later member an absent optional exposes.
+The optional keeps its normal presence peek and storage; a transparent alias's `@custom_wire_major` does not authorize this optional lookahead.
+Overlapping, multi-item, and custom-/extern-owned optional heads remain in this blocked work.
 
 '''
 work_state = "blocked"

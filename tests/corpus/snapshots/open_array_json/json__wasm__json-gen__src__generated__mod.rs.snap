@@ -14,6 +14,7 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     reg.preclaim_root::<cddl_lib::MultipleVariable>();
     reg.preclaim_root::<cddl_lib::Named>();
     reg.preclaim_root::<cddl_lib::OptFixedMember>();
+    reg.preclaim_root::<cddl_lib::OptionalSegment>();
     reg.preclaim_root::<cddl_lib::Required>();
     reg.preclaim_root::<cddl_lib::SingleFixed>();
     reg.preclaim_root::<cddl_lib::Typed>();
@@ -25,6 +26,7 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     reg.add::<cddl_lib::MultipleVariable>();
     reg.add::<cddl_lib::Named>();
     reg.add::<cddl_lib::OptFixedMember>();
+    reg.add::<cddl_lib::OptionalSegment>();
     reg.add::<cddl_lib::Required>();
     reg.add::<cddl_lib::SingleFixed>();
     reg.add::<cddl_lib::Typed>();

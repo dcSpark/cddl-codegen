@@ -50,6 +50,15 @@ interface types {
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<occurrence-holder, string>;
   }
+  resource optional-segment-occurrence {
+    constructor(suffix: u64);
+    label: func() -> option<string>;
+    set-label: func(label: string);
+    suffix: func() -> u64;
+    numbers: func() -> list<u64>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<optional-segment-occurrence, string>;
+  }
 }
 
 world cddl-lib-world {

@@ -2291,14 +2291,14 @@ survive:
 An open array (the array analog of the open struct-map rest row) has one or more occurrence-bearing
 segments. A final segment is owner-delimited; an exact segment is count-delimited; and a variable
 middle segment needs an effective-major proof against every possible-next live member. The proof
-skips maximum-zero segments, walks through zero-minimum segments, and stops at a positive-minimum
-segment or mandatory single-item fixed field. Heads may be generator-proven, supplied by mandatory
-tag/`.cbor` framing, or declared on a transparent custom alias with `@custom_wire_major`. The older
+skips maximum-zero segments, walks through zero-minimum segments and optional single-item fixed fields, and stops at a positive-minimum segment or mandatory single-item fixed field.
+An optional contributes its generator-proven head and keeps the walk going because absence exposes the next member.
+Heads may be generator-proven, supplied by mandatory tag/`.cbor` framing, or declared on a transparent custom alias with `@custom_wire_major` for an occurrence segment or mandatory fixed boundary; optional fixed heads remain generator-owned-only.
+The older
 finite fixed-domain same-major retry is retained only for one variable segment and its immediate
-fixed suffix. This
-does not prove an optional-prefix dispatch boundary: its optional/reachable-follower heads must both
-be generator-proven and major-disjoint, so a custom codec or opaque extern on either side is
-serialize-only unless mandatory outer tag/`.cbor` framing proves the distinction. Loose `* t` / `0* t` uses default-empty `Vec<T>`; one-or-more
+fixed suffix.
+This does not prove optional-field lookahead on either side of a segment: its optional/reachable-follower heads must both be generator-proven and major-disjoint, so a custom codec or opaque extern on either side is serialize-only unless mandatory outer tag/`.cbor` framing proves the distinction.
+Loose `* t` / `0* t` uses default-empty `Vec<T>`; one-or-more
 `+ t` / `1* t` uses `NonEmptyVec<T>` and keeps its first-element construction ABI in the one-segment
 case; every other window uses a complete checked `BoundedVec<T, MIN, MAX>` constructor argument for variable windows; exact
 ordinary windows are `[T; N]` and their CBOR/component list inputs make one checked `Vec`
@@ -2326,10 +2326,12 @@ beyond finite fixed domains need a future design rather than a guessed decoder. 
   and multiple named occurrence segments (including adjacent/same-major exact, zero-skippable,
   positive-minimum, declared/framed custom, and exact-zero boundaries) with separate carriers and
   source-ordered decoder loops;
-  the variable-zero-minimum/non-empty/exact-zero optional-prefix distinctions; two-sided
+  disjoint optional-after-segment positives and the variable-zero-minimum/non-empty/exact-zero
+  optional-field distinctions; same-major/exposed-path/custom-head negatives; two-sided
   unproven-head optional-dispatch refusals and mandatory-framing controls; and
   declared repeated/suffix success, re-alias inheritance, emitted-major replacement, and
-  declared-overlap refusal alongside overlap, optional-suffix, multi-item/plain-group-suffix,
+  declared-overlap refusal alongside overlap, same-major/exposed-path/custom optional suffixes,
+  multi-item/plain-group suffixes,
   field-local-codec, undeclared custom-codec-owned, and opaque-extern wire-head refusals. They also retain the
   multiple/group/group-choice/fixed-value boundaries and the entry-vs-rule directive
   slot/marker-slot cases.
@@ -2339,12 +2341,14 @@ beyond finite fixed domains need a future design rather than a guessed decoder. 
   (including bool/null), and declared custom repeated/suffix heads through definite and indefinite
   bytes: empty/populated/zero-skippable runs, positive-minimum separators, exact-before-variable,
   below/above windows, wrong interleaving, fixed suffixes, trailing-extra rejection, and nested stream
-  position. It also pins complete-carrier construction and multi-segment element-bound rejection.
+  position, plus present/absent optional chains and their nested stream position.
+  It also pins complete-carrier construction and multi-segment element-bound rejection.
 - **Preserve/canonical e2e** — `tests/open-array-preserve-e2e`
   (`integration_tests::open_array_preserve_e2e`, compiled) proves a non-canonical middle repeated
   element, exact same-major segment, finite fixed-domain retry, and two independently noncanonical
   multiple-variable segment sidecars re-emit byte-exactly and normalize canonically without moving
-  a boundary, beside the final-tail positional-sidecar, self-carried `any`, and nested-stream vectors.
+  a boundary, beside the final-tail positional-sidecar, optional-after-segment sidecar, self-carried
+  `any`, and nested-stream vectors.
 - **JSON e2e** — `tests/open-array-json-e2e` (`integration_tests::open_array_json_e2e`, compiled)
   checks loose, nonempty, finite/min-only/max-only bounded, exact, middle, multiple-variable named
   lists, and mixed-depth sequence trees around
@@ -2352,7 +2356,8 @@ beyond finite fixed domains need a future design rather than a guessed decoder. 
   duplicate-reject loose/nonempty/bounded/exact sets (including insertion order and duplicate
   rejection); nullable elements; aliases/newtypes; required/optional fields; type-choice payloads;
   and the full absent/present-null/present-value table for direct/restricted optional+nullable exact
-  arrays. It also executes dynamic loose/nonempty/bounded/exact/middle rows, nested reject carriers,
+  arrays, including the independently present/absent optional field beside a named segment list.
+  It also executes dynamic loose/nonempty/bounded/exact/middle rows, nested reject carriers,
   and natural exact-`any` descendants. It also executes loose/nonempty/bounded unique and pair maps,
   duplicate pair retention, natural-`any` map values, and open-struct/open-table dynamic rows, with
   inner exact and outer carrier schema bounds. The focused preserve companion

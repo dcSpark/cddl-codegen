@@ -45,6 +45,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::Middle>();
     _assert_serialize::<crate::generated::MultiParts>();
     _assert_deserialize::<crate::generated::MultiParts>();
+    _assert_serialize::<crate::generated::OptionalMiddle>();
+    _assert_deserialize::<crate::generated::OptionalMiddle>();
     _assert_serialize::<crate::generated::Outer>();
     _assert_deserialize::<crate::generated::Outer>();
     _assert_serialize::<crate::generated::Required>();

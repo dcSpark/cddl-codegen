@@ -18,10 +18,12 @@ pub fn add_schemas(generator: &mut schemars::SchemaGenerator) {
     reg.preclaim_root::<cddl_lib::MiddleOccurrence>();
     reg.preclaim_root::<cddl_lib::MultipleVariableOccurrence>();
     reg.preclaim_root::<cddl_lib::OccurrenceHolder>();
+    reg.preclaim_root::<cddl_lib::OptionalSegmentOccurrence>();
     reg.add::<cddl_lib::ExactMiddleOccurrence>();
     reg.add::<cddl_lib::MiddleOccurrence>();
     reg.add::<cddl_lib::MultipleVariableOccurrence>();
     reg.add::<cddl_lib::OccurrenceHolder>();
+    reg.add::<cddl_lib::OptionalSegmentOccurrence>();
 }
 
 pub fn export_schemas() {

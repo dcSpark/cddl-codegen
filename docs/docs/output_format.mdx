@@ -870,8 +870,10 @@ positional: there are no keys, duplicate policy, key dispatch, or ordering machi
 An exact window (`N*N`, except ordinary `1*1`) stops after `N` items, so it owns its boundary even
 beside the same major or a custom-/extern-owned head. A variable window stops at the owner-array end
 or uses a **possible-next proof**: walk later authored positions, ignore maximum-zero segments, union
-the effective CBOR majors of every zero-minimum segment that may be absent, and stop after the first
-positive-minimum segment or mandatory fixed field that expands to one CBOR item. The current
+the effective CBOR majors of every zero-minimum segment that may be absent and every optional
+single-item fixed field, and stop after the first positive-minimum segment or mandatory fixed field
+that expands to one CBOR item. An optional field keeps the walk going because its absence exposes
+the later member; its head must be generator-owned. The current
 segment's effective majors must be disjoint from that union. Thus `[* uint, * tstr, * bytes]` is
 safe, `[* uint, + tstr, * uint]` is safe because the text segment is mandatory, and
 `[* uint, * tstr, * uint]` rejects because an empty text segment exposes the later uint run. A
@@ -886,6 +888,12 @@ Optional-prefix lookahead is separate from occurrence-boundary proof. An optiona
 generator-proven, distinct heads on both sides of its reachable-next peek; a custom codec or opaque
 extern there is serialize-only unless mandatory outer framing proves the distinction.
 
+The same generator-owned rule applies after a variable segment: `[* uint, ? tstr, #6.10(uint)]`
+is accepted because the segment stops before the optional head and the optional's absence exposes a
+disjoint tag. An optional `uint`, an absent optional exposing a later `uint`, a multi-item splice,
+or a custom-/extern-owned optional head remains refused. `@custom_wire_major` does not authorize
+this optional lookahead.
+
 The restriction is RFC 8610's greedy, non-backtracking matching rule, not an implementation
 convenience. A decoder cannot guess between a repeated value and a possible-next value with the same
 head, and no generated loop speculatively parses later members to choose between two successful
@@ -896,7 +904,7 @@ like `* 5`, and a **plain-group element type** outside a sole named homogeneous-
 graceful rejections naming a remedy. A declared custom head must be disjoint from the whole
 possible-next union; same-major discrimination is not inferred from custom, tagged, float, primitive,
 or extern semantics. The declaration is not consumed by a final tail, an exact count-delimited
-window, optional-prefix lookahead, or mandatory generated outer framing that already supplies the
+window, optional-field lookahead, or mandatory generated outer framing that already supplies the
 head. The
 plain-group element type (`kv = (a: uint, b: uint)`, `t = [ c: uint, * kv ]`) refuses because an
 occurrence segment collects one value per repeated array element and a plain group is not one — it has

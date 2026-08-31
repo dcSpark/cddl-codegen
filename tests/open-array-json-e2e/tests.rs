@@ -64,6 +64,27 @@ mod open_array_json {
     }
 
     #[test]
+    fn optional_after_segment_keeps_its_named_list_and_omittable_property() {
+        let mut present = OptionalSegment::new(9);
+        present.numbers = vec![1, 2];
+        present.label = Some("x".to_owned());
+        let present_json = serde_json::to_string(&present).unwrap();
+        assert!(present_json.contains("\"numbers\":[1,2]"), "segment stays named: {present_json}");
+        assert!(present_json.contains("\"label\":\"x\""), "optional stays separate: {present_json}");
+        let present_back: OptionalSegment = serde_json::from_str(&present_json).unwrap();
+        assert_eq!(present_back.numbers, vec![1, 2]);
+        assert_eq!(present_back.label.as_deref(), Some("x"));
+        assert_eq!(present_back.suffix, 9);
+
+        let absent = OptionalSegment::new(9);
+        let absent_json = serde_json::to_string(&absent).unwrap();
+        assert!(absent_json.contains("\"label\":null"), "optional keeps its null JSON spelling: {absent_json}");
+        let absent_back: OptionalSegment = serde_json::from_str(r#"{"suffix":9}"#).unwrap();
+        assert!(absent_back.numbers.is_empty() && absent_back.label.is_none());
+        assert_eq!(absent_back.suffix, 9);
+    }
+
+    #[test]
     fn any_tail_renders_naturally_and_round_trips() {
         // CapAny = [uint, * any]: the `any` elements render NATURALLY (a uint 5 as the JSON number 5,
         // not a tagged `{"uint":5}`), reusing the homogeneous `[* any]` member surface.

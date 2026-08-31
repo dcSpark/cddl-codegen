@@ -180,12 +180,12 @@ impl ExactMiddleOccurrence {
         self.0.suffix
     }
 
-    /// The captured bounded exact-count occurrence segment before its mandatory fixed suffix, as its checked wasm list wrapper.
+    /// The captured bounded exact-count occurrence segment before a later authored member, as its checked wasm list wrapper.
     pub fn rest(&self) -> Exact {
         self.0.rest.clone().into()
     }
 
-    /// * `rest` - the complete checked exact-count occurrence-segment wrapper before its mandatory fixed suffix (its CDDL occurrence window is enforced before construction)
+    /// * `rest` - the complete checked exact-count occurrence-segment wrapper before its later authored member (its CDDL occurrence window is enforced before construction)
     pub fn new(prefix: u64, suffix: u64, rest: &Exact) -> Self {
         Self(cddl_lib::ExactMiddleOccurrence::new(
             prefix,
@@ -344,7 +344,7 @@ impl MiddleOccurrence {
         self.0.suffix.clone()
     }
 
-    /// The captured major-disjoint occurrence segment before its mandatory fixed suffix (CDDL `* t`), as the wasm list wrapper.
+    /// The captured major-disjoint occurrence segment before a later possible-next member (CDDL `* t`), as the wasm list wrapper.
     pub fn rest(&self) -> BytesList {
         self.0.rest.clone().into()
     }
@@ -712,6 +712,77 @@ impl From<OneOrMore> for NonEmptyVec<u64> {
 
 impl AsRef<NonEmptyVec<u64>> for OneOrMore {
     fn as_ref(&self) -> &NonEmptyVec<u64> {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct OptionalSegmentOccurrence(pub(crate) cddl_lib::OptionalSegmentOccurrence);
+
+#[wasm_bindgen]
+impl OptionalSegmentOccurrence {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OptionalSegmentOccurrence, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn to_json(&self) -> Result<String, JsError> {
+        serde_json::to_string_pretty(&self.0).map_err(|e| JsError::new(&format!("to_json: {}", e)))
+    }
+
+    pub fn to_json_value(&self) -> Result<JsValue, JsError> {
+        serde::Serialize::serialize(&self.0, &serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsError::new(&format!("to_json_value: {}", e)))
+    }
+
+    pub fn from_json(json: &str) -> Result<OptionalSegmentOccurrence, JsError> {
+        serde_json::from_str(json)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_json: {}", e)))
+    }
+
+    pub fn set_label(&mut self, label: String) {
+        self.0.label = Some(label)
+    }
+
+    pub fn label(&self) -> Option<String> {
+        self.0.label.clone()
+    }
+
+    pub fn suffix(&self) -> u64 {
+        self.0.suffix
+    }
+
+    /// The captured major-disjoint occurrence segment before a later possible-next member (CDDL `* t`), as the wasm list wrapper.
+    pub fn numbers(&self) -> Vec<u64> {
+        self.0.numbers.clone()
+    }
+
+    pub fn new(suffix: u64) -> Self {
+        Self(cddl_lib::OptionalSegmentOccurrence::new(suffix))
+    }
+}
+
+impl From<cddl_lib::OptionalSegmentOccurrence> for OptionalSegmentOccurrence {
+    fn from(native: cddl_lib::OptionalSegmentOccurrence) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OptionalSegmentOccurrence> for cddl_lib::OptionalSegmentOccurrence {
+    fn from(wasm: OptionalSegmentOccurrence) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::OptionalSegmentOccurrence> for OptionalSegmentOccurrence {
+    fn as_ref(&self) -> &cddl_lib::OptionalSegmentOccurrence {
         &self.0
     }
 }

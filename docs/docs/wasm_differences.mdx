@@ -417,6 +417,8 @@ authored CDDL order. Restricted wrappers have already checked cardinality; the n
 also checks element value windows before accepting the record. Final, exact count-owned, and
 possible-next-major-delimited placements use the same getter and wrapper types.
 
+A possible-next-major-delimited segment followed by a major-disjoint optional fixed field remains two independent wasm surfaces: the captured segment getter and the optional getter/setter; their values are never merged by the wire-boundary proof.
+
 An [`@ignore`](comment_dsl#ignore) rest row **or occurrence segment** stores nothing, so its wasm class has
 **no `rest()` getter** — it is a plain closed struct's wasm surface. The read-tolerance (unknown
 entries / final or safe-middle elements decode and are dropped) comes for free through the rust

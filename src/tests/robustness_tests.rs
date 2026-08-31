@@ -6105,8 +6105,8 @@ fn zero_permitting_occurrence_on_keyed_map_field_uses_optional_carrier() {
 /// stop at a statically disjoint suffix rather than guess.
 /// This pins the supported bounded-tail polarity and the boundaries the guard must preserve:
 ///   - final `*` / `+` / `2*3` → Ok (a loose, NonEmptyVec, or BoundedVec rest carrier); a sole
-///     non-final occurrence is also accepted when its immediate mandatory one-item suffix has a
-///     disjoint CBOR major, so greedy decoding can stop without guessing;
+///     non-final occurrence is also accepted when its CBOR majors are disjoint from every
+///     possible-next live member, so greedy decoding can stop without guessing;
 ///   - `1*1` → Ok (exactly-once IS the semantics — same boundary the inline-group guard pins);
 ///   - `?` → Ok (the supported optional-field path);
 ///   - `[* bytes]` alone → Ok (single-entry groups take the homogeneous Vec path, not the record
@@ -6500,10 +6500,102 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
          {terminal_custom_optional:#?}"
     );
 
-    // Greedy decoding may not guess a same-major boundary or bypass a suffix that is absent,
-    // multi-item, or custom-codec-owned at either boundary item. Each remains a graceful
-    // parse/finalize refusal with a
-    // remedy rather than an emitted decoder that fails to round-trip its own values.
+    // Optional fixed fields after a segment are zero-minimum possible-next members: each
+    // generator-proven, single-item head must be disjoint from the repeated element, and the walk
+    // must continue to the member an absent optional exposes. The emitted source keeps the segment
+    // loop before the established optional presence peek and retains the two public carriers.
+    let final_optional = run(
+        "m = [\n  * uint ; @name numbers\n  , ? label: tstr\n]\n",
+        "final_optional",
+    )
+    .expect("a final major-disjoint optional field is delimited by its owner array");
+    let final_optional_source = final_optional
+        .values()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        final_optional_source.contains("pub numbers: Vec<u64>")
+            && final_optional_source.contains("pub label: Option<String>")
+            && final_optional_source.contains("impl Deserialize for M")
+            && final_optional_source.contains("before a later possible-next member")
+            && !final_optional_source.contains("before the mandatory fixed suffix")
+            && final_optional_source.find("while (match len").unwrap()
+                < final_optional_source.find("let label = if raw").unwrap(),
+        "a segment loop must precede the separate optional presence read: {final_optional_source}"
+    );
+    for (spec, tag, expected_fields) in [
+        (
+            "m = [\n  * uint ; @name numbers\n  , ? label: tstr\n  , suffix: #6.10(uint)\n]\n",
+            "optional_then_mandatory",
+            ["pub numbers: Vec<u64>", "pub label: Option<String>"],
+        ),
+        (
+            "m = [\n  * uint ; @name numbers\n  , ? label: tstr\n  , ? blob: bytes\n  , suffix: #6.10(uint)\n]\n",
+            "optional_chain",
+            ["pub label: Option<String>", "pub blob: Option<Vec<u8>>"],
+        ),
+        (
+            "m = [\n  * uint ; @name numbers\n  , ? marker: false\n  , suffix: tstr\n]\n",
+            "optional_fixed_literal",
+            ["pub marker: bool", "pub numbers: Vec<u64>"],
+        ),
+        (
+            "m = [\n  * uint ; @name numbers\n  , ? label: tstr\n  , + bytes ; @name blobs\n]\n",
+            "optional_then_positive_segment",
+            [
+                "pub label: Option<String>",
+                "pub blobs: NonEmptyVec<Vec<u8>>",
+            ],
+        ),
+        (
+            "custom = uint ; @custom_serialize write_custom @custom_deserialize read_custom\n\
+             m = [\n  * uint ; @name numbers\n  , ? value: #6.10(custom)\n]\n",
+            "optional_framed_custom",
+            ["pub numbers: Vec<u64>", "pub value: Option<u64>"],
+        ),
+        (
+            "custom = uint ; @custom_serialize write_custom @custom_deserialize read_custom\n\
+             m = [\n  * uint ; @name numbers\n  , ? value: bytes .cbor custom\n]\n",
+            "optional_cbor_framed_custom",
+            ["pub numbers: Vec<u64>", "pub value: Option<u64>"],
+        ),
+        (
+            "m = [\n  * uint ; @name numbers\n  , ? label: tstr .default \"x\"\n]\n",
+            "defaulted_optional",
+            ["pub numbers: Vec<u64>", "pub label: String"],
+        ),
+    ] {
+        let generated = run(spec, tag).expect("a proven optional possible-next boundary generates");
+        let source = generated.values().cloned().collect::<Vec<_>>().join("\n");
+        assert!(
+            source.contains("impl Deserialize for M")
+                && expected_fields.iter().all(|field| source.contains(field)),
+            "{tag} must preserve Deserialize and its authored carriers: {source}"
+        );
+    }
+    for (spec, tag, carrier) in [
+        (
+            "m = [\n  + uint ; @name numbers\n  , ? label: tstr\n]\n",
+            "nonempty_before_optional",
+            "pub numbers: NonEmptyVec<u64>",
+        ),
+        (
+            "m = [\n  2*3 uint ; @name numbers\n  , ? label: tstr\n]\n",
+            "bounded_before_optional",
+            "pub numbers: BoundedVec<u64, 2, 3>",
+        ),
+    ] {
+        let generated = run(spec, tag).expect("every variable carrier uses the optional boundary");
+        let source = generated.values().cloned().collect::<Vec<_>>().join("\n");
+        assert!(
+            source.contains(carrier) && source.contains("before its later possible-next member"),
+            "{tag} must retain its carrier and accurately document the optional boundary: {source}"
+        );
+    }
+    // Greedy decoding may not guess a same-major boundary, an optional's absent path, or a
+    // multi-item/custom-codec-owned optional head. Each remains a graceful parse/finalize refusal
+    // rather than an emitted decoder that fails to round-trip its own values.
     for (spec, tag, needle) in [
         ("m = [uint, * bytes, bytes]\n", "overlap", "major-disjoint"),
         (
@@ -6512,9 +6604,37 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
             "major-disjoint",
         ),
         (
-            "m = [uint, * bytes, ? tstr]\n",
-            "optional_suffix",
-            "mandatory",
+            "m = [uint, * uint, ? uint]\n",
+            "same_major_optional_suffix",
+            "possible-next live member",
+        ),
+        (
+            "m = [* uint, ? tstr, uint]\n",
+            "absent_optional_exposes_fixed",
+            "possible-next live member",
+        ),
+        (
+            "m = [\n  * uint ; @name first\n  , ? tstr\n  , * uint ; @name later\n]\n",
+            "absent_optional_exposes_segment",
+            "possible-next live member",
+        ),
+        (
+            "custom = uint ; @custom_serialize write_custom @custom_deserialize read_custom\n\
+             m = [* uint, ? value: custom]\n",
+            "custom_optional_suffix",
+            "fixed field `value`",
+        ),
+        (
+            "ext = _CDDL_CODEGEN_EXTERN_TYPE_\n\
+             m = [* uint, ? value: ext]\n",
+            "extern_optional_suffix",
+            "fixed field `value`",
+        ),
+        (
+            "pair = (left: tstr, right: uint)\n\
+             m = [* uint, ? value: pair]\n",
+            "multi_item_optional_suffix",
+            "plain group",
         ),
         (
             "pair = (a: tstr, b: uint)\nm = [uint, * bytes, pair]\n",
@@ -6571,6 +6691,17 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
             "{tag} should explain the safe-middle boundary with `{needle}`, got: {err}"
         );
     }
+    let declared_custom_optional = run(
+        "custom = uint ; @custom_serialize write_custom @custom_deserialize read_custom @custom_wire_major text\n\
+         m = [* uint, ? value: custom]\n",
+        "declared_custom_optional_suffix",
+    )
+    .expect_err("a declared custom optional head must remain unproven for lookahead");
+    assert!(
+        declared_custom_optional.contains("fixed field `value`")
+            && declared_custom_optional.contains("nothing consumes the declared major"),
+        "the optional boundary must reject the declared custom head without consuming its declaration: {declared_custom_optional}"
+    );
 
     // A custom/extern INNER codec is admissible when a mandatory outer framing construct supplies
     // the discriminator's wire head. These are generation-only controls: the deliberately
@@ -6721,6 +6852,14 @@ fn open_array_front_end() {
             && src(&middle_ign).contains("ignored major-disjoint occurrence segment"),
         "an ignored safe-middle segment emits no field and reports its source position accurately"
     );
+    let optional_middle_ign = run("a = [\n  * uint ; @ignore\n  , ? label: tstr\n]\n")
+        .expect("@ignore on a loose segment before a disjoint optional boundary is honored");
+    assert!(
+        !src(&optional_middle_ign).contains("pub rest")
+            && src(&optional_middle_ign).contains("pub label: Option<String>")
+            && src(&optional_middle_ign).contains("before its later possible-next member"),
+        "an ignored optional-delimited segment stays fieldless and documents its proven boundary"
+    );
 
     // --- slot direction: a RULE-level @ignore on an open-array rule is NOT stolen onto the tail —
     // it is a loud rule-position rejection (the tail's own entry slot is disjoint from the rule slot).
@@ -6772,8 +6911,9 @@ fn open_array_front_end() {
         src(&retry_local_name)
     );
 
-    // Same-major overlap, optional, multi-item, and local-codec suffixes remain unsafe.  The normal
-    // leading/middle major-disjoint case is exercised above and in the compiled fixture.
+    // Same-major overlap (including an optional), multi-item, and local-codec suffixes remain
+    // unsafe. The normal leading/middle major-disjoint case is exercised above and in the compiled
+    // fixture.
     let overlapping_fixed = run("repeat = 0 / 1\nsuffix = 1 / 2\na = [* repeat, suffix]\n")
         .expect_err("a shared fixed value gives greedy repetition no safe stop");
     assert!(
@@ -6817,7 +6957,7 @@ fn open_array_front_end() {
     for spec in [
         "a = [* uint, uint]\n",
         "a = [uint, + uint, uint]\n",
-        "a = [uint, * uint, ? tstr]\n",
+        "a = [uint, * uint, ? uint]\n",
         "pair = (tstr, uint)\na = [uint, * bytes, pair]\n",
         "a = [\n  uint,\n  * bytes,\n  tstr ; @custom_serialize write_text @custom_deserialize read_text\n]\n",
     ] {

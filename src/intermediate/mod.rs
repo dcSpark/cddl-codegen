@@ -5057,6 +5057,10 @@ impl<'a> IntermediateTypes<'a> {
                 }
 
                 let mut possible_next_majors = Vec::new();
+                // The no-silent-directive ledger records only declarations this proof actually
+                // reads. An optional fixed field is deliberately generator-owned-only: its
+                // presence decoder cannot use an alias-level declared custom head, so it must
+                // neither authorize that boundary nor consume the declaration.
                 let mut boundary_types = Vec::new();
                 let mut boundary_failure = None;
                 let mut immediate_fixed_suffix = None;
@@ -5076,20 +5080,12 @@ impl<'a> IntermediateTypes<'a> {
                                 break;
                             };
                             possible_next_majors.extend(majors);
-                            boundary_types.push(next.element());
+                            boundary_types.push((next.element(), true));
                             if minimum > 0 {
                                 break;
                             }
                         }
                         PossibleNext::Field(next) => {
-                            if next.optional {
-                                boundary_failure = Some(format!(
-                                    "rule `{source_rule}`: the possible-next fixed field `{}` after the occurrence-bearing array member at position {} is optional, so greedy decoding has no certain boundary. Frame the repeated part as its own array, move it final, or make the boundary mandatory and major-disjoint.",
-                                    next.name,
-                                    segment_index + 1,
-                                ));
-                                break;
-                            }
                             if next.rust_type.expanded_field_count(self) != Some(1) {
                                 boundary_failure = Some(format!(
                                     "rule `{source_rule}`: the possible-next fixed field `{}` after the occurrence-bearing array member at position {} can splice multiple CBOR items. Frame the repeated part as its own array, move it final, or use a single-item major-disjoint boundary.",
@@ -5098,16 +5094,38 @@ impl<'a> IntermediateTypes<'a> {
                                 ));
                                 break;
                             }
-                            // A field-local pair has no transparent alias metadata channel. Keep its
-                            // established graceful refusal even if the replaced Rust type has a known major.
-                            let majors = if next.rule_metadata.custom_serialize.is_some()
-                                || next.rule_metadata.custom_deserialize.is_some()
-                            {
-                                None
+                            // An optional field's own generated presence peek cannot consume an
+                            // alias-level `@custom_wire_major`: only a generator-owned outer head
+                            // is proof at this boundary. Mandatory fields retain the established
+                            // effective-major proof, including a declared transparent custom head.
+                            // A field-local pair has no transparent alias metadata channel in
+                            // either case, so it remains a graceful refusal even when the replaced
+                            // Rust type has a known major.
+                            let majors = if next.optional {
+                                (next.rule_metadata.custom_serialize.is_none()
+                                    && next.rule_metadata.custom_deserialize.is_none()
+                                    && !self.type_has_unproven_wire_head(&next.rust_type))
+                                .then(|| next.rust_type.cbor_types(self))
                             } else {
-                                self.effective_wire_majors(&next.rust_type)
+                                if next.rule_metadata.custom_serialize.is_some()
+                                    || next.rule_metadata.custom_deserialize.is_some()
+                                {
+                                    None
+                                } else {
+                                    self.effective_wire_majors(&next.rust_type)
+                                }
                             };
                             let Some(majors) = majors else {
+                                if next.optional
+                                    && self.middle_boundary_consumes_wire_major_declaration(
+                                        &next.rust_type,
+                                    )
+                                {
+                                    rejections.push(format!(
+                                        "`@custom_wire_major` at optional possible-next fixed field `{}` in rule `{source_rule}`: nothing consumes the declared major. Optional-field lookahead uses only generator-owned heads.",
+                                        next.name,
+                                    ));
+                                }
                                 boundary_failure = Some(format!(
                                     "rule `{source_rule}`: the possible-next fixed field `{}` after the occurrence-bearing array member at position {} has a custom- or extern-owned, otherwise-unproven wire head. Greedy decoding must know every possible-next CBOR major before it can prove the boundary.",
                                     next.name,
@@ -5115,12 +5133,17 @@ impl<'a> IntermediateTypes<'a> {
                                 ));
                                 break;
                             };
-                            if position == segment_index + 1 {
+                            if !next.optional && position == segment_index + 1 {
                                 immediate_fixed_suffix = Some(next);
                             }
                             possible_next_majors.extend(majors);
-                            boundary_types.push(&next.rust_type);
-                            break;
+                            boundary_types.push((&next.rust_type, !next.optional));
+                            // An optional fixed field can be absent and expose a later member,
+                            // so its head is one possible-next boundary, never the end of the
+                            // walk. A mandatory fixed field is one required CBOR item and ends it.
+                            if !next.optional {
+                                break;
+                            }
                         }
                         PossibleNext::Forbidden => {
                             boundary_failure = Some(format!(
@@ -5189,8 +5212,10 @@ impl<'a> IntermediateTypes<'a> {
                         &mut consumed,
                     );
                 }
-                for boundary in boundary_types {
-                    if self.middle_boundary_consumes_wire_major_declaration(boundary) {
+                for (boundary, may_consume_wire_major_declaration) in boundary_types {
+                    if may_consume_wire_major_declaration
+                        && self.middle_boundary_consumes_wire_major_declaration(boundary)
+                    {
                         mark_wire_major_consumed(&boundary.conceptual_type, self, &mut consumed);
                     }
                 }

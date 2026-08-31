@@ -8,6 +8,10 @@ cap_any = [uint, * any]             ; any tail — self-carried encodings (no si
 required = [uint, + uint]           ; one-or-more tail — per-element encoding sidecar
 bounded = [uint, 2*3 uint]          ; finite checked tail — same positional sidecar
 middle = [uint, * uint, tstr]        ; major-disjoint middle segment — same sidecar before suffix
+optional_middle = [
+  * uint ; @name numbers
+  , ? label: tstr
+]
 exact_middle = [uint, 2*2 uint, uint] ; count-delimited same-major segment — positional sidecar
 exact_segments = [
   prefix: uint

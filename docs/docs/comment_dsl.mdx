@@ -666,10 +666,12 @@ Use it for view types that must accept forward-compatible data without retaining
   slot**, exactly like `@name`/`@duplicates`
   ([above](comment_dsl#name-and-duplicates-on-an-open-map-rest-row)). It is valid **only** on a
   recognized **loose** rest row of a map-rep record or a loose final/safe-middle segment of an
-  array-rep record. A safe middle segment needs its immediate fixed suffix to be mandatory,
-  single-item, field-codec-free, and CBOR-major-disjoint from the repeated element, with no
-  custom- or extern-owned, otherwise-unproven boundary wire head; this is what
-  permits greedy RFC 8610 decoding without a rewind. Anywhere else (a rule, a field, a same-major
+  array-rep record. A safe middle segment needs its repeated element to be CBOR-major-disjoint from
+  every possible-next live member: optional single-item fixed fields and zero-minimum segments keep
+  the proof walking, while a positive-minimum segment or mandatory single-item fixed field ends it.
+  Optional fixed heads are generator-owned-only; no possible-next head may remain custom- or
+  extern-owned and otherwise unproven. This is what permits greedy RFC 8610 decoding without a
+  rewind. Anywhere else (a rule, a field, a same-major
   or otherwise unsafe non-final occurrence, or a restricted row/segment) is a loud graceful
   rejection, never silently dropped. The same **marker-slot trap** applies: a directive glued to the `*` occurrence marker's
   comment slot is silently not honored, so keep it after the whole entry (`* K => V ; @ignore`,
@@ -1264,8 +1266,8 @@ The argument is exactly one of the eight major-type tokens: `uint`, `nint`, `byt
 Rules to keep in mind:
 
 * **It requires both halves of the pair, in the same position** — the `@custom_encodings` contract verbatim, and for the same reason.
-* **It is REQUIRED where a custom codec keys an open table's typed row or participates in either side of a generator-proven possible-next boundary of a variable open-array occurrence**, and a **graceful rejection where nothing consumes it**. Consumed *somewhere* is enough, so one alias may key an open table, prove a possible-next chain boundary, and also appear at an ordinary field.
-* **It is not a general framing escape hatch.** Final tails and exact `N*N` middle windows do not need a major peek; mandatory generated outer tag/`.cbor` framing wins without reading an inner declaration; and optional-prefix lookahead remains generator-proven-only. An opaque/custom head there is still serialize-only unless mandatory generated outer framing proves it. A field-local declaration remains refused because only a transparent alias carries this wire fact to either reader.
+* **It is REQUIRED where a custom codec keys an open table's typed row or participates as an occurrence segment or mandatory fixed field in a generator-proven possible-next boundary of a variable open-array occurrence**, and a **graceful rejection where nothing consumes it**. An optional fixed possible-next field uses generator-owned-only optional-field lookahead and does not consume this declaration. Consumed *somewhere* is enough, so one alias may key an open table, prove a possible-next chain boundary, and also appear at an ordinary field.
+* **It is not a general framing escape hatch.** Final tails and exact `N*N` middle windows do not need a major peek; mandatory generated outer tag/`.cbor` framing wins without reading an inner declaration; and optional-field lookahead before or after a segment remains generator-proven-only. An opaque/custom head there is still serialize-only unless mandatory generated outer framing proves it. A field-local declaration remains refused because only a transparent alias carries this wire fact to either reader.
 * **It is refused on a rule that mints a struct.** The declared major is read through the rule's transparent alias entry, which a struct-minting rule does not have.
 * **A tagged typed key claims ALL tags.** `@custom_wire_major tag` (like a plain tagged key type) claims major 6 in full — the dispatch is by major, not by tag number.
 * **Unlike `@custom_encodings` it is not preserve-gated.** The major is a fact about the wire under every flag set.

@@ -36,3 +36,10 @@ multiple_variable = [
   , + tstr ; @name labels
   , 1*2 bytes ; @name chunks
 ]
+; Optional fixed heads after a variable segment are distinct possible-next boundaries.
+; This keeps the named list, nullable JSON property, wasm getter, and following mandatory tag in their own authored wire slots on the snapshot faces.
+optional_segment = [
+  * uint ; @name numbers
+  , ? label: tstr
+  , suffix: #6.10(uint)
+]

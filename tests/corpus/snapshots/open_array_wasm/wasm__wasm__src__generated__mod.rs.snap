@@ -734,6 +734,62 @@ impl AsRef<cddl_lib::OptFixedMember> for OptFixedMember {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct OptionalSegment(pub(crate) cddl_lib::OptionalSegment);
+
+#[wasm_bindgen]
+impl OptionalSegment {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<OptionalSegment, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn set_label(&mut self, label: String) {
+        self.0.label = Some(label)
+    }
+
+    pub fn label(&self) -> Option<String> {
+        self.0.label.clone()
+    }
+
+    pub fn suffix(&self) -> u64 {
+        self.0.suffix
+    }
+
+    /// The captured major-disjoint occurrence segment before a later possible-next member (CDDL `* t`), as the wasm list wrapper.
+    pub fn numbers(&self) -> Vec<u64> {
+        self.0.numbers.clone()
+    }
+
+    pub fn new(suffix: u64) -> Self {
+        Self(cddl_lib::OptionalSegment::new(suffix))
+    }
+}
+
+impl From<cddl_lib::OptionalSegment> for OptionalSegment {
+    fn from(native: cddl_lib::OptionalSegment) -> Self {
+        Self(native)
+    }
+}
+
+impl From<OptionalSegment> for cddl_lib::OptionalSegment {
+    fn from(wasm: OptionalSegment) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::OptionalSegment> for OptionalSegment {
+    fn as_ref(&self) -> &cddl_lib::OptionalSegment {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct Required(pub(crate) cddl_lib::Required);
 
 #[wasm_bindgen]
