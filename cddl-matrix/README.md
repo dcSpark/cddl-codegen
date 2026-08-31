@@ -601,7 +601,8 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
     `ac1b98e`): the validator accepts direct generic substitution but leaves the lexical outer
     parameter unresolved after it crosses a second generic definition. Against
     `inner<x> = [x]`, `outer<p> = [inner<p>]`, and `outer-uint = outer<uint>`, the spec-valid
-    `[[1]]` is rejected with `expected type p, got Integer(Integer(1))`; Ruby cddl 0.12.14 accepts.
+    `[[1]]` is rejected with `expected type p, got Integer(Integer(1))`; the explicitly pinned Ruby
+    cddl 0.12.11 executable used for this mint accepts.
     The collection spelling (`items<x> = [* x]`) likewise treats a non-empty `items<p>` as matching
     zero elements, while one more nested reference (`leaf` through `mid` through `outer`) overflows
     the rust validator's stack and aborts. The four exact corpus vectors under
