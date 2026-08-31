@@ -794,6 +794,12 @@ const CORPUS_EXPECTED_FLOOR_SCOPE: Record<string, string[]> = {
   "nullable_nested.maybe_coll": ["7"],   // `nums_arr / null` — the array arm is exempt (a named collection), null → 7
   "nullable_nested.maybe_denum": ["7"],  // `data_enum / null` — the enum arm is exempt (a named choice), null → 7
   "nullable_nested.maybe_uint": ["7", "int"],
+  // Finite fixed-domain occurrence fixture: its three standalone literal choices are all uint
+  // alternatives and therefore resolve to the one merged integer class. The composite occurrence
+  // rule itself is an array and remains outside this type-choice-only floor.
+  "occurrence.finite_domain_chain_delimiter": ["int"],
+  "occurrence.finite_domain_chain_repeat": ["int"],
+  "occurrence.finite_domain_chain_second": ["int"],
   // Tag-over-option-collapse fixture: only `nullable_inner = uint / null` is a type choice and so in
   // floor scope — uint → "int" (majors 0/1 merged), null → major 7, the same two classes as
   // `nullable_nested.maybe_uint` spells. The two rules that CROSS the tag (`tagged_nullable` and the

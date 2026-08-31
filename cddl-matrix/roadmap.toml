@@ -945,20 +945,24 @@ title = "Honor the remaining ambiguous same-major occurrences on heterogeneous A
 kind = "work"
 body_md = '''### Honor the remaining ambiguous same-major occurrences on heterogeneous ARRAY-record fields.
 
-Current support is owner-, count-, or major-delimited. A final occurrence consumes to its owner
-boundary; an exact `N*N` occurrence owns its count; and a variable middle occurrence is accepted when
-its effective majors are disjoint from every possible-next live member. That proof walks through
+Current support is owner-, count-, major-, or finite-domain-delimited. A final occurrence consumes
+to its owner boundary; an exact `N*N` occurrence owns its count; and a variable middle occurrence is
+accepted when every possible-next live member is major-disjoint or has a generator-owned untagged
+finite fixed-value domain disjoint from the repeated element's complete CDDL value domain. That proof walks through
 zero-minimum segments and optional single-item fixed fields, skips maximum-zero segments, and stops
 at a positive-minimum segment or a mandatory single-item fixed field. Optional fixed heads are
 generator-owned-only. Two or more segments are separate flat, uniquely `@name`d
 carriers (`Vec`, `NonEmptyVec`, `[T; N]`, or `BoundedVec`), with complete source-ordered construction
 across Rust, wasm, JSON, and component. Generator-owned heads, mandatory tag/`.cbor` framing, and
-consumed transparent `@custom_wire_major` declarations can prove the boundary. The one-segment
-finite fixed-domain retry remains the delivered same-major exception.
+consumed transparent `@custom_wire_major` declarations can prove the boundary. A shared major is
+also admitted across the complete possible-next chain when both items have generator-owned untagged
+finite fixed-value domains with no shared CDDL value. The decoder retries only the repeated element
+and restores the real cursor on failure, preserving the existing separate source-ordered carriers.
 
 Remaining work is general same-major/value-level discrimination or a residue representation beyond
-that finite fixed-domain exception, plus overlapping optional heads, mandatory or optional multi-item,
-field-local custom-owned, or otherwise unproven possible-next boundaries.
+finite fixed-domain discrimination, plus shared finite domains, primitive/range, float, tag,
+field-local custom-owned, opaque-extern, mandatory or optional multi-item, or otherwise unproven
+possible-next boundaries.
 Group-choice-arm and mixed repeated-group placements remain owned by their separate group-placement work.
 Any expansion here must obey
 RFC 8610 greedy non-backtracking matching, keep construction unable to create bytes that decode into
@@ -970,10 +974,10 @@ work_state = "ready"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-acceptance_md = '''Design an invariant-preserving representation and construction door for general same-major heterogeneous repetition (including value-level discrimination or residue beyond finite fixed domains) and any newly proven optional/multi-item/custom boundary class, while retaining RFC 8610 greedy non-backtracking decoding; then cover serialization, deserialization, Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived boundary surfaces as applicable.
+acceptance_md = '''Design an invariant-preserving representation and construction door for general same-major heterogeneous repetition beyond the delivered finite fixed-domain possible-next-chain discrimination (including value-level discrimination or residue) and any newly proven optional/multi-item/custom boundary class, while retaining RFC 8610 greedy non-backtracking decoding; then cover serialization, deserialization, Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived boundary surfaces as applicable.
 '''
 priority_band = "high"
-priority_rationale_md = '''Owner-, count-, major-disjoint multiple, and finite fixed-domain same-major classes are represented, but general same-major repetition still rejects. It needs an explicit value/residue representation rather than a decoder that guesses or speculates on later members, so this remains a high-priority language boundary without reopening the delivered shared carrier family.
+priority_rationale_md = '''Owner-, count-, major-disjoint multiple, and finite fixed-domain same-major possible-next-chain classes are represented, but general same-major repetition still rejects. It needs an explicit value/residue representation rather than a decoder that guesses or speculates on later members, so this remains a high-priority language boundary without reopening the delivered shared carrier family.
 '''
 
 [[record]]
@@ -1588,9 +1592,12 @@ intrinsically overlapping spellings remain intentional refusals, not decoder-heu
 newly honored shape must prove that boundary through serialization/deserialization and the applicable
 Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived-vector surfaces.
 
-A variable ARRAY segment may now precede zero or more optional fixed fields when the repeated head is disjoint from every generator-proven optional head and every later member an absent optional exposes.
-The optional keeps its normal presence peek and storage; a transparent alias's `@custom_wire_major` does not authorize this optional lookahead.
-Overlapping, multi-item, and custom-/extern-owned optional heads remain in this blocked work.
+A variable ARRAY segment may now precede zero or more optional fixed fields when every possible-next
+member is major-disjoint or, for a shared major, has a generator-owned untagged finite fixed-value
+domain disjoint from the repeated element's complete CDDL value domain. The optional keeps its normal
+presence peek and storage; that optional's own reachable-follower relation still needs generator-owned,
+major-disjoint heads, and a transparent alias's `@custom_wire_major` does not authorize this lookahead.
+Shared/non-finite, multi-item, and custom-/extern-owned overlapping optional heads remain in this blocked work.
 
 '''
 work_state = "blocked"

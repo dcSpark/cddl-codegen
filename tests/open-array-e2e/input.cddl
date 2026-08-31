@@ -124,6 +124,23 @@ bool_repeat = false / true
 null_suffix = null
 fixed_simple_middle = [* bool_repeat, null_suffix]
 outer_fixed_middle = [fixed_middle, uint]
+; Every variable segment in this chain has a same-major finite fixed-domain possible-next boundary.
+; `first` is bounded/min-one, `second` is loose, and `delimiter` is mandatory/min-one, so decoding
+; must retry the first two element decoders without merging their source-ordered carriers.
+chain_next = 2 / 3
+chain_delimiter = 4 / 5
+fixed_domain_chain = [
+  1*2 repeat_alias ; @name first
+  , * chain_next ; @name second
+  , + chain_delimiter ; @name delimiter
+]
+; The optional finite fixed-domain field is one possible-next boundary. Its own later text follower
+; remains major-disjoint, so the optional presence reader retains its independent safe lookahead.
+fixed_domain_optional = [
+  * repeat_alias ; @name values
+  , ? marker: chain_next
+  , suffix: tstr
+]
 ; A transparent custom codec owns the bytes it writes. Its declared `bytes` head, inherited through
 ; `middle_elem_alias`, is the variable middle loop's discriminator rather than the replaced uint.
 middle_elem = uint ; @custom_serialize write_middle_elem @custom_deserialize read_middle_elem @custom_wire_major bytes

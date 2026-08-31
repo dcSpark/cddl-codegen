@@ -230,6 +230,364 @@ expression: ir
         ),
     },
     RustIdent(
+        "FiniteDomainChainDelimiter",
+    ): RustStruct {
+        ident: RustIdent(
+            "FiniteDomainChainDelimiter",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: CStyleEnum {
+            variants: [
+                EnumVariant {
+                    name: Custom(
+                        "I4",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Uint(
+                                    4,
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+                EnumVariant {
+                    name: Custom(
+                        "I5",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Uint(
+                                    5,
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+            ],
+        },
+    },
+    RustIdent(
+        "FiniteDomainChainOccurrence",
+    ): RustStruct {
+        ident: RustIdent(
+            "FiniteDomainChainOccurrence",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: Record(
+            RustRecord {
+                rep: Array,
+                fields: [],
+                forbidden_fields: [],
+                rest: Some(
+                    RestRow {
+                        kind: ArrayTail {
+                            element: RustType {
+                                conceptual_type: Rust(
+                                    RustIdent(
+                                        "FiniteDomainChainRepeat",
+                                    ),
+                                ),
+                                encodings: [],
+                                config: RustTypeSerializeConfig {
+                                    default: None,
+                                    bounds: None,
+                                    duplicates: None,
+                                    float_bounds: None,
+                                    basic_override: false,
+                                },
+                            },
+                            source_index: 0,
+                        },
+                        semantics: Capture,
+                        field_name: "first",
+                        dispatch_major: None,
+                        occurrence: None,
+                    },
+                ),
+                typed_row: None,
+                array_segments: [
+                    RestRow {
+                        kind: ArrayTail {
+                            element: RustType {
+                                conceptual_type: Primitive(
+                                    U64,
+                                ),
+                                encodings: [],
+                                config: RustTypeSerializeConfig {
+                                    default: None,
+                                    bounds: None,
+                                    duplicates: None,
+                                    float_bounds: None,
+                                    basic_override: false,
+                                },
+                            },
+                            source_index: 1,
+                        },
+                        semantics: Capture,
+                        field_name: "skipped",
+                        dispatch_major: None,
+                        occurrence: Some(
+                            (
+                                0,
+                                0,
+                            ),
+                        ),
+                    },
+                    RestRow {
+                        kind: ArrayTail {
+                            element: RustType {
+                                conceptual_type: Rust(
+                                    RustIdent(
+                                        "FiniteDomainChainSecond",
+                                    ),
+                                ),
+                                encodings: [],
+                                config: RustTypeSerializeConfig {
+                                    default: None,
+                                    bounds: None,
+                                    duplicates: None,
+                                    float_bounds: None,
+                                    basic_override: false,
+                                },
+                            },
+                            source_index: 2,
+                        },
+                        semantics: Capture,
+                        field_name: "second",
+                        dispatch_major: None,
+                        occurrence: None,
+                    },
+                    RestRow {
+                        kind: ArrayTail {
+                            element: RustType {
+                                conceptual_type: Rust(
+                                    RustIdent(
+                                        "FiniteDomainChainDelimiter",
+                                    ),
+                                ),
+                                encodings: [],
+                                config: RustTypeSerializeConfig {
+                                    default: None,
+                                    bounds: None,
+                                    duplicates: None,
+                                    float_bounds: None,
+                                    basic_override: false,
+                                },
+                            },
+                            source_index: 3,
+                        },
+                        semantics: Capture,
+                        field_name: "delimiter",
+                        dispatch_major: None,
+                        occurrence: Some(
+                            (
+                                1,
+                                18446744073709551615,
+                            ),
+                        ),
+                    },
+                ],
+            },
+        ),
+    },
+    RustIdent(
+        "FiniteDomainChainRepeat",
+    ): RustStruct {
+        ident: RustIdent(
+            "FiniteDomainChainRepeat",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: CStyleEnum {
+            variants: [
+                EnumVariant {
+                    name: Custom(
+                        "I0",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Uint(
+                                    0,
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+                EnumVariant {
+                    name: Custom(
+                        "I1",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Uint(
+                                    1,
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+            ],
+        },
+    },
+    RustIdent(
+        "FiniteDomainChainSecond",
+    ): RustStruct {
+        ident: RustIdent(
+            "FiniteDomainChainSecond",
+        ),
+        tag: None,
+        tag_optional: false,
+        config: RustStructConfig {
+            custom_json: false,
+            custom_serialize: None,
+            custom_deserialize: None,
+            custom_encodings: None,
+            custom_wire_major: None,
+            doc: None,
+            newtype_getter: None,
+            duplicates: None,
+            set_nominal: false,
+        },
+        variant: CStyleEnum {
+            variants: [
+                EnumVariant {
+                    name: Custom(
+                        "I2",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Uint(
+                                    2,
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+                EnumVariant {
+                    name: Custom(
+                        "I3",
+                    ),
+                    data: RustType(
+                        RustType {
+                            conceptual_type: Fixed(
+                                Uint(
+                                    3,
+                                ),
+                            ),
+                            encodings: [],
+                            config: RustTypeSerializeConfig {
+                                default: None,
+                                bounds: None,
+                                duplicates: None,
+                                float_bounds: None,
+                                basic_override: false,
+                            },
+                        },
+                    ),
+                    serialize_as_embedded_group: false,
+                    doc: None,
+                    key: None,
+                },
+            ],
+        },
+    },
+    RustIdent(
         "Int",
     ): RustStruct {
         ident: RustIdent(

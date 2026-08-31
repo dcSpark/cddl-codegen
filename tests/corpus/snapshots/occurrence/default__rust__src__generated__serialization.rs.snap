@@ -70,6 +70,229 @@ impl Deserialize for ExactMiddleOccurrence {
     }
 }
 
+impl cbor_event::se::Serialize for FiniteDomainChainOccurrence {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(
+            self.first.len() as u64
+                + self.skipped.len() as u64
+                + self.second.len() as u64
+                + self.delimiter.len() as u64,
+        ))?;
+        for element in self.first.iter() {
+            match element {
+                FiniteDomainChainRepeat::I0 => serializer.write_unsigned_integer(0u64),
+                FiniteDomainChainRepeat::I1 => serializer.write_unsigned_integer(1u64),
+            }?;
+        }
+        for element in self.skipped.iter() {
+            serializer.write_unsigned_integer(*element)?;
+        }
+        for element in self.second.iter() {
+            match element {
+                FiniteDomainChainSecond::I2 => serializer.write_unsigned_integer(2u64),
+                FiniteDomainChainSecond::I3 => serializer.write_unsigned_integer(3u64),
+            }?;
+        }
+        for element in self.delimiter.iter() {
+            match element {
+                FiniteDomainChainDelimiter::I4 => serializer.write_unsigned_integer(4u64),
+                FiniteDomainChainDelimiter::I5 => serializer.write_unsigned_integer(5u64),
+            }?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for FiniteDomainChainOccurrence {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            let mut first = Vec::new();
+            while (match len {
+                cbor_event::Len::Len(n) => read_len.read() < n,
+                cbor_event::Len::Indefinite => raw.as_slice().first() != Some(&0xff),
+            }) {
+                let first_retry_position = raw.position();
+                if (|| -> Result<(), DeserializeError> {
+                    let first_elem = (|| -> Result<_, DeserializeError> {
+                        let initial_position = raw.position();
+                        let deser_variant =
+                            (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                                let i0_value = raw.unsigned_integer()?;
+                                if i0_value != 0 {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Uint(i0_value),
+                                        expected: Key::Uint(0),
+                                    }
+                                    .into());
+                                }
+                                Ok(())
+                            })(raw);
+                        match deser_variant {
+                            Ok(()) => return Ok(FiniteDomainChainRepeat::I0),
+                            Err(_) => raw.set_position(initial_position).unwrap(),
+                        };
+                        let deser_variant =
+                            (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                                let i1_value = raw.unsigned_integer()?;
+                                if i1_value != 1 {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Uint(i1_value),
+                                        expected: Key::Uint(1),
+                                    }
+                                    .into());
+                                }
+                                Ok(())
+                            })(raw);
+                        match deser_variant {
+                            Ok(()) => return Ok(FiniteDomainChainRepeat::I1),
+                            Err(_) => raw.set_position(initial_position).unwrap(),
+                        };
+                        Err(DeserializeError::new(
+                            "FiniteDomainChainRepeat",
+                            DeserializeFailure::NoVariantMatched,
+                        ))
+                    })()?;
+                    first.push(first_elem);
+                    Ok(())
+                })()
+                .is_err()
+                {
+                    raw.set_position(first_retry_position).unwrap();
+                    break;
+                }
+                read_len.read_elems(1)?;
+            }
+            let mut skipped = Vec::new();
+            let mut second = Vec::new();
+            while (match len {
+                cbor_event::Len::Len(n) => read_len.read() < n,
+                cbor_event::Len::Indefinite => raw.as_slice().first() != Some(&0xff),
+            }) {
+                let second_retry_position = raw.position();
+                if (|| -> Result<(), DeserializeError> {
+                    let second_elem = (|| -> Result<_, DeserializeError> {
+                        let initial_position = raw.position();
+                        let deser_variant =
+                            (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                                let i2_value = raw.unsigned_integer()?;
+                                if i2_value != 2 {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Uint(i2_value),
+                                        expected: Key::Uint(2),
+                                    }
+                                    .into());
+                                }
+                                Ok(())
+                            })(raw);
+                        match deser_variant {
+                            Ok(()) => return Ok(FiniteDomainChainSecond::I2),
+                            Err(_) => raw.set_position(initial_position).unwrap(),
+                        };
+                        let deser_variant =
+                            (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                                let i3_value = raw.unsigned_integer()?;
+                                if i3_value != 3 {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Uint(i3_value),
+                                        expected: Key::Uint(3),
+                                    }
+                                    .into());
+                                }
+                                Ok(())
+                            })(raw);
+                        match deser_variant {
+                            Ok(()) => return Ok(FiniteDomainChainSecond::I3),
+                            Err(_) => raw.set_position(initial_position).unwrap(),
+                        };
+                        Err(DeserializeError::new(
+                            "FiniteDomainChainSecond",
+                            DeserializeFailure::NoVariantMatched,
+                        ))
+                    })()?;
+                    second.push(second_elem);
+                    Ok(())
+                })()
+                .is_err()
+                {
+                    raw.set_position(second_retry_position).unwrap();
+                    break;
+                }
+                read_len.read_elems(1)?;
+            }
+            let mut delimiter = Vec::new();
+            while match len {
+                cbor_event::Len::Len(n) => read_len.read() < n,
+                cbor_event::Len::Indefinite => raw.as_slice().first() != Some(&0xff),
+            } {
+                read_len.read_elems(1)?;
+                let delimiter_elem = (|| -> Result<_, DeserializeError> {
+                    let initial_position = raw.position();
+                    let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                        let i4_value = raw.unsigned_integer()?;
+                        if i4_value != 4 {
+                            return Err(DeserializeFailure::FixedValueMismatch {
+                                found: Key::Uint(i4_value),
+                                expected: Key::Uint(4),
+                            }
+                            .into());
+                        }
+                        Ok(())
+                    })(raw);
+                    match deser_variant {
+                        Ok(()) => return Ok(FiniteDomainChainDelimiter::I4),
+                        Err(_) => raw.set_position(initial_position).unwrap(),
+                    };
+                    let deser_variant = (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                        let i5_value = raw.unsigned_integer()?;
+                        if i5_value != 5 {
+                            return Err(DeserializeFailure::FixedValueMismatch {
+                                found: Key::Uint(i5_value),
+                                expected: Key::Uint(5),
+                            }
+                            .into());
+                        }
+                        Ok(())
+                    })(raw);
+                    match deser_variant {
+                        Ok(()) => return Ok(FiniteDomainChainDelimiter::I5),
+                        Err(_) => raw.set_position(initial_position).unwrap(),
+                    };
+                    Err(DeserializeError::new(
+                        "FiniteDomainChainDelimiter",
+                        DeserializeFailure::NoVariantMatched,
+                    ))
+                })()?;
+                delimiter.push(delimiter_elem);
+            }
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(FiniteDomainChainOccurrence {
+                first,
+                skipped: <[u64; 0]>::try_from(skipped).map_err(|elements: Vec<_>| {
+                    DeserializeFailure::RangeCheck {
+                        found: elements.len() as i128,
+                        min: Some(0),
+                        max: Some(0),
+                    }
+                })?,
+                second,
+                delimiter: <NonEmptyVec<FiniteDomainChainDelimiter>>::try_from(delimiter)?,
+            })
+        })()
+        .map_err(|e| e.annotate("FiniteDomainChainOccurrence"))
+    }
+}
+
 impl cbor_event::se::Serialize for MiddleOccurrence {
     fn serialize<'se>(
         &self,

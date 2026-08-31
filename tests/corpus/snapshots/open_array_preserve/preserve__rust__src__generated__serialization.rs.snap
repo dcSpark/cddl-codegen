@@ -542,6 +542,284 @@ impl Deserialize for ExactSegments {
     }
 }
 
+impl cbor_event::se::Serialize for FixedDomainChain {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(
+                    self.first.len() as u64
+                        + self.second.len() as u64
+                        + self.delimiter.len() as u64,
+                ),
+        )?;
+        for (i, element) in self.first.iter().enumerate() {
+            let first_elem_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.first_elem_encodings.get(i))
+                .cloned()
+                .unwrap_or_default();
+            match element {
+                Repeat::I0 => {
+                    serializer.write_unsigned_integer_sz(0u64, fit_sz(0u64, first_elem_encoding))
+                }
+                Repeat::I1 => {
+                    serializer.write_unsigned_integer_sz(1u64, fit_sz(1u64, first_elem_encoding))
+                }
+            }?;
+        }
+        for (i, element) in self.second.iter().enumerate() {
+            let second_elem_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.second_elem_encodings.get(i))
+                .cloned()
+                .unwrap_or_default();
+            match element {
+                ChainNext::I2 => {
+                    serializer.write_unsigned_integer_sz(2u64, fit_sz(2u64, second_elem_encoding))
+                }
+                ChainNext::I3 => {
+                    serializer.write_unsigned_integer_sz(3u64, fit_sz(3u64, second_elem_encoding))
+                }
+            }?;
+        }
+        for (i, element) in self.delimiter.iter().enumerate() {
+            let delimiter_elem_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.delimiter_elem_encodings.get(i))
+                .cloned()
+                .unwrap_or_default();
+            match element {
+                ChainDelimiter::I4 => serializer
+                    .write_unsigned_integer_sz(4u64, fit_sz(4u64, delimiter_elem_encoding)),
+                ChainDelimiter::I5 => serializer
+                    .write_unsigned_integer_sz(5u64, fit_sz(5u64, delimiter_elem_encoding)),
+            }?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for FixedDomainChain {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            let mut first = Vec::new();
+            let mut first_elem_encodings = Vec::new();
+            while (match len {
+                cbor_event::LenSz::Len(n, _) => read_len.read() < n,
+                cbor_event::LenSz::Indefinite => raw.as_slice().first() != Some(&0xff),
+            }) {
+                let first_retry_position = raw.position();
+                if (|| -> Result<(), DeserializeError> {
+                    let (first_elem, first_elem_encoding) = (|| -> Result<_, DeserializeError> {
+                        let initial_position = raw.position();
+                        let deser_variant =
+                            (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                                let (i0_value, i0_encoding) = raw.unsigned_integer_sz()?;
+                                if i0_value != 0 {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Uint(i0_value),
+                                        expected: Key::Uint(0),
+                                    }
+                                    .into());
+                                }
+                                Ok(Some(i0_encoding))
+                            })(raw);
+                        match deser_variant {
+                            Ok(first_elem_encoding) => {
+                                return Ok((Repeat::I0, first_elem_encoding));
+                            }
+                            Err(_) => raw.set_position(initial_position).unwrap(),
+                        };
+                        let deser_variant =
+                            (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                                let (i1_value, i1_encoding) = raw.unsigned_integer_sz()?;
+                                if i1_value != 1 {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Uint(i1_value),
+                                        expected: Key::Uint(1),
+                                    }
+                                    .into());
+                                }
+                                Ok(Some(i1_encoding))
+                            })(raw);
+                        match deser_variant {
+                            Ok(first_elem_encoding) => {
+                                return Ok((Repeat::I1, first_elem_encoding));
+                            }
+                            Err(_) => raw.set_position(initial_position).unwrap(),
+                        };
+                        Err(DeserializeError::new(
+                            "Repeat",
+                            DeserializeFailure::NoVariantMatched,
+                        ))
+                    })()?;
+                    first.push(first_elem);
+                    first_elem_encodings.push(first_elem_encoding);
+                    Ok(())
+                })()
+                .is_err()
+                {
+                    raw.set_position(first_retry_position).unwrap();
+                    break;
+                }
+                read_len.read_elems(1)?;
+            }
+            let mut second = Vec::new();
+            let mut second_elem_encodings = Vec::new();
+            while (match len {
+                cbor_event::LenSz::Len(n, _) => read_len.read() < n,
+                cbor_event::LenSz::Indefinite => raw.as_slice().first() != Some(&0xff),
+            }) {
+                let second_retry_position = raw.position();
+                if (|| -> Result<(), DeserializeError> {
+                    let (second_elem, second_elem_encoding) =
+                        (|| -> Result<_, DeserializeError> {
+                            let initial_position = raw.position();
+                            let deser_variant =
+                                (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                                    let (i2_value, i2_encoding) = raw.unsigned_integer_sz()?;
+                                    if i2_value != 2 {
+                                        return Err(DeserializeFailure::FixedValueMismatch {
+                                            found: Key::Uint(i2_value),
+                                            expected: Key::Uint(2),
+                                        }
+                                        .into());
+                                    }
+                                    Ok(Some(i2_encoding))
+                                })(raw);
+                            match deser_variant {
+                                Ok(second_elem_encoding) => {
+                                    return Ok((ChainNext::I2, second_elem_encoding));
+                                }
+                                Err(_) => raw.set_position(initial_position).unwrap(),
+                            };
+                            let deser_variant =
+                                (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                                    let (i3_value, i3_encoding) = raw.unsigned_integer_sz()?;
+                                    if i3_value != 3 {
+                                        return Err(DeserializeFailure::FixedValueMismatch {
+                                            found: Key::Uint(i3_value),
+                                            expected: Key::Uint(3),
+                                        }
+                                        .into());
+                                    }
+                                    Ok(Some(i3_encoding))
+                                })(raw);
+                            match deser_variant {
+                                Ok(second_elem_encoding) => {
+                                    return Ok((ChainNext::I3, second_elem_encoding));
+                                }
+                                Err(_) => raw.set_position(initial_position).unwrap(),
+                            };
+                            Err(DeserializeError::new(
+                                "ChainNext",
+                                DeserializeFailure::NoVariantMatched,
+                            ))
+                        })()?;
+                    second.push(second_elem);
+                    second_elem_encodings.push(second_elem_encoding);
+                    Ok(())
+                })()
+                .is_err()
+                {
+                    raw.set_position(second_retry_position).unwrap();
+                    break;
+                }
+                read_len.read_elems(1)?;
+            }
+            let mut delimiter = Vec::new();
+            let mut delimiter_elem_encodings = Vec::new();
+            while match len {
+                cbor_event::LenSz::Len(n, _) => read_len.read() < n,
+                cbor_event::LenSz::Indefinite => raw.as_slice().first() != Some(&0xff),
+            } {
+                read_len.read_elems(1)?;
+                let (delimiter_elem, delimiter_elem_encoding) =
+                    (|| -> Result<_, DeserializeError> {
+                        let initial_position = raw.position();
+                        let deser_variant =
+                            (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                                let (i4_value, i4_encoding) = raw.unsigned_integer_sz()?;
+                                if i4_value != 4 {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Uint(i4_value),
+                                        expected: Key::Uint(4),
+                                    }
+                                    .into());
+                                }
+                                Ok(Some(i4_encoding))
+                            })(raw);
+                        match deser_variant {
+                            Ok(delimiter_elem_encoding) => {
+                                return Ok((ChainDelimiter::I4, delimiter_elem_encoding));
+                            }
+                            Err(_) => raw.set_position(initial_position).unwrap(),
+                        };
+                        let deser_variant =
+                            (|raw: &mut Deserializer| -> Result<_, DeserializeError> {
+                                let (i5_value, i5_encoding) = raw.unsigned_integer_sz()?;
+                                if i5_value != 5 {
+                                    return Err(DeserializeFailure::FixedValueMismatch {
+                                        found: Key::Uint(i5_value),
+                                        expected: Key::Uint(5),
+                                    }
+                                    .into());
+                                }
+                                Ok(Some(i5_encoding))
+                            })(raw);
+                        match deser_variant {
+                            Ok(delimiter_elem_encoding) => {
+                                return Ok((ChainDelimiter::I5, delimiter_elem_encoding));
+                            }
+                            Err(_) => raw.set_position(initial_position).unwrap(),
+                        };
+                        Err(DeserializeError::new(
+                            "ChainDelimiter",
+                            DeserializeFailure::NoVariantMatched,
+                        ))
+                    })()?;
+                delimiter.push(delimiter_elem);
+                delimiter_elem_encodings.push(delimiter_elem_encoding);
+            }
+            match len {
+                cbor_event::LenSz::Len(_, _) => read_len.finish()?,
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(FixedDomainChain {
+                first,
+                second,
+                delimiter: <NonEmptyVec<ChainDelimiter>>::try_from(delimiter)?,
+                encodings: Some(FixedDomainChainEncoding {
+                    first_elem_encodings,
+                    second_elem_encodings,
+                    delimiter_elem_encodings,
+                    len_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("FixedDomainChain"))
+    }
+}
+
 impl cbor_event::se::Serialize for FixedMiddle {
     fn serialize<'se>(
         &self,

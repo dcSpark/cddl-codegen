@@ -623,7 +623,7 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
     The array sequence matcher therefore commits a false leaf match under its correct greedy, non-backtracking policy.
     Reductions show both consequences: `[* uint, suffix: #6.10(uint)]` rejects the spec-valid `[1, 10(2)]` because the repetition consumes the suffix, and `[? label: tstr, suffix: #6.10(uint)]` rejects `[10(2)]` because the optional text member consumes it.
     Ruby accepts both arrays.
-    Cycle 16 exposed the composition cost in `occurrence.optional_segment_occurrence`: two scoped-mint candidates (`[0, [1321, 473, 10(2592)]]` and `[0, [4387, 446, 117, 2965, 10(592)]]`) omitted the optional text field and were dropped with `ruby=0 rust=1`, while all eight committed two-oracle vectors happen to contain the text field that stops `* uint` before the tag.
+    Cycle 16 exposed the composition cost in `occurrence.optional_segment_occurrence`; the Cycle 17 re-mint drops four absent-optional candidates (`[0, [10(699)]]`, `[0, [4686, 4446, 10(189)]]`, `[0, [10(1832)]]`, and `[0, [10(3825)]]`) with `ruby=0 rust=1`, while all six currently committed two-oracle vectors contain the text field that stops `* uint` before the tag.
     cddl-codegen's decoder accepts the absent-optional forms; its hand-authored native, preserve, JSON, wasm, and component tests retain that path, so this is an oracle-side corroboration gap rather than a product defect.
     Re-mint the row after rust rejects generic tags against ordinary primitives and both absent-optional reductions validate.
     A public `anweiss/cddl` issue search on 2026-09-01 found no report of this exact behavior; none was filed.

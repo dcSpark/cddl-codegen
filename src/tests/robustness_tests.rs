@@ -6849,7 +6849,7 @@ fn open_array_front_end() {
         .expect("@ignore on a loose major-disjoint middle segment is honored");
     assert!(
         !src(&middle_ign).contains("pub rest")
-            && src(&middle_ign).contains("ignored major-disjoint occurrence segment"),
+            && src(&middle_ign).contains("ignored proven occurrence segment"),
         "an ignored safe-middle segment emits no field and reports its source position accurately"
     );
     let optional_middle_ign = run("a = [\n  * uint ; @ignore\n  , ? label: tstr\n]\n")
@@ -6859,6 +6859,22 @@ fn open_array_front_end() {
             && src(&optional_middle_ign).contains("pub label: Option<String>")
             && src(&optional_middle_ign).contains("before its later possible-next member"),
         "an ignored optional-delimited segment stays fieldless and documents its proven boundary"
+    );
+    let fixed_domain_middle_ign = run("repeat = 0 / 1\n\
+         suffix = 2 / 3\n\
+         a = [\n\
+           * repeat ; @ignore\n\
+           , suffix\n\
+         ]\n")
+    .expect("@ignore may use the same finite fixed-domain retry proof as capture");
+    assert!(
+        !src(&fixed_domain_middle_ign).contains("pub rest")
+            && src(&fixed_domain_middle_ign)
+                .contains("raw.set_position(rest_retry_position).unwrap()")
+            && src(&fixed_domain_middle_ign).contains("ignored proven occurrence segment"),
+        "an ignored finite-domain segment must remain fieldless, retry only its repeated decoder, \
+         and document the value-delimited proof: {}",
+        src(&fixed_domain_middle_ign)
     );
 
     // --- slot direction: a RULE-level @ignore on an open-array rule is NOT stolen onto the tail —
@@ -6910,6 +6926,60 @@ fn open_array_front_end() {
         "the fixed-domain retry must not reserve a user-visible segment field name: {}",
         src(&retry_local_name)
     );
+    let fixed_domain_chain = run(
+        "repeat = 0 / 1\n\
+         next = 2 / 3\n\
+         delimiter = 4 / 5\n\
+         a = [\n\
+           * repeat ; @name first\n\
+           , 0*0 uint ; @name skipped\n\
+           , * next ; @name second\n\
+           , + delimiter ; @name final_values\n\
+         ]\n",
+    )
+    .expect("finite fixed domains may delimit multiple occurrence segments across a possible-next chain");
+    let fixed_domain_chain_source = src(&fixed_domain_chain);
+    assert!(
+        fixed_domain_chain_source.contains("raw.set_position(first_retry_position).unwrap()")
+            && fixed_domain_chain_source
+                .contains("raw.set_position(second_retry_position).unwrap()")
+            && fixed_domain_chain_source.contains("pub first: Vec<Repeat>")
+            && fixed_domain_chain_source.contains("pub second: Vec<Next>")
+            && fixed_domain_chain_source.contains("pub final_values: NonEmptyVec<Delimiter>"),
+        "each admitted same-major segment needs its own retry cursor while the zero-max segment is \
+         skipped and the positive-minimum segment ends the possible-next walk: {fixed_domain_chain_source}"
+    );
+    let fixed_domain_optional = run("repeat = 0 / 1\n\
+         marker = 2 / 3\n\
+         a = [\n\
+           * repeat ; @name values\n\
+           , ? marker: marker\n\
+           , suffix: tstr\n\
+         ]\n")
+    .expect(
+        "an optional generator-owned finite fixed-domain field may delimit a same-major segment",
+    );
+    assert!(
+        src(&fixed_domain_optional).contains("raw.set_position(values_retry_position).unwrap()"),
+        "the optional finite-domain boundary must select retry without changing the optional reader: {}",
+        src(&fixed_domain_optional)
+    );
+    let optional_own_ambiguity = run("repeat = 0 / 1\n\
+         marker = 2 / 3\n\
+         suffix = 4 / 5\n\
+         a = [\n\
+           * repeat ; @name values\n\
+           , ? marker: marker\n\
+           , suffix: suffix\n\
+         ]\n")
+    .expect("the source-valid optional ambiguity remains a serialize-only record");
+    assert!(
+        optional_own_ambiguity
+            .values()
+            .all(|source| !source.contains("impl Deserialize for A")),
+        "finite-domain segment admission must not bypass the optional field's own same-major \
+         reachable-follower refusal: {optional_own_ambiguity:#?}"
+    );
 
     // Same-major overlap (including an optional), multi-item, and local-codec suffixes remain
     // unsafe. The normal leading/middle major-disjoint case is exercised above and in the compiled
@@ -6922,6 +6992,20 @@ fn open_array_front_end() {
             && !overlapping_fixed.contains("choose a major-disjoint suffix."),
         "the same-major overlap diagnostic must explain the value-domain option rather than claim \
          major disjointness is the only remedy: {overlapping_fixed}"
+    );
+    let overlapping_chain = run("repeat = 0 / 1\n\
+         shared = 1 / 2\n\
+         delimiter = 3 / 4\n\
+         a = [\n\
+           * repeat ; @name first\n\
+           , * shared ; @name second\n\
+           , + delimiter ; @name final_values\n\
+         ]\n")
+    .expect_err("a shared finite-domain overlap anywhere in the possible-next chain must reject");
+    assert!(
+        overlapping_chain.contains("every overlapping fixed-value domain")
+            && overlapping_chain.contains("possible-next live member"),
+        "the chain rejection must identify the all-boundaries finite-domain requirement: {overlapping_chain}"
     );
     // These same-major candidates deliberately fall outside the finite-domain classifier.  Keep
     // them executable so broadening the retry loop cannot accidentally treat a primitive/range,

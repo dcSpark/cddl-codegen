@@ -57,3 +57,17 @@ optional_segment_occurrence = [
   , ? label: tstr
   , suffix: #6.10(uint)
 ]
+
+; Finite fixed domains may discriminate every same-major boundary in a possible-next chain. The
+; zero-max segment is wire-empty, `second` is zero-minimum and therefore reachable from `first`,
+; and `delimiter`'s positive minimum ends the walk. The generated API remains separate,
+; source-ordered carriers on every projection; only deserialization uses retry/rewind.
+finite_domain_chain_repeat = 0 / 1
+finite_domain_chain_second = 2 / 3
+finite_domain_chain_delimiter = 4 / 5
+finite_domain_chain_occurrence = [
+  * finite_domain_chain_repeat ; @name first
+  , 0*0 uint ; @name skipped
+  , * finite_domain_chain_second ; @name second
+  , + finite_domain_chain_delimiter ; @name delimiter
+]

@@ -666,13 +666,14 @@ Use it for view types that must accept forward-compatible data without retaining
   slot**, exactly like `@name`/`@duplicates`
   ([above](comment_dsl#name-and-duplicates-on-an-open-map-rest-row)). It is valid **only** on a
   recognized **loose** rest row of a map-rep record or a loose final/safe-middle segment of an
-  array-rep record. A safe middle segment needs its repeated element to be CBOR-major-disjoint from
-  every possible-next live member: optional single-item fixed fields and zero-minimum segments keep
-  the proof walking, while a positive-minimum segment or mandatory single-item fixed field ends it.
-  Optional fixed heads are generator-owned-only; no possible-next head may remain custom- or
-  extern-owned and otherwise unproven. This is what permits greedy RFC 8610 decoding without a
-  rewind. Anywhere else (a rule, a field, a same-major
-  or otherwise unsafe non-final occurrence, or a restricted row/segment) is a loud graceful
+  array-rep record. A safe middle segment needs every possible-next live member to be CBOR-major-
+  disjoint from its repeated element or, for a shared major, have a disjoint generator-owned finite
+  fixed-value domain. Optional single-item fixed fields and zero-minimum segments keep the proof
+  walking, while a positive-minimum segment or mandatory single-item fixed field ends it. Optional
+  fixed heads are generator-owned-only; no possible-next head may remain custom- or extern-owned and
+  otherwise unproven. This is what permits greedy RFC 8610 decoding with a repeated-element-only
+  retry when finite same-major proof requires it. Anywhere else (a rule, a field, a shared/non-finite
+  same-major or otherwise unsafe non-final occurrence, or a restricted row/segment) is a loud graceful
   rejection, never silently dropped. The same **marker-slot trap** applies: a directive glued to the `*` occurrence marker's
   comment slot is silently not honored, so keep it after the whole entry (`* K => V ; @ignore`,
   `* t ; @ignore`).

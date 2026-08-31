@@ -2290,14 +2290,14 @@ survive:
 
 An open array (the array analog of the open struct-map rest row) has one or more occurrence-bearing
 segments. A final segment is owner-delimited; an exact segment is count-delimited; and a variable
-middle segment needs an effective-major proof against every possible-next live member. The proof
+middle segment needs a possible-next proof against every possible-next live member. The proof
 skips maximum-zero segments, walks through zero-minimum segments and optional single-item fixed fields, and stops at a positive-minimum segment or mandatory single-item fixed field.
 An optional contributes its generator-proven head and keeps the walk going because absence exposes the next member.
 Heads may be generator-proven, supplied by mandatory tag/`.cbor` framing, or declared on a transparent custom alias with `@custom_wire_major` for an occurrence segment or mandatory fixed boundary; optional fixed heads remain generator-owned-only.
-The older
-finite fixed-domain same-major retry is retained only for one variable segment and its immediate
-fixed suffix.
-This does not prove optional-field lookahead on either side of a segment: its optional/reachable-follower heads must both be generator-proven and major-disjoint, so a custom codec or opaque extern on either side is serialize-only unless mandatory outer tag/`.cbor` framing proves the distinction.
+A shared major is admitted only when every overlapping possible-next boundary has generator-owned,
+untagged finite fixed-value domains with no shared CDDL value; retry then attempts only the repeated
+element and restores the real cursor on failure across the complete possible-next chain.
+This does not broaden an optional field's own lookahead: the optional and its reachable follower must still have generator-proven, major-disjoint heads, so a custom codec or opaque extern on either side is serialize-only unless mandatory outer tag/`.cbor` framing proves the distinction.
 Loose `* t` / `0* t` uses default-empty `Vec<T>`; one-or-more
 `+ t` / `1* t` uses `NonEmptyVec<T>` and keeps its first-element construction ABI in the one-segment
 case; every other window uses a complete checked `BoundedVec<T, MIN, MAX>` constructor argument for variable windows; exact
@@ -2312,8 +2312,10 @@ duplicate-preserving maps remain arrays of pairs. Every node keeps its authored 
 schemas add `uniqueItems: true` and restricted carriers re-enter their checked construction door. A
 wide non-string-compatible exact-array object-map key remains a pre-codegen refusal. Exact reject windows remain
 `BoundedOrderedSet<T, N, N>`. The middle boundary deliberately
-honors RFC 8610 greedy non-backtracking decoding: general same-major/value-discriminator suffixes
-beyond finite fixed domains need a future design rather than a guessed decoder. User docs: `docs/docs/output_format.mdx` § "Open arrays",
+honors RFC 8610 greedy non-backtracking decoding: general same-major/value-discriminator or residue
+designs beyond finite fixed domains need a future design rather than a guessed decoder. Shared finite
+domains and primitive/range, float, tag, custom-codec, opaque-extern, multi-item, and otherwise
+unproven possible-next boundaries remain refusals. User docs: `docs/docs/output_format.mdx` § "Open arrays",
 `docs/docs/comment_dsl.mdx` § "@ignore". It is verified across the layers:
 
 - **Front end + guards** — `robustness_tests::open_array_front_end` recognizes final loose,
@@ -2338,15 +2340,15 @@ beyond finite fixed domains need a future design rather than a guessed decoder. 
 - **Value-level e2e** — `tests/open-array-e2e` (`integration_tests::open_array_e2e`, compiled,
   non-preserve) drives leading and middle loose, min-one, finite/max-only, exact-zero, and exact
   same-major segments, named multiple exact and variable segments, finite fixed-domain retries
-  (including bool/null), and declared custom repeated/suffix heads through definite and indefinite
+  (including chains, optional fields, bool/null), and declared custom repeated/suffix heads through definite and indefinite
   bytes: empty/populated/zero-skippable runs, positive-minimum separators, exact-before-variable,
   below/above windows, wrong interleaving, fixed suffixes, trailing-extra rejection, and nested stream
   position, plus present/absent optional chains and their nested stream position.
   It also pins complete-carrier construction and multi-segment element-bound rejection.
 - **Preserve/canonical e2e** — `tests/open-array-preserve-e2e`
   (`integration_tests::open_array_preserve_e2e`, compiled) proves a non-canonical middle repeated
-  element, exact same-major segment, finite fixed-domain retry, and two independently noncanonical
-  multiple-variable segment sidecars re-emit byte-exactly and normalize canonically without moving
+  element, exact same-major segment, finite fixed-domain retry chain, and two independently
+  noncanonical multiple-variable segment sidecars re-emit byte-exactly and normalize canonically without moving
   a boundary, beside the final-tail positional-sidecar, optional-after-segment sidecar, self-carried
   `any`, and nested-stream vectors.
 - **JSON e2e** — `tests/open-array-json-e2e` (`integration_tests::open_array_json_e2e`, compiled)
@@ -2376,8 +2378,8 @@ beyond finite fixed domains need a future design rather than a guessed decoder. 
   `@ignore` remains loose-only and re-serializes the fixed members without a getter.
 - **Corpus / matrix** — `tests/corpus/occurrence.cddl` contains the canonical
   `middle_occurrence = [prefix: uint, * bytes, suffix: tstr]` and count-delimited
-  `exact_middle_occurrence = [prefix: uint, 2*2 uint, suffix: uint]`, and the representative named
-  `multiple_variable_occurrence`; the matrix bounded-array containment note records these boundary
+  `exact_middle_occurrence = [prefix: uint, 2*2 uint, suffix: uint]`, the representative named
+  `multiple_variable_occurrence`, and `finite_domain_chain_occurrence`; the matrix bounded-array containment note records these boundary
   classes. The variable-overlap refusal is executable in
   `occurrence_on_array_record_field_rejects_gracefully`. `tests/corpus/dsl_ignore.cddl` retains the
   final-tail `@ignore` catalog/projection coverage (including its preserve rejection ledger).
@@ -3033,7 +3035,7 @@ and `wasm_nested_alias.passthru_tags_map`) keep only
 their empty-instance accept vectors, because the rust reference contests every non-empty instance
 while the ruby reference and our own decoder accept — an oracle-side drop, not a cddl-codegen gap.
 The `occurrence.optional_segment_occurrence` row has a separate rust-oracle cost: gap #20 in `cddl-matrix/README.md` makes arbitrary tags match ordinary primitives, so its tag-10 suffix is falsely consumed by either the repeated `uint` or the optional `tstr` when the label is absent.
-Its eight committed vectors all contain the optional text boundary; absent-optional candidates are spec-valid but die at the two-oracle admission gate.
+Its six currently committed vectors all contain the optional text boundary; four absent-optional candidates are spec-valid but die at the two-oracle admission gate.
 Hand-authored open-array tests retain the absent path independently.
 
 Two gates mirror the matrix legs:

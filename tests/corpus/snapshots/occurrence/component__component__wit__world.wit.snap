@@ -16,6 +16,27 @@ interface types {
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<exact-middle-occurrence, string>;
   }
+  enum finite-domain-chain-delimiter {
+    i4,
+    i5,
+  }
+  resource finite-domain-chain-occurrence {
+    constructor(first: list<finite-domain-chain-repeat>, skipped: list<u64>, second: list<finite-domain-chain-second>, delimiter: list<finite-domain-chain-delimiter>) -> result<finite-domain-chain-occurrence, string>;
+    first: func() -> list<finite-domain-chain-repeat>;
+    skipped: func() -> list<u64>;
+    second: func() -> list<finite-domain-chain-second>;
+    delimiter: func() -> list<finite-domain-chain-delimiter>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<finite-domain-chain-occurrence, string>;
+  }
+  enum finite-domain-chain-repeat {
+    i0,
+    i1,
+  }
+  enum finite-domain-chain-second {
+    i2,
+    i3,
+  }
   resource middle-occurrence {
     constructor(prefix: u64, suffix: string);
     prefix: func() -> u64;

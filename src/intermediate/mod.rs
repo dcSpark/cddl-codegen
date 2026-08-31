@@ -4984,7 +4984,8 @@ impl<'a> IntermediateTypes<'a> {
 
     /// Validate every non-final array occurrence segment after aliases and generic products have
     /// settled. RFC 8610 repetition is greedy: a variable segment may stop only at the owner-array
-    /// boundary or when every possible next live member has an effective major disjoint from it.
+    /// boundary or when every possible-next live member is major-disjoint or has a disjoint,
+    /// generator-owned finite fixed-value domain.
     ///
     /// Parse records the segment's flattened source position; finalized fields retain theirs.  This
     /// pass is deliberately before every code-generation walk: `cbor_types()` and
@@ -5063,8 +5064,7 @@ impl<'a> IntermediateTypes<'a> {
                 // neither authorize that boundary nor consume the declaration.
                 let mut boundary_types = Vec::new();
                 let mut boundary_failure = None;
-                let mut immediate_fixed_suffix = None;
-                for (position, next) in later {
+                for (_, next) in later {
                     match next {
                         PossibleNext::Segment(next) => {
                             let (minimum, maximum) = next.occurrence.unwrap_or((0, u64::MAX));
@@ -5133,9 +5133,6 @@ impl<'a> IntermediateTypes<'a> {
                                 ));
                                 break;
                             };
-                            if !next.optional && position == segment_index + 1 {
-                                immediate_fixed_suffix = Some(next);
-                            }
                             possible_next_majors.extend(majors);
                             boundary_types.push((&next.rust_type, !next.optional));
                             // An optional fixed field can be absent and expose a later member,
@@ -5175,36 +5172,25 @@ impl<'a> IntermediateTypes<'a> {
                     .filter(|major| possible_next_majors.contains(major))
                     .map(|major| format!("{major:?}"))
                     .collect::<Vec<_>>();
-                if !overlap.is_empty() {
-                    if record.array_segments.is_empty()
-                        && let Some(suffix) = immediate_fixed_suffix
-                    {
-                        if self.has_disjoint_fixed_domain_middle_boundary(
-                            segment.element(),
-                            &suffix.rust_type,
-                        ) {
-                            // The historic one-variable/immediate-fixed-suffix finite-domain retry is
-                            // deliberately retained. It does not prove a dynamic or multi-segment boundary.
-                            continue;
-                        }
-                        rejections.push(format!(
-                            "rule `{source_rule}`: the occurrence-bearing array member at position {} and its immediate suffix `{}` share CBOR major type(s) {}. RFC 8610 repetition is greedy and does not backtrack, so the generator will not guess where the repeated part ends. A same-major boundary is admitted only when BOTH sides have generator-owned, untagged finite fixed-value domains with no shared CDDL value; these boundaries do not prove that. Frame the repeated part as its own array, move it final, choose a major-disjoint suffix, or make both fixed-value domains disjoint.",
-                            segment_index + 1,
-                            suffix.name,
-                            overlap.join(", "),
-                        ));
-                    } else {
-                        rejections.push(format!(
-                            "rule `{source_rule}`: the occurrence-bearing array member at position {} shares CBOR major type(s) {} with a possible-next live member. RFC 8610 repetition is greedy and does not backtrack, so the generator will not guess where the repeated part ends. Frame the repeated part as its own array, move it final, or use generator-proven major-disjoint possible-next heads.",
-                            segment_index + 1,
-                            overlap.join(", "),
-                        ));
-                    }
+                if !overlap.is_empty()
+                    && !boundary_types.iter().all(|(boundary, _)| {
+                        self.has_disjoint_fixed_domain_middle_boundary(segment.element(), boundary)
+                            || self.effective_wire_majors(boundary).is_some_and(|majors| {
+                                !repeated_majors.iter().any(|major| majors.contains(major))
+                            })
+                    })
+                {
+                    rejections.push(format!(
+                        "rule `{source_rule}`: the occurrence-bearing array member at position {} shares CBOR major type(s) {} with a possible-next live member. RFC 8610 repetition is greedy and does not backtrack, so the generator will not guess where the repeated part ends. Each same-major possible-next boundary is admitted only when BOTH sides have generator-owned, untagged finite fixed-value domains with no shared CDDL value; these boundaries do not prove that. Frame the repeated part as its own array, move it final, choose major-disjoint possible-next heads, or make every overlapping fixed-value domain disjoint.",
+                        segment_index + 1,
+                        overlap.join(", "),
+                    ));
                     continue;
                 }
-                // Both sides reached their effective major sets and proved disjoint. Mark every
-                // transparent alias declaration the proof actually reads, including zero-skippable
-                // possible-next members; mandatory outer framing remains generator-proven and inert.
+                // Every possible-next boundary either proved major-disjoint or had disjoint finite
+                // fixed-value domains. Mark every transparent alias declaration the proof actually
+                // reads, including zero-skippable possible-next members; mandatory outer framing
+                // remains generator-proven and inert.
                 if self.middle_boundary_consumes_wire_major_declaration(segment.element()) {
                     mark_wire_major_consumed(
                         &segment.element().conceptual_type,

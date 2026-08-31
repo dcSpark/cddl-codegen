@@ -14,6 +14,7 @@ pub mod collections;
 
 use cddl_lib::bounded::BoundedVec;
 use cddl_lib::non_empty::NonEmptyVec;
+pub use cddl_lib::{FiniteDomainChainDelimiter, FiniteDomainChainRepeat, FiniteDomainChainSecond};
 use wasm_bindgen::prelude::{JsError, wasm_bindgen};
 
 /// `[2*5 uint]`: inclusive length window enforced by the core `BoundedVec`. Loose input enters through the core `BoundedVec` `TryFrom<Vec<_>>` door; `add` and `try_from` fail before changing the value when they would cross the declared bound.
@@ -194,6 +195,79 @@ impl From<ExactMiddleOccurrence> for cddl_lib::ExactMiddleOccurrence {
 
 impl AsRef<cddl_lib::ExactMiddleOccurrence> for ExactMiddleOccurrence {
     fn as_ref(&self) -> &cddl_lib::ExactMiddleOccurrence {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct FiniteDomainChainOccurrence(pub(crate) cddl_lib::FiniteDomainChainOccurrence);
+
+#[wasm_bindgen]
+impl FiniteDomainChainOccurrence {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<FiniteDomainChainOccurrence, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    /// The captured finite fixed-domain occurrence segment before its possible-next chain, as its wasm list wrapper; the decoder retries the repeated element and restores the later-member cursor.
+    pub fn first(&self) -> Vec<FiniteDomainChainRepeat> {
+        self.0.first.clone()
+    }
+
+    /// The captured array occurrence segment before a later authored member, as its wasm list wrapper; its greedy boundary is generator-proven from the possible-next wire heads or owned by its occurrence count.
+    pub fn skipped(&self) -> U64ListMax0 {
+        self.0.skipped.clone().into()
+    }
+
+    /// The captured finite fixed-domain occurrence segment before its possible-next chain, as its wasm list wrapper; the decoder retries the repeated element and restores the later-member cursor.
+    pub fn second(&self) -> Vec<FiniteDomainChainSecond> {
+        self.0.second.clone()
+    }
+
+    /// The captured final authored array occurrence segment, as its wasm list wrapper; its occurrence window is enforced before construction.
+    pub fn delimiter(&self) -> NonEmptyFiniteDomainChainDelimiterList {
+        self.0.delimiter.clone().into()
+    }
+
+    /// * `first` - the complete list wrapper for this authored array occurrence segment (its CDDL occurrence window is enforced before construction)
+    /// * `skipped` - the complete list wrapper for this authored array occurrence segment (its CDDL occurrence window is enforced before construction)
+    /// * `second` - the complete list wrapper for this authored array occurrence segment (its CDDL occurrence window is enforced before construction)
+    /// * `delimiter` - the complete list wrapper for this authored array occurrence segment (its CDDL occurrence window is enforced before construction)
+    pub fn new(
+        first: Vec<FiniteDomainChainRepeat>,
+        skipped: &U64ListMax0,
+        second: Vec<FiniteDomainChainSecond>,
+        delimiter: &NonEmptyFiniteDomainChainDelimiterList,
+    ) -> Self {
+        Self(cddl_lib::FiniteDomainChainOccurrence::new(
+            first,
+            skipped.clone().into(),
+            second,
+            delimiter.clone().into(),
+        ))
+    }
+}
+
+impl From<cddl_lib::FiniteDomainChainOccurrence> for FiniteDomainChainOccurrence {
+    fn from(native: cddl_lib::FiniteDomainChainOccurrence) -> Self {
+        Self(native)
+    }
+}
+
+impl From<FiniteDomainChainOccurrence> for cddl_lib::FiniteDomainChainOccurrence {
+    fn from(wasm: FiniteDomainChainOccurrence) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::FiniteDomainChainOccurrence> for FiniteDomainChainOccurrence {
+    fn as_ref(&self) -> &cddl_lib::FiniteDomainChainOccurrence {
         &self.0
     }
 }
@@ -487,6 +561,60 @@ impl AsRef<Vec<BoundedVec<u64, 0, 2>>> for NestedUpper {
     }
 }
 
+/// `[+ FiniteDomainChainDelimiter]`: at least one element, enforced by the `NonEmptyVec` representation.
+/// Enter via `try_from` or `new(first)`.
+/// `add` can never violate the bound; removal is checked in the core type.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct NonEmptyFiniteDomainChainDelimiterList(
+    pub(crate) NonEmptyVec<FiniteDomainChainDelimiter>,
+);
+
+#[wasm_bindgen]
+impl NonEmptyFiniteDomainChainDelimiterList {
+    pub fn new(first: FiniteDomainChainDelimiter) -> Self {
+        Self(NonEmptyVec::new(first))
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> FiniteDomainChainDelimiter {
+        self.0[index]
+    }
+
+    pub fn add(&mut self, elem: FiniteDomainChainDelimiter) {
+        self.0.push(elem);
+    }
+
+    pub fn try_from(
+        elements: Vec<FiniteDomainChainDelimiter>,
+    ) -> Result<NonEmptyFiniteDomainChainDelimiterList, JsError> {
+        NonEmptyVec::try_from(elements)
+            .map(Self)
+            .map_err(|e| JsError::new(&e.to_string()))
+    }
+}
+
+impl From<NonEmptyVec<FiniteDomainChainDelimiter>> for NonEmptyFiniteDomainChainDelimiterList {
+    fn from(native: NonEmptyVec<FiniteDomainChainDelimiter>) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NonEmptyFiniteDomainChainDelimiterList> for NonEmptyVec<FiniteDomainChainDelimiter> {
+    fn from(wasm: NonEmptyFiniteDomainChainDelimiterList) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<NonEmptyVec<FiniteDomainChainDelimiter>> for NonEmptyFiniteDomainChainDelimiterList {
+    fn as_ref(&self) -> &NonEmptyVec<FiniteDomainChainDelimiter> {
+        &self.0
+    }
+}
+
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct OccurrenceHolder(pub(crate) cddl_lib::OccurrenceHolder);
@@ -756,6 +884,46 @@ impl AsRef<BoundedVec<String, 1, 3>> for TextListMin1Max3 {
     }
 }
 
+/// `[*0 uint]`: inclusive length window enforced by the native static array. Loose input crosses the `Vec<T> -> [T; N]` conversion door; the stored static array makes wrong cardinality unrepresentable.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct U64ListMax0(pub(crate) [u64; 0]);
+
+#[wasm_bindgen]
+impl U64ListMax0 {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<U64ListMax0, JsError> {
+        elements.try_into().map(Self).map_err(|elements: Vec<_>| {
+            JsError::from(cddl_lib::error::DeserializeError::from(
+                cddl_lib::error::DeserializeFailure::RangeCheck {
+                    found: elements.len() as i128,
+                    min: Some(0),
+                    max: Some(0),
+                },
+            ))
+        })
+    }
+}
+
+impl From<[u64; 0]> for U64ListMax0 {
+    fn from(native: [u64; 0]) -> Self {
+        Self(native)
+    }
+}
+
+impl AsRef<[u64; 0]> for U64ListMax0 {
+    fn as_ref(&self) -> &[u64; 0] {
+        &self.0
+    }
+}
+
 /// `[*2 uint]`: inclusive length window enforced by the core `BoundedVec`. Loose input enters through the core `BoundedVec` `TryFrom<Vec<_>>` door; `add` and `try_from` fail before changing the value when they would cross the declared bound.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
@@ -890,6 +1058,12 @@ impl From<Upper> for BoundedVec<u64, 0, 5> {
 impl AsRef<BoundedVec<u64, 0, 5>> for Upper {
     fn as_ref(&self) -> &BoundedVec<u64, 0, 5> {
         &self.0
+    }
+}
+
+impl From<U64ListMax0> for [u64; 0] {
+    fn from(wasm: U64ListMax0) -> Self {
+        wasm.0
     }
 }
 

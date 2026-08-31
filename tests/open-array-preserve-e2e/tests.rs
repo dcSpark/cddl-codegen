@@ -29,7 +29,11 @@ mod open_array_preserve {
         assert_eq!(c.index_0, 7);
         assert_eq!(c.index_1, "hi");
         assert_eq!(c.rest, vec![2u64, 1000u64]);
-        assert_eq!(c.to_cbor_bytes(), wire, "byte-exact non-canonical tail widths");
+        assert_eq!(
+            c.to_cbor_bytes(),
+            wire,
+            "byte-exact non-canonical tail widths"
+        );
     }
 
     #[test]
@@ -69,7 +73,11 @@ mod open_array_preserve {
         let wire = bytes("9f 07 62 6869 02 03 ff");
         let c = Cap::from_cbor_bytes(&wire).unwrap();
         assert_eq!(c.rest, vec![2u64, 3u64]);
-        assert_eq!(c.to_cbor_bytes(), wire, "indefinite owner + tail byte-exact");
+        assert_eq!(
+            c.to_cbor_bytes(),
+            wire,
+            "indefinite owner + tail byte-exact"
+        );
     }
 
     #[test]
@@ -77,7 +85,11 @@ mod open_array_preserve {
         let wire = bytes("9f 07 1802 1903e8 ff");
         let r = Required::from_cbor_bytes(&wire).unwrap();
         assert_eq!(r.rest.as_slice(), &[2u64, 1000]);
-        assert_eq!(r.to_cbor_bytes(), wire, "one-or-more tail keeps owner form and widths");
+        assert_eq!(
+            r.to_cbor_bytes(),
+            wire,
+            "one-or-more tail keeps owner form and widths"
+        );
         assert_eq!(
             r.to_canonical_cbor_bytes(),
             bytes("83 07 02 1903e8"),
@@ -92,7 +104,11 @@ mod open_array_preserve {
         let wire = bytes("83 07 1802 1903e8");
         let b = Bounded::from_cbor_bytes(&wire).unwrap();
         assert_eq!(b.rest.as_slice(), &[2u64, 1000]);
-        assert_eq!(b.to_cbor_bytes(), wire, "bounded tail preserve is byte-exact");
+        assert_eq!(
+            b.to_cbor_bytes(),
+            wire,
+            "bounded tail preserve is byte-exact"
+        );
         assert_eq!(
             b.to_canonical_cbor_bytes(),
             bytes("83 07 02 1903e8"),
@@ -108,7 +124,11 @@ mod open_array_preserve {
         let middle = Middle::from_cbor_bytes(&wire).unwrap();
         assert_eq!(middle.rest, vec![2]);
         assert_eq!(middle.index_2, "x");
-        assert_eq!(middle.to_cbor_bytes(), wire, "middle preserve stays byte-exact");
+        assert_eq!(
+            middle.to_cbor_bytes(),
+            wire,
+            "middle preserve stays byte-exact"
+        );
         assert_eq!(
             middle.to_canonical_cbor_bytes(),
             bytes("83 07 02 6178"),
@@ -137,7 +157,11 @@ mod open_array_preserve {
         let value = MultiParts::from_cbor_bytes(&wire).unwrap();
         assert_eq!(value.numbers, vec![2, 1000]);
         assert_eq!(value.labels, vec!["a", "b"]);
-        assert_eq!(value.to_cbor_bytes(), wire, "both segment sidecars replay byte-exactly");
+        assert_eq!(
+            value.to_cbor_bytes(),
+            wire,
+            "both segment sidecars replay byte-exactly"
+        );
         assert_eq!(
             value.to_canonical_cbor_bytes(),
             bytes("85 07 02 1903e8 6161 6162"),
@@ -153,7 +177,11 @@ mod open_array_preserve {
         let exact = ExactMiddle::from_cbor_bytes(&wire).unwrap();
         assert_eq!(exact.rest.as_slice(), &[2, 3]);
         assert_eq!(exact.index_2, 4);
-        assert_eq!(exact.to_cbor_bytes(), wire, "exact same-major preserve stays byte-exact");
+        assert_eq!(
+            exact.to_cbor_bytes(),
+            wire,
+            "exact same-major preserve stays byte-exact"
+        );
         assert_eq!(
             exact.to_canonical_cbor_bytes(),
             bytes("84 07 02 03 04"),
@@ -171,7 +199,11 @@ mod open_array_preserve {
         assert_eq!(exact.chunks.as_slice(), &[2, 1000]);
         assert!(exact.absent.as_slice().is_empty());
         assert_eq!(exact.values.as_slice(), &[17, 1001]);
-        assert_eq!(exact.to_cbor_bytes(), wire, "each exact segment replays its own sidecar");
+        assert_eq!(
+            exact.to_cbor_bytes(),
+            wire,
+            "each exact segment replays its own sidecar"
+        );
         assert_eq!(
             exact.to_canonical_cbor_bytes(),
             bytes("86 07 02 1903e8 11 1903e9 09"),
@@ -187,7 +219,11 @@ mod open_array_preserve {
         let wire = bytes("84 07 1800 1801 1802");
         let fixed = FixedMiddle::from_cbor_bytes(&wire).unwrap();
         assert_eq!(fixed.rest.len(), 2);
-        assert_eq!(fixed.to_cbor_bytes(), wire, "retry keeps each successful width positional");
+        assert_eq!(
+            fixed.to_cbor_bytes(),
+            wire,
+            "retry keeps each successful width positional"
+        );
         assert_eq!(
             fixed.to_canonical_cbor_bytes(),
             bytes("84 07 00 01 02"),
@@ -199,6 +235,28 @@ mod open_array_preserve {
         assert_eq!(fixed.rest.len(), 1);
         assert_eq!(fixed.to_cbor_bytes(), indefinite);
         assert_eq!(fixed.to_canonical_cbor_bytes(), bytes("83 07 00 02"));
+    }
+
+    #[test]
+    fn fixed_domain_chain_commits_each_sidecar_only_at_its_authored_retry_boundary() {
+        // [0(as 0x1800), 2(as 0x1802), 3(as 0x1803), 4(as 0x1804)]. The failed retry on 2
+        // belongs to `second`, and the failed retry on 4 belongs to `delimiter`; neither candidate
+        // may be committed into the preceding segment's positional encoding sidecar.
+        let wire = bytes("84 1800 1802 1803 1804");
+        let value = FixedDomainChain::from_cbor_bytes(&wire).unwrap();
+        assert_eq!(value.first, vec![Repeat::I0]);
+        assert_eq!(value.second, vec![ChainNext::I2, ChainNext::I3]);
+        assert_eq!(value.delimiter.as_slice(), &[ChainDelimiter::I4]);
+        assert_eq!(
+            value.to_cbor_bytes(),
+            wire,
+            "each retry preserves authored sidecar positions"
+        );
+        assert_eq!(
+            value.to_canonical_cbor_bytes(),
+            bytes("84 00 02 03 04"),
+            "canonical form normalizes every successful decode in its authored position"
+        );
     }
 
     // --- `any` tail (`cap_any = [uint, * any]`): self-carried encodings (no sidecar) ---
@@ -225,6 +283,10 @@ mod open_array_preserve {
         assert_eq!(o.inner.index_0, 1);
         assert_eq!(o.inner.rest, vec![2u64, 3u64]);
         assert_eq!(o.index_1, 99);
-        assert_eq!(o.to_cbor_bytes(), wire, "stream position preserve byte-exact");
+        assert_eq!(
+            o.to_cbor_bytes(),
+            wire,
+            "stream position preserve byte-exact"
+        );
     }
 }

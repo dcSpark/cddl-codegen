@@ -18,6 +18,7 @@ struct Component;
 
 impl wit_types::Guest for Component {
     type ExactMiddleOccurrence = WitExactMiddleOccurrence;
+    type FiniteDomainChainOccurrence = WitFiniteDomainChainOccurrence;
     type MiddleOccurrence = WitMiddleOccurrence;
     type MultipleVariableOccurrence = WitMultipleVariableOccurrence;
     type OccurrenceHolder = WitOccurrenceHolder;
@@ -30,6 +31,60 @@ export!(Component);
 /// so a WIT `result<_, string>` carries the same text a native caller would see.
 fn err<E: core::fmt::Display>(e: E) -> String {
     e.to_string()
+}
+
+fn finite_domain_chain_delimiter_to_wit(
+    v: &cddl_lib::FiniteDomainChainDelimiter,
+) -> wit_types::FiniteDomainChainDelimiter {
+    match v {
+        cddl_lib::FiniteDomainChainDelimiter::I4 => wit_types::FiniteDomainChainDelimiter::I4,
+        cddl_lib::FiniteDomainChainDelimiter::I5 => wit_types::FiniteDomainChainDelimiter::I5,
+    }
+}
+
+fn finite_domain_chain_delimiter_from_wit(
+    v: wit_types::FiniteDomainChainDelimiter,
+) -> cddl_lib::FiniteDomainChainDelimiter {
+    match v {
+        wit_types::FiniteDomainChainDelimiter::I4 => cddl_lib::FiniteDomainChainDelimiter::I4,
+        wit_types::FiniteDomainChainDelimiter::I5 => cddl_lib::FiniteDomainChainDelimiter::I5,
+    }
+}
+
+fn finite_domain_chain_repeat_to_wit(
+    v: &cddl_lib::FiniteDomainChainRepeat,
+) -> wit_types::FiniteDomainChainRepeat {
+    match v {
+        cddl_lib::FiniteDomainChainRepeat::I0 => wit_types::FiniteDomainChainRepeat::I0,
+        cddl_lib::FiniteDomainChainRepeat::I1 => wit_types::FiniteDomainChainRepeat::I1,
+    }
+}
+
+fn finite_domain_chain_repeat_from_wit(
+    v: wit_types::FiniteDomainChainRepeat,
+) -> cddl_lib::FiniteDomainChainRepeat {
+    match v {
+        wit_types::FiniteDomainChainRepeat::I0 => cddl_lib::FiniteDomainChainRepeat::I0,
+        wit_types::FiniteDomainChainRepeat::I1 => cddl_lib::FiniteDomainChainRepeat::I1,
+    }
+}
+
+fn finite_domain_chain_second_to_wit(
+    v: &cddl_lib::FiniteDomainChainSecond,
+) -> wit_types::FiniteDomainChainSecond {
+    match v {
+        cddl_lib::FiniteDomainChainSecond::I2 => wit_types::FiniteDomainChainSecond::I2,
+        cddl_lib::FiniteDomainChainSecond::I3 => wit_types::FiniteDomainChainSecond::I3,
+    }
+}
+
+fn finite_domain_chain_second_from_wit(
+    v: wit_types::FiniteDomainChainSecond,
+) -> cddl_lib::FiniteDomainChainSecond {
+    match v {
+        wit_types::FiniteDomainChainSecond::I2 => cddl_lib::FiniteDomainChainSecond::I2,
+        wit_types::FiniteDomainChainSecond::I3 => cddl_lib::FiniteDomainChainSecond::I3,
+    }
 }
 
 pub struct WitExactMiddleOccurrence(pub RefCell<cddl_lib::ExactMiddleOccurrence>);
@@ -73,6 +128,78 @@ impl wit_types::GuestExactMiddleOccurrence for WitExactMiddleOccurrence {
         )
         .map(|v| wit_types::ExactMiddleOccurrence::new(WitExactMiddleOccurrence(RefCell::new(v))))
         .map_err(err)
+    }
+}
+
+pub struct WitFiniteDomainChainOccurrence(pub RefCell<cddl_lib::FiniteDomainChainOccurrence>);
+
+impl wit_types::GuestFiniteDomainChainOccurrence for WitFiniteDomainChainOccurrence {
+    fn new(
+        first: Vec<wit_types::FiniteDomainChainRepeat>,
+        skipped: Vec<u64>,
+        second: Vec<wit_types::FiniteDomainChainSecond>,
+        delimiter: Vec<wit_types::FiniteDomainChainDelimiter>,
+    ) -> Result<Self, String> {
+        let first = first
+            .into_iter()
+            .map(|x| finite_domain_chain_repeat_from_wit(x))
+            .collect::<Vec<_>>();
+        let skipped = (skipped.into_iter().collect::<Vec<_>>())
+            .try_into()
+            .map_err(|values: Vec<_>| {
+                err(format!("array length {} does not equal 0", values.len()))
+            })?;
+        let second = second
+            .into_iter()
+            .map(|x| finite_domain_chain_second_from_wit(x))
+            .collect::<Vec<_>>();
+        let delimiter = (delimiter
+            .into_iter()
+            .map(|x| finite_domain_chain_delimiter_from_wit(x))
+            .collect::<Vec<_>>())
+        .try_into()
+        .map_err(err)?;
+        let inner = cddl_lib::FiniteDomainChainOccurrence::new(first, skipped, second, delimiter);
+        Ok(WitFiniteDomainChainOccurrence(RefCell::new(inner)))
+    }
+
+    fn first(&self) -> Vec<wit_types::FiniteDomainChainRepeat> {
+        let me = self.0.borrow();
+        me.first
+            .iter()
+            .map(|x| finite_domain_chain_repeat_to_wit(x))
+            .collect()
+    }
+
+    fn skipped(&self) -> Vec<u64> {
+        let me = self.0.borrow();
+        me.skipped.iter().map(|x| *x).collect()
+    }
+
+    fn second(&self) -> Vec<wit_types::FiniteDomainChainSecond> {
+        let me = self.0.borrow();
+        me.second
+            .iter()
+            .map(|x| finite_domain_chain_second_to_wit(x))
+            .collect()
+    }
+
+    fn delimiter(&self) -> Vec<wit_types::FiniteDomainChainDelimiter> {
+        let me = self.0.borrow();
+        me.delimiter
+            .iter()
+            .map(|x| finite_domain_chain_delimiter_to_wit(x))
+            .collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::FiniteDomainChainOccurrence as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::FiniteDomainChainOccurrence, String> {
+        <cddl_lib::FiniteDomainChainOccurrence as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::FiniteDomainChainOccurrence::new(WitFiniteDomainChainOccurrence(RefCell::new(v))))
+            .map_err(err)
     }
 }
 

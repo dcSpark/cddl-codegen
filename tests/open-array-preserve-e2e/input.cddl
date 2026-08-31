@@ -30,6 +30,15 @@ multi_parts = [
 repeat = 0 / 1
 suffix = 2 / 3
 fixed_middle = [uint, * repeat, suffix]
+; Both variable segments use the finite fixed-domain retry strategy. A failed attempt must leave
+; its candidate width for the next authored segment rather than append it to a prior sidecar.
+chain_next = 2 / 3
+chain_delimiter = 4 / 5
+fixed_domain_chain = [
+  * repeat ; @name first
+  , * chain_next ; @name second
+  , + chain_delimiter ; @name delimiter
+]
 ; Stream position (the cip36 skip-arm bug class): an open array is a member of an outer array; the
 ; tail loop must stop at the open array's end and leave the sibling for the outer decoder.
 outer = [inner, uint]

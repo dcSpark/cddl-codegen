@@ -286,10 +286,61 @@ mod open_array {
         );
     }
 
+    // --- finite fixed-domain possible-next chains ---
+
+    #[test]
+    fn fixed_domain_chain_keeps_bounded_and_separate_carriers_on_definite_and_indefinite_wires() {
+        // [0, 1, 2, 3, 4]: first has its maximum two values; second's failed retry on 4 leaves the
+        // mandatory delimiter to its own reader. The source-ordered carriers must stay separate.
+        let definite = bytes("85 00 01 02 03 04");
+        let value = FixedDomainChain::from_cbor_bytes(&definite).unwrap();
+        assert_eq!(value.first.as_slice(), &[Repeat::I0, Repeat::I1]);
+        assert_eq!(value.second, vec![ChainNext::I2, ChainNext::I3]);
+        assert_eq!(value.delimiter.as_slice(), &[ChainDelimiter::I4]);
+        assert_eq!(value.to_cbor_bytes(), definite);
+
+        // An indefinite owner uses exactly the same failed-retry boundary, without consuming its
+        // break as a candidate element.
+        let indefinite = bytes("9f 00 02 04 ff");
+        let value = FixedDomainChain::from_cbor_bytes(&indefinite).unwrap();
+        assert_eq!(value.first.as_slice(), &[Repeat::I0]);
+        assert_eq!(value.second, vec![ChainNext::I2]);
+        assert_eq!(value.delimiter.as_slice(), &[ChainDelimiter::I4]);
+        assert_eq!(
+            FixedDomainChain::from_cbor_bytes(&value.to_cbor_bytes())
+                .unwrap()
+                .second,
+            value.second
+        );
+
+        // The first segment's retry stops at 2, but its min-one bound remains its own checked door.
+        assert_decode_reject_reason::<FixedDomainChain>(&bytes("82 02 04"), "0 not in range 1 - 2");
+    }
+
+    #[test]
+    fn fixed_domain_optional_boundary_keeps_optional_present_and_absent_paths_separate() {
+        // The same-major 2 must end `values` and be read by the optional field; text remains the
+        // optional field's independently major-disjoint reachable follower.
+        let present = bytes("83 00 02 6178");
+        let value = FixedDomainOptional::from_cbor_bytes(&present).unwrap();
+        assert_eq!(value.values, vec![Repeat::I0]);
+        assert_eq!(value.marker, Some(ChainNext::I2));
+        assert_eq!(value.suffix, "x");
+        assert_eq!(value.to_cbor_bytes(), present);
+
+        let absent = bytes("83 00 01 6178");
+        let value = FixedDomainOptional::from_cbor_bytes(&absent).unwrap();
+        assert_eq!(value.values, vec![Repeat::I0, Repeat::I1]);
+        assert_eq!(value.marker, None);
+        assert_eq!(value.suffix, "x");
+        assert_eq!(value.to_cbor_bytes(), absent);
+    }
+
     // --- optional fixed fields after a variable segment ---
 
     #[test]
-    fn final_optional_is_owner_delimited_when_absent_or_present_after_empty_and_populated_segments() {
+    fn final_optional_is_owner_delimited_when_absent_or_present_after_empty_and_populated_segments()
+    {
         for (wire, expected_numbers, expected_label) in [
             (bytes("80"), vec![], None),
             (bytes("82 01 02"), vec![1, 2], None),
@@ -312,9 +363,24 @@ mod open_array {
             (bytes("81 ca 09"), vec![], None, None),
             (bytes("82 6178 ca 09"), vec![], Some("x"), None),
             (bytes("82 41aa ca 09"), vec![], None, Some(vec![0xaa])),
-            (bytes("83 6178 41aa ca 09"), vec![], Some("x"), Some(vec![0xaa])),
-            (bytes("85 01 02 6178 41aa ca 09"), vec![1, 2], Some("x"), Some(vec![0xaa])),
-            (bytes("9f 01 02 6178 41aa ca 09 ff"), vec![1, 2], Some("x"), Some(vec![0xaa])),
+            (
+                bytes("83 6178 41aa ca 09"),
+                vec![],
+                Some("x"),
+                Some(vec![0xaa]),
+            ),
+            (
+                bytes("85 01 02 6178 41aa ca 09"),
+                vec![1, 2],
+                Some("x"),
+                Some(vec![0xaa]),
+            ),
+            (
+                bytes("9f 01 02 6178 41aa ca 09 ff"),
+                vec![1, 2],
+                Some("x"),
+                Some(vec![0xaa]),
+            ),
         ] {
             let decoded = OptionalChain::from_cbor_bytes(&wire).unwrap();
             assert_eq!(decoded.numbers, expected_numbers);
@@ -331,7 +397,10 @@ mod open_array {
         constructed.numbers = vec![1, 2];
         constructed.label = Some("x".to_owned());
         constructed.blob = Some(vec![0xaa]);
-        assert_eq!(constructed.to_cbor_bytes(), bytes("85 01 02 6178 41aa ca 09"));
+        assert_eq!(
+            constructed.to_cbor_bytes(),
+            bytes("85 01 02 6178 41aa ca 09")
+        );
         let round = OptionalChain::from_cbor_bytes(&constructed.to_cbor_bytes()).unwrap();
         assert_eq!(round.numbers, vec![1, 2]);
         assert_eq!(round.label.as_deref(), Some("x"));
@@ -369,8 +438,14 @@ mod open_array {
 
         let indefinite = bytes("9f 07 41aa 41bb 6178 01 02 03 09 ff");
         let decoded_indefinite = ExactSegments::from_cbor_bytes(&indefinite).unwrap();
-        assert_eq!(decoded_indefinite.chunks.as_slice(), decoded.chunks.as_slice());
-        assert_eq!(decoded_indefinite.values.as_slice(), decoded.values.as_slice());
+        assert_eq!(
+            decoded_indefinite.chunks.as_slice(),
+            decoded.chunks.as_slice()
+        );
+        assert_eq!(
+            decoded_indefinite.values.as_slice(),
+            decoded.values.as_slice()
+        );
 
         let constructed = ExactSegments::new(
             7,
@@ -403,10 +478,7 @@ mod open_array {
         assert_eq!(decoded.second.as_slice(), &[3, 4, 5]);
         assert_eq!(decoded.to_cbor_bytes(), wire);
 
-        let constructed = TrailingExactSegments::new(
-            [1, 2],
-            [3, 4, 5],
-        );
+        let constructed = TrailingExactSegments::new([1, 2], [3, 4, 5]);
         assert_eq!(constructed.to_cbor_bytes(), wire);
 
         let indefinite = TrailingExactSegments::from_cbor_bytes(&bytes("9f 01 02 03 04 05 ff"))
@@ -447,18 +519,14 @@ mod open_array {
         let named_position = FixedMiddleNamedPosition::from_cbor_bytes(&bytes("83 6170 00 02"))
             .expect("the named segment must compile and decode through the retry loop");
         assert_eq!(named_position.initial_position, vec![Repeat::I0]);
-        let derived_name_collision = FixedMiddleCursorNameCollision::from_cbor_bytes(&bytes(
-            "83 6170 01 03",
-        ))
-        .expect("the derived cursor name must avoid fixed record members too");
+        let derived_name_collision =
+            FixedMiddleCursorNameCollision::from_cbor_bytes(&bytes("83 6170 01 03"))
+                .expect("the derived cursor name must avoid fixed record members too");
         assert_eq!(derived_name_collision.initial_position, vec![Repeat::I1]);
 
         // The ordinary suffix read owns wrong/missing suffix failures after the retry restores
         // the candidate cursor; no successful repeat decode is ever reconsidered.
-        assert_decode_reject_reason::<FixedMiddle>(
-            &bytes("83 6170 00 04"),
-            "No variant matched",
-        );
+        assert_decode_reject_reason::<FixedMiddle>(&bytes("83 6170 00 04"), "No variant matched");
         assert_decode_reject_reason::<FixedMiddle>(&bytes("82 6170 00"), "No variant matched");
     }
 
@@ -466,7 +534,10 @@ mod open_array {
     fn fixed_domain_middle_windows_and_simple_values_keep_their_existing_carriers() {
         let required = FixedMiddleRequired::from_cbor_bytes(&bytes("83 6170 00 02")).unwrap();
         assert_eq!(required.rest.as_slice(), &[Repeat::I0]);
-        assert_decode_reject_reason::<FixedMiddleRequired>(&bytes("82 6170 02"), "0 not at least 1");
+        assert_decode_reject_reason::<FixedMiddleRequired>(
+            &bytes("82 6170 02"),
+            "0 not at least 1",
+        );
 
         let bounded = FixedMiddleBounded::from_cbor_bytes(&bytes("84 6170 00 01 02")).unwrap();
         assert_eq!(bounded.rest.as_slice(), &[Repeat::I0, Repeat::I1]);
@@ -529,10 +600,7 @@ mod open_array {
             &bytes("83 07 08 6178"),
             "expected `Text' byte received `UnsignedInteger'",
         );
-        assert_decode_reject_reason::<MiddleDeclared>(
-            &bytes("81 07"),
-            "Definite length mismatch",
-        );
+        assert_decode_reject_reason::<MiddleDeclared>(&bytes("81 07"), "Definite length mismatch");
         assert_decode_reject_reason::<MiddleDeclared>(
             &bytes("83 07 41aa 08"),
             "expected `Text' byte received `UnsignedInteger'",
@@ -575,7 +643,10 @@ mod open_array {
         for wire in [bytes("84 07 02 03 1863"), bytes("9f 07 02 03 1863 ff")] {
             let exact = ExactMiddle::from_cbor_bytes(&wire).unwrap();
             assert_eq!(exact.rest.as_slice(), &[2, 3]);
-            assert_eq!(exact.index_2, 99, "the third uint is the suffix, not a repetition");
+            assert_eq!(
+                exact.index_2, 99,
+                "the third uint is the suffix, not a repetition"
+            );
         }
 
         // An indefinite owner cannot reserve an arity slot for the suffix. With only one intended
@@ -702,10 +773,7 @@ mod open_array {
         assert_eq!(rebuilt.chunks.as_slice(), &[vec![0xaa]]);
 
         assert_decode_reject_reason::<MultiMixed>(&bytes("83 07 01 6178"), "0 not in range 1 - 2");
-        assert_decode_reject_reason::<MultiMixed>(
-            &bytes("83 07 01 41aa"),
-            "0 not at least 1",
-        );
+        assert_decode_reject_reason::<MultiMixed>(&bytes("83 07 01 41aa"), "0 not at least 1");
         assert_decode_reject_reason::<MultiMixed>(
             &bytes("85 07 6178 41aa 41bb 41cc"),
             "3 not in range 1 - 2",

@@ -873,16 +873,19 @@ or uses a **possible-next proof**: walk later authored positions, ignore maximum
 the effective CBOR majors of every zero-minimum segment that may be absent and every optional
 single-item fixed field, and stop after the first positive-minimum segment or mandatory fixed field
 that expands to one CBOR item. An optional field keeps the walk going because its absence exposes
-the later member; its head must be generator-owned. The current
-segment's effective majors must be disjoint from that union. Thus `[* uint, * tstr, * bytes]` is
-safe, `[* uint, + tstr, * uint]` is safe because the text segment is mandatory, and
-`[* uint, * tstr, * uint]` rejects because an empty text segment exposes the later uint run. A
-generator-proven head qualifies; a transparent custom-codec alias may instead declare it with
+the later member; its head must be generator-owned. Each possible-next member must either have
+effective CBOR majors disjoint from the current segment or, for every shared major, have a
+generator-owned untagged finite fixed-value domain disjoint from the repeated element's complete
+CDDL value domain. Thus `[* uint, * tstr, * bytes]` is safe, `[* uint, + tstr, * uint]` is safe
+because the text segment is mandatory, and `[* uint, * tstr, * uint]` rejects because an empty text
+segment exposes the later uint run. A generator-proven head qualifies; a transparent custom-codec
+alias may instead declare it with
 [`@custom_wire_major`](comment_dsl#declaring-the-wires-major-type-custom_wire_major), while mandatory
-tag or `.cbor` framing proves its own outer head. The existing same-major finite fixed-domain retry
-is narrower: it applies only to one variable segment followed immediately by its mandatory fixed
-suffix. Bare `*` / `0*` is loose; `+` / `1*` is min-one; every other non-exact window (`2*3`, `*3`,
-`2*`, …) is bounded.
+tag or `.cbor` framing proves its own outer head. A finite-domain boundary retries only the repeated
+element decoder and restores the real cursor on failure, so any number of uniquely named segments
+keep their ordinary source-ordered carriers and later readers run normally. It does not parse a
+suffix speculatively or retain hidden residue. Bare `*` / `0*` is loose; `+` / `1*` is min-one; every
+other non-exact window (`2*3`, `*3`, `2*`, …) is bounded.
 
 Optional-prefix lookahead is separate from occurrence-boundary proof. An optional prefix still needs
 generator-proven, distinct heads on both sides of its reachable-next peek; a custom codec or opaque
@@ -890,22 +893,23 @@ extern there is serialize-only unless mandatory outer framing proves the distinc
 
 The same generator-owned rule applies after a variable segment: `[* uint, ? tstr, #6.10(uint)]`
 is accepted because the segment stops before the optional head and the optional's absence exposes a
-disjoint tag. An optional `uint`, an absent optional exposing a later `uint`, a multi-item splice,
+disjoint tag. An optional primitive `uint`, an absent optional exposing a later primitive `uint`, a multi-item splice,
 or a custom-/extern-owned optional head remains refused. `@custom_wire_major` does not authorize
 this optional lookahead.
 
 The restriction is RFC 8610's greedy, non-backtracking matching rule, not an implementation
 convenience. A decoder cannot guess between a repeated value and a possible-next value with the same
 head, and no generated loop speculatively parses later members to choose between two successful
-interpretations. General same-major/value-discriminator or residue designs, unproven custom/extern
-possible-next heads, inline-group occurrences mixed with other members or carrying several group
-choices, group-choice-arm occurrences, a segment inside a plain group's body, a fixed-value element
-like `* 5`, and a **plain-group element type** outside a sole named homogeneous-array rule remain
-graceful rejections naming a remedy. A declared custom head must be disjoint from the whole
-possible-next union; same-major discrimination is not inferred from custom, tagged, float, primitive,
-or extern semantics. The declaration is not consumed by a final tail, an exact count-delimited
-window, optional-field lookahead, or mandatory generated outer framing that already supplies the
-head. The
+interpretations. General same-major/value-discriminator or residue designs, shared finite domains,
+unproven custom/extern possible-next heads, and non-finite or unproven primitive/range, float, tag,
+custom-codec, opaque-extern, or multi-item boundaries remain graceful rejections naming a remedy.
+Inline-group occurrences mixed with other members or carrying several group choices, group-choice-arm
+occurrences, a segment inside a plain group's body, a fixed-value element like `* 5`, and a
+**plain-group element type** outside a sole named homogeneous-array rule remain graceful rejections
+naming a remedy. A declared custom head must be disjoint from the whole possible-next union;
+same-major discrimination is not inferred from custom, tagged, float, primitive, or extern semantics.
+The declaration is not consumed by a final tail, an exact count-delimited window, optional-field
+lookahead, or mandatory generated outer framing that already supplies the head. The
 plain-group element type (`kv = (a: uint, b: uint)`, `t = [ c: uint, * kv ]`) refuses because an
 occurrence segment collects one value per repeated array element and a plain group is not one — it has
 no type of its own, splicing its members flat instead — and the guard reads the *resolved* element

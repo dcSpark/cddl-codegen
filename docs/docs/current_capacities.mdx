@@ -98,18 +98,22 @@ sidebar_position: 3
   ```
 
   An exact `N*N` segment stops by count.
-  A variable segment stops at the owner boundary or when its effective CBOR majors are disjoint from every possible-next live member: zero-maximum segments contribute no head, zero-minimum segments and optional single-item fixed fields keep the proof walking, and a positive-minimum segment or mandatory single-item fixed field ends it.
+  A variable segment stops at the owner boundary or uses its possible-next chain: zero-maximum segments contribute no head, zero-minimum segments and optional single-item fixed fields keep the proof walking, and a positive-minimum segment or mandatory single-item fixed field ends it.
+  Every possible-next member must be major-disjoint from the repeated element or, for a shared major, have a generator-owned untagged finite fixed-value domain disjoint from the repeated element's complete CDDL value domain.
   Optional fixed heads are generator-owned only.
   Generator-owned heads, mandatory tag/`.cbor` framing, and a transparent custom alias's declared
   [`@custom_wire_major`](comment_dsl#declaring-the-wires-major-type-custom_wire_major) may supply the
-  proof. The older finite fixed-domain same-major retry remains available only to one variable
-  segment followed immediately by its fixed suffix. Loose `*`/`0*` uses `Vec<T>`, `+`/`1*` uses
+  proof. Finite same-major boundaries retry only the repeated decoder and restore the later-member
+  cursor on failure, across every admitted possible-next chain; they do not add a residue carrier or
+  speculate on later readers. Loose `*`/`0*` uses `Vec<T>`, `+`/`1*` uses
   `NonEmptyVec<T>`, exact windows use `[T; N]`, and other bounds use
   `BoundedVec<T, MIN, MAX>`; every multi-segment `new()` takes the complete carrier for each segment
   in authored order and checks both its cardinality and element value bounds. JSON keeps one named
   list per segment, wasm takes the matching complete wrappers, component takes one `list<T>` per
   segment, and preserve/canonical codecs keep every positional sidecar at its authored boundary.
-  General same-major/residue discrimination, unproven possible-next heads, and group/group-choice/mixed repeated-group placements remain graceful rejections.
+  General same-major/value or residue discrimination, shared finite domains, non-finite/unproven
+  primitive/range, float, tag, custom-codec, opaque-extern, and multi-item possible-next heads, and
+  group/group-choice/mixed repeated-group placements remain graceful rejections.
   Optional-field lookahead stays a separate generator-proven-only rule on either side of a segment.
   `@duplicates reject` exact windows remain
   `BoundedOrderedSet`, and only a loose one-segment capture may use
@@ -563,9 +567,11 @@ reinterpret that wire form as an absent optional. Remedy: make the types distinc
 optional, or restructure (an optional-**last** field never needs the peek disambiguated against a
 follower).
 
-A variable ARRAY occurrence segment may precede optional fixed fields when the repeated element's effective major is disjoint from every generator-proven optional head and every member their absence exposes.
+A variable ARRAY occurrence segment may precede optional fixed fields when every exposed boundary is
+major-disjoint from the repeated element or has a disjoint generator-owned finite fixed-value domain.
 The segment remains its own carrier; the optional retains its existing `Option<T>`, defaulted plain `T`, or fixed-value presence `bool` representation.
-Alias-level `@custom_wire_major` remains unavailable to this optional lookahead, while mandatory tag or `.cbor` framing supplies its own generator-owned head.
+The optional's own reachable-follower lookahead still needs generator-owned, major-disjoint heads.
+Alias-level `@custom_wire_major` remains unavailable to that optional lookahead, while mandatory tag or `.cbor` framing supplies its own generator-owned head.
 
 The refusal **propagates to every container of such a type**: an enum with it in any arm (both
 type-choice and group-choice flavors, transitively), a wrapper over it, and a collection or table

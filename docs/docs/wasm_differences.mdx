@@ -395,7 +395,8 @@ what a *table* on the same key type returns — a bare `Vec` when `K` is wasm-na
 `<K>List` class (`MdList`, `BytesList`) otherwise.
 
 An [open array](output_format#open-arrays-rest-tails) may capture one segment (`[uint, tstr, * t]`,
-`[uint, * bytes, tstr]`) or several uniquely named segments:
+`[uint, * bytes, tstr]`) or several uniquely named segments, including a possible-next chain whose
+same-major boundaries have disjoint generator-owned finite fixed-value domains:
 
 ```cddl
 parts = [
@@ -415,9 +416,12 @@ including loose and min-one segments. Its public argument layout keeps the estab
 then-wrappers order, while the generated call reorders those values into the native constructor's
 authored CDDL order. Restricted wrappers have already checked cardinality; the native constructor
 also checks element value windows before accepting the record. Final, exact count-owned, and
-possible-next-major-delimited placements use the same getter and wrapper types.
+possible-next-delimited placements use the same getter and wrapper types.
 
-A possible-next-major-delimited segment followed by a major-disjoint optional fixed field remains two independent wasm surfaces: the captured segment getter and the optional getter/setter; their values are never merged by the wire-boundary proof.
+A possible-next-delimited segment followed by an optional fixed field remains two independent wasm
+surfaces: the captured segment getter and the optional getter/setter; their values are never merged
+by the wire-boundary proof. Finite same-major discrimination changes only the native decoder's retry
+and cursor restore, never the wasm carrier or wrapper surface.
 
 An [`@ignore`](comment_dsl#ignore) rest row **or occurrence segment** stores nothing, so its wasm class has
 **no `rest()` getter** — it is a plain closed struct's wasm surface. The read-tolerance (unknown
