@@ -342,6 +342,63 @@ impl AsRef<cddl_lib::MiddleOccurrence> for MiddleOccurrence {
     }
 }
 
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct MultipleVariableOccurrence(pub(crate) cddl_lib::MultipleVariableOccurrence);
+
+#[wasm_bindgen]
+impl MultipleVariableOccurrence {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<MultipleVariableOccurrence, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn prefix(&self) -> u64 {
+        self.0.prefix
+    }
+
+    /// The captured array occurrence segment before a later authored member, as its wasm list wrapper; its greedy boundary is generator-proven from the possible-next wire heads or owned by its occurrence count.
+    pub fn numbers(&self) -> Vec<u64> {
+        self.0.numbers.clone()
+    }
+
+    /// The captured final authored array occurrence segment, as its wasm list wrapper; its occurrence window is enforced before construction.
+    pub fn labels(&self) -> Vec<String> {
+        self.0.labels.clone()
+    }
+
+    /// * `numbers` - the complete list wrapper for this authored array occurrence segment (its CDDL occurrence window is enforced before construction)
+    /// * `labels` - the complete list wrapper for this authored array occurrence segment (its CDDL occurrence window is enforced before construction)
+    pub fn new(prefix: u64, numbers: Vec<u64>, labels: Vec<String>) -> Self {
+        Self(cddl_lib::MultipleVariableOccurrence::new(
+            prefix, numbers, labels,
+        ))
+    }
+}
+
+impl From<cddl_lib::MultipleVariableOccurrence> for MultipleVariableOccurrence {
+    fn from(native: cddl_lib::MultipleVariableOccurrence) -> Self {
+        Self(native)
+    }
+}
+
+impl From<MultipleVariableOccurrence> for cddl_lib::MultipleVariableOccurrence {
+    fn from(wasm: MultipleVariableOccurrence) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::MultipleVariableOccurrence> for MultipleVariableOccurrence {
+    fn as_ref(&self) -> &cddl_lib::MultipleVariableOccurrence {
+        &self.0
+    }
+}
+
 /// `[2*3 [*2 uint]]`: inclusive length window enforced by the core `BoundedVec`. Loose input enters through the core `BoundedVec` `TryFrom<Vec<_>>` door; `add` and `try_from` fail before changing the value when they would cross the declared bound.
 #[derive(Clone, Debug)]
 #[wasm_bindgen]

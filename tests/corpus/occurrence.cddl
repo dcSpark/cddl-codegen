@@ -45,3 +45,9 @@ exact_middle_occurrence = [
   2*2 uint,
   suffix: uint,
 ]
+
+multiple_variable_occurrence = [
+  prefix: uint
+  , * uint ; @name numbers
+  , * tstr ; @name labels
+]

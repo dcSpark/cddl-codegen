@@ -116,3 +116,14 @@ exact_segments = [
   , 3*3 uint ; @name values
   , suffix: tstr
 ]
+multi_parts = [
+  prefix: uint
+  , * uint ; @name numbers
+  , * tstr ; @name labels
+]
+multi_mixed = [
+  prefix: uint
+  , * uint ; @name numbers
+  , + tstr ; @name labels
+  , 1*2 bytes ; @name chunks
+]

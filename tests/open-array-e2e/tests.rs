@@ -580,6 +580,106 @@ mod open_array {
         assert_eq!(i.to_cbor_bytes(), bytes("81 07"));
     }
 
+    // --- multiple named variable occurrence segments ---
+
+    #[test]
+    fn multiple_loose_segments_keep_their_own_boundaries_and_constructor_inputs() {
+        let built = MultiParts::new(7, vec![1, 2], vec!["a".to_owned(), "b".to_owned()]);
+        let built_back = MultiParts::from_cbor_bytes(&built.to_cbor_bytes()).unwrap();
+        assert_eq!(built_back.numbers, vec![1, 2]);
+        assert_eq!(built_back.labels, vec!["a", "b"]);
+
+        // [7, 1, 2, "a", "b"]: the segments are flat source positions, never nested lists.
+        let both = MultiParts::from_cbor_bytes(&bytes("85 07 01 02 6161 6162")).unwrap();
+        assert_eq!(both.numbers, vec![1, 2]);
+        assert_eq!(both.labels, vec!["a", "b"]);
+        assert_eq!(both.to_cbor_bytes(), bytes("85 07 01 02 6161 6162"));
+
+        let numbers_empty = MultiParts::from_cbor_bytes(&bytes("82 07 6161")).unwrap();
+        assert!(numbers_empty.numbers.is_empty());
+        assert_eq!(numbers_empty.labels, vec!["a"]);
+        let labels_empty = MultiParts::from_cbor_bytes(&bytes("83 07 01 02")).unwrap();
+        assert_eq!(labels_empty.numbers, vec![1, 2]);
+        assert!(labels_empty.labels.is_empty());
+    }
+
+    #[test]
+    fn zero_skippable_chain_and_positive_separator_follow_the_possible_next_proof() {
+        // `labels` is empty: uint values stop at bytes and the final bytes segment owns both values.
+        let three = MultiThree::from_cbor_bytes(&bytes("83 01 41aa 41bb")).unwrap();
+        assert_eq!(three.numbers, vec![1]);
+        assert!(three.labels.is_empty());
+        assert_eq!(three.chunks, vec![vec![0xaa], vec![0xbb]]);
+
+        // The mandatory text delimiter lets the final uint segment reuse the first segment's major.
+        let delimited = MultiDelimited::from_cbor_bytes(&bytes("84 01 6178 02 03")).unwrap();
+        assert_eq!(delimited.first, vec![1]);
+        assert_eq!(delimited.delimiter.as_slice(), &["x".to_owned()]);
+        assert_eq!(delimited.last, vec![2, 3]);
+    }
+
+    #[test]
+    fn multiple_mixed_windows_and_exact_same_major_boundary_are_checked() {
+        let chunks = BoundedVec::try_from(vec![vec![0xaa]]).unwrap();
+        let built = MultiMixed::new(
+            7,
+            vec![1],
+            crate::generated::non_empty::NonEmptyVec::try_from(vec!["x".to_owned()]).unwrap(),
+            chunks,
+        );
+        let rebuilt = MultiMixed::from_cbor_bytes(&built.to_cbor_bytes()).unwrap();
+        assert_eq!(rebuilt.numbers, vec![1]);
+        assert_eq!(rebuilt.labels.as_slice(), &["x".to_owned()]);
+        assert_eq!(rebuilt.chunks.as_slice(), &[vec![0xaa]]);
+
+        assert_decode_reject_reason::<MultiMixed>(&bytes("83 07 01 6178"), "0 not in range 1 - 2");
+        assert_decode_reject_reason::<MultiMixed>(
+            &bytes("83 07 01 41aa"),
+            "0 not at least 1",
+        );
+        assert_decode_reject_reason::<MultiMixed>(
+            &bytes("85 07 6178 41aa 41bb 41cc"),
+            "3 not in range 1 - 2",
+        );
+
+        let exact = MultiExactVariable::new([1, 2], vec![3]);
+        assert_eq!(exact.to_cbor_bytes(), bytes("83 01 02 03"));
+        let exact_back = MultiExactVariable::from_cbor_bytes(&bytes("83 01 02 03")).unwrap();
+        assert_eq!(exact_back.first, [1, 2]);
+        assert_eq!(exact_back.later, vec![3]);
+
+        let valid_numbers = crate::generated::non_empty::NonEmptyVec::try_from(vec![5]).unwrap();
+        MultiValueBounded::new(valid_numbers, vec!["ok".to_owned()])
+            .expect("the first segment element satisfies .le 5");
+        let invalid_numbers = crate::generated::non_empty::NonEmptyVec::try_from(vec![6]).unwrap();
+        MultiValueBounded::new(invalid_numbers, vec![])
+            .expect_err("the first segment element exceeds .le 5");
+
+        MultiLooseValueBounded::new(vec![5], vec![])
+            .expect("the loose first segment element satisfies .le 5");
+        MultiLooseValueBounded::new(vec![6], vec![])
+            .expect_err("the loose first segment element exceeds .le 5");
+    }
+
+    #[test]
+    fn multiple_variable_segments_before_fixed_suffix_do_not_redistribute_wrong_interleavings() {
+        let valid = MultiSuffix::from_cbor_bytes(&bytes("84 07 01 6178 41aa")).unwrap();
+        assert_eq!(valid.numbers, vec![1]);
+        assert_eq!(valid.labels, vec!["x"]);
+        assert_eq!(valid.suffix, vec![0xaa]);
+
+        let indefinite = MultiSuffix::from_cbor_bytes(&bytes("9f 07 01 6178 41aa ff")).unwrap();
+        assert_eq!(indefinite.numbers, vec![1]);
+        assert_eq!(indefinite.labels, vec!["x"]);
+        assert_eq!(indefinite.suffix, vec![0xaa]);
+
+        // A uint after labels belongs to neither the labels segment nor the mandatory bytes suffix.
+        assert_decode_reject_reason::<MultiSuffix>(
+            &bytes("85 07 01 6178 02 41aa"),
+            "expected `Bytes'",
+        );
+    }
+
     // --- stream position: an open array as a member of an outer array (cip36 skip-arm bug class) ---
 
     #[test]

@@ -1268,9 +1268,11 @@ pub(crate) fn record_ctor_can_fail(record: &RustRecord, types: &IntermediateType
         .fields
         .iter()
         .any(|f| !f.optional && f.rust_type.has_value_bounds())
-        || record
-            .captured_dynamic_rows()
-            .any(|row| row.is_non_empty_array_tail() && row.element().has_value_bounds())
+        || record.captured_dynamic_rows().any(|row| {
+            row.is_array_tail()
+                && row.element().has_value_bounds()
+                && (row.is_non_empty_array_tail() || !record.array_segments.is_empty())
+        })
         || (record.is_non_empty_open_table()
             && record.typed_row().is_some_and(|row| {
                 row.domain().has_value_bounds() || row.range().has_value_bounds()
@@ -1294,10 +1296,10 @@ pub(crate) fn record_wasm_ctor_can_fail(record: &RustRecord, types: &Intermediat
         })
 }
 
-/// The source-indexed native constructor slots for a multiple-exact ARRAY record. Its new API is
+/// The source-indexed native constructor slots for a multiple-occurrence-segment ARRAY record. Its new API is
 /// intentionally source-ordered; consumers whose own public ABI is field-then-wrapper (the wasm
 /// face) must project by this identity rather than zip positions.
-pub(crate) fn multi_exact_array_ctor_arg_slots(
+pub(crate) fn multi_array_occurrence_ctor_arg_slots(
     record: &RustRecord,
 ) -> Option<Vec<(usize, RustType)>> {
     if record.rep != Representation::Array || record.array_segments.is_empty() {
@@ -1330,13 +1332,13 @@ pub(crate) fn multi_exact_array_ctor_arg_slots(
 }
 
 /// The generated record constructor's argument types, in its exact native ABI order. This is
-/// source order for multiple-exact ARRAY records and the historic field-then-dynamic-row order
+/// source order for multiple-occurrence-segment ARRAY records and the historic field-then-dynamic-row order
 /// otherwise.
 pub(crate) fn record_ctor_arg_types(
     record: &RustRecord,
     types: &IntermediateTypes,
 ) -> Vec<RustType> {
-    if let Some(slots) = multi_exact_array_ctor_arg_slots(record) {
+    if let Some(slots) = multi_array_occurrence_ctor_arg_slots(record) {
         return slots.into_iter().map(|(_, ty)| ty).collect();
     }
     let mut args: Vec<RustType> = record
@@ -1645,7 +1647,7 @@ fn record_roundtrip(
             }
         }
     }
-    // Multiple exact array segments have a source-ordered native constructor.  The established
+    // Multiple array occurrence segments have a source-ordered native constructor. The established
     // one-segment emitter builds fixed arguments before the tail, so rebuild only this new shape's
     // mint list with source indices instead of pairing a correct type list with stale values.
     if record.rep == Representation::Array && !record.array_segments.is_empty() {
@@ -1667,13 +1669,13 @@ fn record_roundtrip(
             .chain(
                 record
                     .captured_dynamic_rows()
-                    .filter(|row| row.is_array_tail() && row.is_restricted())
+                    .filter(|row| row.is_array_tail())
                     .map(|row| {
                         (
                             row.array_source_index()
                                 .expect("array segment has a source index"),
                             valid_value(types, &row.container_type())
-                                .expect("already validated exact segment mint"),
+                                .expect("already validated array occurrence segment mint"),
                         )
                     }),
             )
@@ -2988,7 +2990,7 @@ pub(crate) fn mint_struct(
     let name = ident.to_string();
     match rust_struct.variant() {
         RustStructType::Record(record) => {
-            if let Some(slots) = multi_exact_array_ctor_arg_slots(record) {
+            if let Some(slots) = multi_array_occurrence_ctor_arg_slots(record) {
                 let args = slots
                     .iter()
                     .map(|(_, ty)| valid_value_at(types, ty, depth + 1))

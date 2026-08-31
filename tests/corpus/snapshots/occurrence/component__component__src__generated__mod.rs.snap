@@ -19,6 +19,7 @@ struct Component;
 impl wit_types::Guest for Component {
     type ExactMiddleOccurrence = WitExactMiddleOccurrence;
     type MiddleOccurrence = WitMiddleOccurrence;
+    type MultipleVariableOccurrence = WitMultipleVariableOccurrence;
     type OccurrenceHolder = WitOccurrenceHolder;
 }
 
@@ -112,6 +113,42 @@ impl wit_types::GuestMiddleOccurrence for WitMiddleOccurrence {
         )
         .map(|v| wit_types::MiddleOccurrence::new(WitMiddleOccurrence(RefCell::new(v))))
         .map_err(err)
+    }
+}
+
+pub struct WitMultipleVariableOccurrence(pub RefCell<cddl_lib::MultipleVariableOccurrence>);
+
+impl wit_types::GuestMultipleVariableOccurrence for WitMultipleVariableOccurrence {
+    fn new(prefix: u64, numbers: Vec<u64>, labels: Vec<String>) -> Self {
+        let numbers = numbers.into_iter().collect::<Vec<_>>();
+        let labels = labels.into_iter().collect::<Vec<_>>();
+        let inner = cddl_lib::MultipleVariableOccurrence::new(prefix, numbers, labels);
+        WitMultipleVariableOccurrence(RefCell::new(inner))
+    }
+
+    fn prefix(&self) -> u64 {
+        let me = self.0.borrow();
+        me.prefix
+    }
+
+    fn numbers(&self) -> Vec<u64> {
+        let me = self.0.borrow();
+        me.numbers.iter().map(|x| *x).collect()
+    }
+
+    fn labels(&self) -> Vec<String> {
+        let me = self.0.borrow();
+        me.labels.iter().map(|x| x.clone()).collect()
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::MultipleVariableOccurrence as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(&self.0.borrow())
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::MultipleVariableOccurrence, String> {
+        <cddl_lib::MultipleVariableOccurrence as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::MultipleVariableOccurrence::new(WitMultipleVariableOccurrence(RefCell::new(v))))
+            .map_err(err)
     }
 }
 

@@ -43,6 +43,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::ExactMiddleOccurrence>();
     _assert_serialize::<crate::generated::MiddleOccurrence>();
     _assert_deserialize::<crate::generated::MiddleOccurrence>();
+    _assert_serialize::<crate::generated::MultipleVariableOccurrence>();
+    _assert_deserialize::<crate::generated::MultipleVariableOccurrence>();
     _assert_serialize::<crate::generated::OccurrenceHolder>();
     _assert_deserialize::<crate::generated::OccurrenceHolder>();
 }

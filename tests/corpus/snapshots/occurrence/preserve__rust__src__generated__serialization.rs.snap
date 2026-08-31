@@ -225,6 +225,119 @@ impl Deserialize for MiddleOccurrence {
     }
 }
 
+impl cbor_event::se::Serialize for MultipleVariableOccurrence {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(1 + self.numbers.len() as u64 + self.labels.len() as u64),
+        )?;
+        serializer.write_unsigned_integer_sz(
+            self.prefix,
+            fit_sz(
+                self.prefix,
+                self.encodings
+                    .as_ref()
+                    .map(|encs| encs.prefix_encoding)
+                    .unwrap_or_default(),
+            ),
+        )?;
+        for (i, element) in self.numbers.iter().enumerate() {
+            let numbers_elem_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.numbers_elem_encodings.get(i))
+                .cloned()
+                .unwrap_or_default();
+            serializer
+                .write_unsigned_integer_sz(*element, fit_sz(*element, numbers_elem_encoding))?;
+        }
+        for (i, element) in self.labels.iter().enumerate() {
+            let labels_elem_encoding = self
+                .encodings
+                .as_ref()
+                .and_then(|encs| encs.labels_elem_encodings.get(i))
+                .cloned()
+                .unwrap_or_default();
+            serializer.write_text_sz(
+                element,
+                labels_elem_encoding.to_str_len_sz(element.len() as u64),
+            )?;
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for MultipleVariableOccurrence {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(1)?;
+            let (prefix, prefix_encoding) = raw
+                .unsigned_integer_sz()
+                .map_err(Into::<DeserializeError>::into)
+                .map(|(x, enc)| (x, Some(enc)))
+                .map_err(|e: DeserializeError| e.annotate("prefix"))?;
+            let mut numbers = Vec::new();
+            let mut numbers_elem_encodings = Vec::new();
+            while (match len {
+                cbor_event::LenSz::Len(n, _) => read_len.read() < n,
+                cbor_event::LenSz::Indefinite => raw.as_slice().first() != Some(&0xff),
+            }) && raw.cbor_type()? == cbor_event::Type::UnsignedInteger
+            {
+                read_len.read_elems(1)?;
+                let (numbers_elem, numbers_elem_encoding) =
+                    raw.unsigned_integer_sz().map(|(x, enc)| (x, Some(enc)))?;
+                numbers.push(numbers_elem);
+                numbers_elem_encodings.push(numbers_elem_encoding);
+            }
+            let mut labels = Vec::new();
+            let mut labels_elem_encodings = Vec::new();
+            while match len {
+                cbor_event::LenSz::Len(n, _) => read_len.read() < n,
+                cbor_event::LenSz::Indefinite => raw.as_slice().first() != Some(&0xff),
+            } {
+                read_len.read_elems(1)?;
+                let (labels_elem, labels_elem_encoding) = raw
+                    .text_sz()
+                    .map(|(s, enc)| (s, StringEncoding::from(enc)))?;
+                labels.push(labels_elem);
+                labels_elem_encodings.push(labels_elem_encoding);
+            }
+            match len {
+                cbor_event::LenSz::Len(_, _) => read_len.finish()?,
+                cbor_event::LenSz::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(MultipleVariableOccurrence {
+                prefix,
+                numbers,
+                labels,
+                encodings: Some(MultipleVariableOccurrenceEncoding {
+                    numbers_elem_encodings,
+                    labels_elem_encodings,
+                    len_encoding,
+                    prefix_encoding,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("MultipleVariableOccurrence"))
+    }
+}
+
 impl cbor_event::se::Serialize for OccurrenceHolder {
     fn serialize<'se>(
         &self,

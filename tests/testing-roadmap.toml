@@ -135,6 +135,7 @@ entries = [
   "testing.process-boundary.another-profile-escape",
   "testing.fixture-shape-evicted-over-known-defect-stale-guard",
   "testing.parallel-constructor-fixture-diversity-parser-over-external-input",
+  "testing.complete-carrier-constructor-element-bounds",
   "testing.multifile-reference-position-coverage-two-position-keyed-escapes",
   "testing.reason-keyed-rejection-evidence-reject-catalogs-proven-near",
   "testing.armed-idle-harness-arms-empty-head-ledgers-zero",
@@ -702,6 +703,50 @@ rationale_md = '''The decided boundary and its reasons are the exact preserved d
 '''
 authority_reference_id = "testing-guard-complete-cargo-mutants-sweep-will-never"
 permanence = "permanent"
+
+[[record]]
+id = "testing.complete-carrier-constructor-element-bounds"
+title = "A new complete-carrier constructor path can restore cardinality while bypassing element value bounds."
+
+[record.payload]
+kind = "work"
+body_md = '''- **A new complete-carrier constructor path can restore cardinality while bypassing element value
+  bounds.** Cycle 15 semantic review caught the new multi-segment open-array `new()` accepting a
+  complete `NonEmptyVec<uint .le 5>` carrier containing `6`: the carrier proved its occurrence
+  cardinality, but the constructor path did not walk its elements through the value-bound check.
+  The older `bounded_non_empty_open_array_tail_is_checked_on_every_constructor_face` control covered
+  only the one-segment first-element ABI, so it stayed green. The fix reuses
+  `value_bounds_check_line(..., "*element", true)` for every complete segment carrier, and
+  `tests/open-array-e2e`'s `MultiValueBounded` and `MultiLooseValueBounded` vectors now require
+  native construction to reject the out-of-range element through both non-empty and loose complete
+  carriers.
+
+  No current system inventories generated constructors by the semantic obligations of their input
+  carriers. The missing layer is a constructor-input matrix over every aggregate argument path that
+  owns a generated value: for each path, mint an in-cardinality carrier containing an out-of-range
+  element, require the native constructor to reject it, and require wasm/component glue to re-enter
+  that native door rather than reconstructing unchecked. An inventory guard should make a new
+  carrier-owning constructor route choose an existing row or add one. Build that system if the class
+  recurs; meanwhile the one-segment and multi-segment open-array regressions are the controls, and
+  the working rule is that cardinality validation never substitutes for member value validation.
+'''
+work_state = "armed"
+work_intent = "build_system"
+work_kind = "missing_system"
+risk = "invalid_acceptance"
+control_ids = ["testing.guard.complete-carrier-constructor-element-bounds"]
+
+[record.payload.promotion_trigger]
+observer = "fresh-evidence submitter for testing.complete-carrier-constructor-element-bounds"
+dimension = "generated aggregate-constructor paths that separately own carrier and element validation"
+observable = "A second generated aggregate-constructor path accepts an in-cardinality carrier containing an element outside its declared value bounds, outside the two pinned open-array paths."
+action_on_fire_md = '''Set testing.complete-carrier-constructor-element-bounds to ready and build the aggregate-constructor inventory plus out-of-range native/wasm/component matrix before fixing the new path.
+'''
+
+[record.payload.promotion_trigger.predicate]
+predicate_kind = "manual"
+review_procedure_md = '''Execute the public constructor with a carrier whose count is valid and whose element violates a declared value bound; confirm construction succeeds and neither current open-array regression exercises that constructor path. A source read without an executable invalid accept does not fire the trigger.
+'''
 
 [[record]]
 id = "testing.composing-registration-rows-across-generation-passes-share-output"
@@ -2569,6 +2614,20 @@ reference_ids = ["testing-roadmap-declined-decided-with-a-reopening-signal-n2"]
 claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.complete-cargo-mutants-sweep-will-never-run's preserved detail.
 '''
 boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
+'''
+
+[[record]]
+id = "testing.guard.complete-carrier-constructor-element-bounds"
+title = "Current control for testing.complete-carrier-constructor-element-bounds."
+
+[record.payload]
+kind = "control"
+control_kind = "test"
+control_state = "live"
+reference_ids = ["testing-bounded-non-empty-open-array-tail-constructor-bounds", "testing-open-array-e2e-multi-segment-constructor-bounds"]
+claim_md = '''The one-segment first-element regression and the multi-segment complete-carrier e2e rejection pin the two open-array constructor paths that currently own element value bounds.
+'''
+boundary_md = '''These controls do not inventory every generated constructor path that accepts an aggregate carrier, nor make a future carrier-owning path fail until an out-of-range element vector is added.
 '''
 
 [[record]]
@@ -6870,6 +6929,20 @@ id = "testing-guard-complete-cargo-mutants-sweep-will-never"
 source = "testing.complete-cargo-mutants-sweep-will-never-run"
 kind = "roadmap"
 target_id = "testing.guard.complete-cargo-mutants-sweep-will-never-run"
+
+[[reference]]
+id = "testing-open-array-e2e-multi-segment-constructor-bounds"
+source = "testing.complete-carrier-constructor-element-bounds"
+kind = "test_symbol"
+test_id = "rust-test:cddl-codegen#tests::integration_tests::open_array_e2e"
+symbol = "tests::integration_tests::open_array_e2e"
+
+[[reference]]
+id = "testing-bounded-non-empty-open-array-tail-constructor-bounds"
+source = "testing.complete-carrier-constructor-element-bounds"
+kind = "test_symbol"
+test_id = "rust-test:cddl-codegen#tests::robustness_tests::bounded_non_empty_open_array_tail_is_checked_on_every_constructor_face"
+symbol = "tests::robustness_tests::bounded_non_empty_open_array_tail_is_checked_on_every_constructor_face"
 
 [[reference]]
 id = "gate-project-corpus"

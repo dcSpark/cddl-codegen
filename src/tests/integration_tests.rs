@@ -14189,6 +14189,12 @@ fn emit_tests_open_array_execute() {
         "roundtrip_bounded_zero",
         "roundtrip_exact_segments",
         "roundtrip_nested_exact_segments",
+        "roundtrip_multi_parts",
+        "roundtrip_multi_three",
+        "roundtrip_multi_delimited",
+        "roundtrip_multi_mixed",
+        "roundtrip_multi_exact_variable",
+        "roundtrip_multi_suffix",
         "roundtrip_ign",
     ] {
         assert!(
@@ -14214,6 +14220,13 @@ fn emit_tests_open_array_execute() {
     assert!(
         !src.contains(".rest.insert("),
         "an open-array tail is a positional `Vec` (push), never a keyed map `insert`"
+    );
+    assert!(
+        src.contains("MultiMixed::new(")
+            && src.contains("numbers")
+            && src.contains("labels")
+            && src.contains("chunks"),
+        "the multi-segment emit-test mint must supply complete segment carriers in authored constructor order"
     );
 
     let test = tool_cmd("cargo")

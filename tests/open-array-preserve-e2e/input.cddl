@@ -16,6 +16,11 @@ exact_segments = [
   , 2*2 uint ; @name values
   , suffix: uint
 ]
+multi_parts = [
+  prefix: uint
+  , * uint ; @name numbers
+  , * tstr ; @name labels
+]
 ; A finite, disjoint same-major fixed-choice middle retries its element decoder.  Preserve sidecars
 ; are committed only on successful attempts, so the final suffix width stays in its own position.
 repeat = 0 / 1

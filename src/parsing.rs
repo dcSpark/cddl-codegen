@@ -8340,7 +8340,7 @@ fn reject_wasm_open_map_insert_collisions(
     }
 }
 
-/// Multiple exact array segments are public struct members, so their `@name` values share the
+/// Multiple array occurrence segments are public struct members, so their `@name` values share the
 /// same namespace as fixed fields.  Keep this separate from the map-only wasm collision check:
 /// array segment names do not mint mutation methods, but silently renaming either member would
 /// change a public API and make preserve sidecars ambiguous.
@@ -8365,18 +8365,18 @@ fn reject_array_segment_name_collisions(
     for row in &rows {
         if RUST_KEYWORDS.contains(&row.field_name.as_str()) {
             types.record_rejection(format!(
-                "rule `{source_name}`: exact-count array segment name `{}` is a Rust keyword. Give it a unique non-keyword `@name`.",
+                "rule `{source_name}`: array occurrence segment name `{}` is a Rust keyword. Give it a unique non-keyword `@name`.",
                 row.field_name
             ));
         }
         if let Some(message) =
             generated_local_field_rejection(&row.field_name, &source_name, rep, false)
         {
-            types.record_rejection(message.replace("field", "exact-count array segment"));
+            types.record_rejection(message.replace("field", "array occurrence segment"));
         }
         if fields.iter().any(|field| field.name == row.field_name) {
             types.record_rejection(format!(
-                "rule `{source_name}`: exact-count array segment `{}` collides with fixed field `{}`. Give every segment a unique `@name`.",
+                "rule `{source_name}`: array occurrence segment `{}` collides with fixed field `{}`. Give every segment a unique `@name`.",
                 row.field_name, row.field_name
             ));
         }
@@ -8387,7 +8387,7 @@ fn reject_array_segment_name_collisions(
             .any(|other| other.field_name == row.field_name)
         {
             types.record_rejection(format!(
-                "rule `{source_name}`: exact-count array segments would both emit field `{}`. Give every segment a unique `@name`.",
+                "rule `{source_name}`: array occurrence segments would both emit field `{}`. Give every segment a unique `@name`.",
                 row.field_name
             ));
         }
@@ -8410,7 +8410,7 @@ fn reject_encoding_companion_collisions(
     array_segments: &[RestRow],
 ) {
     // A single historic array tail has no companion-name interaction beyond fixed fields. Keep
-    // that zero/one path byte-identical. In the new multiple-exact form, fixed fields still mint
+    // that zero/one path byte-identical. In the multiple-segment form, fixed fields still mint
     // their ordinary `{field}_encoding` companions, while each segment mints a positional
     // `{segment}_elem_encodings` local. Both can collide with any public member name.
     let segments: Vec<&RestRow> = if array_segments.is_empty() {
@@ -8443,7 +8443,7 @@ fn reject_encoding_companion_collisions(
         }
     }
     // A captured array segment serializes/deserializes element encodings through a positional
-    // `{segment}_elem_encodings` local. Its target may be either a fixed field or another exact
+    // `{segment}_elem_encodings` local. Its target may be either a fixed field or another occurrence
     // segment, so check the same resolved member namespace as above.
     for segment in &segments {
         let base = segment.field_name.as_str();
@@ -8554,9 +8554,9 @@ fn recognize_dynamic_rows(
 }
 
 /// Recognize the positional dynamic rows of an ARRAY record.  The historic single-segment path
-/// remains untouched below so its zero/one output and diagnostics stay stable.  Multiple members
-/// are deliberately narrower: each must be a named, finite exact window, which makes every wire
-/// boundary count-owned instead of requiring a residue or major-discrimination algorithm.
+/// remains untouched below so its zero/one output and diagnostics stay stable. Multiple members
+/// must each be a named captured segment; finalization proves every variable boundary from the
+/// possible-next effective wire majors, while exact windows retain their count-owned boundary.
 #[allow(clippy::too_many_arguments)]
 fn recognize_array_rest_segments(
     types: &mut IntermediateTypes,
@@ -8610,9 +8610,9 @@ fn recognize_array_rest_segments(
     }
 
     // Preserve the historic multiplicity boundary for a repeated plain-group reference. A plain
-    // group is not an array item, so it cannot be one of the new exact-count segments; routing to
+    // group is not an array item, so it cannot be one of the new occurrence segments; routing to
     // the legacy recognizer retains its established "single trailing rest tail" diagnostic before
-    // the multi-segment classifier considers exactness or `@name` directives.
+    // the multi-segment classifier considers its `@name` directives.
     if candidates.iter().any(|&candidate| {
         let (entry, _) = flattened[candidate];
         matches!(entry, GroupEntry::TypeGroupname { ge, .. }
@@ -8637,13 +8637,13 @@ fn recognize_array_rest_segments(
     let src = source_rule_name_of(types, name);
     if in_choice_arm {
         types.record_rejection(format!(
-            "rule `{src}`: multiple exact-count array occurrence segments inside a group-choice arm are unsupported. Give the array its own named rule and reference it from the arm."
+            "rule `{src}`: multiple array occurrence segments inside a group-choice arm are unsupported. Give the array its own named rule and reference it from the arm."
         ));
         return (vec![], candidates);
     }
     if types.is_plain_group(name) {
         types.record_rejection(format!(
-            "rule `{src}`: multiple exact-count array occurrence segments inside a plain group are unsupported. Give the array its own named rule and reference it from the group."
+            "rule `{src}`: multiple array occurrence segments inside a plain group are unsupported. Give the array its own named rule and reference it from the group."
         ));
         return (vec![], candidates);
     }
@@ -8658,60 +8658,54 @@ fn recognize_array_rest_segments(
             GroupEntry::InlineGroup { .. } => None,
         };
         let occurrence = normalized_dynamic_sequence_occurrence_window(types, occur);
-        if !occurrence.is_some_and(|(min, max)| min == max && (min, max) != (1, 1)) {
-            types.record_rejection(format!(
-                "rule `{src}`: multiple array occurrence segments require every repeated member to have a named finite exact-count boundary (`N*N`, other than `1*1`). Variable-cardinality segments (`*`, `+`, `n*m` where n != m, min-only, or max-only) need a single owner and remain unsupported."
-            ));
-            return (vec![], candidates);
-        }
         if let GroupEntry::ValueMemberKey { ge, .. } = entry
             && ge.member_key.is_some()
         {
             types.record_rejection(format!(
-                "rule `{src}`: an exact-count array occurrence segment is positional and cannot carry a member key. Drop the `key:` label."
+                "rule `{src}`: an array occurrence segment is positional and cannot carry a member key. Drop the `key:` label."
             ));
             return (vec![], candidates);
         }
         let metadata = group_entry_rule_metadata(entry, comma);
         let Some(field_name) = metadata.name.clone() else {
             types.record_rejection(format!(
-                "rule `{src}`: multiple exact-count array occurrence segments require each repeated member to have a unique `@name`. Add `; @name <segment>` to this member."
+                "rule `{src}`: multiple array occurrence segments require each repeated member to have a unique `@name`. Add `; @name <segment>` to this member."
             ));
             return (vec![], candidates);
         };
         if !names.insert(field_name.clone()) {
             types.record_rejection(format!(
-                "rule `{src}`: multiple exact-count array occurrence segments would both emit the field `{field_name}`. Give every segment a unique `@name`."
+                "rule `{src}`: multiple array occurrence segments would both emit the field `{field_name}`. Give every segment a unique `@name`."
             ));
             return (vec![], candidates);
         }
         reject_type_scoped_directives(
             types,
-            &format!("the exact-count array occurrence segment of rule `{src}`"),
+            &format!("the array occurrence segment of rule `{src}`"),
             &metadata,
         );
         if reject_custom_codec_on_row_entry(
             types,
-            &format!("exact-count array occurrence segment of rule `{src}`"),
+            &format!("array occurrence segment of rule `{src}`"),
             "Name the segment element type as its own rule and put the pair there.",
             &metadata,
         ) || reject_custom_encodings_without_pair(
             types,
-            &format!("the exact-count array occurrence segment of rule `{src}`"),
+            &format!("the array occurrence segment of rule `{src}`"),
             &metadata,
         ) {
             return (vec![], candidates);
         }
         if metadata.ignore || metadata.duplicates.is_some() {
             types.record_rejection(format!(
-                "rule `{src}`: multiple exact-count array occurrence segments must be captured named boundaries; `@ignore` and `@duplicates` are not supported on a segment. Remove the directive."
+                "rule `{src}`: multiple array occurrence segments must be captured named boundaries; `@ignore` and `@duplicates` are not supported on a segment. Remove the directive."
             ));
             return (vec![], candidates);
         }
         let element = group_entry_to_type(types, parent_visitor, entry, cli);
         if element.is_fixed_value() {
             types.record_rejection(format!(
-                "rule `{src}`: an exact-count array occurrence segment cannot be a fixed value — use a typed element."
+                "rule `{src}`: an array occurrence segment cannot be a fixed value — use a typed element."
             ));
             return (vec![], candidates);
         }
@@ -8719,7 +8713,7 @@ fn recognize_array_rest_segments(
             && matches!(element.conceptual_type.resolve_alias_shallow(), ConceptualRustType::Rust(ident) if types.is_plain_group(ident))
         {
             types.record_rejection(format!(
-                "rule `{src}`: an exact-count array occurrence segment cannot capture a plain group, because a group splices several array members rather than one element. Frame it as its own array rule first."
+                "rule `{src}`: an array occurrence segment cannot capture a plain group, because a group splices several array members rather than one element. Frame it as its own array rule first."
             ));
             return (vec![], candidates);
         }

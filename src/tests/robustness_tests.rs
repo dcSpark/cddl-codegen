@@ -6254,10 +6254,10 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
             .any(|source| source.contains("pub rest: [u64; 0]")),
         "an exact-zero middle segment must use the zero-length static carrier: {exact_zero:#?}"
     );
-    // Multiple occurrence-bearing members are safe only when each owns a finite exact count.  The
-    // generated record must keep every segment flat, named, and independently staged; this shape
-    // deliberately has same-major neighbours plus an exact-zero boundary, so a decoder cannot be
-    // accidentally relying on major peeking or a shared rest buffer.
+    // Exact multiple occurrence-bearing members own their boundaries by count. The generated record
+    // must keep every segment flat, named, and independently staged; this shape deliberately has
+    // same-major neighbours plus an exact-zero boundary, so a decoder cannot be accidentally relying
+    // on major peeking or a shared rest buffer.
     let multiple_exact = run(
         "m = [\n  prefix: uint\n  , 2*2 bytes ; @name chunks\n  , separator: tstr\n  , 0*0 uint ; @name absent\n  , 3*3 uint ; @name values\n  , suffix: uint\n]\n",
         "multiple_exact_segments",
@@ -6519,7 +6519,7 @@ fn occurrence_on_array_record_field_rejects_gracefully() {
         (
             "pair = (a: tstr, b: uint)\nm = [uint, * bytes, pair]\n",
             "plain_group_suffix",
-            "exactly one CBOR item",
+            "can splice multiple CBOR items",
         ),
         (
             "m = [\n  uint,\n  * bytes,\n  tstr ; @custom_serialize write_text @custom_deserialize read_text\n]\n",
@@ -6823,25 +6823,99 @@ fn open_array_front_end() {
     ] {
         run(spec).expect_err("an unsafe middle occurrence must reject");
     }
-    // Multiple segments only admit named finite exact boundaries.  The negative controls retain a
-    // single front-door refusal rather than silently changing to nested arrays or a greedy residue.
+    // Multiple named segments retain flat source-position fields. Variable boundaries are admitted
+    // only when every possible-next live wire head proves a greedy stop: zero-minimum segments keep
+    // the walk going, while a positive-minimum segment is a hard boundary.
+    let loose_segments =
+        run("a = [\n  prefix: uint\n  , * uint ; @name numbers\n  , * tstr ; @name labels\n]\n")
+            .expect("two major-disjoint loose segments must generate");
+    let loose_source = src(&loose_segments);
+    assert!(
+        loose_source.contains("pub numbers: Vec<u64>")
+            && loose_source.contains("pub labels: Vec<String>")
+            && loose_source
+                .contains("pub fn new(prefix: u64, numbers: Vec<u64>, labels: Vec<String>)")
+            && !loose_source.contains("residue"),
+        "multiple loose segments must retain distinct source-ordered Vec fields and no hidden residue: {loose_source}"
+    );
+    let mixed_segments = run(
+        "a = [\n  prefix: uint\n  , * uint ; @name numbers\n  , + tstr ; @name labels\n  , 1*2 bytes ; @name chunks\n]\n",
+    )
+    .expect("loose/non-empty/bounded major-disjoint segments must generate");
+    let mixed_source = src(&mixed_segments);
+    assert!(
+        mixed_source.contains("pub numbers: Vec<u64>")
+            && mixed_source.contains("pub labels: NonEmptyVec<String>")
+            && mixed_source.contains("pub chunks: BoundedVec<Vec<u8>, 1, 2>")
+            && mixed_source.contains("prefix: u64,\n        numbers: Vec<u64>,\n        labels: NonEmptyVec<String>,\n        chunks: BoundedVec<Vec<u8>, 1, 2>,"),
+        "multi-segment carriers and native constructor must be source-ordered complete inputs: {mixed_source}"
+    );
+    run("a = [* uint ; @name numbers\n, * tstr ; @name labels\n, * bytes ; @name chunks\n]\n")
+        .expect("three pairwise-disjoint zero-skippable segments must generate");
+    run("a = [* uint ; @name first\n, + tstr ; @name delimiter\n, * uint ; @name last\n]\n")
+        .expect("a positive-minimum middle segment is a hard boundary before a reused major");
+    run("a = [2*2 uint ; @name first\n, * uint ; @name later\n]\n")
+        .expect("an exact segment owns its same-major boundary before a variable segment");
+    run("a = [* uint ; @name first\n, 0*0 uint ; @name absent\n, * tstr ; @name last\n]\n")
+        .expect("an exact-zero segment contributes no possible-next head");
+    run(
+        "custom_text = uint ; @custom_serialize write_text @custom_deserialize read_text @custom_wire_major text\n\
+         text_alias = custom_text\n\
+         a = [* uint ; @name numbers\n, * text_alias ; @name labels\n]\n",
+    )
+    .expect("a re-aliased custom declaration proves the possible-next side of a multi-segment boundary");
+    run(
+        "custom_bytes = uint ; @custom_serialize write_bytes @custom_deserialize read_bytes @custom_wire_major bytes\n\
+         bytes_alias = custom_bytes\n\
+         a = [* bytes_alias ; @name chunks\n, * tstr ; @name labels\n]\n",
+    )
+    .expect("a re-aliased custom declaration proves the current side of a multi-segment boundary");
+    run(
+        "custom_bytes = bytes ; @custom_serialize write_bytes @custom_deserialize read_bytes\n\
+         a = [* #6.10(custom_bytes) ; @name tagged\n, * tstr ; @name labels\n]\n",
+    )
+    .expect("mandatory tag framing proves a custom-owned current segment head");
+    run(
+        "custom_uint = uint ; @custom_serialize write_uint @custom_deserialize read_uint\n\
+         a = [* uint ; @name numbers\n, * bytes .cbor custom_uint ; @name framed\n]\n",
+    )
+    .expect("mandatory .cbor framing proves a custom-owned possible-next segment head");
+
+    // The zero-skippable walk sees through an absent middle segment, so both this chain and an
+    // adjacent same-major pair remain loud rejects rather than becoming a residue splitter.
     for (spec, needle) in [
         (
-            "a = [uint, * uint, * tstr]\n",
-            "finite exact-count boundary",
+            "a = [* uint ; @name first\n, * tstr ; @name middle\n, * uint ; @name last\n]\n",
+            "possible-next live member",
         ),
         (
-            "a = [uint, + uint, * tstr]\n",
-            "finite exact-count boundary",
+            "a = [* uint ; @name first\n, * uint ; @name second\n]\n",
+            "possible-next live member",
+        ),
+        (
+            "a = [* bytes ; @name values\n, * _CDDL_CODEGEN_EXTERN_TYPE_ ; @name opaque\n]\n",
+            "possible-next occurrence segment `opaque`",
+        ),
+        (
+            "a = [* _CDDL_CODEGEN_EXTERN_TYPE_ ; @name opaque\n, * tstr ; @name labels\n]\n",
+            "repeated element at occurrence-bearing array member position",
         ),
         ("a = [uint, 2*2 uint, 3*3 tstr]\n", "unique `@name`"),
         (
-            "a = [\n uint\n , 2*2 uint ; @name chunks\n , 3*3 tstr ; @name chunks\n]\n",
+            "a = [\n uint\n , * uint ; @name chunks\n , * tstr ; @name chunks\n]\n",
             "both emit the field `chunks`",
         ),
         (
-            "a = [\n chunks: uint\n , 2*2 uint ; @name chunks\n , 3*3 tstr ; @name values\n]\n",
+            "a = [\n chunks: uint\n , * uint ; @name chunks\n , * tstr ; @name values\n]\n",
             "collides with fixed field `chunks`",
+        ),
+        (
+            "a = [* uint ; @name type\n, * tstr ; @name labels\n]\n",
+            "array occurrence segment name `type` is a Rust keyword",
+        ),
+        (
+            "a = [* uint ; @name raw\n, * tstr ; @name labels\n]\n",
+            "array occurrence segment `raw`",
         ),
         (
             "a = [\n uint\n , 2*2 uint ; @name chunks @duplicates reject\n , 3*3 tstr ; @name values\n]\n",
@@ -6857,12 +6931,12 @@ fn open_array_front_end() {
     // collision against a segment name.
     for (spec, base, companion) in [
         (
-            "a = [\n  uint\n  , 2*2 uint ; @name chunks\n  , 3*3 tstr ; @name chunks_elem_encodings\n]\n",
+            "a = [\n  uint\n  , * uint ; @name chunks\n  , * tstr ; @name chunks_elem_encodings\n]\n",
             "chunks",
             "chunks_elem_encodings",
         ),
         (
-            "a = [\n  chunks: uint\n  , 2*2 uint ; @name chunks_encoding\n  , 3*3 tstr ; @name values\n]\n",
+            "a = [\n  chunks: uint\n  , * tstr ; @name chunks_encoding\n  , * bytes ; @name values\n]\n",
             "chunks",
             "chunks_encoding",
         ),
@@ -6879,16 +6953,26 @@ fn open_array_front_end() {
     // valid even on the preserve surface; pin the positive complement of the fixed-field rejection
     // above against the actual preserve emitter.
     let segment_encoding_name = gen_flags(
-        "a = [\n  uint\n  , 2*2 uint ; @name chunks\n  , 3*3 tstr ; @name chunks_encoding\n]\n",
+        "a = [\n  uint\n  , * uint ; @name chunks\n  , * tstr ; @name chunks_encoding\n]\n",
         &["--preserve-encodings=true"],
     )
-    .expect("two exact segments may use `foo` and `foo_encoding` under preserve encodings");
+    .expect("two variable segments may use `foo` and `foo_encoding` under preserve encodings");
     assert!(
         src(&segment_encoding_name).contains("pub chunks:")
             && src(&segment_encoding_name).contains("pub chunks_encoding:"),
         "the preserve profile must retain both safe segment fields: {}",
         src(&segment_encoding_name)
     );
+    for spec in [
+        "a = [x: uint // * uint ; @name first, * tstr ; @name second]\n",
+        "g = (* uint ; @name first, * tstr ; @name second)\na = [g]\n",
+        "g = (x: uint)\na = [* g ; @name groups, * tstr ; @name labels]\n",
+        "a = [* (x: uint) ; @name groups, * tstr ; @name labels]\n",
+    ] {
+        run(spec).expect_err(
+            "multiple variable segments must not widen group-choice, plain-group, or repeated-group placements",
+        );
+    }
     // bounded final tails share the generic checked-carrier seam, including finite, max-only,
     // min-only, loose-equivalent 0*, and exact-zero forms. Only the exact ordinary window becomes
     // a static array; the non-exact bounded controls keep their checked BoundedVec carriers.

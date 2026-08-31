@@ -38,6 +38,32 @@ mod open_array_json {
     }
 
     #[test]
+    fn multiple_variable_segments_keep_named_json_lists_and_checked_doors() {
+        let loose = MultiParts::new(7, vec![1, 2], vec!["a".to_owned()]);
+        let json = serde_json::to_string(&loose).unwrap();
+        assert!(json.contains("\"numbers\":[1,2]"), "first segment stays named: {json}");
+        assert!(json.contains("\"labels\":[\"a\"]"), "second segment stays named: {json}");
+        let empty = MultiParts::new(7, vec![], vec![]);
+        let empty_json = serde_json::to_string(&empty).unwrap();
+        assert!(!empty_json.contains("numbers") && !empty_json.contains("labels"));
+        let empty_back: MultiParts = serde_json::from_str(r#"{"prefix":7}"#).unwrap();
+        assert!(empty_back.numbers.is_empty() && empty_back.labels.is_empty());
+
+        let schema = serde_json::to_value(schemars::schema_for!(MultiMixed)).unwrap();
+        assert_eq!(schema["properties"]["labels"]["minItems"], 1);
+        assert_eq!(schema["properties"]["chunks"]["minItems"], 1);
+        assert_eq!(schema["properties"]["chunks"]["maxItems"], 2);
+        assert!(serde_json::from_str::<MultiMixed>(
+            r#"{"prefix":7,"numbers":[],"labels":[],"chunks":[[1]]}"#
+        )
+        .is_err());
+        assert!(serde_json::from_str::<MultiMixed>(
+            r#"{"prefix":7,"numbers":[],"labels":["x"],"chunks":[]}"#
+        )
+        .is_err());
+    }
+
+    #[test]
     fn any_tail_renders_naturally_and_round_trips() {
         // CapAny = [uint, * any]: the `any` elements render NATURALLY (a uint 5 as the JSON number 5,
         // not a tagged `{"uint":5}`), reusing the homogeneous `[* any]` member surface.

@@ -394,20 +394,28 @@ new name family: the getter returns the same structural class named after `K`'s 
 what a *table* on the same key type returns — a bare `Vec` when `K` is wasm-native, the minted
 `<K>List` class (`MdList`, `BytesList`) otherwise.
 
-An [open array](output_format#open-arrays-rest-tails) (`[uint, tstr, * t]`,
-`[uint, tstr, + t]`, or a safe middle form `[uint, * bytes, tstr]`) captures its repeated elements
-into a `rest` field the same way. On the wasm boundary that field is a **read-only getter named
-after the field** (`rest()` by default) returning the minted **list** wrapper for the segment's
-element type (`AnyList` for an `* any` segment, `BytesList` for `* bytes`, or a bare `Vec` for a
-wasm-native element) — the same list-wrapper surface as any homogeneous array. A loose `*` segment
-has no constructor argument and defaults empty. A non-empty `+` / `1*` segment instead adds a
-first-element constructor argument and returns the corresponding restricted non-empty list wrapper
-(`NonEmptyBytesList`, for example), so the wasm API cannot create an empty segment. A bounded
-segment uses its matching checked list wrapper. The carrier/getter surface is the same for final
-tails, variable major-disjoint middle placement (whether its effective heads are generator-proven or
-declared by a transparent custom alias), finite disjoint fixed-domain same-major middle placement,
-and exact count-delimited middle placement; neither
-flavor has a setter.
+An [open array](output_format#open-arrays-rest-tails) may capture one segment (`[uint, tstr, * t]`,
+`[uint, * bytes, tstr]`) or several uniquely named segments:
+
+```cddl
+parts = [
+  * uint ; @name numbers
+  , + tstr ; @name labels
+]
+```
+
+Every segment has a **read-only getter named after its field** returning the minted list wrapper for its element and occurrence carrier
+(`AnyList`, `BytesList`, `NonEmptyBytesList`, a bounded wrapper, or a bare `Vec` for a wasm-native
+list). No segment has a setter.
+
+The one-segment constructor ABI is unchanged: loose defaults empty and contributes no argument,
+min-one contributes its first element, and bounded/exact forms take their checked wrapper. A
+multi-segment constructor instead takes the complete matching wrapper for **every** segment,
+including loose and min-one segments. Its public argument layout keeps the established fixed-fields-
+then-wrappers order, while the generated call reorders those values into the native constructor's
+authored CDDL order. Restricted wrappers have already checked cardinality; the native constructor
+also checks element value windows before accepting the record. Final, exact count-owned, and
+possible-next-major-delimited placements use the same getter and wrapper types.
 
 An [`@ignore`](comment_dsl#ignore) rest row **or occurrence segment** stores nothing, so its wasm class has
 **no `rest()` getter** — it is a plain closed struct's wasm surface. The read-tolerance (unknown

@@ -28,3 +28,11 @@ all_mandatory_ignore = [
 ]
 single_fixed = [uint, * uint]
 opt_fixed_member = [uint, ? 5, * tstr]
+; Multiple variable segments retain their own flat fields and take complete carriers in authored
+; constructor order on native, wasm, and component faces.
+multiple_variable = [
+  prefix: uint
+  , * uint ; @name numbers
+  , + tstr ; @name labels
+  , 1*2 bytes ; @name chunks
+]

@@ -121,6 +121,69 @@ impl Deserialize for MiddleOccurrence {
     }
 }
 
+impl cbor_event::se::Serialize for MultipleVariableOccurrence {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_array(cbor_event::Len::Len(
+            1 + self.numbers.len() as u64 + self.labels.len() as u64,
+        ))?;
+        serializer.write_unsigned_integer(self.prefix)?;
+        for element in self.numbers.iter() {
+            serializer.write_unsigned_integer(*element)?;
+        }
+        for element in self.labels.iter() {
+            serializer.write_text(element)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for MultipleVariableOccurrence {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            let prefix =
+                Ok(raw.unsigned_integer()?).map_err(|e: DeserializeError| e.annotate("prefix"))?;
+            let mut numbers = Vec::new();
+            while (match len {
+                cbor_event::Len::Len(n) => read_len.read() < n,
+                cbor_event::Len::Indefinite => raw.as_slice().first() != Some(&0xff),
+            }) && raw.cbor_type()? == cbor_event::Type::UnsignedInteger
+            {
+                read_len.read_elems(1)?;
+                let numbers_elem = raw.unsigned_integer()?;
+                numbers.push(numbers_elem);
+            }
+            let mut labels = Vec::new();
+            while match len {
+                cbor_event::Len::Len(n) => read_len.read() < n,
+                cbor_event::Len::Indefinite => raw.as_slice().first() != Some(&0xff),
+            } {
+                read_len.read_elems(1)?;
+                let labels_elem = raw.text()?;
+                labels.push(labels_elem);
+            }
+            match len {
+                cbor_event::Len::Len(_) => read_len.finish()?,
+                cbor_event::Len::Indefinite => match raw.special()? {
+                    cbor_event::Special::Break => read_len.finish()?,
+                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                },
+            }
+            Ok(MultipleVariableOccurrence {
+                prefix,
+                numbers,
+                labels,
+            })
+        })()
+        .map_err(|e| e.annotate("MultipleVariableOccurrence"))
+    }
+}
+
 impl cbor_event::se::Serialize for OccurrenceHolder {
     fn serialize<'se>(
         &self,

@@ -4713,9 +4713,8 @@ impl<'a> IntermediateTypes<'a> {
                 rejections.push(format!(
                     "`@custom_wire_major` on rule `{alias_ident}`: nothing consumes the declared \
                      major. It is read when this transparent alias keys an OPEN TABLE's typed row \
-                     (`t = {{ * {alias_ident} => v, * k2 => v2 }}`), or appears as either boundary \
-                     item of a variable middle ARRAY occurrence with an immediate mandatory, \
-                     major-disjoint suffix (`m = [prefix, * {alias_ident}, suffix]`). Remove the \
+                     (`t = {{ * {alias_ident} => v, * k2 => v2 }}`), or participates in a generator-proven \
+                     possible-next boundary of a variable ARRAY occurrence (`m = [prefix, * t, * {alias_ident}]`). Remove the \
                      directive, or use this rule at one of those boundaries."
                 ));
             }
@@ -4936,7 +4935,12 @@ impl<'a> IntermediateTypes<'a> {
                 if !seen.insert(ident.clone()) {
                     return false;
                 }
-                let rust_struct = self.rust_struct(ident).unwrap();
+                // An opaque extern can reach this classifier directly (rather than through a
+                // registered generated struct). Its head is intentionally unproven; report the
+                // surrounding greedy-boundary rejection instead of aborting while looking it up.
+                let Some(rust_struct) = self.rust_struct(ident) else {
+                    return true;
+                };
                 let config = rust_struct.config();
                 if config.custom_serialize.is_some() || config.custom_deserialize.is_some() {
                     return true;
@@ -4979,15 +4983,20 @@ impl<'a> IntermediateTypes<'a> {
     }
 
     /// Validate every non-final array occurrence segment after aliases and generic products have
-    /// settled.  The wire is greedy (RFC 8610): a repeated element may stop before a fixed suffix
-    /// only when the next CBOR head proves that it belongs to the suffix, so a same-major boundary
-    /// cannot be guessed or recovered with backtracking.
+    /// settled. RFC 8610 repetition is greedy: a variable segment may stop only at the owner-array
+    /// boundary or when every possible next live member has an effective major disjoint from it.
     ///
     /// Parse records the segment's flattened source position; finalized fields retain theirs.  This
     /// pass is deliberately before every code-generation walk: `cbor_types()` and
     /// `expanded_field_count()` may inspect referenced structs, so the parser cannot soundly make
     /// this decision while forward references and generic instances are unresolved.
     fn validate_array_middle_occurrence_segments(&mut self) -> BTreeSet<AliasIdent> {
+        enum PossibleNext<'a> {
+            Segment(&'a RestRow),
+            Field(&'a RustField),
+            Forbidden,
+        }
+
         let mut rejections = Vec::new();
         // A declaration becomes live only after its successful variable-middle boundary actually
         // reads the effective major. The open-table pass extends this same ledger before its one
@@ -5009,142 +5018,180 @@ impl<'a> IntermediateTypes<'a> {
                     continue;
                 }
 
-                // The long-established final-tail form needs no discriminator: it consumes the owner
-                // array through its boundary exactly as before.  Exact-zero metadata is included here
-                // so an occurrence followed only by a forbidden member is not mistaken for final.
-                let has_later_member = record
-                    .fields
-                    .iter()
-                    .any(|field| field.source_index > segment_index)
-                    || record
-                        .forbidden_fields
-                        .iter()
-                        .any(|field| field.source_index > segment_index)
-                    || record
-                        .dynamic_rows()
-                        .filter(|row| row.is_array_tail())
-                        .any(|other| {
-                            other
-                                .array_source_index()
-                                .is_some_and(|index| index > segment_index)
-                        });
-                if !has_later_member {
-                    continue;
-                }
-
                 let source_rule = self
                     .source_rule_name(rule_ident)
                     .unwrap_or(rule_ident.as_ref());
-                let Some(suffix) = record
+                let mut later = record
                     .fields
                     .iter()
-                    .find(|field| field.source_index == segment_index + 1)
-                else {
-                    rejections.push(format!(
-                    "rule `{source_rule}`: the occurrence-bearing array member at position {} must \
-                     be followed immediately by one mandatory, single-item fixed suffix so greedy \
-                     decoding can stop without guessing. Frame the repeated part as its own array, \
-                     move it final, or use a major-disjoint fixed suffix.",
-                    segment_index + 1
-                ));
-                    continue;
-                };
-                if suffix.optional {
-                    rejections.push(format!(
-                    "rule `{source_rule}`: the immediate suffix `{}` after an occurrence-bearing \
-                     array member must be mandatory — an optional suffix gives greedy decoding no \
-                     certain boundary. Frame the repeated part as its own array, move it final, or \
-                     make the suffix mandatory and major-disjoint.",
-                    suffix.name
-                ));
-                    continue;
-                }
-                if suffix.rust_type.expanded_field_count(self) != Some(1) {
-                    rejections.push(format!(
-                    "rule `{source_rule}`: the immediate suffix `{}` after an occurrence-bearing \
-                     array member must expand to exactly one CBOR item, but this suffix can splice \
-                     multiple items. Frame the repeated part as its own array, move it final, or use \
-                     a single-item major-disjoint suffix.",
-                    suffix.name
-                ));
-                    continue;
-                }
-                let repeated_majors = self.effective_wire_majors(segment.element());
-                // A field-local pair has no transparent alias metadata channel. Keep its existing
-                // graceful refusal even if the field's replaced Rust type itself has one known major.
-                let suffix_majors = if suffix.rule_metadata.custom_serialize.is_some()
-                    || suffix.rule_metadata.custom_deserialize.is_some()
-                {
-                    None
-                } else {
-                    self.effective_wire_majors(&suffix.rust_type)
-                };
-                if repeated_majors.is_none() || suffix_majors.is_none() {
-                    let positions = match (repeated_majors.is_none(), suffix_majors.is_none()) {
-                        (true, true) => "the repeated element and immediate suffix",
-                        (true, false) => "the repeated element",
-                        (false, true) => "the immediate suffix",
-                        (false, false) => unreachable!(),
-                    };
-                    rejections.push(format!(
-                    "rule `{source_rule}`: {positions} around the occurrence-bearing array member \
-                     have a custom- or extern-owned, otherwise-unproven wire head — greedy decoding \
-                     must know both possible CBOR majors before it can prove the boundary. Frame the \
-                     repeated part as its own array, move it final, or use a major-disjoint boundary \
-                     with generator-proven wire heads."
-                ));
+                    .filter(|field| field.source_index > segment_index)
+                    .map(|field| (field.source_index, PossibleNext::Field(field)))
+                    .chain(
+                        record
+                            .forbidden_fields
+                            .iter()
+                            .filter(|field| field.source_index > segment_index)
+                            .map(|field| (field.source_index, PossibleNext::Forbidden)),
+                    )
+                    .chain(
+                        record
+                            .dynamic_rows()
+                            .filter(|row| {
+                                row.is_array_tail()
+                                    && row
+                                        .array_source_index()
+                                        .is_some_and(|index| index > segment_index)
+                            })
+                            .map(|row| {
+                                (
+                                    row.array_source_index()
+                                        .expect("array occurrence segment has a source index"),
+                                    PossibleNext::Segment(row),
+                                )
+                            }),
+                    )
+                    .collect::<Vec<_>>();
+                later.sort_by_key(|(index, _)| *index);
+                if later.is_empty() {
                     continue;
                 }
 
-                let repeated_majors = repeated_majors.expect("checked above");
-                let suffix_majors = suffix_majors.expect("checked above");
+                let mut possible_next_majors = Vec::new();
+                let mut boundary_types = Vec::new();
+                let mut boundary_failure = None;
+                let mut immediate_fixed_suffix = None;
+                for (position, next) in later {
+                    match next {
+                        PossibleNext::Segment(next) => {
+                            let (minimum, maximum) = next.occurrence.unwrap_or((0, u64::MAX));
+                            if maximum == 0 {
+                                continue;
+                            }
+                            let Some(majors) = self.effective_wire_majors(next.element()) else {
+                                boundary_failure = Some(format!(
+                                    "rule `{source_rule}`: the possible-next occurrence segment `{}` after the occurrence-bearing array member at position {} has a custom- or extern-owned, otherwise-unproven wire head. Greedy decoding must know every possible-next CBOR major before it can prove the boundary.",
+                                    next.field_name,
+                                    segment_index + 1,
+                                ));
+                                break;
+                            };
+                            possible_next_majors.extend(majors);
+                            boundary_types.push(next.element());
+                            if minimum > 0 {
+                                break;
+                            }
+                        }
+                        PossibleNext::Field(next) => {
+                            if next.optional {
+                                boundary_failure = Some(format!(
+                                    "rule `{source_rule}`: the possible-next fixed field `{}` after the occurrence-bearing array member at position {} is optional, so greedy decoding has no certain boundary. Frame the repeated part as its own array, move it final, or make the boundary mandatory and major-disjoint.",
+                                    next.name,
+                                    segment_index + 1,
+                                ));
+                                break;
+                            }
+                            if next.rust_type.expanded_field_count(self) != Some(1) {
+                                boundary_failure = Some(format!(
+                                    "rule `{source_rule}`: the possible-next fixed field `{}` after the occurrence-bearing array member at position {} can splice multiple CBOR items. Frame the repeated part as its own array, move it final, or use a single-item major-disjoint boundary.",
+                                    next.name,
+                                    segment_index + 1,
+                                ));
+                                break;
+                            }
+                            // A field-local pair has no transparent alias metadata channel. Keep its
+                            // established graceful refusal even if the replaced Rust type has a known major.
+                            let majors = if next.rule_metadata.custom_serialize.is_some()
+                                || next.rule_metadata.custom_deserialize.is_some()
+                            {
+                                None
+                            } else {
+                                self.effective_wire_majors(&next.rust_type)
+                            };
+                            let Some(majors) = majors else {
+                                boundary_failure = Some(format!(
+                                    "rule `{source_rule}`: the possible-next fixed field `{}` after the occurrence-bearing array member at position {} has a custom- or extern-owned, otherwise-unproven wire head. Greedy decoding must know every possible-next CBOR major before it can prove the boundary.",
+                                    next.name,
+                                    segment_index + 1,
+                                ));
+                                break;
+                            };
+                            if position == segment_index + 1 {
+                                immediate_fixed_suffix = Some(next);
+                            }
+                            possible_next_majors.extend(majors);
+                            boundary_types.push(&next.rust_type);
+                            break;
+                        }
+                        PossibleNext::Forbidden => {
+                            boundary_failure = Some(format!(
+                                "rule `{source_rule}`: an unsupported intervening array member follows the occurrence-bearing member at position {}. Frame the repeated part as its own array or move it final.",
+                                segment_index + 1,
+                            ));
+                            break;
+                        }
+                    }
+                }
+                if let Some(rejection) = boundary_failure {
+                    rejections.push(rejection);
+                    continue;
+                }
+                // Zero-maximum segments contribute no wire head. If they were the only later
+                // members, this variable segment is wire-final and needs no discriminator.
+                if possible_next_majors.is_empty() {
+                    continue;
+                }
+                let Some(repeated_majors) = self.effective_wire_majors(segment.element()) else {
+                    rejections.push(format!(
+                        "rule `{source_rule}`: the repeated element at occurrence-bearing array member position {} has a custom- or extern-owned, otherwise-unproven wire head. Greedy decoding must know every possible-next CBOR major before it can prove the boundary.",
+                        segment_index + 1,
+                    ));
+                    continue;
+                };
                 let overlap = repeated_majors
                     .iter()
-                    .filter(|major| suffix_majors.contains(major))
+                    .filter(|major| possible_next_majors.contains(major))
                     .map(|major| format!("{major:?}"))
                     .collect::<Vec<_>>();
                 if !overlap.is_empty() {
-                    if self.has_disjoint_fixed_domain_middle_boundary(
-                        segment.element(),
-                        &suffix.rust_type,
-                    ) {
-                        // Greedy still means no suffix speculation: the generated loop tries the
-                        // repeated decoder once on the real cursor and restores it only when that
-                        // decoder fails.  The finite domains prove a suffix byte can never be a
-                        // successful repeated value.
+                    if record.array_segments.is_empty()
+                        && let Some(suffix) = immediate_fixed_suffix
+                    {
+                        if self.has_disjoint_fixed_domain_middle_boundary(
+                            segment.element(),
+                            &suffix.rust_type,
+                        ) {
+                            // The historic one-variable/immediate-fixed-suffix finite-domain retry is
+                            // deliberately retained. It does not prove a dynamic or multi-segment boundary.
+                            continue;
+                        }
+                        rejections.push(format!(
+                            "rule `{source_rule}`: the occurrence-bearing array member at position {} and its immediate suffix `{}` share CBOR major type(s) {}. RFC 8610 repetition is greedy and does not backtrack, so the generator will not guess where the repeated part ends. A same-major boundary is admitted only when BOTH sides have generator-owned, untagged finite fixed-value domains with no shared CDDL value; these boundaries do not prove that. Frame the repeated part as its own array, move it final, choose a major-disjoint suffix, or make both fixed-value domains disjoint.",
+                            segment_index + 1,
+                            suffix.name,
+                            overlap.join(", "),
+                        ));
                     } else {
                         rejections.push(format!(
-                        "rule `{source_rule}`: the occurrence-bearing array member at position {} and \
-                         its immediate suffix `{}` share CBOR major type(s) {}. RFC 8610 repetition is \
-                         greedy and does not backtrack, so the generator will not guess where the \
-                         repeated part ends. A same-major boundary is admitted only when BOTH sides \
-                         have generator-owned, untagged finite fixed-value domains with no shared \
-                         CDDL value; these boundaries do not prove that. Frame the repeated part as \
-                         its own array, move it final, choose a major-disjoint suffix, or make both \
-                         fixed-value domains disjoint.",
-                        segment_index + 1,
-                        suffix.name,
-                        overlap.join(", ")
-                    ));
+                            "rule `{source_rule}`: the occurrence-bearing array member at position {} shares CBOR major type(s) {} with a possible-next live member. RFC 8610 repetition is greedy and does not backtrack, so the generator will not guess where the repeated part ends. Frame the repeated part as its own array, move it final, or use generator-proven major-disjoint possible-next heads.",
+                            segment_index + 1,
+                            overlap.join(", "),
+                        ));
                     }
-                } else {
-                    // Both boundaries reached their effective major sets and proved disjoint. Mark an
-                    // alias chain only when its declaration supplied that effective set; a mandatory
-                    // generated tag/`.cbor` frame wins without reading an inner declaration, which
-                    // must remain inert. Marking keeps a re-alias's authored origin live too.
-                    if self.middle_boundary_consumes_wire_major_declaration(segment.element()) {
-                        mark_wire_major_consumed(
-                            &segment.element().conceptual_type,
-                            self,
-                            &mut consumed,
-                        );
-                    }
-                    if self.middle_boundary_consumes_wire_major_declaration(&suffix.rust_type) {
-                        mark_wire_major_consumed(
-                            &suffix.rust_type.conceptual_type,
-                            self,
-                            &mut consumed,
-                        );
+                    continue;
+                }
+                // Both sides reached their effective major sets and proved disjoint. Mark every
+                // transparent alias declaration the proof actually reads, including zero-skippable
+                // possible-next members; mandatory outer framing remains generator-proven and inert.
+                if self.middle_boundary_consumes_wire_major_declaration(segment.element()) {
+                    mark_wire_major_consumed(
+                        &segment.element().conceptual_type,
+                        self,
+                        &mut consumed,
+                    );
+                }
+                for boundary in boundary_types {
+                    if self.middle_boundary_consumes_wire_major_declaration(boundary) {
+                        mark_wire_major_consumed(&boundary.conceptual_type, self, &mut consumed);
                     }
                 }
             }

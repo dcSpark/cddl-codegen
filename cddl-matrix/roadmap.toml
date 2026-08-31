@@ -901,42 +901,28 @@ event_md = '''a valid-CDDL generation defect is reported in a blank cell
 
 [[record]]
 id = "matrix.heterogeneous-array.occurrence-bounds"
-title = "Honor the remaining ambiguous/multiple count-permitting occurrences on heterogeneous ARRAY-record fields."
+title = "Honor the remaining ambiguous same-major occurrences on heterogeneous ARRAY-record fields."
 
 [record.payload]
 kind = "work"
-body_md = '''### Honor the remaining ambiguous/multiple count-permitting occurrences on heterogeneous ARRAY-record fields.
+body_md = '''### Honor the remaining ambiguous same-major occurrences on heterogeneous ARRAY-record fields.
 
-A final occurrence after fixed members is supported: bare `*` / `0*` uses the loose open-array
-`Vec` rest tail, `+` / `1*` uses its `NonEmptyVec` twin with the shipped first-element construction
-door; variable bounded windows use a complete checked `BoundedVec` carrier (including finite,
-max-only, and min-only windows), while ordinary/preserve exact `N*N` homogeneous windows use the
-native `[T; N]` carrier (including zero). Exact `@duplicates reject` remains a checked
-`BoundedOrderedSet<T, N, N>`. One leading/middle bare-type occurrence may precede an
-immediate mandatory, single-item fixed suffix. Variable windows retain the field-codec-free,
-effective, CBOR-major-disjoint boundary (`[uint, * bytes, tstr]`): heads are generator-proven or a
-transparent custom alias declares its actual wire major. A variable same-major boundary is also
-accepted when both untagged generator-owned sides have finite, disjoint fixed-value domains; its
-decoder retries only the repeated decoder and rewinds on failure. An exact `N*N` window stops
-by count, so `[uint, 2*2 uint, uint]` needs neither a major discriminator nor proven custom-/extern-
-owned heads. The decoder therefore obeys RFC 8610 greedy, non-backtracking matching without suffix
-speculation; final and safe-middle forms share the
-carrier/projection paths covered by `contain.occurrence-target.grpent.member.{zero_array,plus_array,bounded_array}`.
-Two or more occurrence members are supported when every member has a unique explicit `@name` and a
-finite exact `N*N` window other than `1*1`: each is a separate flat `[T; N]` and exact count is
-its wire boundary, including adjacent and same-major segments.
+Current support is owner-, count-, or major-delimited. A final occurrence consumes to its owner
+boundary; an exact `N*N` occurrence owns its count; and a variable middle occurrence is accepted when
+its effective majors are disjoint from every possible-next live member. That proof walks through
+zero-minimum segments, skips maximum-zero segments, and stops at a positive-minimum segment or a
+mandatory single-item fixed field. Two or more segments are separate flat, uniquely `@name`d
+carriers (`Vec`, `NonEmptyVec`, `[T; N]`, or `BoundedVec`), with complete source-ordered construction
+across Rust, wasm, JSON, and component. Generator-owned heads, mandatory tag/`.cbor` framing, and
+consumed transparent `@custom_wire_major` declarations can prove the boundary. The one-segment
+finite fixed-domain retry remains the delivered same-major exception.
 
-Still rejected gracefully: variable-cardinality multiple occurrence-bearing members; group-choice-arm occurrences;
-and repeated inline/plain groups when mixed with other ARRAY members or otherwise outside the nominal sole-array
-carrier described by `matrix.inline-group-occurrence-carrier`. A variable middle occurrence with an optional, multi-item, undeclared
-custom-owned, or direct opaque-extern wire head on its repeated element or suffix, or a same-major suffix
-outside the delivered finite fixed-domain class (`[uint, * bytes, bytes]`). A mandatory outer tag or `.cbor` frame supplies a proven wire head and is therefore
-admissible even when its inner codec is custom- or extern-owned. Those boundaries are
-pinned by `occurrence_on_array_record_field_rejects_gracefully`. Remaining work is the design that can express
-variable multiple occurrences and variable-cardinality general same-major boundaries — value-level
-discrimination or residue beyond finite fixed domains — without permitting a constructed value to serialize to bytes that do not
-deserialize back to it. Any expansion must retain the one-source checked-carrier
-construction door and cover serialization, deserialization, every generated projection, matrix
+Remaining work is general same-major/value-level discrimination or a residue representation beyond
+that finite fixed-domain exception, plus variable boundaries whose possible-next heads are optional,
+multi-item, field-local custom-owned, or otherwise unproven. Group-choice-arm and mixed repeated-
+group placements remain owned by their separate group-placement work. Any expansion here must obey
+RFC 8610 greedy non-backtracking matching, keep construction unable to create bytes that decode into
+a different value, and cover serialization, deserialization, every generated projection, matrix
 classification, and spec-derived boundary vectors.
 
 '''
@@ -944,10 +930,10 @@ work_state = "ready"
 work_intent = "build_capability"
 work_kind = "feature"
 risk = "valid_rejection"
-acceptance_md = '''Design invariant-preserving representations and construction doors for multiple or variable-cardinality general same-major heterogeneous repetition (including value-level discrimination or residue beyond finite fixed domains), while retaining RFC 8610 greedy non-backtracking decoding; then cover serialization, deserialization, Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived boundary surfaces as applicable.
+acceptance_md = '''Design an invariant-preserving representation and construction door for general same-major heterogeneous repetition (including value-level discrimination or residue beyond finite fixed domains) and any newly proven optional/multi-item/custom boundary class, while retaining RFC 8610 greedy non-backtracking decoding; then cover serialization, deserialization, Rust, wasm, JSON, component, cross-crate, matrix, and spec-derived boundary surfaces as applicable.
 '''
 priority_band = "high"
-priority_rationale_md = '''Variable major-disjoint, exact-count, and finite fixed-domain same-major middle classes are delivered, but spec-valid multiple and general variable same-major repetition still reject. They need an explicit representation rather than a decoder that guesses or speculates on the suffix, so this remains a high-priority language boundary without reopening the delivered shared carrier family.
+priority_rationale_md = '''Owner-, count-, major-disjoint multiple, and finite fixed-domain same-major classes are represented, but general same-major repetition still rejects. It needs an explicit value/residue representation rather than a decoder that guesses or speculates on later members, so this remains a high-priority language boundary without reopening the delivered shared carrier family.
 '''
 
 [[record]]

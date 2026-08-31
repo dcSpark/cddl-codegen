@@ -1,6 +1,5 @@
 ---
 source: src/tests/snapshot_tests.rs
-assertion_line: 788
 expression: content
 ---
 // This file was code-generated using an experimental CDDL to rust tool:
@@ -70,6 +69,14 @@ pub struct MiddleEncoding {
     pub index_0_encoding: Option<cbor_event::Sz>,
     pub index_2_encoding: StringEncoding,
     pub rest_elem_encodings: Vec<Option<cbor_event::Sz>>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct MultiPartsEncoding {
+    pub len_encoding: LenEncoding,
+    pub prefix_encoding: Option<cbor_event::Sz>,
+    pub numbers_elem_encodings: Vec<Option<cbor_event::Sz>>,
+    pub labels_elem_encodings: Vec<StringEncoding>,
 }
 
 #[derive(Clone, Debug, Default)]

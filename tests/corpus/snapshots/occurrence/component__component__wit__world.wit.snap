@@ -24,6 +24,14 @@ interface types {
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<middle-occurrence, string>;
   }
+  resource multiple-variable-occurrence {
+    constructor(prefix: u64, numbers: list<u64>, labels: list<string>);
+    prefix: func() -> u64;
+    numbers: func() -> list<u64>;
+    labels: func() -> list<string>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<multiple-variable-occurrence, string>;
+  }
   resource occurrence-holder {
     constructor(o: list<u64>, b: list<u64>, upper: list<u64>, lower: list<u64>, maybe: list<u64>, exact: list<u64>, nested: list<list<u64>>, nested-bounded: list<list<u64>>, inline-bounded: list<string>, inline-upper: list<u64>, inline-lower: list<u64>, inline-maybe: list<u64>, inline-exact: list<u64>) -> result<occurrence-holder, string>;
     o: func() -> list<u64>;

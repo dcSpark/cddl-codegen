@@ -2288,20 +2288,23 @@ survive:
 
 ### Open arrays (rest tails) — test map
 
-An open array (the array analog of the open struct-map rest row) has one occurrence-bearing segment:
-it may be final, or leading/middle only before an immediate mandatory, single-item fixed suffix. A
-variable window needs either the existing field-codec-free, effective, CBOR-major-disjoint boundary
-(its heads are generator-proven or a transparent custom alias declares one with `@custom_wire_major`)
-or generator-owned untagged finite fixed-value domains with no CDDL value in common; the latter
-retries only the repeated decoder and restores the cursor when it fails. An exact window stops by
-count and may share a major or have custom-/extern-owned boundary heads. This
+An open array (the array analog of the open struct-map rest row) has one or more occurrence-bearing
+segments. A final segment is owner-delimited; an exact segment is count-delimited; and a variable
+middle segment needs an effective-major proof against every possible-next live member. The proof
+skips maximum-zero segments, walks through zero-minimum segments, and stops at a positive-minimum
+segment or mandatory single-item fixed field. Heads may be generator-proven, supplied by mandatory
+tag/`.cbor` framing, or declared on a transparent custom alias with `@custom_wire_major`. The older
+finite fixed-domain same-major retry is retained only for one variable segment and its immediate
+fixed suffix. This
 does not prove an optional-prefix dispatch boundary: its optional/reachable-follower heads must both
 be generator-proven and major-disjoint, so a custom codec or opaque extern on either side is
 serialize-only unless mandatory outer tag/`.cbor` framing proves the distinction. Loose `* t` / `0* t` uses default-empty `Vec<T>`; one-or-more
-`+ t` / `1* t` uses `NonEmptyVec<T>` and its first-element construction ABI; every other window uses
-a complete checked `BoundedVec<T, MIN, MAX>` constructor argument for variable windows; exact
+`+ t` / `1* t` uses `NonEmptyVec<T>` and keeps its first-element construction ABI in the one-segment
+case; every other window uses a complete checked `BoundedVec<T, MIN, MAX>` constructor argument for variable windows; exact
 ordinary windows are `[T; N]` and their CBOR/component list inputs make one checked `Vec`
-handover. JSON adapters recursively cover every ordinary/`@duplicates preserve`/`@duplicates reject`
+handover. A multi-segment native constructor takes every complete carrier in authored order and
+checks cardinality plus element value windows; wasm takes the corresponding complete wrappers and
+WIT takes one source-ordered `list<T>` per segment. JSON adapters recursively cover every ordinary/`@duplicates preserve`/`@duplicates reject`
 loose, nonempty, bounded, nullable, and exact collection tree containing a wide exact array or an
 exact natural-`any` position, including map/table values, positional pair-map keys and values, and
 open-struct/open-table dynamic values. Sequence nodes remain JSON lists; unique maps remain objects;
@@ -2320,8 +2323,9 @@ beyond finite fixed domains need a future design rather than a guessed decoder. 
   refusal. The polarity and carrier assertions in
   `robustness_tests::occurrence_on_array_record_field_rejects_gracefully` cover leading/middle
   loose/min-one success plus exact same-major/zero success without a suffix wire-head discriminator,
-  and multiple named exact-count segments (including adjacent/same-major and exact-zero boundaries)
-  with separate static-array carriers and count-owned decoder loops;
+  and multiple named occurrence segments (including adjacent/same-major exact, zero-skippable,
+  positive-minimum, declared/framed custom, and exact-zero boundaries) with separate carriers and
+  source-ordered decoder loops;
   the variable-zero-minimum/non-empty/exact-zero optional-prefix distinctions; two-sided
   unproven-head optional-dispatch refusals and mandatory-framing controls; and
   declared repeated/suffix success, re-alias inheritance, emitted-major replacement, and
@@ -2331,16 +2335,19 @@ beyond finite fixed domains need a future design rather than a guessed decoder. 
   slot/marker-slot cases.
 - **Value-level e2e** — `tests/open-array-e2e` (`integration_tests::open_array_e2e`, compiled,
   non-preserve) drives leading and middle loose, min-one, finite/max-only, exact-zero, and exact
-  same-major segments, named multiple exact segments, finite fixed-domain retries (including bool/null), and declared custom repeated/suffix heads through definite and indefinite
-  bytes: zero/in-window/below/above windows, max-bound stop before the suffix, wrong repeated type,
-  absent/wrong suffix, suffix preservation, trailing-extra rejection, and nested stream position.
-  It also keeps the shared constructor and carrier door tests.
+  same-major segments, named multiple exact and variable segments, finite fixed-domain retries
+  (including bool/null), and declared custom repeated/suffix heads through definite and indefinite
+  bytes: empty/populated/zero-skippable runs, positive-minimum separators, exact-before-variable,
+  below/above windows, wrong interleaving, fixed suffixes, trailing-extra rejection, and nested stream
+  position. It also pins complete-carrier construction and multi-segment element-bound rejection.
 - **Preserve/canonical e2e** — `tests/open-array-preserve-e2e`
   (`integration_tests::open_array_preserve_e2e`, compiled) proves a non-canonical middle repeated
-  element, exact same-major segment, and finite fixed-domain retry re-emit byte-exactly and normalize canonically without moving their suffix, beside the
-  final-tail positional-sidecar, self-carried `any`, and nested-stream vectors.
+  element, exact same-major segment, finite fixed-domain retry, and two independently noncanonical
+  multiple-variable segment sidecars re-emit byte-exactly and normalize canonically without moving
+  a boundary, beside the final-tail positional-sidecar, self-carried `any`, and nested-stream vectors.
 - **JSON e2e** — `tests/open-array-json-e2e` (`integration_tests::open_array_json_e2e`, compiled)
-  checks loose, nonempty, finite/min-only/max-only bounded, exact, middle, and mixed-depth sequence trees around
+  checks loose, nonempty, finite/min-only/max-only bounded, exact, middle, multiple-variable named
+  lists, and mixed-depth sequence trees around
   typed and natural-`any` wide exact arrays; every JSON/schema bound and checked constructor door;
   duplicate-reject loose/nonempty/bounded/exact sets (including insertion order and duplicate
   rejection); nullable elements; aliases/newtypes; required/optional fields; type-choice payloads;
@@ -2354,18 +2361,19 @@ beyond finite fixed domains need a future design rather than a guessed decoder. 
   `OrderedHashMap` recursive deserialization and its wide exact-array schema bounds; its
   `json_preserve` corpus-parity row also keeps the matching wasm counterpart live.
 - **Snapshots / cross-face** — `open_array_default` / `open_array_json` / `open_array_wasm` profile
-  rows retain final-tail byte/API compatibility; `open_array_preserve` snapshots the middle capture
-  input. The shared component build fixture wires the declared-major helper fragment and, together
-  with the extern-interface self-check assertion, keeps the position-independent
-  wrapper/projection seams exercised.
+  rows retain final-tail byte/API compatibility and the multiple-variable native/JSON/wasm wrapper
+  surfaces; `open_array_preserve` snapshots each positional sidecar. The shared component build
+  fixture compiles complete multi-segment list conversions and, together with the extern-interface
+  self-check assertion, keeps the position-independent wrapper/projection seams exercised.
 - **Wire KATs and emit-tests** — the final-tail `open_list` / `ignore_list` rules remain in
   `tests/golden_hex` and `tests/golden_hex_preserve`; `emit_tests_open_array_execute` keeps loose,
-  restricted, and ignored capture construction ordinary. Middle `@ignore` remains loose-only and
-  re-serializes the fixed members without a getter.
+  restricted, ignored, and source-ordered complete multi-segment construction executable. Middle
+  `@ignore` remains loose-only and re-serializes the fixed members without a getter.
 - **Corpus / matrix** — `tests/corpus/occurrence.cddl` contains the canonical
   `middle_occurrence = [prefix: uint, * bytes, suffix: tstr]` and count-delimited
-  `exact_middle_occurrence = [prefix: uint, 2*2 uint, suffix: uint]`; the matrix bounded-array
-  containment note records both boundary classes. The variable-overlap refusal is executable in
+  `exact_middle_occurrence = [prefix: uint, 2*2 uint, suffix: uint]`, and the representative named
+  `multiple_variable_occurrence`; the matrix bounded-array containment note records these boundary
+  classes. The variable-overlap refusal is executable in
   `occurrence_on_array_record_field_rejects_gracefully`. `tests/corpus/dsl_ignore.cddl` retains the
   final-tail `@ignore` catalog/projection coverage (including its preserve rejection ledger).
 

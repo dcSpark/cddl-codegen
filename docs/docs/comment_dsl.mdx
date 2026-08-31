@@ -1236,7 +1236,7 @@ Because the declaration makes the framing-carrying spelling available, the un-de
 
 Two readers consume it: an [open table](#open-tables)'s typed row, whose dispatch must know the
 claimed major *before* any deserializer runs; and a variable middle [open array](output_format#open-arrays-rest-tails)
-occurrence boundary, whose greedy loop must know whether the next item is another repeat or its fixed suffix.
+occurrence boundary, whose greedy loop must know whether the next item is another repeat or any possible-next live member in its chain (not only a fixed suffix).
 
 ```cddl
 policy_id = _CDDL_CODEGEN_RAW_BYTES_TYPE_
@@ -1264,7 +1264,7 @@ The argument is exactly one of the eight major-type tokens: `uint`, `nint`, `byt
 Rules to keep in mind:
 
 * **It requires both halves of the pair, in the same position** — the `@custom_encodings` contract verbatim, and for the same reason.
-* **It is REQUIRED where a custom codec keys an open table's typed row or owns either boundary of a variable middle open-array occurrence**, and a **graceful rejection where nothing consumes it**. Consumed *somewhere* is enough, so one alias may key an open table, prove a middle boundary, and also appear at an ordinary field.
+* **It is REQUIRED where a custom codec keys an open table's typed row or participates in either side of a generator-proven possible-next boundary of a variable open-array occurrence**, and a **graceful rejection where nothing consumes it**. Consumed *somewhere* is enough, so one alias may key an open table, prove a possible-next chain boundary, and also appear at an ordinary field.
 * **It is not a general framing escape hatch.** Final tails and exact `N*N` middle windows do not need a major peek; mandatory generated outer tag/`.cbor` framing wins without reading an inner declaration; and optional-prefix lookahead remains generator-proven-only. An opaque/custom head there is still serialize-only unless mandatory generated outer framing proves it. A field-local declaration remains refused because only a transparent alias carries this wire fact to either reader.
 * **It is refused on a rule that mints a struct.** The declared major is read through the rule's transparent alias entry, which a struct-minting rule does not have.
 * **A tagged typed key claims ALL tags.** `@custom_wire_major tag` (like a plain tagged key type) claims major 6 in full — the dispatch is by major, not by tag number.

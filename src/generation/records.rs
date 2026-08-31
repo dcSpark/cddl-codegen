@@ -18,12 +18,12 @@ const IGNORE_LOSSINESS_DOC_ARRAY: &str = "Open array with an ignored rest tail: 
 
 /// The array `@ignore` breadcrumb for a safe non-final occurrence segment. `@ignore` is admitted
 /// only on the historic major-disjoint form, so its dropped values occur before one mandatory fixed
-/// suffix (multiple exact segments are capture-only).
+/// suffix (multiple occurrence segments are capture-only).
 const IGNORE_LOSSINESS_DOC_ARRAY_MIDDLE: &str = "Open array with an ignored major-disjoint occurrence segment: tolerates matching elements before its mandatory fixed suffix on deserialize and DROPS them, and re-serializes only the declared members. Byte round-trips do NOT hold for wire data that carried dropped occurrence-segment elements.";
 
-/// True for a final array occurrence segment (and vacuously for map rows). Historic variable middle
-/// support has an immediate fixed suffix; a multiple-exact segment can instead be followed by the
-/// next authored exact segment, whose count-owned boundary delimits it.
+/// True for an array occurrence segment that has no later live wire member (and vacuously for map
+/// rows). A later exact-zero segment owns no items, so it does not turn the preceding segment into
+/// a middle decoder merely because it retains an authored source position.
 fn array_segment_is_final(record: &RustRecord, rest: &RestRow) -> bool {
     match rest.array_source_index() {
         Some(index) => {
@@ -32,9 +32,10 @@ fn array_segment_is_final(record: &RustRecord, rest: &RestRow) -> bool {
                     .dynamic_rows()
                     .filter(|row| row.is_array_tail())
                     .all(|other| {
-                        other
-                            .array_source_index()
-                            .is_none_or(|other_index| other_index <= index)
+                        other.array_source_index().is_none_or(|other_index| {
+                            other_index <= index
+                                || other.occurrence.is_some_and(|(_, maximum)| maximum == 0)
+                        })
                     })
         }
         None => true,
@@ -49,7 +50,8 @@ fn array_segment_uses_fixed_domain_retry(
     record: &RustRecord,
     rest: &RestRow,
 ) -> bool {
-    !rest.has_exact_occurrence_window()
+    record.array_segments.is_empty()
+        && !rest.has_exact_occurrence_window()
         && rest.array_source_index().is_some_and(|index| {
             record
                 .fields
@@ -308,11 +310,11 @@ pub(super) struct ArrayStructDeserializeCode {
     pub(super) encoding_struct_ctor_fields: Vec<(String, String)>,
 }
 
-/// Deserialize one array occurrence segment at its source position.  Final segments retain the
-/// historical owner-boundary loop; a variable middle segment is greedily delimited by either its
-/// already-validated major-disjoint immediate suffix or a finite disjoint fixed-value domain, while
-/// an exact window is delimited by count.  The fixed-domain form retries only the repeated decoder
-/// and rewinds on its failure; it never speculatively parses the suffix.
+/// Deserialize one array occurrence segment at its source position. Final segments retain the
+/// historical owner-boundary loop; a variable middle segment is greedily delimited by its finalized
+/// possible-next major proof, while an exact window is delimited by count. The historic one-segment
+/// finite-domain form retries only the repeated decoder and rewinds on its failure; it never
+/// speculatively parses the suffix.
 #[allow(clippy::too_many_arguments)]
 fn generate_array_segment_deserialization(
     gen_scope: &mut GenerationScope,
@@ -1214,8 +1216,8 @@ pub(super) fn generate_array_struct_deserialization(
             deser_ctor_fields.push((field.name.clone(), field.name.clone()));
         }
     }
-    // The final trailing segment retains the historic owner-boundary loop. Every earlier trailing
-    // segment is count-delimited by its exact window, even when no fixed field follows it.
+    // A wire-final trailing segment retains the historic owner-boundary loop. Every other trailing
+    // segment uses its exact count or finalized possible-next major proof.
     let trailing_segments: Vec<&RestRow> = array_segments
         .into_iter()
         .filter(|segment| {
@@ -1224,13 +1226,12 @@ pub(super) fn generate_array_struct_deserialization(
                 .is_some_and(|index| previous_source_index.is_none_or(|previous| previous < index))
         })
         .collect();
-    let trailing_segment_count = trailing_segments.len();
-    for (index, segment) in trailing_segments.into_iter().enumerate() {
+    for segment in trailing_segments {
         generate_array_segment_deserialization(
             gen_scope,
             types,
             segment,
-            index + 1 < trailing_segment_count,
+            !array_segment_is_final(record, segment),
             None,
             vars_in_self,
             cli,
@@ -3257,9 +3258,11 @@ pub(super) fn codegen_struct(
         .fields
         .iter()
         .any(|f| !f.optional && f.rust_type.has_value_bounds())
-        || record
-            .captured_dynamic_rows()
-            .any(|row| row.is_non_empty_array_tail() && row.element().has_value_bounds())
+        || record.captured_dynamic_rows().any(|row| {
+            row.is_array_tail()
+                && row.element().has_value_bounds()
+                && (row.is_non_empty_array_tail() || !record.array_segments.is_empty())
+        })
         || (record.is_non_empty_open_table()
             && record.typed_row().is_some_and(|row| {
                 row.domain().has_value_bounds() || row.range().has_value_bounds()
@@ -3290,6 +3293,8 @@ pub(super) fn codegen_struct(
         wasm_new.vis("pub");
         let mut wasm_new_args = Vec::new();
         let mut wasm_new_comments = Vec::new();
+        let multi_array_segments =
+            record.rep == Representation::Array && !record.array_segments.is_empty();
         for field in &record.fields {
             // Fixed values don't need constructors or getters or fields in the rust code
             if !field.rust_type.is_fixed_value() {
@@ -3646,12 +3651,41 @@ pub(super) fn codegen_struct(
                 cli,
             );
         }
+        // A multi-segment ARRAY has a complete wrapper parameter for every captured segment,
+        // including loose and one-or-more windows. This new shape is source-ordered at the native
+        // boundary; the wasm surface projects the arguments by source index before calling it.
+        if multi_array_segments {
+            for rest in record
+                .captured_dynamic_rows()
+                .filter(|row| row.is_array_tail())
+            {
+                let rest_ty = rest_member_type(rest);
+                wasm_new.arg(
+                    &rest.field_name,
+                    gen_scope.wasm_param_type(
+                        types,
+                        &rest_ty,
+                        name,
+                        "multiple-array-segment constructor parameter",
+                    ),
+                );
+                wasm_new_args.push(ToWasmBoundaryOperations::format(
+                    rest_ty
+                        .from_wasm_boundary_clone(types, &rest.field_name, false)
+                        .into_iter(),
+                ));
+                wasm_new_comments.push(format!(
+                    "* `{}` - the complete list wrapper for this authored array occurrence segment (its CDDL occurrence window is enforced before construction)",
+                    rest.field_name,
+                ));
+            }
+        }
         // A one-or-more open-array tail has the same valid-by-construction door as its Rust record:
         // take one element here and let the Rust `new(first)` build the restricted `NonEmptyVec`.
         // The name follows the Rust constructor's collision-safe synthesis exactly.
         for rest in record
             .captured_dynamic_rows()
-            .filter(|row| row.is_non_empty_array_tail())
+            .filter(|row| !multi_array_segments && row.is_non_empty_array_tail())
         {
             let mut first_arg = format!("first_{}_element", rest.field_name);
             let reserved: Vec<String> = record
@@ -3693,7 +3727,10 @@ pub(super) fn codegen_struct(
         // min-one compatibility ABI above it must not be rebuilt from a first element, and unlike a
         // loose tail it must not default empty (zero-minimum windows still admit non-empty values).
         for rest in record.captured_dynamic_rows().filter(|row| {
-            row.is_array_tail() && row.is_restricted() && !row.is_non_empty_array_tail()
+            !multi_array_segments
+                && row.is_array_tail()
+                && row.is_restricted()
+                && !row.is_non_empty_array_tail()
         }) {
             let rest_ty = rest_member_type(rest);
             wasm_new.arg(
@@ -3710,19 +3747,7 @@ pub(super) fn codegen_struct(
                     .from_wasm_boundary_clone(types, &rest.field_name, false)
                     .into_iter(),
             ));
-            wasm_new_comments.push(if !record.array_segments.is_empty() {
-                if !array_segment_is_final(record, rest) {
-                    format!(
-                        "* `{}` - the complete checked exact-count occurrence-segment wrapper before the next authored array member (its count-owned CDDL boundary is enforced before construction)",
-                        rest.field_name
-                    )
-                } else {
-                    format!(
-                        "* `{}` - the complete checked final authored exact-count occurrence-segment wrapper (its count-owned CDDL boundary is enforced before construction)",
-                        rest.field_name
-                    )
-                }
-            } else if !array_segment_is_final(record, rest) {
+            wasm_new_comments.push(if !array_segment_is_final(record, rest) {
                 if rest.has_exact_occurrence_window() {
                     format!(
                         "* `{}` - the complete checked exact-count occurrence-segment wrapper before its mandatory fixed suffix (its CDDL occurrence window is enforced before construction)",
@@ -3795,12 +3820,12 @@ pub(super) fn codegen_struct(
                 .vis("pub")
                 .doc(if rest.is_array_tail() && !record.array_segments.is_empty() {
                     if !array_segment_is_final(record, rest) {
-                        "The captured bounded exact-count occurrence segment before the next authored \
-                         array member, as its checked wasm list wrapper; its count-owned boundary \
-                         delimits the segment."
+                        "The captured array occurrence segment before a later authored member, as its \
+                         wasm list wrapper; its greedy boundary is generator-proven from the possible-next \
+                         wire heads or owned by its occurrence count."
                     } else {
-                        "The captured final authored exact-count occurrence segment, as its checked \
-                         wasm list wrapper; its count-owned boundary is enforced before construction."
+                        "The captured final authored array occurrence segment, as its wasm list wrapper; \
+                         its occurrence window is enforced before construction."
                     }
                 } else if rest.is_array_tail() && !array_segment_is_final(record, rest) {
                     if rest.is_non_empty_array_tail() {
@@ -3954,7 +3979,7 @@ pub(super) fn codegen_struct(
             }
             wrapper.s_impl.push_fn(insert);
         }
-        // The native constructor for a multiple exact-segment record deliberately follows CDDL
+        // The native constructor for a multiple occurrence-segment record deliberately follows CDDL
         // source order.  The wasm surface keeps its established field-then-wrapper parameter
         // layout, so assemble the native call independently instead of assuming both orders are
         // identical (which would feed a list wrapper to the next fixed scalar).
@@ -3982,7 +4007,7 @@ pub(super) fn codegen_struct(
                     .chain(
                         record
                             .captured_dynamic_rows()
-                            .filter(|row| row.is_array_tail() && row.is_restricted())
+                            .filter(|row| row.is_array_tail())
                             .map(|row| {
                                 let rest_ty = rest_member_type(row);
                                 (
@@ -4065,11 +4090,11 @@ pub(super) fn codegen_struct(
     let mut native_new_comments = Vec::new();
     // for clippy we generate a Default impl if new has no args
     let mut new_arg_count = 0;
-    // The one-segment ABI historically groups fixed fields before its tail argument.  A multiple
-    // exact-segment record is new API, so give its constructor the authored positional order too:
+    // The one-segment ABI historically groups fixed fields before its tail argument. A multiple
+    // occurrence-segment record is new API, so give its constructor the authored positional order:
     // callers can read the signature as the CDDL array without mentally moving every segment to a
     // synthetic tail section.
-    let multi_exact_array_segments =
+    let multi_array_segments =
         record.rep == Representation::Array && !record.array_segments.is_empty();
     for field in &record.fields {
         // (a field whose type has no deserialize refuses this record's too — recorded ahead of the
@@ -4102,7 +4127,7 @@ pub(super) fn codegen_struct(
                 )
             } else {
                 // new
-                if !multi_exact_array_segments {
+                if !multi_array_segments {
                     native_new.arg(&field.name, field.rust_type.for_rust_move(types, cli));
                     if let Some(comment) = &field.rule_metadata.comment {
                         native_new_comments.push(format!("* `{}` - {}", field.name, comment));
@@ -4110,7 +4135,7 @@ pub(super) fn codegen_struct(
                     new_arg_count += 1;
                 }
                 native_new_block.line(format!("{},", field.name));
-                if !multi_exact_array_segments
+                if !multi_array_segments
                     && let Some(line) = value_bounds_check_line(&field.rust_type, &field.name, true)
                 {
                     native_new.line(&line);
@@ -4254,13 +4279,14 @@ pub(super) fn codegen_struct(
         );
         rest_field.doc(if rest.is_array_tail() && !record.array_segments.is_empty() {
             if !array_segment_is_final(record, rest) {
-                "Captured exact-count occurrence-segment elements before the next authored array member, \
-                 whose count-owned CDDL boundary is enforced by this checked carrier. Serialized at its \
-                 authored source position; supplied complete to `new()`."
+                "Captured array occurrence-segment elements before a later authored array member. Their \
+                 greedy boundary is generator-proven from possible-next wire heads or owned by their \
+                 occurrence count. Serialized at their authored source position; supplied complete to \
+                 `new()`."
             } else {
-                "Captured final authored exact-count occurrence-segment elements, whose count-owned CDDL \
-                 boundary is enforced by this checked carrier. Serialized at its authored source position; \
-                 supplied complete to `new()`."
+                "Captured final authored array occurrence-segment elements, whose occurrence window is \
+                 enforced by this carrier. Serialized at their authored source position; supplied complete \
+                 to `new()`."
             }
         } else if rest.is_array_tail() && !array_segment_is_final(record, rest) {
             if array_segment_uses_fixed_domain_retry(types, record, rest) {
@@ -4462,6 +4488,8 @@ pub(super) fn codegen_struct(
                 ));
             }
             native_new_block.line(format!("{},", rest.field_name));
+        } else if rest.is_array_tail() && multi_array_segments {
+            native_new_block.line(format!("{},", rest.field_name));
         } else if rest.is_non_empty_array_tail() {
             let mut first_arg = format!("first_{}_element", rest.field_name);
             let reserved: Vec<String> = record
@@ -4495,11 +4523,11 @@ pub(super) fn codegen_struct(
             }
         } else if rest.is_array_tail() && rest.is_restricted() {
             let rest_ty = rest_member_type(rest).for_rust_move(types, cli);
-            if !multi_exact_array_segments {
+            if !multi_array_segments {
                 native_new.arg(&rest.field_name, &rest_ty);
                 new_arg_count += 1;
             }
-            if !multi_exact_array_segments {
+            if !multi_array_segments {
                 native_new_comments.push(if !array_segment_is_final(record, rest) {
                 if rest.has_exact_occurrence_window() {
                     format!(
@@ -4533,7 +4561,7 @@ pub(super) fn codegen_struct(
             ));
         }
     }
-    if multi_exact_array_segments {
+    if multi_array_segments {
         let mut args: Vec<(usize, String, String, Option<String>)> = record
             .fields
             .iter()
@@ -4564,10 +4592,22 @@ pub(super) fn codegen_struct(
                                 .expect("array segment has a source index"),
                             row.field_name.clone(),
                             rest_member_type(row).for_rust_move(types, cli),
-                            Some(format!(
-                                "* `{}` - an authored exact-count array segment; its cardinality is enforced by this checked carrier",
-                                row.field_name
-                            )),
+                            Some(if row.has_exact_occurrence_window() {
+                                format!(
+                                    "* `{}` - the complete carrier for this authored exact-count array occurrence segment; its count owns the boundary and its CDDL occurrence window is enforced by that carrier",
+                                    row.field_name
+                                )
+                            } else if array_segment_is_final(record, row) {
+                                format!(
+                                    "* `{}` - the complete carrier for this final authored array occurrence segment; the owner array boundary delimits it and its CDDL occurrence window is enforced by that carrier",
+                                    row.field_name
+                                )
+                            } else {
+                                format!(
+                                    "* `{}` - the complete carrier for this authored array occurrence segment; its greedy boundary is proven from possible-next CBOR majors and its CDDL occurrence window is enforced by that carrier",
+                                    row.field_name
+                                )
+                            }),
                         )
                     }),
             )
@@ -4586,6 +4626,20 @@ pub(super) fn codegen_struct(
                 && let Some(line) = value_bounds_check_line(&field.rust_type, &field.name, true)
             {
                 native_new.line(&line);
+            }
+        }
+        // A multi-segment constructor accepts complete carriers so each occurrence window remains
+        // unbypassable. Its elements can still carry scalar CDDL value bounds, which a carrier's
+        // cardinality check does not know about; validate every supplied element at this one native
+        // door. The wasm and component faces both convert then delegate here.
+        for segment in record
+            .captured_dynamic_rows()
+            .filter(|row| row.is_array_tail())
+        {
+            if let Some(line) = value_bounds_check_line(segment.element(), "*element", true) {
+                native_new.line(format!("for element in &{} {{", segment.field_name));
+                native_new.line(&line);
+                native_new.line("}");
             }
         }
     }

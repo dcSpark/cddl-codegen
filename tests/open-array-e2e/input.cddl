@@ -40,6 +40,48 @@ trailing_exact_segments = [
   2*2 uint ; @name first
   , 3*3 uint ; @name second
 ]
+; Multiple variable occurrence segments prove each greedy boundary from every possible-next live
+; head. Every segment is named and crosses every constructor face as its complete carrier.
+multi_parts = [
+  prefix: uint
+  , * uint ; @name numbers
+  , * tstr ; @name labels
+]
+multi_three = [
+  * uint ; @name numbers
+  , * tstr ; @name labels
+  , * bytes ; @name chunks
+]
+multi_delimited = [
+  * uint ; @name first
+  , + tstr ; @name delimiter
+  , * uint ; @name last
+]
+multi_mixed = [
+  prefix: uint
+  , * uint ; @name numbers
+  , + tstr ; @name labels
+  , 1*2 bytes ; @name chunks
+]
+multi_value_bounded = [
+  + uint .le 5 ; @name numbers
+  , * tstr ; @name labels
+]
+
+multi_loose_value_bounded = [
+  * uint .le 5 ; @name numbers
+  , * tstr ; @name labels
+]
+multi_exact_variable = [
+  2*2 uint ; @name first
+  , * uint ; @name later
+]
+multi_suffix = [
+  prefix: uint
+  , * uint ; @name numbers
+  , * tstr ; @name labels
+  , suffix: bytes
+]
 ; The emitted-test minter must keep ExactSegments' source-ordered constructor slots when this
 ; record is itself an ordinary member of another minted record.
 nested_exact_segments = [exact_segments]

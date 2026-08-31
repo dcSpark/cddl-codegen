@@ -117,6 +117,23 @@ mod open_array_preserve {
     }
 
     #[test]
+    fn multiple_variable_segments_preserve_each_sidecar_and_canonicalize_in_place() {
+        // [7, 2(as 0x1802), 1000(as 0x1903e8), "a"/"b"(two-byte text args)].
+        // Both segment-local sidecars must replay independently; canonical form only normalizes
+        // the uint widths and must not move the text boundary.
+        let wire = bytes("85 07 1802 1903e8 780161 780162");
+        let value = MultiParts::from_cbor_bytes(&wire).unwrap();
+        assert_eq!(value.numbers, vec![2, 1000]);
+        assert_eq!(value.labels, vec!["a", "b"]);
+        assert_eq!(value.to_cbor_bytes(), wire, "both segment sidecars replay byte-exactly");
+        assert_eq!(
+            value.to_canonical_cbor_bytes(),
+            bytes("85 07 02 1903e8 6161 6162"),
+            "canonical form normalizes each segment in place without changing its boundary"
+        );
+    }
+
+    #[test]
     fn exact_middle_same_major_preserves_and_canonicalizes_in_source_position() {
         // [7, 2(as 0x1802), 3(as 0x1803), 4(as 0x1804)]. The first two uints are the exact
         // segment, while the third is its same-major suffix; their sidecars must remain positional.

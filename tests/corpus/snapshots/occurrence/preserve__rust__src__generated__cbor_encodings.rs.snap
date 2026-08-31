@@ -26,6 +26,14 @@ pub struct MiddleOccurrenceEncoding {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct MultipleVariableOccurrenceEncoding {
+    pub len_encoding: LenEncoding,
+    pub prefix_encoding: Option<cbor_event::Sz>,
+    pub numbers_elem_encodings: Vec<Option<cbor_event::Sz>>,
+    pub labels_elem_encodings: Vec<StringEncoding>,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct OccurrenceHolderEncoding {
     pub len_encoding: LenEncoding,
     pub o_encoding: LenEncoding,

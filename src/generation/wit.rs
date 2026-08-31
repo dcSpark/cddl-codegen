@@ -1814,12 +1814,34 @@ fn project_record(
         });
         ctor_fallible |= validates || record.has_protected_rest_keys(ctx.types);
     }
+    let multi_array_segments =
+        record.rep == Representation::Array && !record.array_segments.is_empty();
+    // Multiple occurrence segments use complete list parameters on the component boundary. WIT
+    // despecializes each carrier to `list<T>`; the guest re-enters NonEmptyVec/BoundedVec's checked
+    // conversion when the native carrier requires one.
+    if multi_array_segments {
+        for rest in record
+            .captured_dynamic_rows()
+            .filter(|row| row.is_array_tail())
+        {
+            let carrier = rest.container_type();
+            let validates = wit_param_validates(&carrier, ctx.types);
+            params.push(WitParam {
+                name: convert_to_kebab_case(&rest.field_name),
+                rust_name: rest.field_name.clone(),
+                ty: WitType::List(Box::new(map_rust_type(rest.element(), ctx)?)),
+                validates,
+                rust_type: Some(carrier),
+            });
+            ctor_fallible |= validates;
+        }
+    }
     // The one-or-more open-array tail's Rust `new` takes its first element rather than an
     // empty-capable list. WIT projects that same element door; the list getter remains a list and
     // the resource's restricted Rust representation owns the invariant.
     for rest in record
         .captured_dynamic_rows()
-        .filter(|row| row.is_non_empty_array_tail())
+        .filter(|row| !multi_array_segments && row.is_non_empty_array_tail())
     {
         let mut rust_name = format!("first_{}_element", rest.field_name);
         let reserved: Vec<String> = record
@@ -1847,10 +1869,12 @@ fn project_record(
     // A bounded open-array tail is a complete checked native carrier. WIT has no const-generic
     // window, so it despecializes to `list<T>` and the guest glue re-enters BoundedVec::try_from
     // before native construction, exactly as bounded map-row parameters do.
-    for rest in record
-        .captured_dynamic_rows()
-        .filter(|row| row.is_array_tail() && row.is_restricted() && !row.is_non_empty_array_tail())
-    {
+    for rest in record.captured_dynamic_rows().filter(|row| {
+        !multi_array_segments
+            && row.is_array_tail()
+            && row.is_restricted()
+            && !row.is_non_empty_array_tail()
+    }) {
         let carrier = rest.container_type();
         let validates = wit_param_validates(&carrier, ctx.types);
         params.push(WitParam {
@@ -1862,7 +1886,7 @@ fn project_record(
         });
         ctor_fallible |= validates;
     }
-    // The native multi-exact constructor is positional in authored array order.  This projection
+    // The native multi-occurrence constructor is positional in authored array order. This projection
     // otherwise appends every dynamic row after fixed fields, which type-checks only when adjacent
     // members happen to share a type and silently feeds the wrong values across the component ABI.
     if record.rep == Representation::Array && !record.array_segments.is_empty() {

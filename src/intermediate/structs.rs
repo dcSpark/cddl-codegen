@@ -995,7 +995,7 @@ pub struct RustRecord {
     pub rest: Option<Box<RestRow>>,
     /// Later positional occurrence segments of an ARRAY record.  The first segment remains in
     /// `rest` for the zero/one-segment ABI; this empty-by-default tail carries the remaining
-    /// exact-count segments in authored wire order.  Map records never populate it.
+    /// occurrence segments in authored wire order. Map records never populate it.
     pub array_segments: Vec<RestRow>,
     /// The TYPED row of an OPEN TABLE (`t = { * K_t => V_t, * K_r => V_r }`) — the leading
     /// `* K_t => V_t` row that claims exactly its key's single statically-known CBOR major, with

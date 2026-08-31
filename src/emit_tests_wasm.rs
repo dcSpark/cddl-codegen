@@ -72,7 +72,7 @@
 use crate::cli::Cli;
 use crate::emit_tests::{
     self, MintValue, arg_can_fail, bound_cases, map_key_expr, map_key_literal, measure_kind,
-    mint_struct, multi_exact_array_ctor_arg_slots, record_ctor_arg_types,
+    mint_struct, multi_array_occurrence_ctor_arg_slots, record_ctor_arg_types,
     record_wasm_ctor_can_fail, valid_value, variant_arg_fields,
 };
 use crate::generation::rust_crate_struct_from_wasm;
@@ -732,7 +732,7 @@ fn record_wasm_ctor_args<'a>(
     if native_types.len() != native_args.len() {
         return None;
     }
-    if let Some(slots) = multi_exact_array_ctor_arg_slots(record) {
+    if let Some(slots) = multi_array_occurrence_ctor_arg_slots(record) {
         let native_by_source: BTreeMap<usize, (&RustType, &'a MintValue)> = slots
             .iter()
             .zip(native_args)
@@ -747,7 +747,7 @@ fn record_wasm_ctor_args<'a>(
         }
         for row in record
             .captured_dynamic_rows()
-            .filter(|row| row.is_array_tail() && row.is_restricted())
+            .filter(|row| row.is_array_tail())
         {
             let source_index = row.array_source_index()?;
             let (_, value) = native_by_source.get(&source_index)?;
@@ -1062,15 +1062,16 @@ fn wasm_record_roundtrip(
     // §3 accessor read-back: primitive/c-enum ctor getters against the emit-time literal.
     let ctor_fields = record_ctor_fields(record);
     let mut readbacks = Vec::new();
-    let native_by_source: BTreeMap<usize, &MintValue> = multi_exact_array_ctor_arg_slots(record)
-        .map(|slots| {
-            slots
-                .iter()
-                .zip(args)
-                .map(|((source_index, _), value)| (*source_index, value))
-                .collect()
-        })
-        .unwrap_or_default();
+    let native_by_source: BTreeMap<usize, &MintValue> =
+        multi_array_occurrence_ctor_arg_slots(record)
+            .map(|slots| {
+                slots
+                    .iter()
+                    .zip(args)
+                    .map(|((source_index, _), value)| (*source_index, value))
+                    .collect()
+            })
+            .unwrap_or_default();
     for (index, f) in ctor_fields.iter().enumerate() {
         let amv = native_by_source
             .get(&f.source_index)
