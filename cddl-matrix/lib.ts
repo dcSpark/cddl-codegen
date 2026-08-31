@@ -691,6 +691,22 @@ export interface AcceptOracleGapExemption {
 }
 export const DECODE_ACCEPT_ORACLE_GAP_EXEMPT: Record<string, AcceptOracleGapExemption> = {};
 export const CORPUS_DECODE_ACCEPT_ORACLE_GAP_EXEMPT: Record<string, AcceptOracleGapExemption> = {
+  "generic_inline_choice.chain_outer_uint/820081818101": {
+    failing_oracles: [{ oracle: "rust", exit: -6, signature: "has overflowed its stack" }],
+    reason: "The holder is `[0, [[[1]]]]`: each one-field array satisfies chain_outer<uint>, mid<uint>, then leaf<uint>, and ruby accepts it. The pinned rust-cddl validator recursively expands the nested generic-reference chain until stack overflow (README.md § \"Upstream oracle gaps\" #19), so this exact spec-valid corpus vector remains certified by ruby until that upstream gap closes.",
+  },
+  "generic_inline_choice.collection_outer_uint/820081820102": {
+    failing_oracles: [{ oracle: "rust", exit: 1, signature: "group  * x  matched the first 0 element(s), but the array has 2 elements" }],
+    reason: "The holder is `[0, [[1, 2]]]`: the inner two-element array satisfies items<uint>, and ruby accepts it. The pinned rust-cddl validator leaves `x` unsubstituted through collection_outer<uint> and therefore matches zero items (README.md § \"Upstream oracle gaps\" #19), so this exact spec-valid corpus vector remains certified by ruby until that upstream gap closes.",
+  },
+  "generic_inline_choice.direct_outer_uint/8200818101": {
+    failing_oracles: [{ oracle: "rust", exit: 1, signature: "expected type p, got Integer(Integer(1))" }],
+    reason: "The holder is `[0, [[1]]]`: the nested one-field array satisfies inner<uint>, and ruby accepts it. The pinned rust-cddl validator leaves the outer parameter `p` unsubstituted in inner<p> (README.md § \"Upstream oracle gaps\" #19), so this exact spec-valid corpus vector remains certified by ruby until that upstream gap closes.",
+  },
+  "generic_inline_choice.inline_child_uint/8200818101": {
+    failing_oracles: [{ oracle: "rust", exit: 1, signature: "expected type p, got Integer(Integer(1))" }],
+    reason: "The holder is `[0, [[1]]]`: the nested array selects the inner<uint> arm of the inline choice, and ruby accepts it. The pinned rust-cddl validator leaves the outer parameter `p` unsubstituted in that arm (README.md § \"Upstream oracle gaps\" #19), so this exact spec-valid corpus vector remains certified by ruby until that upstream gap closes.",
+  },
   "fixed_singletons.undefined_value/8200f7": {
     failing_oracles: [{ oracle: "rust", exit: 1, signature: "expected type undefined, got Null" }],
     reason: "RFC 8949 assigns simple value 23 (0xf7) to undefined, and the holder requires `undefined`; ruby accepts it. The pinned rust-cddl validator instead reports it as Null (README.md § \"Upstream oracle gaps\" #16), so this exact spec-valid corpus vector remains certified by ruby until that upstream gap closes.",

@@ -1318,8 +1318,18 @@ and optional fields, and the corpus fixture compiles that full emitted crate.
 adds the direct-field panic regression and its inline-choice sibling: a definition-owned
 `inner<p>` is private until concrete substitution, then enters the ordinary generic-instance queue.
 It covers source order, repeated/distinct and multi-parameter children, a two-level chain, and a
-transparent collection child; finalized products cannot retain either private placeholder or a
-generic binding. The one remaining narrow refusal is an inline type choice used *as* a child generic
+transparent collection child without retaining a private placeholder.
+`scoped_symbol_provenance_tests::nested_child_templates_keep_exact_bindings_and_recursive_argument_identity`
+crosses the normalization-pair claimants and source orders again at the child-template boundary,
+separates tagged and bounded recursive arguments, and proves finalized products retain no generic
+binding.
+`scoped_symbol_provenance_tests::nested_child_instance_cannot_overwrite_a_completed_incompatible_instance`
+keeps a child whose canonical name meets a different completed generic instance on the established
+incompatible-registration error path in both source orders.
+The corpus catalog adds exact foreign-wire vectors for the direct, inline-choice, non-empty
+collection, and two-level chain products; its stale-guarded rust-cddl exemptions retain those
+vectors only while Ruby accepts and the pinned rust oracle reproduces its nested-generic gap.
+The one remaining narrow refusal is an inline type choice used *as* a child generic
 argument (`inner<(p / tstr)>`), which would require a shared concrete identity across the two
 definition-owned template kinds.
 

@@ -5507,6 +5507,29 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "generic_inline_choice.chain_outer"
+axis = "corpus"
+example = "leaf<x> = [x]\nmid<x> = [value: leaf<x>]\nchain_outer<p> = [value: mid<p>]"
+fixture = "generic_inline_choice"
+rule = "chain_outer"
+pinned_reason = "generic rule (head carries `<...>`); cannot be holder-wrapped bare — instantiations are covered via referencing rules"
+
+[[row]]
+id = "generic_inline_choice.chain_outer_uint"
+axis = "corpus"
+example = "leaf<x> = [x]\nmid<x> = [value: leaf<x>]\nchain_outer<p> = [value: mid<p>]\nchain_outer_uint = chain_outer<uint>"
+fixture = "generic_inline_choice"
+rule = "chain_outer_uint"
+spec = "__probe_holder = [0, chain_outer_uint]\nleaf<x> = [x]\nmid<x> = [value: leaf<x>]\nchain_outer<p> = [value: mid<p>]\nchain_outer_uint = chain_outer<uint>"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "820081818101"
+source = "hand"
+expect = "accept"
+
+[[row]]
 id = "generic_inline_choice.choice"
 axis = "corpus"
 example = "choice<p> = [value: p / tstr]"
@@ -5545,32 +5568,27 @@ mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "820081190357"
+hex = "820081190679"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200811907c5"
+hex = "82008119087a"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820081190808"
+hex = "8200811909e2"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820081190f1c"
+hex = "820081190d46"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820081190f74"
-source = "ruby-generate"
-expect = "accept"
-
-[[row.vector]]
-hex = "820081190f8b"
+hex = "820081190f66"
 source = "ruby-generate"
 expect = "accept"
 
@@ -5590,22 +5608,32 @@ mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "820081190594"
+hex = "8200811825"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820081190887"
+hex = "8200811902b1"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820081190dbb"
+hex = "8200811904aa"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200811910cd"
+hex = "820081190534"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820081190946"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200811911c8"
 source = "ruby-generate"
 expect = "accept"
 
@@ -5615,47 +5643,109 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
-id = "generic_inline_choice.holder"
+id = "generic_inline_choice.collection_outer"
 axis = "corpus"
-example = "choice<p> = [value: p / tstr]\nchoice_uint_again = choice<uint>\nchoice_bytes = choice<bstr>\nholder = [\n  primary: choice<uint>,\n  repeated: choice_uint_again,\n  byte_value: choice_bytes,\n]"
+example = "items<x> = [* x]\ncollection_outer<p> = [value: items<p>]"
 fixture = "generic_inline_choice"
-rule = "holder"
-spec = "__probe_holder = [0, holder]\nchoice<p> = [value: p / tstr]\nchoice_uint_again = choice<uint>\nchoice_bytes = choice<bstr>\nholder = [\n  primary: choice<uint>,\n  repeated: choice_uint_again,\n  byte_value: choice_bytes,\n]"
+rule = "collection_outer"
+pinned_reason = "generic rule (head carries `<...>`); cannot be holder-wrapped bare — instantiations are covered via referencing rules"
+
+[[row]]
+id = "generic_inline_choice.collection_outer_uint"
+axis = "corpus"
+example = "items<x> = [* x]\ncollection_outer<p> = [value: items<p>]\ncollection_outer_uint = collection_outer<uint>"
+fixture = "generic_inline_choice"
+rule = "collection_outer_uint"
+spec = "__probe_holder = [0, collection_outer_uint]\nitems<x> = [* x]\ncollection_outer<p> = [value: items<p>]\ncollection_outer_uint = collection_outer<uint>"
 mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "820083811902d281637469638143746163"
+hex = "820081820102"
+source = "hand"
+expect = "accept"
+
+[[row]]
+id = "generic_inline_choice.direct_outer"
+axis = "corpus"
+example = "inner<x> = [x]\ndirect_outer<p> = [value: inner<p>]"
+fixture = "generic_inline_choice"
+rule = "direct_outer"
+pinned_reason = "generic rule (head carries `<...>`); cannot be holder-wrapped bare — instantiations are covered via referencing rules"
+
+[[row]]
+id = "generic_inline_choice.direct_outer_bytes"
+axis = "corpus"
+example = "inner<x> = [x]\ndirect_outer<p> = [value: inner<p>]\ndirect_outer_bytes = direct_outer<bstr>"
+fixture = "generic_inline_choice"
+rule = "direct_outer_bytes"
+pinned_reason = "all 1 generated candidate(s) failed two-oracle cross-validation (ruby accepted 1/1, rust --ci accepted 0/1 — an upstream oracle disagreement, not a decoder verdict; see cddl-matrix/README.md § \"Upstream oracle gaps\" and re-mint this row when the cited fix ships)"
+
+[[row]]
+id = "generic_inline_choice.direct_outer_uint"
+axis = "corpus"
+example = "inner<x> = [x]\ndirect_outer<p> = [value: inner<p>]\ndirect_outer_uint = direct_outer<uint>"
+fixture = "generic_inline_choice"
+rule = "direct_outer_uint"
+spec = "__probe_holder = [0, direct_outer_uint]\ninner<x> = [x]\ndirect_outer<p> = [value: inner<p>]\ndirect_outer_uint = direct_outer<uint>"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200818101"
+source = "hand"
+expect = "accept"
+
+[[row]]
+id = "generic_inline_choice.direct_outer_uint_again"
+axis = "corpus"
+example = "inner<x> = [x]\ndirect_outer<p> = [value: inner<p>]\ndirect_outer_uint_again = direct_outer<uint>"
+fixture = "generic_inline_choice"
+rule = "direct_outer_uint_again"
+pinned_reason = "all 10 generated candidate(s) failed two-oracle cross-validation (ruby accepted 10/10, rust --ci accepted 0/10 — an upstream oracle disagreement, not a decoder verdict; see cddl-matrix/README.md § \"Upstream oracle gaps\" and re-mint this row when the cited fix ships)"
+
+[[row]]
+id = "generic_inline_choice.holder"
+axis = "corpus"
+example = "choice<p> = [value: p / tstr]\nchoice_uint_again = choice<uint>\nchoice_bytes = choice<bstr>\nholder = [\n  primary: choice<uint>,\n  repeated: choice_uint_again,\n  byte_value: choice_bytes,\n]\n\n; Definition-owned nested applications are staged privately while their outer parameter is lexical,\n; then materialize through the ordinary concrete generic-instance path. These rules cover the direct\n; field sibling of the inline-choice case, repeated/distinct concrete children, a two-level chain,\n; and a transparent collection child."
+fixture = "generic_inline_choice"
+rule = "holder"
+spec = "__probe_holder = [0, holder]\nchoice<p> = [value: p / tstr]\nchoice_uint_again = choice<uint>\nchoice_bytes = choice<bstr>\nholder = [\n  primary: choice<uint>,\n  repeated: choice_uint_again,\n  byte_value: choice_bytes,\n]\n\n; Definition-owned nested applications are staged privately while their outer parameter is lexical,\n; then materialize through the ordinary concrete generic-instance path. These rules cover the direct\n; field sibling of the inline-choice case, repeated/distinct concrete children, a two-level chain,\n; and a transparent collection child."
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200838119060381637469638163746163"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008381190bdf81637469638143746163"
+hex = "8200838119086981190a308163746963"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008381190c9f8119119e8143746963"
+hex = "82008381190bb9811912198143746963"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200838119104581637469638163746163"
+hex = "82008381190f0081637469638143746163"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820083811910ad81637469638163746163"
+hex = "820083811911c38119101d8143746963"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200838163746963811905868163746163"
+hex = "820083816374696381190bb08143746163"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820083816374696381637461638143746f65"
+hex = "8200838163746963811911648163746163"
 source = "ruby-generate"
 expect = "accept"
 
@@ -5663,6 +5753,58 @@ expect = "accept"
 hex = "820083816374696381637461638163746f65"
 source = "ruby-generate"
 expect = "accept"
+
+[[row]]
+id = "generic_inline_choice.inline_child"
+axis = "corpus"
+example = "inner<x> = [x]\ninline_child<p> = [value: inner<p> / tstr]"
+fixture = "generic_inline_choice"
+rule = "inline_child"
+pinned_reason = "generic rule (head carries `<...>`); cannot be holder-wrapped bare — instantiations are covered via referencing rules"
+
+[[row]]
+id = "generic_inline_choice.inline_child_uint"
+axis = "corpus"
+example = "inner<x> = [x]\ninline_child<p> = [value: inner<p> / tstr]\ninline_child_uint = inline_child<uint>"
+fixture = "generic_inline_choice"
+rule = "inline_child_uint"
+spec = "__probe_holder = [0, inline_child_uint]\ninner<x> = [x]\ninline_child<p> = [value: inner<p> / tstr]\ninline_child_uint = inline_child<uint>"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "82008163746963"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200818101"
+source = "hand"
+expect = "accept"
+
+[[row]]
+id = "generic_inline_choice.inner"
+axis = "corpus"
+example = "inner<x> = [x]"
+fixture = "generic_inline_choice"
+rule = "inner"
+pinned_reason = "generic rule (head carries `<...>`); cannot be holder-wrapped bare — instantiations are covered via referencing rules"
+
+[[row]]
+id = "generic_inline_choice.items"
+axis = "corpus"
+example = "items<x> = [* x]"
+fixture = "generic_inline_choice"
+rule = "items"
+pinned_reason = "generic rule (head carries `<...>`); cannot be holder-wrapped bare — instantiations are covered via referencing rules"
+
+[[row]]
+id = "generic_inline_choice.leaf"
+axis = "corpus"
+example = "leaf<x> = [x]"
+fixture = "generic_inline_choice"
+rule = "leaf"
+pinned_reason = "generic rule (head carries `<...>`); cannot be holder-wrapped bare — instantiations are covered via referencing rules"
 
 [[row]]
 id = "generic_inline_choice.map_choices"
@@ -5686,6 +5828,14 @@ type_name = "ProbeHolder"
 hex = "820081a0"
 source = "ruby-generate"
 expect = "accept"
+
+[[row]]
+id = "generic_inline_choice.mid"
+axis = "corpus"
+example = "leaf<x> = [x]\nmid<x> = [value: leaf<x>]"
+fixture = "generic_inline_choice"
+rule = "mid"
+pinned_reason = "generic rule (head carries `<...>`); cannot be holder-wrapped bare — instantiations are covered via referencing rules"
 
 [[row]]
 id = "generic_inline_choice.nested"
@@ -5714,12 +5864,17 @@ mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "820081190776"
+hex = "82008119028e"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820081190829"
+hex = "8200811905d7"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200811907dd"
 source = "ruby-generate"
 expect = "accept"
 
@@ -5744,52 +5899,52 @@ mode = "holder"
 type_name = "ProbeHolder"
 
 [[row.vector]]
-hex = "82008380a1190f26182cf6"
+hex = "82008380a1190944191098f6"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008380a319074619083a1902e2190efd190ccf190a02190b11"
+hex = "82008380a419042419035519057c1912381902041909c31902bd190de4f6"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820083811906c4a21906a11908b319082119042e190884"
+hex = "82008381190af5a3190828190473190ef0190c8f190458190289f6"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820083811908f2a31903bb190a071904241910c0190f1119110719110c"
+hex = "82008381190ebca41907e3190b6c19070c190dd819022719013319058b190c1ff6"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820083831902d619071d1909c7a419103a190c6a1909691907c019122d190e86190aa119116cf6"
+hex = "8200838219096819045ca41910e1190bc31905f91911d1190d9219053e19081a190cdf191038"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "820083831904a919030e15a3185d1905351910301906fa18b9190bfc19103e"
+hex = "820083821909f019076aa219054c1910501905fd1908d2f6"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "8200838319089c190f32190591a11910531910e9f6"
+hex = "82008382190b86190266a4190653190dee190de81909ee190e651901b919036d190808f6"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008384190819191110190a9b19090fa21902221903c419094b190503f6"
+hex = "8200838318a119113719025fa41908de190d63190ba3190a72190a19190728190b6a190233f6"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008384190bf8190645190e92190b54a219023b1909fd1911cb18f3f6"
+hex = "8200838319060b1908df190eeea21904e8190de0190a36190184f6"
 source = "ruby-generate"
 expect = "accept"
 
 [[row.vector]]
-hex = "82008384191086189c1905cc190278a2190b6919077d190b96190eb1f6"
+hex = "820083841904d81905eb190628190ea8a119048a1908fd191007"
 source = "ruby-generate"
 expect = "accept"
 

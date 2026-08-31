@@ -597,6 +597,20 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
     durable `pinned_reason` names both current failures and automatically disappears once one
     candidate passes both oracles.
 
+19. **nested generic references do not substitute the outer parameter** (OPEN at pinned
+    `ac1b98e`): the validator accepts direct generic substitution but leaves the lexical outer
+    parameter unresolved after it crosses a second generic definition. Against
+    `inner<x> = [x]`, `outer<p> = [inner<p>]`, and `outer-uint = outer<uint>`, the spec-valid
+    `[[1]]` is rejected with `expected type p, got Integer(Integer(1))`; Ruby cddl 0.12.14 accepts.
+    The collection spelling (`items<x> = [* x]`) likewise treats a non-empty `items<p>` as matching
+    zero elements, while one more nested reference (`leaf` through `mid` through `outer`) overflows
+    the rust validator's stack and aborts. The four exact corpus vectors under
+    `CORPUS_DECODE_ACCEPT_ORACLE_GAP_EXEMPT` retain one direct field, one inline-choice child arm,
+    one non-empty collection, and one two-level chain only while Ruby accepts and rust reproduces
+    those exact failure signatures. They independently exercise the generated decoder paths without
+    converting the oracle gap into a row-wide exemption. Re-mint `generic_inline_choice` and remove
+    the entries when rust-cddl substitutes through nested generic references.
+
 ## Gotchas (read before touching the support seam or probe examples)
 
 The recurring rule: **a panic/compile-failure on minimal *valid* CDDL is a finding to surface
