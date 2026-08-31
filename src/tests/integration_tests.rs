@@ -13684,8 +13684,27 @@ fn rust_oracle_fingerprint_preflight(scratch_root: &std::path::Path, target_dir:
     .unwrap_or_else(|e| panic!("cannot write probe Cargo.toml: {e}"));
 
     let rev = cddl_oracle_dep_rev();
-    let mut main_rs =
-        String::from("fn main() {\n    let mut failures: Vec<String> = Vec::new();\n");
+    let mut main_rs = String::from(
+        r#"fn main() {
+    // Stack overflow aborts the whole process, so the nested-generic chain probe must run in a
+    // child. The parent below pins its signal and stderr while the ordinary returned-error probes
+    // stay in this process.
+    if std::env::args().nth(1).as_deref() == Some("__nested_generic_chain_gap_probe") {
+        let spec = "__cddl_oracle_root = chain_outer_uint\nleaf<x> = [x]\nmid<x> = [value: leaf<x>]\nchain_outer<p> = [value: mid<p>]\nchain_outer_uint = chain_outer<uint>";
+        match cddl::validate_cbor_from_slice(spec, &[0x81, 0x81, 0x81, 0x00], None) {
+            Ok(()) => {
+                eprintln!("nested-generic chain probe unexpectedly accepted");
+                std::process::exit(70);
+            }
+            Err(error) => {
+                eprintln!("nested-generic chain probe returned instead of aborting: {error}");
+                std::process::exit(71);
+            }
+        }
+    }
+    let mut failures: Vec<String> = Vec::new();
+"#,
+    );
     for probe in probes {
         let name = oracle_fingerprint_probe_string(probe, "name");
         let spec = oracle_fingerprint_probe_string(probe, "spec");
@@ -13763,6 +13782,75 @@ fn rust_oracle_fingerprint_preflight(scratch_root: &std::path::Path, target_dir:
         }
         Ok(Ok(())) => failures.push("  - fixed-byte-validator-panic: unexpectedly accepted spec `x = h'CAFE'` CBOR 42cafe; remove the fixed-byte RUST_ORACLE_RULE_SKIP entries after the validator fix".to_owned()),
         Ok(Err(error)) => failures.push(format!("  - fixed-byte-validator-panic: expected rust-cddl ac1b98e src/validator/cbor.rs:4840 `Option::unwrap()` None panic for spec `x = h'CAFE'` CBOR 42cafe, got returned error `{error}`; investigate before retaining fixed-byte RUST_ORACLE_RULE_SKIP entries")),
+    }
+"#,
+    );
+    main_rs.push_str(
+        r#"    for (rule, spec) in [
+        (
+            "direct_outer_uint",
+            "__cddl_oracle_root = direct_outer_uint\ninner<x> = [x]\ndirect_outer<p> = [value: inner<p>]\ndirect_outer_uint = direct_outer<uint>",
+        ),
+        (
+            "direct_outer_uint_again",
+            "__cddl_oracle_root = direct_outer_uint_again\ninner<x> = [x]\ndirect_outer<p> = [value: inner<p>]\ndirect_outer_uint_again = direct_outer<uint>",
+        ),
+    ] {
+        match cddl::validate_cbor_from_slice(spec, &[0x81, 0x81, 0x00], None) {
+            Err(error) if error.to_string().contains("expected type p, got Integer(Integer(0))") => {}
+            Ok(()) => failures.push(format!("  - nested-generic-{rule}: unexpectedly accepted the exact emitted CBOR 818100; remove that RUST_ORACLE_RULE_SKIP entry after the upstream repair")),
+            Err(error) => failures.push(format!("  - nested-generic-{rule}: expected rust-cddl ac1b98e rejection signature `expected type p, got Integer(Integer(0))` for exact emitted CBOR 818100, got `{error}`; investigate before retaining that RUST_ORACLE_RULE_SKIP entry")),
+        }
+    }
+    match cddl::validate_cbor_from_slice(
+        "__cddl_oracle_root = direct_outer_bytes\ninner<x> = [x]\ndirect_outer<p> = [value: inner<p>]\ndirect_outer_bytes = direct_outer<bstr>",
+        &[0x81, 0x81, 0x41, 0x00],
+        None,
+    ) {
+        Err(error) if error.to_string().contains("expected type p, got Bytes([0])") => {}
+        Ok(()) => failures.push("  - nested-generic-direct_outer_bytes: unexpectedly accepted the exact emitted CBOR 81814100; remove that RUST_ORACLE_RULE_SKIP entry after the upstream repair".to_owned()),
+        Err(error) => failures.push(format!("  - nested-generic-direct_outer_bytes: expected rust-cddl ac1b98e rejection signature `expected type p, got Bytes([0])` for exact emitted CBOR 81814100, got `{error}`; investigate before retaining that RUST_ORACLE_RULE_SKIP entry")),
+    }
+    match cddl::validate_cbor_from_slice(
+        "__cddl_oracle_root = inline_child_uint\ninner<x> = [x]\ninline_child<p> = [value: inner<p> / tstr]\ninline_child_uint = inline_child<uint>",
+        &[0x81, 0x81, 0x00],
+        None,
+    ) {
+        Err(error) if error.to_string().contains("expected type p, got Integer(Integer(0))") => {}
+        Ok(()) => failures.push("  - nested-generic-inline_child_uint: unexpectedly accepted the exact emitted CBOR 818100; remove that RUST_ORACLE_RULE_SKIP entry after the upstream repair".to_owned()),
+        Err(error) => failures.push(format!("  - nested-generic-inline_child_uint: expected rust-cddl ac1b98e rejection signature `expected type p, got Integer(Integer(0))` for exact emitted CBOR 818100, got `{error}`; investigate before retaining that RUST_ORACLE_RULE_SKIP entry")),
+    }
+    match cddl::validate_cbor_from_slice(
+        "__cddl_oracle_root = collection_outer_uint\nitems<x> = [* x]\ncollection_outer<p> = [value: items<p>]\ncollection_outer_uint = collection_outer<uint>",
+        &[0x81, 0x81, 0x00],
+        None,
+    ) {
+        Err(error) if error.to_string().contains("group  * x  matched the first 0 element(s), but the array has 1 elements") => {}
+        Ok(()) => failures.push("  - nested-generic-collection_outer_uint: unexpectedly accepted the exact emitted CBOR 818100; remove that RUST_ORACLE_RULE_SKIP entry after the upstream repair".to_owned()),
+        Err(error) => failures.push(format!("  - nested-generic-collection_outer_uint: expected rust-cddl ac1b98e zero-element rejection signature for exact emitted CBOR 818100, got `{error}`; investigate before retaining that RUST_ORACLE_RULE_SKIP entry")),
+    }
+    let chain = std::process::Command::new(std::env::current_exe().expect("fingerprint probe current executable"))
+        .arg("__nested_generic_chain_gap_probe")
+        .output()
+        .expect("run nested-generic chain gap child");
+    let chain_stderr = String::from_utf8_lossy(&chain.stderr);
+    #[cfg(unix)]
+    let chain_has_exact_status = {
+        use std::os::unix::process::ExitStatusExt;
+        chain.status.signal() == Some(6)
+    };
+    #[cfg(not(unix))]
+    let chain_has_exact_status = !chain.status.success();
+    if !(chain_has_exact_status
+        && chain_stderr.contains("has overflowed its stack")
+        && chain_stderr.contains("fatal runtime error: stack overflow"))
+    {
+        failures.push(format!(
+            "  - nested-generic-chain_outer_uint: expected rust-cddl ac1b98e SIGABRT/stack-overflow signatures for exact emitted CBOR 81818100, got status {:?}, stdout `{}`, stderr `{}`; investigate before retaining that RUST_ORACLE_RULE_SKIP entry",
+            chain.status,
+            String::from_utf8_lossy(&chain.stdout),
+            chain_stderr,
+        ));
     }
 "#,
     );
@@ -14774,13 +14862,45 @@ fn ir_conformance_corpus() {
     ];
     // Per-rule, not fixture-wide: the pinned cddl validator (ac1b98e) parses `undefined` but
     // misclassifies valid `f7` as Null (`expected type undefined, got Null`). It also panics on a
-    // valid fixed byte string at `src/validator/cbor.rs:4840:29` (`called `Option::unwrap()` on a
-    // `None` value`). The fingerprint preflight probes both exact signatures; each entry below still
-    // has its fixture/rule/exact-emitted-call guards, so an unrelated rule cannot be silently swept
-    // into the validator gap. Keep all unaffected fixed-singleton calls, ordinary round trips,
-    // dumps, ruby and structural oracles live.
+    // valid fixed byte string at `src/validator/cbor.rs:4840:29` (`Option::unwrap()` on a `None`
+    // value), and does not substitute an outer parameter through the direct, inline-choice,
+    // collection, or transitive nested-generic shapes in generic_inline_choice (gap #19; the
+    // transitive shape stack-overflows). The fingerprint preflight probes each exact returned-error shape and the
+    // chain's abort in a child process. Each entry below still has fixture/rule/exact-emitted-call
+    // guards, so an unrelated rule cannot be silently swept into a validator gap. Keep all
+    // unaffected calls, ordinary round trips, dumps, ruby and structural oracles live.
     const FIXED_BYTE_VALIDATOR_PANIC: &str = "pinned rust-cddl local-fixes ac1b98e panics at src/validator/cbor.rs:4840:29 (`called `Option::unwrap()` on a `None` value`) on valid fixed-byte CBOR; the exact h'CAFE' fingerprint probe makes this stale when the validator returns or changes signature — remove this skip after the upstream validator repair";
     const RUST_ORACLE_RULE_SKIP: &[(&str, &str, &str)] = &[
+        (
+            "generic_inline_choice",
+            "chain_outer_uint",
+            "cddl ac1b98e recursively expands the unresolved outer parameter through leaf/mid/chain_outer until the exact emitted CBOR 81818100 stack-overflows with SIGABRT; the child-process preflight pins that abort and both stderr signatures, while every unaffected generated call plus ruby, dumps, and structural checks remain live",
+        ),
+        (
+            "generic_inline_choice",
+            "collection_outer_uint",
+            "cddl ac1b98e leaves x unresolved through items<p>, so the exact emitted non-empty collection CBOR 818100 rejects after matching zero elements; the preflight pins that returned signature, while every unaffected generated call plus ruby, dumps, and structural checks remain live",
+        ),
+        (
+            "generic_inline_choice",
+            "direct_outer_uint",
+            "cddl ac1b98e leaves p unresolved through inner<p>, so the exact emitted CBOR 818100 rejects with `expected type p, got Integer(Integer(0))`; the preflight pins that returned signature, while every unaffected generated call plus ruby, dumps, and structural checks remain live",
+        ),
+        (
+            "generic_inline_choice",
+            "direct_outer_uint_again",
+            "cddl ac1b98e leaves p unresolved through the second direct_outer<uint> instantiation, so the exact emitted CBOR 818100 rejects with `expected type p, got Integer(Integer(0))`; the separate exact-root preflight pins that returned signature, while every unaffected generated call plus ruby, dumps, and structural checks remain live",
+        ),
+        (
+            "generic_inline_choice",
+            "direct_outer_bytes",
+            "cddl ac1b98e leaves p unresolved through inner<p> for the bstr instantiation, so the exact emitted CBOR 81814100 rejects with `expected type p, got Bytes([0])`; the exact-root preflight pins that returned signature, while every unaffected generated call plus ruby, dumps, and structural checks remain live",
+        ),
+        (
+            "generic_inline_choice",
+            "inline_child_uint",
+            "cddl ac1b98e leaves p unresolved through inner<p> in the inline-choice child, so the exact emitted CBOR 818100 rejects with `expected type p, got Integer(Integer(0))`; the exact-root preflight pins that returned signature, while every unaffected generated call plus ruby, dumps, and structural checks remain live",
+        ),
         (
             "preserve_pair_map_self_encoding",
             "holder",

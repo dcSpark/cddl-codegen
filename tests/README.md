@@ -4054,9 +4054,8 @@ dep, so shipped output stays ruby-free. Teeth and posture:
   separately on `RUBY_EXPECTED_FAIL` above, so it keeps the decode-side reference-codec
   differential AND the rust conformance half as its checks).
   `RUST_ORACLE_RULE_SKIP` is intentionally narrower: normal conformance generation remains ON and
-  the scratch generated module neutralizes only the exact emitted
-  `cddl_conformance::validate(&bytes, "undefined_value");` call for
-  `(fixed_singletons, undefined_value)`. At pinned dcSpark/cddl
+  the scratch generated module neutralizes only the exact emitted validator calls named by its
+  `(fixture, rule)` entries. At pinned dcSpark/cddl
   `ac1b98ec07184236517da4511b1bbea239e35190`, valid `x = undefined` bytes `f7` reject with
   `expected type undefined, got Null`. The cost is exactly **one of fixed_singletons' eight** rust
   validator calls; its other seven calls, every ordinary round trip, minted-byte dump, ruby sweep,
@@ -4073,7 +4072,24 @@ dep, so shipped output stays ruby-free. Teeth and posture:
   returns `expected array type, got Map([])`. Only that call is neutralized; standalone `entry`,
   ruby, dumps, and structural checks remain live (`self_map` is transparent). A separate
   preflight asserts the exact returned signature, so acceptance or a signature change fails with
-  instructions to investigate/remove the new per-rule skip after upstream repair.
+  instructions to investigate/remove the per-rule skip after upstream repair. The fixed-byte
+  validator panic is likewise represented by exact per-rule entries and a preflight pinned to the
+  `Option::unwrap()` site/signature rather than a fixture-wide exemption.
+
+  Gap #19 adds six generated-call entries for `generic_inline_choice`: `direct_outer_uint`, its
+  second instantiation `direct_outer_uint_again`, `direct_outer_bytes`, `inline_child_uint`,
+  `collection_outer_uint`, and `chain_outer_uint`. Their actual minted bytes are `818100`, `818100`,
+  `81814100`, `818100`, `818100`, and `81818100`; the pinned validator rejects the direct and inline
+  calls with unresolved-parameter signatures, rejects the collection after matching zero elements,
+  and stack-overflows on the chain. Exact returned-error probes plus a child-process SIGABRT/stderr
+  probe make each accommodation stale. All unaffected generated calls, ordinary round trips, ruby
+  validation, minted-byte dumps, and structural/reference-codec differentials remain live.
+
+  The decode catalog has an independent exact-vector oracle-gap ledger for the same upstream gap.
+  Working rule: adding or changing an upstream-oracle accommodation requires auditing every
+  executable oracle surface and its ledger; neither ledger's internal stale guards prove
+  cross-surface completeness. `testing.oracle-gap-cross-ledger-projection` records the missing
+  machine-readable inventory/projector (or equivalent completeness check) and its recurrence trigger.
 - **Dump-coverage (`DUMP_EXEMPT`)** — per fixture, every rule the generator *intended* to dump (its
   hook is present in `lib.rs`) must land a `.cbor` on disk. An intended-but-undumped rule fails the
   gate unless ledgered in `DUMP_EXEMPT` **with a justification** — so a dump hook that silently stops

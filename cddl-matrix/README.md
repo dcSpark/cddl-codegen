@@ -609,8 +609,14 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
     `CORPUS_DECODE_ACCEPT_ORACLE_GAP_EXEMPT` retain one direct field, one inline-choice child arm,
     one non-empty collection, and one two-level chain only while Ruby accepts and rust reproduces
     those exact failure signatures. They independently exercise the generated decoder paths without
-    converting the oracle gap into a row-wide exemption. Re-mint `generic_inline_choice` and remove
-    the entries when rust-cddl substitutes through nested generic references.
+    converting the oracle gap into a row-wide exemption. The independent generated-test surface has
+    six exact `RUST_ORACLE_RULE_SKIP` calls for three direct instantiations, the inline-choice child,
+    collection, and chain. Exact returned-error and child-process abort preflights pin those calls.
+    All ordinary round trips, Ruby validation, dumps, and structural checks remain live. Re-mint
+    `generic_inline_choice`,
+    remove both ledgers' exact entries, and retire the preflights when rust-cddl substitutes through
+    nested generic references. Until a cross-ledger completeness check exists, every upstream-oracle
+    accommodation must audit both executable surfaces explicitly.
 
 ## Gotchas (read before touching the support seam or probe examples)
 
