@@ -5,10 +5,9 @@
 ; `_default_present` flag, which is what lets a wire that SPELLED the default value re-emit it
 ; instead of dropping it.
 ;
-; Both members sit in FINAL position: a defaulted member is optional by occurrence, and a non-final
-; optional array member is a separate (unsupported) ambiguity class that this fixture must not drag
-; in. The two rules differ only in the default's kind, which is what picks the `unwrap_or` vs the
-; owned-value `unwrap_or_else` spelling.
+; Both members sit in FINAL position: a defaulted member is optional by occurrence, while a non-final optional enters the separate possible-next lookahead class that this fixture must not drag in.
+; Keeping the member final isolates the default collapse.
+; The two rules differ only in the default's kind, which is what picks the `unwrap_or` vs the owned-value `unwrap_or_else` spelling.
 array_default = [ a: uint, ? b: uint .default 7 ]
 
 array_default_text = [ a: uint, ? s: tstr .default "hi" ]

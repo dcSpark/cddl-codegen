@@ -939,7 +939,7 @@ forms reject without suffix speculation or promising one error class.
 An optional fixed member is read by peeking at its reachable following member or occurrence segment.
 That dispatch is emitted only when both wire heads are generator-proven and CBOR-major-disjoint; a
 custom codec or opaque extern on either side is serialize-only unless mandatory outer tag/`.cbor`
-framing supplies the proof. `@custom_wire_major` does not broaden this optional-prefix rule. A final
+framing supplies the proof. `@custom_wire_major` does not broaden this optional-field rule. A final
 optional with no following item remains owner-length-delimited.
 
 **Serialize / round-trip.** The array header counts the fixed members plus every captured segment

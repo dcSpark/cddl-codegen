@@ -187,6 +187,7 @@ entries = [
   "matrix.fixed-bytes.lowercase-base64-parser",
   "matrix.fixed-bytes.validator-corroboration",
   "matrix.tag-map-key-upstream",
+  "matrix.generic-tag-primitive-upstream",
   "matrix.named-rule-map-key-upstream",
   "matrix.optional-closed-map-upstream",
   "matrix.float-prelude-name-upstream",
@@ -860,6 +861,43 @@ action_on_fire_md = '''design an ordered-float key
 [record.payload.reopening_signal.predicate]
 predicate_kind = "event"
 event_md = '''a consumer cannot apply integer/text/bytes remedy
+'''
+
+[[record]]
+id = "matrix.generic-tag-primitive-upstream"
+title = "Close out rust cddl generic-tag primitive validation (README gap #20)"
+legacy_aliases = ["README gap #20"]
+
+[record.payload]
+kind = "matrix_external_closeout"
+body_md = '''### Close out rust cddl generic-tag primitive validation (README gap #20)
+
+At pinned `ac1b98e`, an arbitrary CBOR tag other than 0/1 validates against ordinary primitive
+identifiers because `visit_identifier`'s `Value::Tag` fallback returns success without testing the
+requested type. This also poisons greedy array boundaries: a repeated `uint` or optional `tstr`
+consumes a mandatory tag-10 suffix. The reduced leaf and array controls plus the exact corpus cost
+are durable in README gap #20. No exact public `anweiss/cddl` issue was found on 2026-09-01 and no
+issue has been filed.
+'''
+closeout_state = "due"
+upstream_owner_reference_id = "release-rust-cddl-a-published-release-rejects-generic-tags-as-primitives"
+current_upstream_state_md = '''The diagnosis and corpus impact are durable in README gap 20, but no upstream issue or fix has been filed.
+'''
+verification_md = '''File the report or fix with leaf mismatch and greedy-array regressions; after a release, require ca02 to reject against uint/tstr/bytes/bool, require both absent-optional array reductions to accept, re-mint occurrence.optional_segment_occurrence, and run full verify before pruning gap 20.
+'''
+
+[record.payload.retirement_predicate]
+external_owner_reference_id = "release-rust-cddl-a-published-release-rejects-generic-tags-as-primitives"
+external_predicate_md = '''A published release rejects arbitrary non-0/1 tags against ordinary primitive identifiers while preserving declared typed-tag validation and greedy array sequence semantics.
+'''
+verification_md = '''Require ca02 to reject against uint/tstr/bytes/bool, require both absent-optional array reductions to accept, re-mint occurrence.optional_segment_occurrence, and run full verify before pruning gap 20.
+'''
+due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and verification succeeds; otherwise retain the closeout and its corpus-impact ledger.
+'''
+
+[[record.payload.action]]
+action_id = "file-report"
+action_md = '''Create and file a durable rust-cddl report with the leaf controls, greedy-array reductions, and Cycle 16 corpus impact.
 '''
 
 [[record]]
@@ -1741,10 +1779,9 @@ legacy_aliases = ["README gap #7"]
 kind = "matrix_external_closeout"
 body_md = '''- When a release ships the `90f66ff` prelude-`number` float fix (README gap #7): prune the
   fix-provenance notes (README gap #7, the `prelude-number-float-accepts` /
-  `prelude-number-tstr-rejects` fingerprint probes' provenance wording). Separately citable while
-  in the neighborhood: bare floats against `time` (`#6.1(number)`) validate WITHOUT the tag-1
-  wrapper (tag-leniency laxity, pre-existing and unchanged by the fix) — a candidate upstream
-  report, not yet filed. A sibling ruby time-family laxity surfaced by the corpus decode mint:
+  `prelude-number-tstr-rejects` fingerprint probes' provenance wording). The independent generic-tag
+  primitive laxity is README gap #20 with its own closeout and must not be pruned with gap #7.
+  A sibling ruby time-family laxity surfaced by the corpus decode mint:
   the generator mints calendar-INVALID `tdate`s (`0("5906-11-31t22:32:49-05:59")` — November 31
   does not exist) and the validator accepts them, while the local-fixes rust oracle rejects
   (RFC 3339 date validity — arguably the correct reading); repro + impact under "Adjacent
@@ -1753,16 +1790,16 @@ body_md = '''- When a release ships the `90f66ff` prelude-`number` float fix (RE
 '''
 closeout_state = "waiting"
 upstream_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n6"
-current_upstream_state_md = '''The prelude-number fix is on local-fixes; adjacent tag-leniency and ruby calendar-date observations are unfiled and independent.
+current_upstream_state_md = '''The prelude-number fix is on local-fixes; the independent generic-tag gap has its own closeout, while the ruby calendar-date observation remains unfiled.
 '''
-verification_md = '''Run prelude-number-float-accepts and prelude-number-tstr-rejects, re-mint prelude.number's float arm, and remove only gap 7 and its floor exemption; leave the adjacent observations open.
+verification_md = '''Run prelude-number-float-accepts and prelude-number-tstr-rejects, re-mint prelude.number's float arm, and remove only gap 7 and its floor exemption; leave gap 20 and the ruby calendar-date observation open.
 '''
 
 [record.payload.retirement_predicate]
 external_owner_reference_id = "release-rust-cddl-a-published-release-contains-commit-n6"
 external_predicate_md = '''A published release contains commit 90f66ff behavior accepting floats for prelude number while preserving non-number rejection.
 '''
-verification_md = '''Run prelude-number-float-accepts and prelude-number-tstr-rejects, re-mint prelude.number's float arm, and remove only gap 7 and its floor exemption; leave the adjacent observations open.
+verification_md = '''Run prelude-number-float-accepts and prelude-number-tstr-rejects, re-mint prelude.number's float arm, and remove only gap 7 and its floor exemption; leave gap 20 and the ruby calendar-date observation open.
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and the verification succeeds; otherwise retain the closeout and its accommodations.
 '''
@@ -1772,11 +1809,6 @@ action_id = "ruby-calendar-date"
 action_md = '''Retain the ruby calendar-date observation and its separate owner.
 '''
 
-[[record.payload.action]]
-action_id = "tag-leniency"
-action_md = '''Retain the adjacent tag-leniency observation and do not prune it with gap 7.
-'''
-
 [[record.payload.branch]]
 branch_id = "ruby-calendar-date"
 predicate_md = '''The number fix is released while ruby's calendar-date observation remains independently open.
@@ -1784,14 +1816,6 @@ predicate_md = '''The number fix is released while ruby's calendar-date observat
 
 [[record.payload.branch.action]]
 action_id = "ruby-calendar-date"
-
-[[record.payload.branch]]
-branch_id = "tag-leniency"
-predicate_md = '''The number fix is released while the adjacent tag-leniency observation remains independently open.
-'''
-
-[[record.payload.branch.action]]
-action_id = "tag-leniency"
 
 [[record]]
 id = "matrix.profile-version-scope"
@@ -2714,6 +2738,13 @@ source = "matrix.float-prelude-name-upstream"
 kind = "external_release"
 project = "rust cddl"
 release = "A published ruling or release distinguishes the six float prelude names, or explicitly rules that the current common set is correct."
+
+[[reference]]
+id = "release-rust-cddl-a-published-release-rejects-generic-tags-as-primitives"
+source = "matrix.generic-tag-primitive-upstream"
+kind = "external_release"
+project = "rust cddl"
+release = "A published release rejects arbitrary non-0/1 tags against ordinary primitive identifiers while retaining typed-tag and greedy array sequence semantics."
 
 [[reference]]
 id = "release-rust-cddl-a-published-release-accumulates-the"

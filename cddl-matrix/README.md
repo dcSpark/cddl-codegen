@@ -372,8 +372,8 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
    and the exemption ledger is empty again. Two fingerprint probes
    (`prelude-number-float-accepts`, `prelude-number-tstr-rejects`) pin the fixed behavior,
    refusing a stale pre-fix (old-pin) oracle build. A stale claim in the retired repro note is
-   corrected for the record: bare floats against `time` (`#6.1(number)`) were ALREADY accepted
-   before this fix (tag-leniency laxity, unchanged by the bump), not newly accepted by it.
+   corrected for the record: bare floats against `time` (`#6.1(number)`) were ALREADY accepted before this fix, not newly accepted by it.
+   The broader arbitrary-tag-as-primitive laxity and its greedy array-boundary cost are tracked independently as gap #20.
 8. **tag-typed map-key over-rejection** (OPEN at `ac1b98e`, NOT fork-fixed — re-confirmed still
    open at that rev by direct probe): `validate` evaluates a
    TAGGED Type1 member key against the WHOLE map instead of the entry keys — spec-valid
@@ -617,6 +617,16 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
     remove both ledgers' exact entries, and retire the preflights when rust-cddl substitutes through
     nested generic references. Until a cross-ledger completeness check exists, every upstream-oracle
     accommodation must audit both executable surfaces explicitly.
+
+20. **arbitrary non-0/1 CBOR tags validate as ordinary primitive identifiers, poisoning greedy array boundaries** (OPEN at pinned `ac1b98e`): `ca02` (tag 10 around uint 2) validates against each of bare `uint`, `tstr`, `bytes`, and `bool`, while Ruby rejects those mismatches.
+    In `visit_identifier`, the `Value::Tag` arm checks bignums and tags 0/1, then returns success for every other tag without testing the requested identifier.
+    The array sequence matcher therefore commits a false leaf match under its correct greedy, non-backtracking policy.
+    Reductions show both consequences: `[* uint, suffix: #6.10(uint)]` rejects the spec-valid `[1, 10(2)]` because the repetition consumes the suffix, and `[? label: tstr, suffix: #6.10(uint)]` rejects `[10(2)]` because the optional text member consumes it.
+    Ruby accepts both arrays.
+    Cycle 16 exposed the composition cost in `occurrence.optional_segment_occurrence`: two scoped-mint candidates (`[0, [1321, 473, 10(2592)]]` and `[0, [4387, 446, 117, 2965, 10(592)]]`) omitted the optional text field and were dropped with `ruby=0 rust=1`, while all eight committed two-oracle vectors happen to contain the text field that stops `* uint` before the tag.
+    cddl-codegen's decoder accepts the absent-optional forms; its hand-authored native, preserve, JSON, wasm, and component tests retain that path, so this is an oracle-side corroboration gap rather than a product defect.
+    Re-mint the row after rust rejects generic tags against ordinary primitives and both absent-optional reductions validate.
+    A public `anweiss/cddl` issue search on 2026-09-01 found no report of this exact behavior; none was filed.
 
 ## Gotchas (read before touching the support seam or probe examples)
 

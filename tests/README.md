@@ -2928,7 +2928,7 @@ below) and the corpus fixtures' composition DEPTH (§ "Composition-depth (corpus
   shipped pinned with its `unsupported` annotation already in place and the missing entry surfaced
   only at activation, two work packages later. A SUBSET assertion, never equality: extra ledger
   entries are legitimate (the bare-alias probe divergence above is exactly how one arises).
-- **The drift gate** — `cddl-matrix/project_decode_conformance.ts` (check.ts `local` tier, pure
+- **The drift gate** — `cddl-matrix/project_decode_conformance.ts` (check.ts `fast` tier, pure
   file reads): matrix-supported ↔ catalog completeness, example-drift staleness (a drifted example
   means the vectors were validated against a spec the matrix no longer describes — re-mint),
   reject-pin class/reason/`expect_err` shape (including hand-authored policy-rejected vectors, whose
@@ -3032,9 +3032,12 @@ the rust oracle (`cddl-matrix/upstream-reports/rust-cddl-named-key-map.md`): its
 and `wasm_nested_alias.passthru_tags_map`) keep only
 their empty-instance accept vectors, because the rust reference contests every non-empty instance
 while the ruby reference and our own decoder accept — an oracle-side drop, not a cddl-codegen gap.
+The `occurrence.optional_segment_occurrence` row has a separate rust-oracle cost: gap #20 in `cddl-matrix/README.md` makes arbitrary tags match ordinary primitives, so its tag-10 suffix is falsely consumed by either the repeated `uint` or the optional `tstr` when the label is absent.
+Its eight committed vectors all contain the optional text boundary; absent-optional candidates are spec-valid but die at the two-oracle admission gate.
+Hand-authored open-array tests retain the absent path independently.
 
 Two gates mirror the matrix legs:
-- **Drift gate** — `cddl-matrix/project_decode_conformance.ts` (check.ts `local` tier, pure file
+- **Drift gate** — `cddl-matrix/project_decode_conformance.ts` (check.ts `fast` tier, pure file
   reads): its corpus half re-derives the glob × enumerator obligation set and asserts completeness
   (vectors XOR `pinned_reason`), staleness (each active row's committed `spec` byte-equals the
   reconstruction from the current fixture via the shared enumerator/closure builder — a drifted
