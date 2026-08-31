@@ -4415,7 +4415,7 @@ fn parse_type(
                                             // synthesized — keeps its own wasm class / criterion-8 name.
                                             false,
                                             canonical_ident,
-                                        ))
+                                        ));
                                     }
                                     None => {
                                         // A top-level single-type tag rule (`x = #6.n(<primitive|named>)`)

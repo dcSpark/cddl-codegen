@@ -2036,6 +2036,15 @@ impl GenericInstance {
         }
     }
 
+    /// Whether two registrations for one emitted instance ident describe the same ordinary
+    /// generic instance. The queue may encounter an equal definition-owned child after its
+    /// concrete instance has already completed; that is compatible reuse, never replacement.
+    /// Anonymous-versus-authored provenance does not change the concrete generic product; the
+    /// first compatible claimant remains its owner just as ordinary struct registration does.
+    pub(super) fn registration_compatible_with(&self, other: &Self) -> bool {
+        self.generic_ident == other.generic_ident && self.generic_args == other.generic_args
+    }
+
     // TODO: should we rename fields / variant names after-the-fact?
     // (for the cases where the name came from the original generic param)
     // returns None when it can't be resolved i.e. extern defs

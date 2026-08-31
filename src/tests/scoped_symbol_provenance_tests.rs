@@ -877,3 +877,132 @@ fn definition_owned_nested_generic_children_materialize_through_the_ordinary_ins
     })
     .expect("direct nested child must finalize without the old generation panic");
 }
+
+#[test]
+fn nested_child_instance_cannot_overwrite_a_completed_incompatible_instance() {
+    let outer = "foo<x> = [x]\nouter<p> = [value: foo<p>]\nouter-uint = outer<uint>\n";
+    let conflicting_binding = "foo-u64 = bar<uint>\nbar<x> = [left: x, right: x]\n";
+    for source in [
+        format!("{outer}{conflicting_binding}"),
+        format!("{conflicting_binding}{outer}"),
+    ] {
+        let error = api::generated_strings(&cli_for(&source))
+            .expect_err("an incompatible completed generic instance must not be overwritten")
+            .to_string();
+        assert!(
+            error.contains("generated Rust type `FooU64` has incompatible registrations")
+                && error.contains("generic instance of `Bar`")
+                && error.contains("generic instance of `Foo`"),
+            "the completed-instance collision must be loud rather than silently miscompile: {error}"
+        );
+    }
+}
+
+#[test]
+fn nested_child_templates_keep_exact_bindings_and_recursive_argument_identity() {
+    // The child-template path must use the same exact-source authority as direct parameter
+    // occurrences: a normalized claimant is never substituted for the lexical parameter.
+    for &(parameter, claimant_name) in NORMALIZATION_PAIRS {
+        for claimant in Claimant::ALL {
+            let orders: &[bool] = match claimant {
+                Claimant::None => &[true],
+                _ => &[true, false],
+            };
+            for &claimant_first in orders {
+                let subject = format!(
+                    "inner<x> = [x]\nouter<{parameter}> = [value: inner<{parameter}>]\nouter-uint = outer<uint>\n"
+                );
+                let declaration = claimant.source(claimant_name);
+                let source = if claimant_first {
+                    format!("{declaration}{subject}")
+                } else {
+                    format!("{subject}{declaration}")
+                };
+                let files = generated(&source);
+                let module = rust_mod(&files);
+                assert!(
+                    module.contains("pub value: InnerU64"),
+                    "{claimant:?} (claimant_first={claimant_first}) must not capture `{parameter}` as `{claimant_name}`:\n{module}"
+                );
+            }
+        }
+    }
+
+    // Each recursively carried argument resolves before the child identity is derived. The tagged
+    // and bounded versions intentionally differ only in argument-local codec/configuration, so one
+    // canonical fragment cannot overwrite the other.
+    let source = "inner<x> = [x]\nouter<p> = [tagged: inner<#6.10([* p])>, bounded: inner<([*2 p])>]\nouter-uint = outer<uint>\n";
+    let files = generated(source);
+    let module = rust_mod(&files);
+    let child_structs = module
+        .lines()
+        .filter(|line| line.starts_with("pub struct Inner"))
+        .count();
+    assert!(
+        child_structs >= 2,
+        "tagged/configured recursive arguments need distinct concrete child identities:\n{module}"
+    );
+    assert!(
+        module.contains("write_tag(10u64)")
+            || files.values().any(|file| file.contains("write_tag(10u64)")),
+        "the tagged child argument must retain its codec operation"
+    );
+
+    api::with_types(&cli_for(source), |types, _| {
+        fn has_binding(ty: &crate::intermediate::RustType) -> bool {
+            if ty.generic_param_binding.is_some() {
+                return true;
+            }
+            match &ty.conceptual_type {
+                ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
+                    has_binding(inner)
+                }
+                ConceptualRustType::Map(key, value) => has_binding(key) || has_binding(value),
+                _ => false,
+            }
+        }
+        for rust_struct in types.rust_structs().values() {
+            match rust_struct.variant() {
+                RustStructType::Record(record) => assert!(
+                    record
+                        .fields
+                        .iter()
+                        .all(|field| !has_binding(&field.rust_type)),
+                    "finalized record `{}` retains a generic binding",
+                    rust_struct.ident()
+                ),
+                RustStructType::Table { domain, range, .. } => assert!(
+                    !has_binding(domain) && !has_binding(range),
+                    "finalized table `{}` retains a generic binding",
+                    rust_struct.ident()
+                ),
+                RustStructType::Array { element_type, .. } => assert!(
+                    !has_binding(element_type),
+                    "finalized array `{}` retains a generic binding",
+                    rust_struct.ident()
+                ),
+                RustStructType::Wrapper { wrapped, .. } => assert!(
+                    !has_binding(wrapped),
+                    "finalized wrapper `{}` retains a generic binding",
+                    rust_struct.ident()
+                ),
+                RustStructType::TypeChoice { variants }
+                | RustStructType::CStyleEnum { variants } => {
+                    for variant in variants {
+                        if let crate::intermediate::EnumVariantData::RustType(ty) = &variant.data {
+                            assert!(
+                                !has_binding(ty),
+                                "finalized choice `{}` retains a generic binding",
+                                rust_struct.ident()
+                            );
+                        }
+                    }
+                }
+                RustStructType::GroupChoice { .. }
+                | RustStructType::Extern
+                | RustStructType::RawBytesType => {}
+            }
+        }
+    })
+    .expect("recursive nested child arguments must fully substitute their bindings");
+}

@@ -4456,9 +4456,28 @@ impl<'a> IntermediateTypes<'a> {
             })
     }
 
-    pub fn register_generic_instance(&mut self, instance: GenericInstance) {
+    /// Register an ordinary concrete generic instance, preserving the first compatible claimant.
+    /// A definition-owned child can reach this seam after an independently authored instance with
+    /// the same synthesized ident has completed; replacing that completed entry would make already
+    /// registered parents silently point at the later wire shape. Reject the incompatible claim
+    /// through the established generated-name collision contract instead.
+    pub fn register_generic_instance(&mut self, instance: GenericInstance) -> bool {
         let ident = instance.instance_ident.clone();
+        if let Some(existing) = self.generic_instances.get(&ident) {
+            if existing.registration_compatible_with(&instance) {
+                return false;
+            }
+            self.record_rejection(format!(
+                "generated Rust type `{ident}` has incompatible registrations: the first claimant \
+                 is a generic instance of `{}`, but the later claimant is a generic instance of \
+                 `{}`. Keep one wire shape per generated Rust name; rename one authored rule or \
+                 the synthesized claimant that collides with it.",
+                existing.generic_ident, instance.generic_ident,
+            ));
+            return false;
+        }
         self.generic_instances.insert(ident, instance);
+        true
     }
 
     /// Phase 2.4 consolidation seam: rewrite every INLINE `#6.258([* T])` occurrence in the finalized
@@ -5212,14 +5231,15 @@ impl<'a> IntermediateTypes<'a> {
                                 &CDDLIdent::new(child.generic_ident.to_string()),
                                 &child.generic_args,
                             ));
-                        self.register_generic_instance(GenericInstance::new(
-                            canonical_ident.clone(),
-                            child.generic_ident,
-                            child.generic_args,
-                            true,
-                            canonical_ident.clone(),
-                        ));
-                        if !completed_generics.contains(&canonical_ident) {
+                        let registered_child =
+                            self.register_generic_instance(GenericInstance::new(
+                                canonical_ident.clone(),
+                                child.generic_ident,
+                                child.generic_args,
+                                true,
+                                canonical_ident.clone(),
+                            ));
+                        if registered_child && !completed_generics.contains(&canonical_ident) {
                             pending_generics.insert(canonical_ident.clone());
                         }
                         child_replacements.insert(child.placeholder, canonical_ident);
