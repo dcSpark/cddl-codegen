@@ -4,9 +4,9 @@
   "gates": [
     {
       "gate": "all_supported_constructs_generate_all_profiles",
-      "warm_ms": 239000,
-      "n": 16,
-      "measured": "2026-08-12",
+      "warm_ms": 287000,
+      "n": 13,
+      "measured": "2026-08-31",
       "machine": "86216c55",
       "history": [
         {
@@ -24,6 +24,10 @@
         {
           "date": "2026-08-12",
           "warm_ms": 239000
+        },
+        {
+          "date": "2026-08-31",
+          "warm_ms": 287000
         }
       ]
     },
@@ -215,15 +219,11 @@
     },
     {
       "gate": "component_wit",
-      "warm_ms": 31000,
+      "warm_ms": 38000,
       "n": 20,
-      "measured": "2026-08-18",
+      "measured": "2026-08-31",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-08-01",
-          "warm_ms": 23000
-        },
         {
           "date": "2026-08-09",
           "warm_ms": 28000
@@ -239,6 +239,10 @@
         {
           "date": "2026-08-18",
           "warm_ms": 31000
+        },
+        {
+          "date": "2026-08-31",
+          "warm_ms": 38000
         }
       ]
     },
@@ -586,15 +590,11 @@
     },
     {
       "gate": "multifile_matrix_roundtrips",
-      "warm_ms": 383000,
-      "n": 19,
-      "measured": "2026-08-14",
+      "warm_ms": 461000,
+      "n": 16,
+      "measured": "2026-08-31",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-07-29",
-          "warm_ms": 413000
-        },
         {
           "date": "2026-07-30",
           "warm_ms": 557000
@@ -610,6 +610,10 @@
         {
           "date": "2026-08-14",
           "warm_ms": 383000
+        },
+        {
+          "date": "2026-08-31",
+          "warm_ms": 461000
         }
       ]
     },
@@ -871,15 +875,11 @@
     },
     {
       "gate": "recombination_json_crates_execute",
-      "warm_ms": 339000,
-      "n": 13,
-      "measured": "2026-08-19",
+      "warm_ms": 407000,
+      "n": 14,
+      "measured": "2026-08-31",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-07-29",
-          "warm_ms": 102000
-        },
         {
           "date": "2026-08-10",
           "warm_ms": 142000
@@ -895,20 +895,20 @@
         {
           "date": "2026-08-19",
           "warm_ms": 339000
+        },
+        {
+          "date": "2026-08-31",
+          "warm_ms": 407000
         }
       ]
     },
     {
       "gate": "recombination_preserve_crates_execute",
-      "warm_ms": 416000,
-      "n": 13,
-      "measured": "2026-08-19",
+      "warm_ms": 503000,
+      "n": 17,
+      "measured": "2026-08-31",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-08-14",
-          "warm_ms": 149000
-        },
         {
           "date": "2026-08-17",
           "warm_ms": 180000
@@ -924,6 +924,10 @@
         {
           "date": "2026-08-19",
           "warm_ms": 416000
+        },
+        {
+          "date": "2026-08-31",
+          "warm_ms": 503000
         }
       ]
     },
@@ -1037,15 +1041,11 @@
     },
     {
       "gate": "rust_oracle_fingerprint",
-      "warm_ms": 28000,
-      "n": 10,
-      "measured": "2026-08-30",
+      "warm_ms": 35000,
+      "n": 14,
+      "measured": "2026-08-31",
       "machine": "86216c55",
       "history": [
-        {
-          "date": "2026-08-06",
-          "warm_ms": 36000
-        },
         {
           "date": "2026-08-06",
           "warm_ms": 44000
@@ -1061,6 +1061,10 @@
         {
           "date": "2026-08-30",
           "warm_ms": 28000
+        },
+        {
+          "date": "2026-08-31",
+          "warm_ms": 35000
         }
       ]
     },
