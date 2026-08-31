@@ -49,6 +49,7 @@ pub(crate) mod scoped_symbol_provenance_tests;
 pub(crate) mod snapshot_tests;
 pub(crate) mod synthesized_name_registry_tests;
 pub(crate) mod timing_cells;
+pub(crate) mod transparent_collection_codec_tests;
 pub(crate) mod wasm_parity_tests;
 pub(crate) mod wrapper_participation_tests;
 pub(crate) mod write_tail_tests;
