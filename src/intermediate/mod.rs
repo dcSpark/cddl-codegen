@@ -4221,12 +4221,12 @@ impl<'a> IntermediateTypes<'a> {
             .collect::<BTreeSet<_>>();
         let mut inline_placeholders = Vec::new();
         let mut child_placeholders = Vec::new();
-        Self::collect_generic_inline_choice_placeholders(
+        Self::collect_generic_placeholders(
             &def.orig,
             &inline_template_idents,
             &mut inline_placeholders,
         );
-        Self::collect_generic_child_instance_placeholders(
+        Self::collect_generic_placeholders(
             &def.orig,
             &child_template_idents,
             &mut child_placeholders,
@@ -4246,12 +4246,12 @@ impl<'a> IntermediateTypes<'a> {
                     continue;
                 }
                 if let Some(template) = self.generic_inline_choice_templates.remove(&placeholder) {
-                    Self::collect_generic_inline_choice_placeholders(
+                    Self::collect_generic_placeholders(
                         &template.template,
                         &inline_template_idents,
                         &mut inline_placeholders,
                     );
-                    Self::collect_generic_child_instance_placeholders(
+                    Self::collect_generic_placeholders(
                         &template.template,
                         &child_template_idents,
                         &mut child_placeholders,
@@ -4267,7 +4267,7 @@ impl<'a> IntermediateTypes<'a> {
             }
             if let Some(template) = self.generic_child_instance_templates.remove(&placeholder) {
                 for arg in &template.generic_args {
-                    Self::collect_generic_child_instance_placeholders_in_type(
+                    Self::collect_generic_placeholders_in_type(
                         arg,
                         &child_template_idents,
                         &mut child_placeholders,
@@ -4285,44 +4285,40 @@ impl<'a> IntermediateTypes<'a> {
         self.generic_defs.insert(ident, def);
     }
 
-    fn collect_generic_child_instance_placeholders(
+    // Within records and choices, visit only fields and typed enum payloads, excluding dynamic
+    // rows, inlined records, and group choices. Alias bodies also stay outside this local walk.
+    // Append in child order, retaining duplicates; callers own the reachable-template closure.
+    fn collect_generic_placeholders(
         rust_struct: &RustStruct,
         template_idents: &BTreeSet<RustIdent>,
         output: &mut Vec<RustIdent>,
     ) {
-        fn collect_type(
-            ty: &RustType,
-            template_idents: &BTreeSet<RustIdent>,
-            output: &mut Vec<RustIdent>,
-        ) {
-            IntermediateTypes::collect_generic_child_instance_placeholders_in_type(
-                ty,
-                template_idents,
-                output,
-            );
-        }
         match rust_struct.variant() {
             RustStructType::Record(record) => {
                 for field in &record.fields {
-                    collect_type(&field.rust_type, template_idents, output);
+                    Self::collect_generic_placeholders_in_type(
+                        &field.rust_type,
+                        template_idents,
+                        output,
+                    );
                 }
             }
             RustStructType::Table { domain, range, .. } => {
-                collect_type(domain, template_idents, output);
-                collect_type(range, template_idents, output);
+                Self::collect_generic_placeholders_in_type(domain, template_idents, output);
+                Self::collect_generic_placeholders_in_type(range, template_idents, output);
             }
             RustStructType::Array { element_type, .. } => {
-                collect_type(element_type, template_idents, output)
+                Self::collect_generic_placeholders_in_type(element_type, template_idents, output)
             }
             RustStructType::TypeChoice { variants } | RustStructType::CStyleEnum { variants } => {
                 for variant in variants {
                     if let EnumVariantData::RustType(ty) = &variant.data {
-                        collect_type(ty, template_idents, output);
+                        Self::collect_generic_placeholders_in_type(ty, template_idents, output);
                     }
                 }
             }
             RustStructType::Wrapper { wrapped, .. } => {
-                collect_type(wrapped, template_idents, output)
+                Self::collect_generic_placeholders_in_type(wrapped, template_idents, output)
             }
             RustStructType::GroupChoice { .. }
             | RustStructType::Extern
@@ -4330,7 +4326,7 @@ impl<'a> IntermediateTypes<'a> {
         }
     }
 
-    fn collect_generic_child_instance_placeholders_in_type(
+    fn collect_generic_placeholders_in_type(
         ty: &RustType,
         template_idents: &BTreeSet<RustIdent>,
         output: &mut Vec<RustIdent>,
@@ -4340,87 +4336,17 @@ impl<'a> IntermediateTypes<'a> {
                 output.push(ident.clone())
             }
             ConceptualRustType::Array(element) | ConceptualRustType::Optional(element) => {
-                Self::collect_generic_child_instance_placeholders_in_type(
-                    element,
-                    template_idents,
-                    output,
-                );
+                Self::collect_generic_placeholders_in_type(element, template_idents, output);
             }
             ConceptualRustType::Map(domain, range) => {
-                Self::collect_generic_child_instance_placeholders_in_type(
-                    domain,
-                    template_idents,
-                    output,
-                );
-                Self::collect_generic_child_instance_placeholders_in_type(
-                    range,
-                    template_idents,
-                    output,
-                );
+                Self::collect_generic_placeholders_in_type(domain, template_idents, output);
+                Self::collect_generic_placeholders_in_type(range, template_idents, output);
             }
             ConceptualRustType::Fixed(_)
             | ConceptualRustType::Primitive(_)
             | ConceptualRustType::Rust(_)
             | ConceptualRustType::Alias(_, _)
             | ConceptualRustType::Any => {}
-        }
-    }
-
-    fn collect_generic_inline_choice_placeholders(
-        rust_struct: &RustStruct,
-        template_idents: &BTreeSet<RustIdent>,
-        output: &mut Vec<RustIdent>,
-    ) {
-        fn collect_type(
-            ty: &RustType,
-            template_idents: &BTreeSet<RustIdent>,
-            output: &mut Vec<RustIdent>,
-        ) {
-            match &ty.conceptual_type {
-                ConceptualRustType::Rust(ident) if template_idents.contains(ident) => {
-                    output.push(ident.clone());
-                }
-                ConceptualRustType::Array(element) | ConceptualRustType::Optional(element) => {
-                    collect_type(element, template_idents, output);
-                }
-                ConceptualRustType::Map(domain, range) => {
-                    collect_type(domain, template_idents, output);
-                    collect_type(range, template_idents, output);
-                }
-                ConceptualRustType::Fixed(_)
-                | ConceptualRustType::Primitive(_)
-                | ConceptualRustType::Rust(_)
-                | ConceptualRustType::Alias(_, _)
-                | ConceptualRustType::Any => {}
-            }
-        }
-
-        match rust_struct.variant() {
-            RustStructType::Record(record) => {
-                for field in &record.fields {
-                    collect_type(&field.rust_type, template_idents, output);
-                }
-            }
-            RustStructType::Table { domain, range, .. } => {
-                collect_type(domain, template_idents, output);
-                collect_type(range, template_idents, output);
-            }
-            RustStructType::Array { element_type, .. } => {
-                collect_type(element_type, template_idents, output)
-            }
-            RustStructType::TypeChoice { variants } | RustStructType::CStyleEnum { variants } => {
-                for variant in variants {
-                    if let EnumVariantData::RustType(ty) = &variant.data {
-                        collect_type(ty, template_idents, output);
-                    }
-                }
-            }
-            RustStructType::Wrapper { wrapped, .. } => {
-                collect_type(wrapped, template_idents, output)
-            }
-            RustStructType::GroupChoice { .. }
-            | RustStructType::Extern
-            | RustStructType::RawBytesType => {}
         }
     }
 
@@ -5266,7 +5192,7 @@ impl<'a> IntermediateTypes<'a> {
                         let ready = pending_children.iter().position(|child| {
                             !child.generic_args.iter().any(|arg| {
                                 let mut dependencies = Vec::new();
-                                Self::collect_generic_child_instance_placeholders_in_type(
+                                Self::collect_generic_placeholders_in_type(
                                     arg,
                                     &pending_placeholders,
                                     &mut dependencies,
@@ -5316,7 +5242,7 @@ impl<'a> IntermediateTypes<'a> {
                             .collect::<BTreeSet<_>>();
                         let ready = pending.iter().position(|choice| {
                             let mut dependencies = Vec::new();
-                            Self::collect_generic_inline_choice_placeholders(
+                            Self::collect_generic_placeholders(
                                 &choice.resolved,
                                 &pending_placeholders,
                                 &mut dependencies,
