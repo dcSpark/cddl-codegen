@@ -274,17 +274,13 @@ impl Emitter<'_, '_> {
     /// The rust face decides this in TWO places, and a glue that consulted only one emits
     /// `let inner = Rec::new(..);` for a `Result` — a type error in generated code that no WIT gate
     /// can see. A `@newtype` wrapper's bound rides the IR (`can_new_fail`, marked at finalization);
-    /// a RECORD's is derived per emission from its mandatory fields, and
-    /// `emit_tests::record_ctor_can_fail` is the already-shared mirror of `records.rs`'s own
-    /// `new_can_fail`, so this reads it rather than minting a third copy of the rule.
+    /// a RECORD's is derived by `RustRecord::native_ctor_can_fail`, shared with native emission.
     fn rust_new_can_fail(&self, ident: &RustIdent) -> bool {
         if self.types.can_new_fail(ident) {
             return true;
         }
         match self.types.rust_struct(ident).map(|s| s.variant()) {
-            Some(RustStructType::Record(record)) => {
-                crate::emit_tests::record_ctor_can_fail(record, self.types)
-            }
+            Some(RustStructType::Record(record)) => record.native_ctor_can_fail(self.types),
             _ => false,
         }
     }

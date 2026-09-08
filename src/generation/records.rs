@@ -3307,25 +3307,7 @@ pub(super) fn codegen_struct(
     config: &RustStructConfig,
     cli: &Cli,
 ) {
-    // NOTE: mirrored by emit_tests::record_ctor_can_fail — keep the two in sync
-    let new_can_fail = record
-        .fields
-        .iter()
-        .any(|f| !f.optional && f.rust_type.has_value_bounds())
-        || record.captured_dynamic_rows().any(|row| {
-            row.is_array_tail()
-                && row.element().has_value_bounds()
-                && (row.is_non_empty_array_tail() || !record.array_segments.is_empty())
-        })
-        || (record.is_non_empty_open_table()
-            && record.typed_row().is_some_and(|row| {
-                row.domain().has_value_bounds() || row.range().has_value_bounds()
-            }))
-        || (record.has_forbidden_fields() && record.has_protected_rest_keys(types))
-        || (record.has_protected_rest_keys(types)
-            && record
-                .captured_rest()
-                .is_some_and(|row| !row.is_array_tail() && row.is_restricted()));
+    let new_can_fail = record.native_ctor_can_fail(types);
     // A bounded typed row stays flattened on the open-table class, so its wasm constructor accepts
     // the same-flavor *loose* builder and crosses the checked carrier door before calling the
     // native record constructor. That boundary can fail even though the native constructor itself

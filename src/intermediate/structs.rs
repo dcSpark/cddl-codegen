@@ -1405,6 +1405,29 @@ impl RestRow {
 }
 
 impl RustRecord {
+    /// Whether the native record constructor returns `Result` for value bounds or protected
+    /// complete-rest validation. Boundary conversions (such as WASM's loose map builder) can
+    /// introduce additional fallibility. Defaulted fields retain the mandatory-field rule.
+    pub fn native_ctor_can_fail(&self, types: &IntermediateTypes) -> bool {
+        self.fields
+            .iter()
+            .any(|f| !f.optional && f.rust_type.has_value_bounds())
+            || self.captured_dynamic_rows().any(|row| {
+                row.is_array_tail()
+                    && row.element().has_value_bounds()
+                    && (row.is_non_empty_array_tail() || !self.array_segments.is_empty())
+            })
+            || (self.is_non_empty_open_table()
+                && self.typed_row().is_some_and(|row| {
+                    row.domain().has_value_bounds() || row.range().has_value_bounds()
+                }))
+            || (self.has_forbidden_fields() && self.has_protected_rest_keys(types))
+            || (self.has_protected_rest_keys(types)
+                && self
+                    .captured_rest()
+                    .is_some_and(|row| !row.is_array_tail() && row.is_restricted()))
+    }
+
     pub fn has_forbidden_fields(&self) -> bool {
         !self.forbidden_fields.is_empty()
     }

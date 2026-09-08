@@ -1261,36 +1261,11 @@ fn roundtrip_body(
     Some(blocks.join("\n"))
 }
 
-/// Mirrors the record constructor's fallibility rule (`generation/records.rs` `new_can_fail`):
-/// bounds and protected complete-rest validation are the two reasons `new()` returns `Result`.
-pub(crate) fn record_ctor_can_fail(record: &RustRecord, types: &IntermediateTypes) -> bool {
-    record
-        .fields
-        .iter()
-        .any(|f| !f.optional && f.rust_type.has_value_bounds())
-        || record.captured_dynamic_rows().any(|row| {
-            row.is_array_tail()
-                && row.element().has_value_bounds()
-                && (row.is_non_empty_array_tail() || !record.array_segments.is_empty())
-        })
-        || (record.is_non_empty_open_table()
-            && record.typed_row().is_some_and(|row| {
-                row.domain().has_value_bounds() || row.range().has_value_bounds()
-            }))
-        || (record.has_forbidden_fields() && record.has_protected_rest_keys(types))
-        || (record.has_protected_rest_keys(types)
-            && record
-                .captured_rest()
-                .is_some_and(|row| !row.is_array_tail() && row.is_restricted()))
-}
-
 /// The wasm record constructor is normally as fallible as the native one.  One open-table shape
 /// adds a wasm-only checked door: a bounded typed row remains flattened on the owner class, so wasm
 /// receives a loose builder and turns it into the native checked carrier.
-/// Keep this beside `record_ctor_can_fail`, which `generation::records::codegen_struct` explicitly
-/// mirrors for the native constructor.
 pub(crate) fn record_wasm_ctor_can_fail(record: &RustRecord, types: &IntermediateTypes) -> bool {
-    record_ctor_can_fail(record, types)
+    record.native_ctor_can_fail(types)
         || record.typed_row().is_some_and(|row| {
             !row.is_array_tail() && row.container_type().bounded_map_u64_bounds().is_some()
         })
@@ -1693,7 +1668,7 @@ fn record_roundtrip(
         .join(", ");
     let base = format!(
         "{name}::new({rendered_args}){}",
-        if record_ctor_can_fail(record, types) {
+        if record.native_ctor_can_fail(types) {
             ".unwrap()"
         } else {
             ""
@@ -2221,13 +2196,13 @@ fn record_deser_reject(
         types,
         &format!("{name}::new"),
         &ctor_arg_type_refs,
-        record_ctor_can_fail(record, types),
+        record.native_ctor_can_fail(types),
     );
     ctor_probes.extend(type_enforced_bounded_array_ctor_probes(
         types,
         &format!("{name}::new"),
         &ctor_arg_type_refs,
-        record_ctor_can_fail(record, types),
+        record.native_ctor_can_fail(types),
     ));
 
     // constructor arg list: mandatory, non-fixed, non-default fields (mirrors codegen_struct)
@@ -2998,7 +2973,7 @@ pub(crate) fn mint_struct(
                 return Some(MintValue::Record {
                     ident: name,
                     args,
-                    can_fail: record_ctor_can_fail(record, types),
+                    can_fail: record.native_ctor_can_fail(types),
                 });
             }
             let ctor_fields: Vec<&RustField> = record
@@ -3051,7 +3026,7 @@ pub(crate) fn mint_struct(
             Some(MintValue::Record {
                 ident: name,
                 args,
-                can_fail: record_ctor_can_fail(record, types),
+                can_fail: record.native_ctor_can_fail(types),
             })
         }
         RustStructType::Wrapper {
