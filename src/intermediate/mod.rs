@@ -231,7 +231,7 @@ pub struct IntermediateTypes<'a> {
     // known at group definition. It is later fixed when the plain group is referenced somewhere
     // and we can't parse the group without knowing the representation so instead this parsing is
     // delayed until the point where it is referenced via self.set_rep_if_plain_group(rep)
-    // Some(group) = directly defined in .cddl (must call set_plain_group_representatio() later)
+    // Some(group) = directly defined in .cddl (must call set_rep_if_plain_group() later)
     // None = indirectly generated due to a group choice (no reason to call set_rep_if_plain_group() later but it won't crash)
     plain_groups: BTreeMap<RustIdent, PlainGroupInfo<'a>>,
     /// Lexical generic scopes active while a generic definition body is parsed.  The resulting
@@ -2798,10 +2798,6 @@ impl<'a> IntermediateTypes<'a> {
             "bool",
             ConceptualRustType::Primitive(Primitive::Bool).into(),
         );
-        // TODO: define enum or something as otherwise it can overflow i64
-        // and also we can't define the serialization traits for types
-        // that are defined outside of this crate (includes primitives)
-        //"int" => "i64",
         let string_type: RustType = ConceptualRustType::Primitive(Primitive::Str).into();
         insert_alias("tstr", string_type.clone());
         insert_alias("text", string_type);
@@ -2857,7 +2853,6 @@ impl<'a> IntermediateTypes<'a> {
             "float32-64",
             ConceptualRustType::Primitive(Primitive::F32To64).into(),
         );
-        // What about bingint/other stuff in the standard prelude?
         aliases
     }
 

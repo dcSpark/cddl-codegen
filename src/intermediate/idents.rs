@@ -15,18 +15,6 @@ impl CDDLIdent {
     }
 }
 
-// impl<'a> From<&'a CDDLIdent> for &'a str {
-//     fn from(ident: &'a CDDLIdent) -> &'a str {
-//         &ident.0
-//     }
-// }
-// why does this not compile?
-// impl From<&CDDLIdent> for &str {
-//     fn from(ident: &CDDLIdent) -> &str {
-//         &ident.0
-//     }
-// }
-// since it doesn't compile, using this for now:
 impl std::fmt::Display for CDDLIdent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
@@ -63,8 +51,6 @@ impl RustIdent {
         }
     }
 
-    // this should not be created directly, but instead via IntermediateTypes::new_type()
-    // except for defining new cddl rules, since those should not be reserved identifiers
     pub fn new(cddl_ident: CDDLIdent) -> Self {
         // Message texts are recombination-sweep panic-class keys — keep them if refactoring.
         match Self::reserved_reason(&cddl_ident.0) {

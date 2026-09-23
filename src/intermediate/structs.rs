@@ -423,11 +423,6 @@ impl From<Option<&RuleMetadata>> for RustStructConfig {
     }
 }
 
-// TODO: It would be nice to separate parsing the CDDL lib structs and code generation entirely.
-// We would just need to construct these structs (+ maybe the array/table wrapper types) separately and pass these into codegen.
-// This would also give us more access to this info without reparsing which could simplify code in some places.
-// It would also remove the need for multiple passes over the CDDL to sort out dependencies between structs,
-// which could also pave the way for multi-file CDDL supprt.
 #[derive(Clone, Debug)]
 pub struct RustStruct {
     pub(super) ident: RustIdent,
@@ -448,11 +443,11 @@ pub enum RustStructType {
     Table {
         domain: RustType,
         range: RustType,
-        /// occurrence-count bounds (`+` / `n*m`) — a min-cardinality constraint on the table itself.
-        /// Only the `+` / `1*` shape `(Some(1), None)` is honored (→ `NonEmptyMap`); every other
-        /// count-permitting marker is rejected at parse time (see `parse_group_type`), so in practice
-        /// this is `None` (unbounded `*` table) or `Some((Some(1), None))` (non-empty table). Rides
-        /// the registered alias's `RustType` so embed sites enforce it, exactly like `Array` bounds.
+        /// occurrence-count bounds (`+` / `n*m`) — a cardinality constraint on the table itself.
+        /// `None` is the unbounded `*` table, the `+` / `1*` shape `(Some(1), None)` selects
+        /// `NonEmptyMap`, and every other window selects `BoundedMap` (`NonEmptyPairMap` /
+        /// `BoundedPairMap` under `@duplicates preserve`). Rides the registered alias's `RustType` so
+        /// embed sites enforce it, exactly like `Array` bounds.
         bounds: Option<(Option<i128>, Option<i128>)>,
     },
     Array {
