@@ -2462,69 +2462,38 @@ fn parse_type_choices(
             let effective_metadata =
                 with_well_known_tag_default(&rule_metadata, set_tag, is_array, None);
             let bounds = base.config.bounds;
-            let rust_struct = match base.conceptual_type {
-                ConceptualRustType::Array(element_type) if is_set_nominal => {
-                    let mut array_type: RustType = ConceptualRustType::Array(element_type).into();
-                    if let Some(bounds) = bounds {
-                        array_type = array_type.with_bounds(bounds);
-                    }
-                    RustStruct::new_wrapper(
-                        name.clone(),
-                        Some(set_tag),
-                        Some(&effective_metadata),
-                        array_type,
-                        None,
-                    )
-                    .as_optionally_tagged()
-                    .as_set_nominal()
-                }
-                // A NON-258 optional-tag idiom does not nominalize (no set semantics — that is
-                // the 258 registry entry's alone, and the branch above owns it), but it still
-                // WRAPS: the tag is a wire-affecting property, and a transparent
-                // `pub type Foo = Vec<u64>;` carrying `OptionallyTagged(42)` would make
-                // `Foo::from_cbor_bytes` refuse the tagged half of the wire the idiom exists to
-                // admit while every embed site accepts both. The inner stays a plain `Vec` — the
-                // `OrderedSet` twin belongs to the set-nominal branch, not to wrapping.
-                ConceptualRustType::Array(element_type) => {
-                    let mut array_type: RustType = ConceptualRustType::Array(element_type).into();
-                    if let Some(bounds) = bounds {
-                        array_type = array_type.with_bounds(bounds);
-                    }
-                    RustStruct::new_wrapper(
-                        name.clone(),
-                        Some(set_tag),
-                        Some(&effective_metadata),
-                        array_type,
-                        None,
-                    )
-                    .as_optionally_tagged()
-                }
-                // The MAP flavor of the optional-tag idiom WRAPS, for the same reason its array
-                // sibling nominalizes above and the mandatory-tag table body does: a transparent
-                // `pub type Sm = BTreeMap<..>;` carrying `OptionallyTagged(258)` mints no type to
-                // hang the tag on, so `Sm::from_cbor_bytes` would REFUSE the tagged half of the very
-                // wire the idiom exists to admit while every embed site accepts both. Every
-                // `@duplicates` policy wraps, `preserve` included: the register-side `Wrapper` arm
-                // threads the policy onto the stored inner map, so the wrapper's member is the
-                // `PairMap`/`NonEmptyPairMap` twin and its wasm boundary names the `PairMapKToV`
-                // class the wasm struct walk mints for exactly this inner.
-                ConceptualRustType::Map(key_type, value_type) => {
-                    let mut map_type: RustType =
-                        ConceptualRustType::Map(key_type, value_type).into();
-                    if let Some(bounds) = bounds {
-                        map_type = map_type.with_bounds(bounds);
-                    }
-                    RustStruct::new_wrapper(
-                        name.clone(),
-                        Some(set_tag),
-                        Some(&effective_metadata),
-                        map_type,
-                        None,
-                    )
-                    .as_optionally_tagged()
+            // Every flavor WRAPS: the tag is a wire-affecting property, and a transparent
+            // `pub type Foo = Vec<u64>;` (or `BTreeMap<..>`) carrying `OptionallyTagged(n)` mints no
+            // type to hang the tag on, so `Foo::from_cbor_bytes` would REFUSE the tagged half of the
+            // very wire the idiom exists to admit while every embed site accepts both.
+            // - A 258 array SET additionally nominalizes (`as_set_nominal` below).
+            // - A NON-258 array does not nominalize (no set semantics — that is the 258 registry
+            //   entry's alone); its inner stays a plain `Vec`, since the `OrderedSet` twin belongs
+            //   to the set-nominal flavor, not to wrapping.
+            // - A MAP never nominalizes. Every `@duplicates` policy wraps, `preserve` included: the
+            //   register-side `Wrapper` arm threads the policy onto the stored inner map, so the
+            //   wrapper's member is the `PairMap`/`NonEmptyPairMap` twin and its wasm boundary names
+            //   the `PairMapKToV` class the wasm struct walk mints for exactly this inner.
+            let collection_type: RustType = match base.conceptual_type {
+                collection @ (ConceptualRustType::Array(_) | ConceptualRustType::Map(..)) => {
+                    collection.into()
                 }
                 // `recognize_optional_tag_set` only ever returns an Array/Map base
                 _ => unreachable!(),
+            };
+            let wrapper = RustStruct::new_wrapper(
+                name.clone(),
+                Some(set_tag),
+                Some(&effective_metadata),
+                with_optional_bounds(collection_type, bounds),
+                None,
+            )
+            .as_optionally_tagged();
+            // `is_set_nominal` implies an Array base.
+            let rust_struct = if is_set_nominal {
+                wrapper.as_set_nominal()
+            } else {
+                wrapper
             };
             match generic_params {
                 Some(params) => types.register_generic_def(GenericDef::new(params, rust_struct)),
@@ -3044,6 +3013,14 @@ fn parse_control_operator(
                 ctrl
             ),
         },
+    }
+}
+
+/// `ty` with occurrence `bounds` attached when there are any.
+fn with_optional_bounds(ty: RustType, bounds: Option<(Option<i128>, Option<i128>)>) -> RustType {
+    match bounds {
+        Some(bounds) => ty.with_bounds(bounds),
+        None => ty,
     }
 }
 
@@ -6602,12 +6579,10 @@ fn rust_type_from_type2(
                                     cli,
                                 );
                             }
-                            let array_type: RustType =
-                                ConceptualRustType::Array(Box::new(element_type)).into();
-                            match bounds {
-                                Some(bounds) => array_type.with_bounds(bounds),
-                                None => array_type,
-                            }
+                            with_optional_bounds(
+                                ConceptualRustType::Array(Box::new(element_type)).into(),
+                                bounds,
+                            )
                         }
                         GroupParsingType::FlatGroupArray(_, _)
                         | GroupParsingType::HomogenousMap(_, _, _) => unreachable!(),
@@ -6719,13 +6694,11 @@ fn rust_type_from_type2(
                             // An inline `{+ k => v}` field carries the non-empty bound on its own
                             // RustType (mirroring the inline `[+ T]` array arm), so `for_rust_member`
                             // renders `NonEmptyMap<K, V>` and deserialize routes through its TryFrom.
-                            let map_type: RustType =
+                            let map_type = with_optional_bounds(
                                 ConceptualRustType::Map(Box::new(key_type), Box::new(value_type))
-                                    .into();
-                            let map_type = match bounds {
-                                Some(bounds) => map_type.with_bounds(bounds),
-                                None => map_type,
-                            };
+                                    .into(),
+                                bounds,
+                            );
                             // The row entry's own comment slot (`{ * k => v ; @duplicates preserve }`)
                             // is read here, giving the inline spelling the same row-scoped directives
                             // the NAMED table has — and rejecting everything else it can carry, so a
@@ -9331,11 +9304,10 @@ fn parse_group_choice(
             ));
         }
         let effective_metadata = single_arm_array_effective_metadata(&rule_metadata, tag, name);
-        let mut array_type: RustType =
-            ConceptualRustType::Array(Box::new(element_type.clone())).into();
-        if let Some(bounds) = bounds {
-            array_type = array_type.with_bounds(*bounds);
-        }
+        let array_type = with_optional_bounds(
+            ConceptualRustType::Array(Box::new(element_type.clone())).into(),
+            *bounds,
+        );
         if let Some(Err(length)) = array_type.exact_homogeneous_array_len() {
             types.record_rejection(exact_homogeneous_array_length_rejection(length));
         }
@@ -9397,29 +9369,7 @@ fn parse_group_choice(
             // instantiation mints one nominal per `<def>_<args>` in `GenericInstance::resolve`.
             let is_set_nominal =
                 tag.is_some_and(|t| well_known_tag_default_duplicates(t, true).is_some());
-            if is_set_nominal {
-                // A single-arm mandatory-tag 258 SET rule (`#6.258([* a])`) NOMINALIZES into a
-                // `Wrapper` struct owning its `{tag, len, elem}` encodings (Phase 2.2), exactly like
-                // the two-arm idiom but with a MANDATORY tag (grammar decides the record: `Option<Sz>`,
-                // NOT the two-arm `TagPresenceEncoding`). The registry set-semantics default (reject)
-                // rides `single_arm_array_effective_metadata` and the `Wrapper` register arm threads it
-                // onto the stored inner array type, selecting the `OrderedSet`/`NonEmptyOrderedSet`
-                // twin. `@newtype` carries a custom getter on the wrapper; a bare set nominal emits no
-                // inherent `get()` (it would shadow `OrderedSet::get(index)` through `Deref`).
-                let mut array_type: RustType =
-                    ConceptualRustType::Array(Box::new(element_type)).into();
-                if let Some(bounds) = bounds {
-                    array_type = array_type.with_bounds(bounds);
-                }
-                RustStruct::new_wrapper(
-                    name.clone(),
-                    tag,
-                    Some(&effective_metadata),
-                    array_type,
-                    None,
-                )
-                .as_set_nominal()
-            } else if rule_metadata.newtype.is_some() || tag.is_some() {
+            if rule_metadata.newtype.is_some() || tag.is_some() {
                 // generate newtype over array — on `@newtype`, and UNCONDITIONALLY when the rule
                 // carries a TAG. A tagged transparent alias (`pub type TaggedArr = Vec<u64>;` with
                 // the tag riding the alias entry) mints no type to hang the tag on, so
@@ -9428,7 +9378,7 @@ fn parse_group_choice(
                 // decoder requires it. Same reasoning as the single-type tag rule and the `.cbor`
                 // rule body; `register_type_alias`'s wire-facts assert makes the alias spelling
                 // unrepresentable rather than merely unused, and `@newtype` is redundant here.
-                // Route through the SAME effective-metadata helper the
+                // The wrapper takes the SAME effective metadata the
                 // plain single-arm array path uses so a single-arm tag-258 `@newtype` wrapper
                 // (`#6.258([* a]) ; @newtype`) picks up the registry's set-semantics default
                 // (reject) and fires the single-arm defaulting notice, exactly as the non-newtype
@@ -9436,18 +9386,30 @@ fn parse_group_choice(
                 // `@duplicates` policy lands in the wrapper's struct config; the register-side
                 // `Wrapper` arm then threads it onto the stored inner collection type so generation
                 // selects the `OrderedSet` twin.
-                let mut array_type: RustType =
-                    ConceptualRustType::Array(Box::new(element_type)).into();
-                if let Some(bounds) = bounds {
-                    array_type = array_type.with_bounds(bounds);
-                }
-                RustStruct::new_wrapper(
+                let wrapper = RustStruct::new_wrapper(
                     name.clone(),
                     tag,
                     Some(&effective_metadata),
-                    array_type,
+                    with_optional_bounds(
+                        ConceptualRustType::Array(Box::new(element_type)).into(),
+                        bounds,
+                    ),
                     None,
-                )
+                );
+                if is_set_nominal {
+                    // A single-arm mandatory-tag 258 SET rule (`#6.258([* a])`) NOMINALIZES into a
+                    // `Wrapper` struct owning its `{tag, len, elem}` encodings (Phase 2.2), exactly
+                    // like the two-arm idiom but with a MANDATORY tag (grammar decides the record:
+                    // `Option<Sz>`, NOT the two-arm `TagPresenceEncoding`). The registry
+                    // set-semantics default (reject) rides `single_arm_array_effective_metadata`
+                    // and the `Wrapper` register arm threads it onto the stored inner array type,
+                    // selecting the `OrderedSet`/`NonEmptyOrderedSet` twin. `@newtype` carries a
+                    // custom getter on the wrapper; a bare set nominal emits no inherent `get()`
+                    // (it would shadow `OrderedSet::get(index)` through `Deref`).
+                    wrapper.as_set_nominal()
+                } else {
+                    wrapper
+                }
             } else {
                 // Array - homogeneous element type with proper occurence operator. A single-arm
                 // tag-258 set picks up the registry's reject default via the helper (no-op for a
@@ -9556,11 +9518,10 @@ fn parse_group_choice(
                         && rule_metadata.custom_deserialize.is_some())
             {
                 // generate a nominal owner over map
-                let mut map_type: RustType =
-                    ConceptualRustType::Map(Box::new(key_type), Box::new(value_type)).into();
-                if let Some(bounds) = bounds {
-                    map_type = map_type.with_bounds(bounds);
-                }
+                let map_type = with_optional_bounds(
+                    ConceptualRustType::Map(Box::new(key_type), Box::new(value_type)).into(),
+                    bounds,
+                );
                 RustStruct::new_wrapper(name.clone(), tag, Some(&rule_metadata), map_type, None)
             } else {
                 // Table map - homogeneous key/value types
