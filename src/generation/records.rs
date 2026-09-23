@@ -4283,23 +4283,9 @@ pub(super) fn codegen_struct(
             // struct field to store it (a MANDATORY fixed value carries zero information and gets
             // none). A `bool` (not `Option<()>`) crosses the wasm and serde/schemars boundaries
             // cleanly. Optional fields aren't constructor args, so `new` defaults it to `false`.
+            // The doc string mirrors the CDDL literal (`? f: 2.5`).
             let fixed_lit = match &field.rust_type.clone().resolve_aliases().conceptual_type {
-                ConceptualRustType::Fixed(FixedValue::Bool(b)) => b.to_string(),
-                ConceptualRustType::Fixed(FixedValue::Uint(u)) => u.to_string(),
-                ConceptualRustType::Fixed(FixedValue::Nint(i)) => i.to_string(),
-                ConceptualRustType::Fixed(FixedValue::Null) => "null".to_owned(),
-                ConceptualRustType::Fixed(FixedValue::Undefined) => "undefined".to_owned(),
-                ConceptualRustType::Fixed(FixedValue::Text(s)) => format!("\"{s}\""),
-                ConceptualRustType::Fixed(FixedValue::Bytes(bytes)) => format!(
-                    "h'{}'",
-                    bytes
-                        .iter()
-                        .map(|byte| format!("{byte:02X}"))
-                        .collect::<String>()
-                ),
-                // float_literal, not Display: `{}` on a whole-valued f64 drops the decimal point
-                // (`3.0` -> `3`); the doc string mirrors the CDDL literal (`? f: 2.5`).
-                ConceptualRustType::Fixed(FixedValue::Float(f)) => float_fixed_literal(*f),
+                ConceptualRustType::Fixed(v) => v.cddl_source_desc(),
                 _ => unreachable!("is_fixed_value() matched a non-fixed conceptual type"),
             };
             native_new_block.line(format!("{}: false,", field.name));
