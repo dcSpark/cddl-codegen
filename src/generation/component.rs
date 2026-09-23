@@ -243,6 +243,13 @@ fn rust_primitive_name(ty: &WitType) -> Option<&'static str> {
     }
 }
 
+/// The tail of a member that decodes a rust value and MINTS the owning resource from it: wrap the
+/// decoded value in a fresh handle and stringify the decode error.
+fn mint_from(lines: &mut Vec<String>, own: &str, rep: &str) {
+    lines.push(format!("    .map(|v| {own}::new({rep}(RefCell::new(v))))"));
+    lines.push("    .map_err(err)".to_owned());
+}
+
 /// A rust tuple expression, type or pattern over already-rendered parts; a one-tuple keeps its
 /// trailing comma.
 fn rust_tuple(parts: &[String]) -> String {
@@ -341,6 +348,22 @@ impl Emitter<'_, '_> {
             .get(&r.scope)
             .cloned()
             .expect("every projected type's scope has an interface")
+    }
+
+    /// The rust module alias of an interface this package defines.
+    fn iface_alias(&self, scope: &ModuleScope) -> &str {
+        self.aliases
+            .get(scope)
+            .expect("every interface got an alias")
+    }
+
+    /// One parameter's declaration in a guest signature: `snake_name: <borrowed WIT rust type>`.
+    fn param_decl(&self, p: &WitParam, alias: &str) -> String {
+        format!(
+            "{}: {}",
+            kebab_to_snake(&p.name),
+            self.wit_rust_type(&p.ty, alias, true)
+        )
     }
 
     /// The dependency-type record behind a type reference, or `None` for a type this package defines.
@@ -1071,9 +1094,7 @@ impl Emitter<'_, '_> {
                 kebab_to_snake(&self.package.id.namespace),
                 kebab_to_snake(&self.package.id.name),
                 kebab_to_snake(&iface.name),
-                self.aliases
-                    .get(scope)
-                    .expect("every interface got an alias")
+                self.iface_alias(scope)
             );
         }
         // An IMPORTED interface's module is at the CRATE ROOT, not under `exports::` — that split is
@@ -1110,10 +1131,7 @@ impl Emitter<'_, '_> {
         );
 
         for iface in self.package.interfaces.values() {
-            let alias = self
-                .aliases
-                .get(&iface.scope)
-                .expect("every interface got an alias");
+            let alias = self.iface_alias(&iface.scope);
             for def in &iface.types {
                 match def {
                     WitTypeDef::Enum(e) => out.push_str(&self.emit_enum_bridges(e, alias)),
@@ -1150,10 +1168,7 @@ impl Emitter<'_, '_> {
     /// The interface-level `Guest` trait: the resource associated types plus the interface's free
     /// functions, which land HERE and on no `Guest<Resource>` trait.
     fn emit_guest_impl(&self, iface: &WitInterface) -> String {
-        let alias = self
-            .aliases
-            .get(&iface.scope)
-            .expect("every interface got an alias");
+        let alias = self.iface_alias(&iface.scope);
         let mut out = format!("impl {alias}::Guest for Component {{\n");
         for def in &iface.types {
             match def {
@@ -1190,13 +1205,7 @@ impl Emitter<'_, '_> {
         let params: Vec<String> = func
             .params
             .iter()
-            .map(|p| {
-                format!(
-                    "{}: {}",
-                    kebab_to_snake(&p.name),
-                    self.wit_rust_type(&p.ty, alias, true)
-                )
-            })
+            .map(|p| self.param_decl(p, alias))
             .collect();
         let ret = self.signature_return(func.result.as_ref(), func.fallible, alias);
         let mut out = format!(
@@ -1349,10 +1358,7 @@ impl Emitter<'_, '_> {
 
     /// One resource: the guest REP struct plus its `Guest<Resource>` impl.
     fn emit_resource(&self, resource: &WitResource, iface: &WitInterface) -> String {
-        let alias = self
-            .aliases
-            .get(&iface.scope)
-            .expect("every interface got an alias");
+        let alias = self.iface_alias(&iface.scope);
         let rep = rep_name(&resource.ident);
         let rust = self.rust_path(&resource.ident);
         // `pub` on both the struct and its field: `Borrow::get::<T>()` hands the rep back by
@@ -1388,10 +1394,7 @@ impl Emitter<'_, '_> {
     /// element is materialized to an owned rust value in its own statement, and only then is the
     /// accumulator's own `RefCell` borrowed mutably.
     fn emit_accumulator(&self, acc: &WitAccumulator, iface: &WitInterface) -> String {
-        let alias = self
-            .aliases
-            .get(&iface.scope)
-            .expect("every interface got an alias");
+        let alias = self.iface_alias(&iface.scope);
         let rep = self.acc_rep_name(&WitAccumulatorRef {
             scope: acc.scope.clone(),
             name: acc.name.clone(),
@@ -1433,10 +1436,7 @@ impl Emitter<'_, '_> {
             Some((key, value)) => vec![synthetic("k", key), synthetic("v", value)],
             None => vec![synthetic("v", &acc.element)],
         };
-        let signature: Vec<String> = params
-            .iter()
-            .map(|p| format!("{}: {}", p.name, self.wit_rust_type(&p.ty, alias, true)))
-            .collect();
+        let signature: Vec<String> = params.iter().map(|p| self.param_decl(p, alias)).collect();
         let ret = if acc.fallible {
             " -> Result<(), String>"
         } else {
@@ -1486,13 +1486,7 @@ impl Emitter<'_, '_> {
         let params: Vec<String> = ctor
             .params
             .iter()
-            .map(|p| {
-                format!(
-                    "{}: {}",
-                    kebab_to_snake(&p.name),
-                    self.wit_rust_type(&p.ty, alias, true)
-                )
-            })
+            .map(|p| self.param_decl(p, alias))
             .collect();
         let ret = if ctor.fallible {
             " -> Result<Self, String>"
@@ -1537,13 +1531,12 @@ impl Emitter<'_, '_> {
             },
             args.join(", ")
         );
-        let build = if self.rust_new_can_fail(&resource.ident) {
+        if self.rust_new_can_fail(&resource.ident) {
             let _ = writeln!(out, "        let inner = {call}.map_err(err)?;");
-            format!("{rep}(RefCell::new(inner))")
         } else {
             let _ = writeln!(out, "        let inner = {call};");
-            format!("{rep}(RefCell::new(inner))")
-        };
+        }
+        let build = format!("{rep}(RefCell::new(inner))");
         if ctor.fallible {
             let _ = writeln!(out, "        Ok({build})");
         } else {
@@ -1634,11 +1627,7 @@ impl Emitter<'_, '_> {
             params.push("&self".to_owned());
         }
         for p in &member.params {
-            params.push(format!(
-                "{}: {}",
-                kebab_to_snake(&p.name),
-                self.wit_rust_type(&p.ty, alias, true)
-            ));
+            params.push(self.param_decl(p, alias));
         }
         // The members that MINT the owning resource — `from-cbor-bytes`, `from-raw-bytes`,
         // `from-json` and a choice's `new-<variant>` — cannot name it from inside the member without
@@ -1819,8 +1808,7 @@ impl Emitter<'_, '_> {
             WitMemberOp::FromJson => {
                 let arg = kebab_to_snake(&member.params[0].name);
                 lines.push(format!("serde_json::from_str::<{rust}>(&{arg})"));
-                lines.push(format!("    .map(|v| {own}::new({rep}(RefCell::new(v))))"));
-                lines.push("    .map_err(err)".to_owned());
+                mint_from(&mut lines, own, rep);
             }
             WitMemberOp::FromCborBytes => {
                 let arg = kebab_to_snake(&member.params[0].name);
@@ -1828,8 +1816,7 @@ impl Emitter<'_, '_> {
                     "<{rust} as {rt}::serialization::Deserialize>::from_cbor_bytes(&{arg})",
                     rt = self.runtime()
                 ));
-                lines.push(format!("    .map(|v| {own}::new({rep}(RefCell::new(v))))"));
-                lines.push("    .map_err(err)".to_owned());
+                mint_from(&mut lines, own, rep);
             }
             // The RAW-bytes seam, and deliberately not the cbor one: the contract a
             // `_CDDL_CODEGEN_RAW_BYTES_TYPE_` imposes on the user's type is `RawBytesEncoding`, and
@@ -1848,8 +1835,7 @@ impl Emitter<'_, '_> {
                     "<{rust} as {rt}::serialization::RawBytesEncoding>::from_raw_bytes(&{arg})",
                     rt = self.runtime()
                 ));
-                lines.push(format!("    .map(|v| {own}::new({rep}(RefCell::new(v))))"));
-                lines.push("    .map_err(err)".to_owned());
+                mint_from(&mut lines, own, rep);
             }
             // A choice's discriminant, derived by matching the rust DATA enum — never by naming the
             // rust `<Name>Kind`, which is emitted only under `cli.wasm` and is therefore absent from
