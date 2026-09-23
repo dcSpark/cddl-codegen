@@ -1,8 +1,24 @@
 use super::*;
 
+/// Finish a wasm constructor that delegates to the native constructor expression `ctor`: a
+/// fallible native constructor surfaces as `Result<{name}, JsError>`, otherwise the wrapper is
+/// built directly.
+pub(super) fn finish_wasm_ctor(
+    f: &mut codegen::Function,
+    name: &RustIdent,
+    ctor: &str,
+    can_fail: bool,
+) {
+    if can_fail {
+        // you can't use Self in a parameter in wasm_bindgen for some reason
+        f.ret(format!("Result<{name}, JsError>"))
+            .line(format!("{ctor}.map(Into::into).map_err(Into::into)"));
+    } else {
+        f.ret("Self").line(format!("Self({ctor})"));
+    }
+}
+
 impl GenerationScope {
-    // TODO: repurpose this for type choices (not group choices)
-    // TODO: make this its own function - there's no reason for this to be a method
     pub(super) fn generate_type_choices_from_variants(
         &mut self,
         types: &IntermediateTypes,
@@ -24,6 +40,7 @@ impl GenerationScope {
         if cli.wasm {
             // Generate a wrapper object that we will expose to wasm around this
             let mut wrapper = create_base_wasm_wrapper(self, types, name, true, cli);
+            let native = rust_crate_struct_from_wasm(types, name, cli);
             // new
             for variant in variants.iter() {
                 let variant_arg = variant.name_as_var();
@@ -54,11 +71,7 @@ impl GenerationScope {
                     );
                 }
                 let ctor = if variant.rust_type().is_fixed_value() {
-                    format!(
-                        "{}::new_{}()",
-                        rust_crate_struct_from_wasm(types, name, cli),
-                        variant.name_as_var()
-                    )
+                    format!("{native}::new_{variant_arg}()")
                 } else {
                     // Never `try_into` at the wasm boundary: the rust ctor takes an already-built
                     // value, so any inner-type bound was enforced when that value was constructed.
@@ -68,19 +81,11 @@ impl GenerationScope {
                             .rust_type()
                             .from_wasm_boundary_clone(types, &variant_arg, try_into);
                     format!(
-                        "{}::new_{}({})",
-                        rust_crate_struct_from_wasm(types, name, cli),
-                        variant.name_as_var(),
+                        "{native}::new_{variant_arg}({})",
                         ToWasmBoundaryOperations::format(from_wasm_expr.into_iter())
                     )
                 };
-                if can_fail {
-                    new_func
-                        .ret(format!("Result<{name}, JsError>"))
-                        .line(format!("{ctor}.map(Into::into).map_err(Into::into)"));
-                } else {
-                    new_func.ret("Self").line(format!("Self({ctor})"));
-                }
+                finish_wasm_ctor(&mut new_func, name, &ctor, can_fail);
                 wrapper.s_impl.push_fn(new_func);
             }
             add_wasm_enum_getters(
@@ -125,10 +130,12 @@ pub(super) fn codegen_group_choices(
     // wasm wrapper
     if cli.wasm {
         let mut wrapper = create_base_wasm_wrapper(gen_scope, types, name, true, cli);
+        let native = rust_crate_struct_from_wasm(types, name, cli);
         // new (1 per variant)
         for variant in variants.iter() {
             // TODO: verify if variant.serialize_as_embedded_group impacts ctor generation
-            let mut new_func = codegen::Function::new(format!("new_{}", variant.name_as_var()));
+            let variant_arg = variant.name_as_var();
+            let mut new_func = codegen::Function::new(format!("new_{variant_arg}"));
             new_func.vis("pub");
             if let Some(doc) = &variant.doc {
                 new_func.doc(doc);
@@ -158,29 +165,13 @@ pub(super) fn codegen_group_choices(
                     match ctor_fields.len() {
                         0 => {
                             new_func
-                                .line(format!(
-                                    "Self({}::new_{}())",
-                                    rust_crate_struct_from_wasm(types, name, cli),
-                                    variant.name_as_var()
-                                ))
+                                .line(format!("Self({native}::new_{variant_arg}())"))
                                 .ret("Self");
                         }
-                        // TODO: verify. I think this was here so that 1-field things would be directly stored
-                        // 1 => {
-                        //     let field = ctor_fields.first().unwrap();
-                        //     println!("in {} there's {:?}", enum_name, field);
-                        //     new_func
-                        //         .arg(&field.name, field.rust_type.for_wasm_param())
-                        //         .line(format!("Self({}::{}({}))", enum_name, variant.name, variant.rust_type.from_wasm_boundary_clone(&field.name)));
-                        // },
                         // multi-field struct, so for convenience we let you pass the parameters directly here
                         // instead of having to separately construct the variant to pass in
                         _ => {
-                            let mut ctor = format!(
-                                "{}::new_{}(",
-                                rust_crate_struct_from_wasm(types, name, cli),
-                                variant.name_as_var()
-                            );
+                            let mut ctor = format!("{native}::new_{variant_arg}(");
                             for field in ctor_fields {
                                 if output_comma {
                                     ctor.push_str(", ");
@@ -213,30 +204,20 @@ pub(super) fn codegen_group_choices(
                                 }
                             }
                             ctor.push(')');
-                            if can_fail {
-                                new_func
-                                    .ret(format!("Result<{name}, JsError>"))
-                                    .line(format!("{ctor}.map(Into::into).map_err(Into::into)"));
-                            } else {
-                                new_func.ret("Self").line(format!("Self({ctor})"));
-                            }
+                            finish_wasm_ctor(&mut new_func, name, &ctor, can_fail);
                         }
                     }
                 }
                 None => {
                     // just directly pass in the variant's type
                     if variant.rust_type().is_fixed_value() {
-                        new_func.ret("Self").line(format!(
-                            "Self({}::new_{}())",
-                            rust_crate_struct_from_wasm(types, name, cli),
-                            variant.name_as_var()
-                        ));
+                        new_func
+                            .ret("Self")
+                            .line(format!("Self({native}::new_{variant_arg}())"));
                     } else {
                         let field_name = convert_to_snake_case(&variant.name.to_string());
                         let ctor = format!(
-                            "{}::new_{}({})",
-                            rust_crate_struct_from_wasm(types, name, cli),
-                            variant.name_as_var(),
+                            "{native}::new_{variant_arg}({})",
                             ToWasmBoundaryOperations::format(
                                 variant
                                     .rust_type()
@@ -253,13 +234,12 @@ pub(super) fn codegen_group_choices(
                                 "group-choice constructor parameter",
                             ),
                         );
-                        if variant.rust_type().has_value_bounds() {
-                            new_func
-                                .ret(format!("Result<{name}, JsError>"))
-                                .line(format!("{ctor}.map(Into::into).map_err(Into::into)"));
-                        } else {
-                            new_func.ret("Self").line(format!("Self({ctor})"));
-                        };
+                        finish_wasm_ctor(
+                            &mut new_func,
+                            name,
+                            &ctor,
+                            variant.rust_type().has_value_bounds(),
+                        );
                     }
                 }
             };
@@ -293,6 +273,7 @@ fn add_wasm_enum_getters(
 ) {
     assert!(cli.wasm);
     let rule_tag_encoding = enum_rule_tag_encoding_name(types, variants, rep, tag, cli);
+    let native = rust_crate_struct_from_wasm(types, name, cli);
     // kind() getter
     let kind_name = format!("{name}Kind");
     let mut get_kind = codegen::Function::new("kind");
@@ -303,7 +284,7 @@ fn add_wasm_enum_getters(
             EnumVariantInRust::new(types, variant, rep, tag, rule_tag_encoding.as_deref(), cli);
         get_kind_match.line(format!(
             "{}::{}{} => {}::{},",
-            rust_crate_struct_from_wasm(types, name, cli),
+            native,
             variant.name,
             enum_gen_info.capture_ignore_all(),
             kind_name,
@@ -320,16 +301,10 @@ fn add_wasm_enum_getters(
     // read door for every materialized value in a multi-value inlined arm.  In particular, an
     // optional fixed member is real `bool` state on the enum variant, not an encoding sidecar.
     for variant in variants.iter() {
+        let enum_gen_info =
+            EnumVariantInRust::new(types, variant, rep, tag, rule_tag_encoding.as_deref(), cli);
         let mut add_variant_function =
             |method: String, ty: Option<&RustType>, field_name: &str, optional_fixed: bool| {
-                let enum_gen_info = EnumVariantInRust::new(
-                    types,
-                    variant,
-                    rep,
-                    tag,
-                    rule_tag_encoding.as_deref(),
-                    cli,
-                );
                 let mut as_variant = codegen::Function::new(method);
                 as_variant.arg_ref_self().vis("pub");
                 let mut variant_match = Block::new("match &self.0");
@@ -338,10 +313,7 @@ fn add_wasm_enum_getters(
                     as_variant.ret("Option<bool>");
                     variant_match.line(format!(
                         "{}::{}{} => Some(*{}),",
-                        rust_crate_struct_from_wasm(types, name, cli),
-                        variant.name,
-                        capture,
-                        field_name
+                        native, variant.name, capture, field_name
                     ));
                     variant_match.line("_ => None,");
                     as_variant.push_block(variant_match);
@@ -379,7 +351,7 @@ fn add_wasm_enum_getters(
                         .doc(format!("Returns None if not {} variant OR it is but it's set to None\nThis is to get around wasm_bindgen not supporting Option<Option<T>>", variant.name));
                         variant_match.line(format!(
                             "{}::{}{} => {},",
-                            rust_crate_struct_from_wasm(types, name, cli),
+                            native,
                             variant.name,
                             capture,
                             ty.to_wasm_boundary(types, field_name, true)
@@ -393,7 +365,7 @@ fn add_wasm_enum_getters(
                     ));
                     variant_match.line(format!(
                         "{}::{}{} => Some({}),",
-                        rust_crate_struct_from_wasm(types, name, cli),
+                        native,
                         variant.name,
                         capture,
                         ty.to_wasm_boundary(types, field_name, true)
@@ -409,16 +381,7 @@ fn add_wasm_enum_getters(
         match &variant.data {
             EnumVariantData::RustType(ty) => {
                 if !ty.is_fixed_value() {
-                    let field_name = EnumVariantInRust::new(
-                        types,
-                        variant,
-                        rep,
-                        tag,
-                        rule_tag_encoding.as_deref(),
-                        cli,
-                    )
-                    .names[0]
-                        .clone();
+                    let field_name = enum_gen_info.names[0].clone();
                     add_variant_function(
                         format!("as_{}", variant.name_as_var()),
                         Some(ty),

@@ -257,14 +257,12 @@ pub(super) fn generate_wrapper_struct(
             if checked_scalar { "try_from" } else { "new" },
             ToWasmBoundaryOperations::format(from_wasm_expr.into_iter())
         );
-        if types.can_new_fail(type_name) {
-            // you can't use Self in a parameter in wasm_bindgen for some reason
-            wasm_new
-                .ret(format!("Result<{type_name}, JsError>"))
-                .line(format!("{ctor}.map(Into::into).map_err(Into::into)"));
-        } else {
-            wasm_new.ret("Self").line(format!("Self({ctor})"));
-        }
+        super::enums::finish_wasm_ctor(
+            &mut wasm_new,
+            type_name,
+            &ctor,
+            types.can_new_fail(type_name),
+        );
         wrapper.s_impl.push_fn(wasm_new);
         // Only the `@duplicates reject` set nominal wraps a uniqueness twin
         // (`OrderedSet`/`NonEmptyOrderedSet`/`BoundedOrderedSet`), whose checked `push` / `contains`
