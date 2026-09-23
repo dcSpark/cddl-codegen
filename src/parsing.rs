@@ -1379,11 +1379,7 @@ fn reject_occurrence_on_single_entry_arm(
     group_entry: &GroupEntry,
     rep: Representation,
 ) -> bool {
-    let occur = match group_entry {
-        GroupEntry::ValueMemberKey { ge, .. } => ge.occur.as_ref(),
-        GroupEntry::TypeGroupname { ge, .. } => ge.occur.as_ref(),
-        GroupEntry::InlineGroup { .. } => None,
-    };
+    let occur = group_entry_occur(group_entry);
     // THE one boundary, shared with the inline-group splice: an arm that can be spelled without
     // its marker keeps generating, everything else refuses. Never duplicate the match here — two
     // spellings of "is dropping this sound?" is how the seams come to disagree.
@@ -2051,19 +2047,7 @@ fn parse_type_choices(
     generic_params: Option<Vec<GenericParamBinding>>,
     cli: &Cli,
 ) {
-    let optional_inner_type = if type_choices.len() == 2 {
-        let a = &type_choices[0].type1;
-        let b = &type_choices[1].type1;
-        if type2_is_null(&a.type2) {
-            Some(b)
-        } else if type2_is_null(&b.type2) {
-            Some(a)
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    let optional_inner_type = null_collapse_inner(type_choices);
     if let Some(inner_type2) = optional_inner_type {
         if generic_params.is_some() {
             // Generic support relies on having a RustStruct to swap the argument types into, and a
@@ -5056,17 +5040,8 @@ fn normalized_dynamic_sequence_occurrence_window(
     types: &mut IntermediateTypes,
     occur: Option<&Occur>,
 ) -> Option<(u64, u64)> {
-    let source_bounds = match occur {
-        // Omitted occurrences are exactly once, never an implicit loose row.
-        None => (Some(1), Some(1)),
-        Some(Occur::ZeroOrMore { .. }) => (None, None),
-        Some(Occur::OneOrMore { .. }) => (Some(1), None),
-        Some(Occur::Optional { .. }) => (None, Some(1)),
-        Some(Occur::Exact { lower, upper, .. }) => (
-            lower.filter(|lower| *lower != 0).map(|lower| lower as i128),
-            upper.map(|upper| upper as i128),
-        ),
-    };
+    // Omitted occurrences are exactly once, never an implicit loose row.
+    let source_bounds = occur.map_or((Some(1), Some(1)), occur_bounds);
     reject_out_of_range_occurrence_bounds(types, Some(source_bounds));
     let min = source_bounds
         .0
@@ -5100,8 +5075,49 @@ fn normalized_dynamic_sequence_occurrence_window(
 /// it asks it HERE rather than restating the boundary. One predicate is what stops the two seams
 /// from disagreeing about `{ x: uint // + kv }`: honored-as-mandatory on both, because a second
 /// repetition would duplicate `kv`'s fixed keys.
-fn inline_group_occurrence_flattens(occur: Option<&Occurrence>, rep: Representation) -> bool {
-    match occur.map(|o| &o.occur) {
+/// The `(min, max)` window an occurrence marker admits: `*` is `(None, None)`, `+` is
+/// `(Some(1), None)`, `?` is `(None, Some(1))`, and `n*m` keeps its bounds with a zero lower bound
+/// dropped.
+fn occur_bounds(occur: &Occur) -> (Option<i128>, Option<i128>) {
+    match occur {
+        Occur::ZeroOrMore { .. } => (None, None),
+        Occur::Exact { lower, upper, .. } => (
+            lower.filter(|lower| *lower != 0).map(|lower| lower as i128),
+            upper.map(|upper| upper as i128),
+        ),
+        Occur::Optional { .. } => (None, Some(1)),
+        Occur::OneOrMore { .. } => (Some(1), None),
+    }
+}
+
+/// The occurrence marker on a group entry. An inline group's own marker is not an entry
+/// occurrence, so it reads as none.
+fn group_entry_occur<'a>(entry: &'a GroupEntry) -> Option<&'a Occur> {
+    match entry {
+        GroupEntry::ValueMemberKey { ge, .. } => ge.occur.as_ref().map(|o| &o.occur),
+        GroupEntry::TypeGroupname { ge, .. } => ge.occur.as_ref().map(|o| &o.occur),
+        GroupEntry::InlineGroup { .. } => None,
+    }
+}
+
+/// Whether a group entry's occurrence admits a count other than zero-or-one: any marker except `?`
+/// and the pedantic `1*1`.
+fn occurrence_permits_count(entry: &GroupEntry) -> bool {
+    group_entry_occur(entry).is_some_and(|occur| {
+        !matches!(
+            occur,
+            Occur::Optional { .. }
+                | Occur::Exact {
+                    lower: Some(1),
+                    upper: Some(1),
+                    ..
+                }
+        )
+    })
+}
+
+fn inline_group_occurrence_flattens(occur: Option<&Occur>, rep: Representation) -> bool {
+    match occur {
         // no marker, or an explicit exactly-once bound: splicing preserves the semantics.
         None
         | Some(Occur::Exact {
@@ -5140,7 +5156,7 @@ fn flatten_group_entries<'a>(
         match &entry.0 {
             GroupEntry::InlineGroup { occur, group, .. }
                 if group.group_choices.len() == 1
-                    && inline_group_occurrence_flattens(occur.as_ref(), rep) =>
+                    && inline_group_occurrence_flattens(occur.as_ref().map(|o| &o.occur), rep) =>
             {
                 out.extend(flatten_group_entries(
                     &group.group_choices[0].group_entries,
@@ -5504,15 +5520,7 @@ fn parse_group_type<'a>(
                         None,
                     );
                 }
-                let bounds = match occur.occur {
-                    Occur::ZeroOrMore { .. } => (None, None),
-                    Occur::Exact { lower, upper, .. } => (
-                        lower.filter(|lower| *lower != 0).map(|lower| lower as i128),
-                        upper.map(|upper| upper as i128),
-                    ),
-                    Occur::Optional { .. } => (None, Some(1)),
-                    Occur::OneOrMore { .. } => (Some(1), None),
-                };
+                let bounds = occur_bounds(&occur.occur);
                 reject_out_of_range_occurrence_bounds(types, Some(bounds));
                 let item_ident = RustIdent::new(CDDLIdent::new(format!("{owner}Item")));
                 let entry_metadata =
@@ -5605,15 +5613,7 @@ fn parse_group_type<'a>(
                     ),
                     GroupEntry::InlineGroup { .. } => unreachable!("guarded above"),
                 };
-                let bounds = occur.as_ref().map(|o| match o.occur {
-                    Occur::ZeroOrMore { .. } => (None, None),
-                    Occur::Exact { lower, upper, .. } => (
-                        lower.filter(|l| *l != 0).map(|i| i as i128),
-                        upper.map(|i| i as i128),
-                    ),
-                    Occur::Optional { .. } => (None, Some(1)),
-                    Occur::OneOrMore { .. } => (Some(1), None),
-                });
+                let bounds = occur.as_ref().map(|o| occur_bounds(&o.occur));
                 reject_out_of_range_occurrence_bounds(types, bounds);
                 // `[* 5]` / `[+ 5]` / `[? 5]` / `[2*5 5]`: a bare fixed value as the target of a
                 // COUNT-PERMITTING occurrence. The homogeneous-array path stores its elements in a
@@ -5794,15 +5794,8 @@ fn parse_group_type<'a>(
                                     // describe the entry instead.
                                     let site = rejection_site(types, rule_name, "inline map");
                                     let value = &ge.entry_type;
-                                    let occ_bounds = ge.occur.as_ref().map(|o| match o.occur {
-                                        Occur::ZeroOrMore { .. } => (None, None),
-                                        Occur::Exact { lower, upper, .. } => (
-                                            lower.filter(|l| *l != 0).map(|i| i as i128),
-                                            upper.map(|i| i as i128),
-                                        ),
-                                        Occur::Optional { .. } => (None, Some(1)),
-                                        Occur::OneOrMore { .. } => (Some(1), None),
-                                    });
+                                    let occ_bounds =
+                                        ge.occur.as_ref().map(|o| occur_bounds(&o.occur));
                                     let table_bounds = match occ_bounds {
                                         // RFC 8610 gives an omitted occurrence the exact `1..=1`
                                         // window. Preserve it rather than widening it to `*`.
@@ -6022,6 +6015,21 @@ fn parse_group_type<'a>(
 }
 
 // would use rust_type_from_type1 but that requires IntermediateTypes which we shouldn't
+/// The non-null arm of a two-arm `T / null` (or `null / T`) type choice, which collapses to
+/// `Option<T>`; `None` for any other choice.
+fn null_collapse_inner<'a, 'b>(type_choices: &'b [TypeChoice<'a>]) -> Option<&'b Type1<'a>> {
+    let [a, b] = type_choices else {
+        return None;
+    };
+    if type2_is_null(&a.type1.type2) {
+        Some(&b.type1)
+    } else if type2_is_null(&b.type1.type2) {
+        Some(&a.type1)
+    } else {
+        None
+    }
+}
+
 fn type2_is_null(t2: &Type2) -> bool {
     match t2 {
         Type2::Typename { ident, .. } => ident.ident == "null" || ident.ident == "nil",
@@ -6061,16 +6069,8 @@ fn type_to_field_name(t: &Type) -> Option<String> {
         1 => type2_to_field_name(&t.type_choices.first().unwrap().type1.type2),
         2 => {
             // special case for T / null -> maps to Option<T> so field name should be same as just T
-            let a = &t.type_choices[0].type1.type2;
-            let b = &t.type_choices[1].type1.type2;
-            if type2_is_null(a) {
-                type2_to_field_name(b)
-            } else if type2_is_null(b) {
-                type2_to_field_name(a)
-            } else {
-                // neither are null - we do not support type choices here
-                None
-            }
+            // neither are null - we do not support type choices here
+            null_collapse_inner(&t.type_choices).and_then(|inner| type2_to_field_name(&inner.type2))
         }
         // no type choice support here
         _ => None,
@@ -7046,15 +7046,7 @@ fn rust_type(
                 }
             }
             // T / null   or   null / T   should map to Option<T>
-            let a = &t.type_choices[0].type1;
-            let b = &t.type_choices[1].type1;
-            let collapse_inner = if type2_is_null(&a.type2) {
-                Some(b)
-            } else if type2_is_null(&b.type2) {
-                Some(a)
-            } else {
-                None
-            };
+            let collapse_inner = null_collapse_inner(&t.type_choices);
             if let Some(inner_type1) = collapse_inner {
                 let inner_rust_type = rust_type_from_type1(types, parent_visitor, inner_type1, cli);
                 // Member/element twin of the rule-level fixed/null lowering.  The singleton is
@@ -7968,24 +7960,7 @@ fn parse_record_from_group_choice(
             // map-path guard below). Unlike unique map keys, `+` does not collapse to exactly-one
             // in an array, so every marker except `?` and the pedantic `1*1` rejects.
             if rep == Representation::Array {
-                let narrows = match group_entry {
-                    GroupEntry::ValueMemberKey { ge, .. } => ge.occur.as_ref(),
-                    GroupEntry::TypeGroupname { ge, .. } => ge.occur.as_ref(),
-                    GroupEntry::InlineGroup { .. } => None,
-                }
-                .map(|o| {
-                    !matches!(
-                        o.occur,
-                        Occur::Optional { .. }
-                            | Occur::Exact {
-                                lower: Some(1),
-                                upper: Some(1),
-                                ..
-                            }
-                    )
-                })
-                .unwrap_or(false);
-                if narrows {
+                if occurrence_permits_count(group_entry) {
                     types.record_rejection(format!(
                         "rule `{source_name}`: array field `{field_name}` has an occurrence \
                          (`*` / `+` / `n*m`), which would be silently narrowed to a single \
@@ -8449,30 +8424,10 @@ fn recognize_array_rest_segments(
     in_choice_arm: bool,
     cli: &Cli,
 ) -> (Vec<RestRow>, Vec<usize>) {
-    let count_permits = |ge: &GroupEntry| {
-        let occur = match ge {
-            GroupEntry::ValueMemberKey { ge, .. } => ge.occur.as_ref(),
-            GroupEntry::TypeGroupname { ge, .. } => ge.occur.as_ref(),
-            GroupEntry::InlineGroup { .. } => None,
-        };
-        occur
-            .map(|o| {
-                !matches!(
-                    o.occur,
-                    Occur::Optional { .. }
-                        | Occur::Exact {
-                            lower: Some(1),
-                            upper: Some(1),
-                            ..
-                        }
-                )
-            })
-            .unwrap_or(false)
-    };
     let candidates: Vec<usize> = flattened
         .iter()
         .enumerate()
-        .filter(|(_, (ge, _))| count_permits(ge))
+        .filter(|(_, (ge, _))| occurrence_permits_count(ge))
         .map(|(index, _)| index)
         .collect();
     if candidates.len() <= 1 {
@@ -8534,11 +8489,7 @@ fn recognize_array_rest_segments(
     let mut names = BTreeSet::new();
     for &candidate in &candidates {
         let (entry, comma) = flattened[candidate];
-        let occur = match entry {
-            GroupEntry::ValueMemberKey { ge, .. } => ge.occur.as_ref().map(|o| &o.occur),
-            GroupEntry::TypeGroupname { ge, .. } => ge.occur.as_ref().map(|o| &o.occur),
-            GroupEntry::InlineGroup { .. } => None,
-        };
+        let occur = group_entry_occur(entry);
         let occurrence = normalized_dynamic_sequence_occurrence_window(types, occur);
         if let GroupEntry::ValueMemberKey { ge, .. } = entry
             && ge.member_key.is_some()
@@ -9210,30 +9161,10 @@ fn recognize_array_rest_tail(
     // unsupported placement/shape boundaries reject below). Only `ValueMemberKey`/`TypeGroupname` carry `ge.occur`;
     // an inline group has none (never count-permitting → never a candidate → its later `* (…)`
     // narrowing rejection in the field loop stands).
-    let count_permits = |ge: &GroupEntry| {
-        let occur = match ge {
-            GroupEntry::ValueMemberKey { ge, .. } => ge.occur.as_ref().map(|o| &o.occur),
-            GroupEntry::TypeGroupname { ge, .. } => ge.occur.as_ref().map(|o| &o.occur),
-            GroupEntry::InlineGroup { .. } => None,
-        };
-        occur
-            .map(|o| {
-                !matches!(
-                    o,
-                    Occur::Optional { .. }
-                        | Occur::Exact {
-                            lower: Some(1),
-                            upper: Some(1),
-                            ..
-                        }
-                )
-            })
-            .unwrap_or(false)
-    };
     let candidate_indices: Vec<usize> = flattened
         .iter()
         .enumerate()
-        .filter(|(_, (ge, _))| count_permits(ge))
+        .filter(|(_, (ge, _))| occurrence_permits_count(ge))
         .map(|(i, _)| i)
         .collect();
     let Some(&candidate) = candidate_indices.last() else {
@@ -9291,11 +9222,7 @@ fn recognize_array_rest_tail(
     // complete BoundedVec carrier. This is deliberately the same normalizer and graceful u64
     // diagnostic used for homogeneous arrays and dynamic map rows -- emitters must never parse a
     // source occurrence spelling for themselves.
-    let candidate_occur = match candidate_ge {
-        GroupEntry::ValueMemberKey { ge, .. } => ge.occur.as_ref().map(|o| &o.occur),
-        GroupEntry::TypeGroupname { ge, .. } => ge.occur.as_ref().map(|o| &o.occur),
-        GroupEntry::InlineGroup { .. } => None,
-    };
+    let candidate_occur = group_entry_occur(candidate_ge);
     let occurrence = normalized_dynamic_sequence_occurrence_window(types, candidate_occur);
     // A member KEY on the tail entry (`* 1: uint` in array rep) is nonsense — an array tail is
     // positional. Reject rather than silently dropping the label. (An inline group never reaches here:
