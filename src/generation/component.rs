@@ -1085,12 +1085,12 @@ impl Emitter<'_, '_> {
         // implements and imports what it merely names).
         for (dep, interface) in self.imported_interfaces() {
             let package = &self.package.imported_packages[&dep];
-            let (namespace, name) = package_segments(&package.package_id);
+            let (namespace, name) = package.segments();
             let _ = writeln!(
                 out,
                 "use {}::{}::{} as {};",
-                kebab_to_snake(&namespace),
-                kebab_to_snake(&name),
+                kebab_to_snake(namespace),
+                kebab_to_snake(name),
                 kebab_to_snake(&interface),
                 imported_interface_alias(&dep, &interface)
             );
@@ -1967,20 +1967,6 @@ impl Emitter<'_, '_> {
             }
         }
         lines
-    }
-}
-
-/// The namespace and name of a WIT package id (`cddl:chain@0.1.0` -> `("cddl", "chain")`), which are
-/// the first two segments of the rust module path `wit_bindgen` puts an imported interface at.
-///
-/// Read off the DEPENDENCY's own id string rather than re-parsed into `WitPackageId`: the id is
-/// carried verbatim from the dependency's WIT precisely so nothing here re-derives it, and a version
-/// suffix is the only part this split has to drop.
-fn package_segments(package_id: &str) -> (String, String) {
-    let base = package_id.split('@').next().unwrap_or(package_id);
-    match base.split_once(':') {
-        Some((namespace, name)) => (namespace.to_owned(), name.to_owned()),
-        None => (String::new(), base.to_owned()),
     }
 }
 

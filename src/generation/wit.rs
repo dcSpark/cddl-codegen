@@ -302,9 +302,6 @@ pub(crate) struct ImportedDepType {
     pub interface: String,
     /// The dependency's WIT name for the type, read out of its WIT rather than re-derived.
     pub wit_name: String,
-    /// The dependency's WIT PACKAGE id (`cddl:chain@0.1.0`), whose namespace and name are the first
-    /// two segments of the rust module path `wit_bindgen` puts an imported interface at.
-    pub package_id: String,
 }
 
 /// The interface an interface-level `use` points at.
@@ -1240,7 +1237,6 @@ fn resolve_imported_types(
                 use_path: package.use_path(&interface),
                 interface,
                 wit_name,
-                package_id: package.package_id.clone(),
             },
         );
     }

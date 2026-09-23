@@ -81,6 +81,16 @@ impl DepWitPackage {
         }
     }
 
+    /// The namespace and name of the package id (`cddl:chain@0.1.0` -> `("cddl", "chain")`), which
+    /// are the first two segments of the rust module path `wit_bindgen` puts an imported interface
+    /// at. Lenient — an id with no `:` reads as an empty namespace — rather than re-parsed through
+    /// the strict `WitPackageId`: the id is carried verbatim from the dependency's WIT.
+    pub(crate) fn segments(&self) -> (&str, &str) {
+        self.package_base
+            .split_once(':')
+            .unwrap_or(("", &self.package_base))
+    }
+
     /// The interfaces declaring a WIT type name, in render order. Empty = this package does not
     /// declare it under that name at all.
     pub(crate) fn interfaces_declaring(&self, wit_name: &str) -> Vec<&str> {
