@@ -199,15 +199,9 @@ fn float_accept_cond(
     parts.join(" && ")
 }
 
-/// The `Err(..)` expression for a failed float window check. `location` `Some(name)` produces a
-/// `DeserializeError::new(name, ..)` (wrapper deserialize/new, which annotate the type), `None`
-/// produces a bare `DeserializeFailure::RangeCheckFloat{..}.into()` (primitive deserialize and_then).
-fn range_check_err_float(
-    found_f64: &str,
-    window: &crate::intermediate::FloatWindow,
-    return_err: bool,
-    location: Option<&str>,
-) -> String {
+/// The `RangeCheckFloat{ .. }` failure payload (without its `DeserializeFailure::` path) for a
+/// failed float window check over `found` (cast `as f64` in the payload).
+fn range_check_float_payload(found: &str, window: &crate::intermediate::FloatWindow) -> String {
     let opt = |side: Option<(f64, bool)>| match side {
         Some((v, _)) => format!("Some({})", float_literal(v)),
         None => "None".to_owned(),
@@ -217,13 +211,54 @@ fn range_check_err_float(
         Some((_, exclusive)) => (!exclusive).to_string(),
         None => "false".to_owned(),
     };
-    let failure = format!(
-        "DeserializeFailure::RangeCheckFloat{{ found: {} as f64, min: {}, max: {}, min_inclusive: {}, max_inclusive: {} }}",
-        found_f64,
+    format!(
+        "RangeCheckFloat{{ found: {found} as f64, min: {}, max: {}, min_inclusive: {}, max_inclusive: {} }}",
         opt(window.0),
         opt(window.1),
         incl(window.0),
         incl(window.1),
+    )
+}
+
+/// Whether the type system already enforces `ty`'s whole window (`NonEmptyVec`, a native
+/// `[T; N]`, `BoundedVec`/`BoundedMap`), so no inline value check is emitted for it.
+fn value_window_is_type_enforced(ty: &RustType) -> bool {
+    ty.is_type_enforced_non_empty()
+        || ty.is_type_enforced_exact_homogeneous_array()
+        || ty.is_type_enforced_bounded_array()
+        || ty.is_type_enforced_bounded_map()
+}
+
+/// The integer window a value check compares against. The nint endpoint swap is load-bearing: an
+/// N64 is stored as its `u64` magnitude, which is DECREASING in the signed value, so a check
+/// written against the unswapped bounds is inverted. Both the reported window and the condition
+/// take the swapped pair.
+fn effective_int_bounds(
+    ty: &RustType,
+    bounds: &(Option<i128>, Option<i128>),
+) -> (Option<i128>, Option<i128>) {
+    if matches!(
+        ty.resolve_alias_shallow(),
+        ConceptualRustType::Primitive(Primitive::N64)
+    ) {
+        nint_bounds_to_u64(bounds)
+    } else {
+        *bounds
+    }
+}
+
+/// The `Err(..)` expression for a failed float window check. `location` `Some(name)` produces a
+/// `DeserializeError::new(name, ..)` (wrapper deserialize/new, which annotate the type), `None`
+/// produces a bare `DeserializeFailure::RangeCheckFloat{..}.into()` (primitive deserialize and_then).
+fn range_check_err_float(
+    found_f64: &str,
+    window: &crate::intermediate::FloatWindow,
+    return_err: bool,
+    location: Option<&str>,
+) -> String {
+    let failure = format!(
+        "DeserializeFailure::{}",
+        range_check_float_payload(found_f64, window)
     );
     let err = match location {
         Some(loc) => format!("DeserializeError::new(\"{loc}\", {failure})"),
@@ -281,11 +316,7 @@ pub(super) fn value_bounds_check_line(ty: &RustType, e: &str, return_err: bool) 
     // unrepresentable. Ordinary/preserve bounded arrays likewise use BoundedVec and skip this path;
     // the deliberate bounded-@duplicates-reject OrderedSet residue retains its runtime check. Alias-
     // resolving so a field referencing a named restricted rule skips the check too.
-    if ty.is_type_enforced_non_empty()
-        || ty.is_type_enforced_exact_homogeneous_array()
-        || ty.is_type_enforced_bounded_array()
-        || ty.is_type_enforced_bounded_map()
-    {
+    if value_window_is_type_enforced(ty) {
         return None;
     }
     if let Some(window) = &ty.config.float_bounds {
@@ -300,30 +331,16 @@ pub(super) fn value_bounds_check_line(ty: &RustType, e: &str, return_err: bool) 
     let bounds = ty.config.bounds.as_ref()?;
     let check_expr = bounds_check_expr_rust_type(ty, e)?;
     let non_negative = bounds_check_expr_non_negative(ty);
-    if matches!(
-        ty.resolve_alias_shallow(),
-        ConceptualRustType::Primitive(Primitive::N64)
-    ) {
-        Some(bounds_check_if_block(
-            &nint_bounds_to_u64(bounds),
-            &check_expr,
-            return_err,
-            non_negative,
-            None,
-            // member/setter/ctor site: `e` is the stored field (a `u64` magnitude for N64, or an
-            // i8..i64/u64 elsewhere) — never already i128, so keep the widening cast.
-            false,
-        ))
-    } else {
-        Some(bounds_check_if_block(
-            bounds,
-            &check_expr,
-            return_err,
-            non_negative,
-            None,
-            false,
-        ))
-    }
+    Some(bounds_check_if_block(
+        &effective_int_bounds(ty, bounds),
+        &check_expr,
+        return_err,
+        non_negative,
+        None,
+        // member/setter/ctor site: `e` is the stored field (a `u64` magnitude for N64, or an
+        // i8..i64/u64 elsewhere) — never already i128, so keep the widening cast.
+        false,
+    ))
 }
 
 /// The value bounds check line a COMPONENT-face parameter emits. `DeserializeFailure` derives
@@ -374,11 +391,7 @@ fn externally_wrapped_bounds_check_line(
             ))
         ));
     }
-    if ty.is_type_enforced_non_empty()
-        || ty.is_type_enforced_exact_homogeneous_array()
-        || ty.is_type_enforced_bounded_array()
-        || ty.is_type_enforced_bounded_map()
-    {
+    if value_window_is_type_enforced(ty) {
         return None;
     }
     if let Some(window) = &ty.config.float_bounds {
@@ -386,41 +399,16 @@ fn externally_wrapped_bounds_check_line(
             ty.resolve_alias_shallow(),
             ConceptualRustType::Primitive(p) if p.float_carrier_is_f32()
         );
-        let opt = |side: Option<(f64, bool)>| match side {
-            Some((v, _)) => format!("Some({})", float_literal(v)),
-            None => "None".to_owned(),
-        };
-        // stored inclusivity is the negation of the parsed exclusivity flag
-        let incl = |side: Option<(f64, bool)>| match side {
-            Some((_, exclusive)) => (!exclusive).to_string(),
-            None => "false".to_owned(),
-        };
         return Some(format!(
             "if !({}) {{ {} }}",
             float_accept_cond(window, e, cast_f64),
-            wrap(format!(
-                "RangeCheckFloat{{ found: {e} as f64, min: {}, max: {}, min_inclusive: {}, max_inclusive: {} }}",
-                opt(window.0),
-                opt(window.1),
-                incl(window.0),
-                incl(window.1),
-            ))
+            wrap(range_check_float_payload(e, window))
         ));
     }
     let bounds = ty.config.bounds.as_ref()?;
     let check_expr = bounds_check_expr_rust_type(ty, e)?;
     let non_negative = bounds_check_expr_non_negative(ty);
-    // The nint endpoint swap is load-bearing: the magnitude is DECREASING in the signed value, so a
-    // check written against the unswapped bounds is inverted. Both the reported window and the
-    // condition take the swapped pair, exactly as `value_bounds_check_line` does.
-    let bounds = if matches!(
-        ty.resolve_alias_shallow(),
-        ConceptualRustType::Primitive(Primitive::N64)
-    ) {
-        nint_bounds_to_u64(bounds)
-    } else {
-        *bounds
-    };
+    let bounds = effective_int_bounds(ty, bounds);
     let (payload_min, payload_max) = canonical_range_check_payload(&bounds, non_negative);
     let opt = |b: Option<i128>| b.map_or_else(|| "None".to_owned(), |b| format!("Some({b})"));
     Some(format!(
