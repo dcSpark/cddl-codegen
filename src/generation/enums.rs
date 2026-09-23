@@ -485,6 +485,54 @@ pub(super) fn enum_rule_tag_encoding_name(
     }
 }
 
+/// The outer array/map length encoding stored on a preserve-encodings enum variant.
+fn len_encoding_field() -> EncodingField {
+    EncodingField {
+        field_name: "len_encoding".to_owned(),
+        type_name: "LenEncoding".to_owned(),
+        default_expr: "LenEncoding::default()",
+        enc_conversion_before: "",
+        enc_conversion_after: "",
+        is_copy: true,
+    }
+}
+
+/// The shared rule-tag size field `field_name` stored on every variant of a preserve-tagged enum.
+fn rule_tag_encoding_field(field_name: &str) -> EncodingField {
+    EncodingField {
+        field_name: field_name.to_owned(),
+        type_name: "Option<cbor_event::Sz>".to_owned(),
+        default_expr: "None",
+        enc_conversion_before: "",
+        enc_conversion_after: "",
+        is_copy: true,
+    }
+}
+
+/// Length bookkeeping for a group-choice arm holding `ty`: a plain group contributes its own
+/// field count, anything else is a single element.
+fn variant_len_info(types: &IntermediateTypes, ty: &RustType) -> RustStructCBORLen {
+    match ty.conceptual_type.resolve_alias_shallow() {
+        ConceptualRustType::Rust(ident) if types.is_plain_group(ident) => {
+            types.rust_struct(ident).unwrap().cbor_len_info(types)
+        }
+        _ => RustStructCBORLen::Fixed(1),
+    }
+}
+
+/// Push `code` as a `variant_deser` probe closure over `raw` and return the match that returns its
+/// variant on success; the caller adds the failure arm.
+fn push_variant_closure(deser_body: &mut dyn CodeBlock, code: DeserializationCode) -> Block {
+    let mut variant_deser =
+        Block::new("let variant_deser = (|raw: &mut Deserializer| -> Result<_, DeserializeError>");
+    variant_deser.after(")(raw);");
+    variant_deser.push_all(code.content);
+    deser_body.push_block(variant_deser);
+    let mut return_if_deserialized = Block::new("match variant_deser");
+    return_if_deserialized.line("Ok(variant) => return Ok(variant),");
+    return_if_deserialized
+}
+
 impl EnumVariantInRust {
     pub(super) fn new(
         types: &IntermediateTypes,
@@ -520,30 +568,15 @@ impl EnumVariantInRust {
                     (vec![ty.for_rust_member(types, false, cli)], vec![name])
                 };
                 let mut outer_vars = 0;
-                // TOOD: for tags too?
                 if cli.preserve_encodings && rep.is_some() && !variant.serialize_as_embedded_group {
-                    enc_fields.push(EncodingField {
-                        field_name: "len_encoding".to_owned(),
-                        type_name: "LenEncoding".to_owned(),
-                        default_expr: "LenEncoding::default()",
-                        enc_conversion_before: "",
-                        enc_conversion_after: "",
-                        is_copy: true,
-                    });
+                    enc_fields.push(len_encoding_field());
                     outer_vars += 1;
                 }
                 if cli.preserve_encodings && tag.is_some() {
                     let field_name = rule_tag_encoding.expect(
                         "a preserve-tagged enum chooses one shared rule-tag field before variants",
                     );
-                    enc_fields.push(EncodingField {
-                        field_name: field_name.to_owned(),
-                        type_name: "Option<cbor_event::Sz>".to_owned(),
-                        default_expr: "None",
-                        enc_conversion_before: "",
-                        enc_conversion_after: "",
-                        is_copy: true,
-                    });
+                    enc_fields.push(rule_tag_encoding_field(field_name));
                     outer_vars += 1;
                 }
                 for enc_field in &enc_fields {
@@ -565,14 +598,7 @@ impl EnumVariantInRust {
                 let mut enum_types = vec![];
                 let mut names = vec![];
                 if cli.preserve_encodings {
-                    enc_fields.push(EncodingField {
-                        field_name: "len_encoding".to_owned(),
-                        type_name: "LenEncoding".to_owned(),
-                        default_expr: "LenEncoding::default()",
-                        enc_conversion_before: "",
-                        enc_conversion_after: "",
-                        is_copy: true,
-                    });
+                    enc_fields.push(len_encoding_field());
                     // DECLARED types (see `EncodingField::type_name`) — same reason as the
                     // `RustType` arm above.
                     for field in record.fields.iter() {
@@ -588,14 +614,7 @@ impl EnumVariantInRust {
                         let field_name = rule_tag_encoding.expect(
                             "a preserve-tagged enum chooses one shared rule-tag field before variants",
                         );
-                        enc_fields.push(EncodingField {
-                            field_name: field_name.to_owned(),
-                            type_name: "Option<cbor_event::Sz>".to_owned(),
-                            default_expr: "None",
-                            enc_conversion_before: "",
-                            enc_conversion_after: "",
-                            is_copy: true,
-                        });
+                        enc_fields.push(rule_tag_encoding_field(field_name));
                     }
                 }
                 for field in record.fields.iter() {
@@ -1704,12 +1723,7 @@ fn generate_enum(
                             cli,
                         );
                         if let Some(r) = rep {
-                            let len_info = match ty.conceptual_type.resolve_alias_shallow() {
-                                ConceptualRustType::Rust(ident) if types.is_plain_group(ident) => {
-                                    types.rust_struct(ident).unwrap().cbor_len_info(types)
-                                }
-                                _ => RustStructCBORLen::Fixed(1),
-                            };
+                            let len_info = variant_len_info(types, ty);
                             // this will never be 1 line so don't bother with the below cases
                             variant_deser_code =
                                 surround_in_len_checks(variant_deser_code, len_info, r, cli);
@@ -1803,15 +1817,7 @@ fn generate_enum(
                             &enum_gen_info,
                             cli,
                         );
-                        let mut variant_deser = Block::new(
-                            "let variant_deser = (|raw: &mut Deserializer| -> Result<_, DeserializeError>",
-                        );
-                        variant_deser.after(")(raw);");
-                        variant_deser.push_all(variant_deser_code.content);
-                        deser_body.push_block(variant_deser);
-                        let mut return_if_deserialized = Block::new("match variant_deser");
-                        return_if_deserialized.line("Ok(variant) => return Ok(variant),");
-                        return_if_deserialized
+                        push_variant_closure(deser_body, variant_deser_code)
                     }
                     EnumVariantData::RustType(ty) => {
                         let mut return_if_deserialized = make_enum_variant_return_if_deserialized(
@@ -1819,17 +1825,7 @@ fn generate_enum(
                             types,
                             variant,
                             enum_gen_info.types.is_empty(),
-                            rep.map(|r| {
-                                let len_info = match ty.conceptual_type.resolve_alias_shallow() {
-                                    ConceptualRustType::Rust(ident)
-                                        if types.is_plain_group(ident) =>
-                                    {
-                                        types.rust_struct(ident).unwrap().cbor_len_info(types)
-                                    }
-                                    _ => RustStructCBORLen::Fixed(1),
-                                };
-                                (len_info, r)
-                            }),
+                            rep.map(|r| (variant_len_info(types, ty), r)),
                             deser_body,
                             // this is the enum's OWN `deserialize` impl: `raw` is the fn parameter
                             "raw",
@@ -1879,16 +1875,7 @@ fn generate_enum(
                     EnumVariantData::Inlined(record) => {
                         let variant_deser_code =
                             make_inline_deser_code(gen_scope, types, record, &enum_gen_info, cli);
-                        let mut variant_deser = Block::new(
-                            "let variant_deser = (|raw: &mut Deserializer| -> Result<_, DeserializeError>",
-                        );
-                        variant_deser.after(")(raw);");
-                        variant_deser.push_all(variant_deser_code.content);
-                        deser_body.push_block(variant_deser);
-                        // can't chain blocks so we just put them one after the other
-                        let mut return_if_deserialized = Block::new("match variant_deser");
-                        return_if_deserialized.line("Ok(variant) => return Ok(variant),");
-                        return_if_deserialized
+                        push_variant_closure(deser_body, variant_deser_code)
                     }
                 };
                 let mut variant_deser_failed_block = Block::new("Err(e) =>");
