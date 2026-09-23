@@ -1371,8 +1371,7 @@ impl GenerationScope {
                                 range.clone(),
                                 rust_ident,
                                 true,
-                                rust_struct.config().duplicates
-                                    == Some(crate::comment_ast::DuplicatesPolicy::Preserve),
+                                rust_struct.config().duplicates_preserve(),
                                 cli,
                             );
                         } else if cli.wasm
@@ -1395,8 +1394,7 @@ impl GenerationScope {
                                 rust_ident,
                                 (min, max),
                                 !types.is_synthesized_collection(rust_ident),
-                                rust_struct.config().duplicates
-                                    == Some(crate::comment_ast::DuplicatesPolicy::Preserve),
+                                rust_struct.config().duplicates_preserve(),
                                 cli,
                             );
                         } else if cli.wasm && !anon {
@@ -1407,8 +1405,7 @@ impl GenerationScope {
                             let map_ident = RustType::wasm_structural_map_name_for(
                                 domain,
                                 range,
-                                rust_struct.config().duplicates
-                                    == Some(crate::comment_ast::DuplicatesPolicy::Preserve),
+                                rust_struct.config().duplicates_preserve(),
                                 types,
                             );
                             if table_shape_sole_owner.get(&map_ident.to_string())
@@ -1440,8 +1437,7 @@ impl GenerationScope {
                                     domain.clone(),
                                     range.clone(),
                                     true,
-                                    rust_struct.config().duplicates
-                                        == Some(crate::comment_ast::DuplicatesPolicy::Preserve),
+                                    rust_struct.config().duplicates_preserve(),
                                     cli,
                                 );
                             }
@@ -1459,8 +1455,7 @@ impl GenerationScope {
                         // what keeps the synthesized name out of the own-spec shape projection, so a
                         // `--wrapper-requests` consumer's structural import resolves via own-spec.
                         if cli.wasm && !types.is_anonymous_collection_instance(rust_ident) {
-                            let reject = rust_struct.config().duplicates
-                                == Some(crate::comment_ast::DuplicatesPolicy::Reject);
+                            let reject = rust_struct.config().duplicates_reject();
                             let non_empty = *bounds == Some((Some(1), None));
                             if reject {
                                 // `@duplicates reject` rule: its JS class is the uniqueness-twin
