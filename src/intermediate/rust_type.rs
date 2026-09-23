@@ -1375,20 +1375,26 @@ impl RustType {
         self.config.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Reject)
     }
 
-    /// Whether this type, at ANY nesting level, contains the `@duplicates reject` `OrderedSet` shape
-    /// (so the crate needs the `ordered_set` runtime module + imports). Recurses into container inners
-    /// like `contains_non_empty_array`.
-    pub fn contains_ordered_set(&self) -> bool {
-        if self.is_reject_ordered_set() {
+    /// Whether `pred` holds for this type or for any type nested in its Array / Optional / Map
+    /// inners. The shared recursion behind the `contains_*` runtime-module gates.
+    fn any_nested(&self, pred: &impl Fn(&RustType) -> bool) -> bool {
+        if pred(self) {
             return true;
         }
         match &self.conceptual_type {
             ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
-                inner.contains_ordered_set()
+                inner.any_nested(pred)
             }
-            ConceptualRustType::Map(k, v) => k.contains_ordered_set() || v.contains_ordered_set(),
+            ConceptualRustType::Map(k, v) => k.any_nested(pred) || v.any_nested(pred),
             _ => false,
         }
+    }
+
+    /// Whether this type, at ANY nesting level, contains the `@duplicates reject` `OrderedSet` shape
+    /// (so the crate needs the `ordered_set` runtime module + imports). Recurses into container inners
+    /// like `contains_non_empty_array`.
+    pub fn contains_ordered_set(&self) -> bool {
+        self.any_nested(&|ty| ty.is_reject_ordered_set())
     }
 
     /// True when this table-shaped member carries `@duplicates preserve` — its representation swaps
@@ -1407,16 +1413,7 @@ impl RustType {
     /// (so the crate needs the `pair_map` runtime module + imports). Recurses into container inners
     /// like `contains_ordered_set`.
     pub fn contains_pair_map(&self) -> bool {
-        if self.is_preserve_pair_map() {
-            return true;
-        }
-        match &self.conceptual_type {
-            ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
-                inner.contains_pair_map()
-            }
-            ConceptualRustType::Map(k, v) => k.contains_pair_map() || v.contains_pair_map(),
-            _ => false,
-        }
+        self.any_nested(&|ty| ty.is_preserve_pair_map())
     }
 
     /// The `{+ k => v}` occurrence shape — lower bound exactly 1, no upper bound — on a homogeneous
@@ -1508,81 +1505,28 @@ impl RustType {
     /// Whether this type, at ANY nesting level, contains the `[+ T]` NonEmptyVec shape (so the
     /// crate needs the `non_empty` runtime module + import). Recurses into container inners.
     pub fn contains_non_empty_array(&self) -> bool {
-        if self.is_non_empty_array() {
-            return true;
-        }
-        match &self.conceptual_type {
-            ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
-                inner.contains_non_empty_array()
-            }
-            ConceptualRustType::Map(k, v) => {
-                k.contains_non_empty_array() || v.contains_non_empty_array()
-            }
-            _ => false,
-        }
+        self.any_nested(&|ty| ty.is_non_empty_array())
     }
 
     /// Whether any nested position needs the `BoundedVec` runtime module.
     pub fn contains_bounded_array(&self) -> bool {
-        if self.is_bounded_array() && !self.is_bounded_reject_ordered_set() {
-            return true;
-        }
-        match &self.conceptual_type {
-            ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
-                inner.contains_bounded_array()
-            }
-            ConceptualRustType::Map(k, v) => {
-                k.contains_bounded_array() || v.contains_bounded_array()
-            }
-            _ => false,
-        }
+        self.any_nested(&|ty| ty.is_bounded_array() && !ty.is_bounded_reject_ordered_set())
     }
 
     /// Whether this type, at ANY nesting level, contains the `{+ k => v}` NonEmptyMap shape (so the
     /// crate needs the `non_empty_map` runtime module + import). Recurses into container inners.
     pub fn contains_non_empty_map(&self) -> bool {
-        if self.is_non_empty_map() {
-            return true;
-        }
-        match &self.conceptual_type {
-            ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
-                inner.contains_non_empty_map()
-            }
-            ConceptualRustType::Map(k, v) => {
-                k.contains_non_empty_map() || v.contains_non_empty_map()
-            }
-            _ => false,
-        }
+        self.any_nested(&|ty| ty.is_non_empty_map())
     }
 
     /// Whether any nested position needs the unique-key BoundedMap runtime module.
     pub fn contains_bounded_map(&self) -> bool {
-        if self.is_bounded_map() && !self.is_bounded_pair_map() {
-            return true;
-        }
-        match &self.conceptual_type {
-            ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
-                inner.contains_bounded_map()
-            }
-            ConceptualRustType::Map(k, v) => k.contains_bounded_map() || v.contains_bounded_map(),
-            _ => false,
-        }
+        self.any_nested(&|ty| ty.is_bounded_map() && !ty.is_bounded_pair_map())
     }
 
     /// Whether any nested position needs the bounded duplicate-preserving pair-map carrier.
     pub fn contains_bounded_pair_map(&self) -> bool {
-        if self.is_bounded_pair_map() {
-            return true;
-        }
-        match &self.conceptual_type {
-            ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
-                inner.contains_bounded_pair_map()
-            }
-            ConceptualRustType::Map(k, v) => {
-                k.contains_bounded_pair_map() || v.contains_bounded_pair_map()
-            }
-            _ => false,
-        }
+        self.any_nested(&|ty| ty.is_bounded_pair_map())
     }
 
     /// Whether this type, at ANY nesting level, contains CDDL `any` (the `AnyCbor` runtime type), so
