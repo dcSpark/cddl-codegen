@@ -106,6 +106,16 @@ fn find_refs_type2<'a>(refs: &mut Vec<&'a Identifier<'a>>, type2: &'a Type2<'a>)
             ident,
             generic_args,
             ..
+        }
+        | Type2::Unwrap {
+            ident,
+            generic_args,
+            ..
+        }
+        | Type2::ChoiceFromGroup {
+            ident,
+            generic_args,
+            ..
         } => {
             refs.push(ident);
             find_refs_generic_args(refs, generic_args);
@@ -116,23 +126,7 @@ fn find_refs_type2<'a>(refs: &mut Vec<&'a Identifier<'a>>, type2: &'a Type2<'a>)
             .for_each(|tc| find_refs_type1(refs, &tc.type1)),
         Type2::Map { group, .. } => find_refs_group(refs, group),
         Type2::Array { group, .. } => find_refs_group(refs, group),
-        Type2::Unwrap {
-            ident,
-            generic_args,
-            ..
-        } => {
-            refs.push(ident);
-            find_refs_generic_args(refs, generic_args);
-        }
         Type2::ChoiceFromInlineGroup { group, .. } => find_refs_group(refs, group),
-        Type2::ChoiceFromGroup {
-            ident,
-            generic_args,
-            ..
-        } => {
-            refs.push(ident);
-            find_refs_generic_args(refs, generic_args);
-        }
         Type2::TaggedData { t, .. } => t
             .type_choices
             .iter()
