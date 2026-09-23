@@ -445,6 +445,18 @@ pub struct ScopeReferences {
     pub wasm_boundary_idents: BTreeSet<RustIdent>,
 }
 
+impl ScopeReferences {
+    /// Record that module `from` imports `ident` from module `to`.
+    fn add_import(&mut self, from: ModuleScope, to: ModuleScope, ident: RustIdent) {
+        self.imports
+            .entry(from)
+            .or_default()
+            .entry(to)
+            .or_default()
+            .insert(ident);
+    }
+}
+
 #[derive(Clone, Debug)]
 struct NominalMintClaim {
     identity: String,
@@ -1600,12 +1612,7 @@ impl<'a> IntermediateTypes<'a> {
             }
             let ref_scope = types.scope(rust_ident);
             if current_scope != ref_scope {
-                refs.imports
-                    .entry(current_scope.clone())
-                    .or_default()
-                    .entry(ref_scope.clone())
-                    .or_default()
-                    .insert(rust_ident.clone());
+                refs.add_import(current_scope.clone(), ref_scope.clone(), rust_ident.clone());
             }
         }
         // Register the import of a DEFERRED keys-list wrapper into `emit_scope` (the module a locally
@@ -1621,17 +1628,9 @@ impl<'a> IntermediateTypes<'a> {
             emit_scope: &ModuleScope,
             key: &RustType,
         ) {
-            let keys_ident = RustIdent::new(CDDLIdent::new(
-                key.loosened_for_wasm_table_boundary_key()
-                    .name_as_wasm_array(types),
-            ));
+            let keys_ident = key.wasm_table_keys_list_ident(types);
             if let Some(dep_scope) = deferred.get(&keys_ident) {
-                refs.imports
-                    .entry(emit_scope.to_owned())
-                    .or_default()
-                    .entry(dep_scope.clone())
-                    .or_default()
-                    .insert(keys_ident);
+                refs.add_import(emit_scope.to_owned(), dep_scope.clone(), keys_ident);
             }
         }
         // Register the import of a DEFERRED loose LIST wrapper that a locally-minted restricted
@@ -1666,12 +1665,7 @@ impl<'a> IntermediateTypes<'a> {
             let loose_ident = RustIdent::new(CDDLIdent::new(loose));
             if let Some(dep_scope) = deferred.get(&loose_ident) {
                 let emit_scope = types.scope(wrapper_ident).clone();
-                refs.imports
-                    .entry(emit_scope)
-                    .or_default()
-                    .entry(dep_scope.clone())
-                    .or_default()
-                    .insert(loose_ident);
+                refs.add_import(emit_scope, dep_scope.clone(), loose_ident);
             }
         }
         // The map twin of `register_deferred_restricted_list_source`: a locally-minted restricted
@@ -1701,12 +1695,7 @@ impl<'a> IntermediateTypes<'a> {
             }
             if let Some(dep_scope) = deferred.get(&loose_ident) {
                 let emit_scope = types.scope(wrapper_ident).clone();
-                refs.imports
-                    .entry(emit_scope)
-                    .or_default()
-                    .entry(dep_scope.clone())
-                    .or_default()
-                    .insert(loose_ident);
+                refs.add_import(emit_scope, dep_scope.clone(), loose_ident);
             }
         }
         // Register the import of a locally ROOT-minted keys-list wrapper into `emit_scope` (the
@@ -1735,21 +1724,13 @@ impl<'a> IntermediateTypes<'a> {
             if ConceptualRustType::Array(Box::new(key.clone())).directly_wasm_exposable_ct(types) {
                 return;
             }
-            let keys_ident = RustIdent::new(CDDLIdent::new(
-                key.loosened_for_wasm_table_boundary_key()
-                    .name_as_wasm_array(types),
-            ));
+            let keys_ident = key.wasm_table_keys_list_ident(types);
             // deferred keys-lists live in a dep's `collections` module — imported by the deferred
             // helper, not from root
             if deferred.contains_key(&keys_ident) {
                 return;
             }
-            refs.imports
-                .entry(emit_scope.to_owned())
-                .or_default()
-                .entry(ROOT_SCOPE.clone())
-                .or_default()
-                .insert(keys_ident);
+            refs.add_import(emit_scope.to_owned(), ROOT_SCOPE.clone(), keys_ident);
         }
         // The non-deferred analogue of `register_deferred_restricted_list_source`: a restricted list
         // wrapper (`NonEmpty*List`, a bounded/static carrier, a named restricted rule, or a dedup owner) emitted at `emit_scope`
@@ -1791,12 +1772,7 @@ impl<'a> IntermediateTypes<'a> {
             }
             let loose_scope = types.scope(&loose_ident).clone();
             if loose_scope != *emit_scope {
-                refs.imports
-                    .entry(emit_scope.to_owned())
-                    .or_default()
-                    .entry(loose_scope.clone())
-                    .or_default()
-                    .insert(loose_ident);
+                refs.add_import(emit_scope.to_owned(), loose_scope.clone(), loose_ident);
             }
             mark_refs(refs, types, wasm, sole_owners, deferred, &loose_scope, elem);
         }
@@ -1835,12 +1811,11 @@ impl<'a> IntermediateTypes<'a> {
                 .map(|owner| types.scope(owner).clone())
                 .unwrap_or_else(|| types.scope(&loose_ident).clone());
             if loose_scope != *emit_scope {
-                refs.imports
-                    .entry(emit_scope.to_owned())
-                    .or_default()
-                    .entry(loose_scope.clone())
-                    .or_default()
-                    .insert(loose_ident.clone());
+                refs.add_import(
+                    emit_scope.to_owned(),
+                    loose_scope.clone(),
+                    loose_ident.clone(),
+                );
             }
             mark_refs(refs, types, wasm, sole_owners, deferred, &loose_scope, key);
             mark_refs(
@@ -1878,12 +1853,7 @@ impl<'a> IntermediateTypes<'a> {
                         // empty for the rust pass and whenever the flag families are unused, so
                         // output is byte-identical without the flag.
                         if let Some(dep_scope) = deferred.get(rust_ident) {
-                            refs.imports
-                                .entry(current_scope.to_owned())
-                                .or_default()
-                                .entry(dep_scope.clone())
-                                .or_default()
-                                .insert(rust_ident.clone());
+                            refs.add_import(current_scope.to_owned(), dep_scope.clone(), rust_ident.clone());
                             return;
                         }
                         set_ref(refs, types, wasm, current_scope, rust_ident);
@@ -1956,42 +1926,26 @@ impl<'a> IntermediateTypes<'a> {
                             // no longer lives locally — import it from the dep's `collections` module
                             // from EVERY using scope (root included) and do NOT recurse (wrapper and
                             // element are both the dependency's).
-                            refs.imports
-                                .entry(current_scope.to_owned())
-                                .or_default()
-                                .entry(dep_scope.clone())
-                                .or_default()
-                                .insert(wrapper);
+                            refs.add_import(current_scope.to_owned(), dep_scope.clone(), wrapper);
                             return;
                         }
                         // Import the emitter-named wrapper into the using scope from its emission
                         // scope (a no-op when they coincide, e.g. an anonymous same-shape use inside
                         // the wrapper's own module).
                         if emit_scope != *current_scope {
-                            refs.imports
-                                .entry(current_scope.to_owned())
-                                .or_default()
-                                .entry(emit_scope.clone())
-                                .or_default()
-                                .insert(wrapper.clone());
+                            refs.add_import(current_scope.to_owned(), emit_scope.clone(), wrapper.clone());
                         }
                         // A RESTRICTED wrapper (`[+ …]`, bounded/static ordinary list, or `@duplicates reject`) borrows a LOOSE
                         // `<Elem>List` as its `try_from` source, named bare in its emission scope —
                         // import it there (deferred + non-deferred analogues).
-                        if ty.is_non_empty_array()
-                            || ty.is_type_enforced_exact_homogeneous_array()
-                            || ty.is_bounded_array()
-                            || ty.is_reject_ordered_set()
-                        {
+                        if ty.is_restricted_list_occurrence() {
                             register_deferred_restricted_list_source(
                                 refs,
                                 types,
                                 deferred,
                                 &wrapper,
                                 elem_ty,
-                                (ty.is_bounded_array()
-                                    || ty.is_type_enforced_exact_homogeneous_array())
-                                    && !ty.is_reject_ordered_set(),
+                                ty.restricted_list_always_needs_loose_source(),
                             );
                             register_root_restricted_list_source(
                                 refs,
@@ -2002,9 +1956,7 @@ impl<'a> IntermediateTypes<'a> {
                                 &emit_scope,
                                 &wrapper,
                                 elem_ty,
-                                (ty.is_bounded_array()
-                                    || ty.is_type_enforced_exact_homogeneous_array())
-                                    && !ty.is_reject_ordered_set(),
+                                ty.restricted_list_always_needs_loose_source(),
                             );
                         }
                         // The wrapper's emitted code names its ELEMENT type bare in its EMISSION
@@ -2058,21 +2010,11 @@ impl<'a> IntermediateTypes<'a> {
                             // `--extern-wrapper-index`: import it from the dep's `collections` module
                             // from every using scope (root included); wrapper, key, and value are all
                             // the dependency's, so don't recurse.
-                            refs.imports
-                                .entry(current_scope.to_owned())
-                                .or_default()
-                                .entry(dep_scope.clone())
-                                .or_default()
-                                .insert(wrapper);
+                            refs.add_import(current_scope.to_owned(), dep_scope.clone(), wrapper);
                             return;
                         }
                         if emit_scope != *current_scope {
-                            refs.imports
-                                .entry(current_scope.to_owned())
-                                .or_default()
-                                .entry(emit_scope.clone())
-                                .or_default()
-                                .insert(wrapper.clone());
+                            refs.add_import(current_scope.to_owned(), emit_scope.clone(), wrapper.clone());
                         }
                         // A restricted map wrapper enters via `try_from(&MapKToV)`, naming the loose
                         // structural table wrapper bare in its emission scope. `{+ …}` uses its
@@ -2577,12 +2519,7 @@ impl<'a> IntermediateTypes<'a> {
                 ) {
                     let base_scope = self.scope(&gi.generic_ident).clone();
                     if base_scope != *current_scope {
-                        refs.imports
-                            .entry(current_scope.clone())
-                            .or_default()
-                            .entry(base_scope)
-                            .or_default()
-                            .insert(base_ident);
+                        refs.add_import(current_scope.clone(), base_scope, base_ident);
                     }
                     for arg in gi.generic_args() {
                         mark_refs(
@@ -2600,12 +2537,7 @@ impl<'a> IntermediateTypes<'a> {
             }
             if wasm && let Some(target) = alias_info.resolved_wasm_alias_target(self) {
                 if let Some(dep_scope) = deferred.get(target) {
-                    refs.imports
-                        .entry(current_scope.clone())
-                        .or_default()
-                        .entry(dep_scope.clone())
-                        .or_default()
-                        .insert(target.clone());
+                    refs.add_import(current_scope.clone(), dep_scope.clone(), target.clone());
                 } else {
                     set_ref(&mut refs, self, wasm, current_scope, target);
                 }
@@ -2660,20 +2592,14 @@ impl<'a> IntermediateTypes<'a> {
                         // as its `try_from` source, named bare at the emission scope. Import it there —
                         // unless that loose source is itself a hosted requested wrapper (same scope, no
                         // import; `register_root_*` would misroute the structural name to root).
-                        if rt.is_non_empty_array()
-                            || rt.is_type_enforced_exact_homogeneous_array()
-                            || rt.is_bounded_array()
-                            || rt.is_reject_ordered_set()
-                        {
+                        if rt.is_restricted_list_occurrence() {
                             register_deferred_restricted_list_source(
                                 &mut refs,
                                 self,
                                 deferred,
                                 wid,
                                 elem,
-                                (rt.is_bounded_array()
-                                    || rt.is_type_enforced_exact_homogeneous_array())
-                                    && !rt.is_reject_ordered_set(),
+                                rt.restricted_list_always_needs_loose_source(),
                             );
                             let loose =
                                 RustIdent::new(CDDLIdent::new(elem.name_as_wasm_array(self)));
@@ -2687,9 +2613,7 @@ impl<'a> IntermediateTypes<'a> {
                                     req_scope,
                                     wid,
                                     elem,
-                                    (rt.is_bounded_array()
-                                        || rt.is_type_enforced_exact_homogeneous_array())
-                                        && !rt.is_reject_ordered_set(),
+                                    rt.restricted_list_always_needs_loose_source(),
                                 );
                             }
                         }
@@ -2706,10 +2630,7 @@ impl<'a> IntermediateTypes<'a> {
                         // unguarded: it is a no-op for a locally-hosted keys-list and MUST still run
                         // for a mid-chain host whose keys-list is deferred to a deeper dep.
                         register_deferred_keys_list(&mut refs, self, deferred, req_scope, key);
-                        let keys_ident = RustIdent::new(CDDLIdent::new(
-                            key.loosened_for_wasm_table_boundary_key()
-                                .name_as_wasm_array(self),
-                        ));
+                        let keys_ident = key.wasm_table_keys_list_ident(self);
                         if !requested_hosted.contains(&keys_ident) {
                             register_root_keys_list(
                                 &mut refs, self, wasm, deferred, req_scope, key,

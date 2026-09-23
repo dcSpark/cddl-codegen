@@ -1485,6 +1485,22 @@ impl RustType {
         self.exact_homogeneous_array_len_checked().is_some()
     }
 
+    /// A restricted list occurrence (`[+ …]`, bounded/static ordinary list, or `@duplicates
+    /// reject`), whose wasm wrapper borrows a loose `<Elem>List` as its `try_from` source.
+    pub fn is_restricted_list_occurrence(&self) -> bool {
+        self.is_non_empty_array()
+            || self.is_type_enforced_exact_homogeneous_array()
+            || self.is_bounded_array()
+            || self.is_reject_ordered_set()
+    }
+
+    /// Whether this restricted list's loose `try_from` source is needed even when its element is
+    /// itself non-empty: bounded and static ordinary lists, but not reject sets.
+    pub fn restricted_list_always_needs_loose_source(&self) -> bool {
+        (self.is_bounded_array() || self.is_type_enforced_exact_homogeneous_array())
+            && !self.is_reject_ordered_set()
+    }
+
     /// Whether this type, at ANY nesting level, contains the `[+ T]` NonEmptyVec shape (so the
     /// crate needs the `non_empty` runtime module + import). Recurses into container inners.
     pub fn contains_non_empty_array(&self) -> bool {
@@ -2074,6 +2090,15 @@ impl RustType {
             loose.config.duplicates = None;
         }
         loose
+    }
+
+    /// The wasm keys-list class a table keyed by `self` returns from `keys()`: the loose list of
+    /// the key projected by `loosened_for_wasm_table_boundary_key`.
+    pub fn wasm_table_keys_list_ident(&self, types: &IntermediateTypes) -> RustIdent {
+        RustIdent::new(CDDLIdent::new(
+            self.loosened_for_wasm_table_boundary_key()
+                .name_as_wasm_array(types),
+        ))
     }
 
     /// `self` is the ELEMENT type; this is the `Vec<element>` rust type. Bounds-aware over the
