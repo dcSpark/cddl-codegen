@@ -1018,20 +1018,13 @@ fn wasm_choice_roundtrip(
             continue;
         };
         // mint each arg
-        let mut mvs = Vec::new();
-        let mut ok = true;
-        for (ty, _) in &arg_fields {
-            match valid_value(types, ty) {
-                Some(m) => mvs.push(m),
-                None => {
-                    ok = false;
-                    break;
-                }
-            }
-        }
-        if !ok {
+        let Some(mvs) = arg_fields
+            .iter()
+            .map(|(ty, _)| valid_value(types, ty))
+            .collect::<Option<Vec<_>>>()
+        else {
             continue;
-        }
+        };
         let choice_mv = MintValue::Choice {
             ident: name.to_owned(),
             variant: var.clone(),
@@ -1314,20 +1307,15 @@ fn wasm_choice_bounds(
                 continue;
             }
             // valid baseline args for the whole variant (all wasm-mintable)
-            let mut baseline: Vec<String> = Vec::new();
-            let mut ok = true;
-            for (ty, _) in &arg_fields {
-                match valid_value(types, ty).and_then(|m| wasm_arg(types, &m, ty, scoped, cli)) {
-                    Some(a) => baseline.push(a),
-                    None => {
-                        ok = false;
-                        break;
-                    }
-                }
-            }
-            if !ok {
+            let Some(baseline) = arg_fields
+                .iter()
+                .map(|(ty, _)| {
+                    valid_value(types, ty).and_then(|m| wasm_arg(types, &m, ty, scoped, cli))
+                })
+                .collect::<Option<Vec<_>>>()
+            else {
                 continue;
-            }
+            };
             for (mv, label) in accepts {
                 let mut args = baseline.clone();
                 args[i] = emit_tests::render_rust(&mv);

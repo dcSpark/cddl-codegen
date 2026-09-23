@@ -1853,23 +1853,19 @@ fn choice_roundtrip(
             );
             continue;
         };
-        let mut args: Vec<MintValue> = Vec::new();
-        let mut ok = true;
-        for (ty, field) in &arg_fields {
-            match valid_value(types, ty) {
-                Some(v) => args.push(v),
-                None => {
-                    crate::warn!(
-                        "cddl-codegen --emit-tests: {name}::{ctor} arg {field} not cheaply mintable — no round-trip case"
-                    );
-                    ok = false;
-                    break;
-                }
+        let args = match arg_fields
+            .iter()
+            .map(|(ty, field)| valid_value(types, ty).ok_or(field))
+            .collect::<Result<Vec<_>, _>>()
+        {
+            Ok(args) => args,
+            Err(field) => {
+                crate::warn!(
+                    "cddl-codegen --emit-tests: {name}::{ctor} arg {field} not cheaply mintable — no round-trip case"
+                );
+                continue;
             }
-        }
-        if !ok {
-            continue;
-        }
+        };
         let args = args
             .iter()
             .zip(&arg_fields)
@@ -2039,19 +2035,7 @@ fn type_enforced_bounded_array_ctor_probes(
                 continue;
             };
             if accept {
-                let mut args = Vec::new();
-                let mut mintable = true;
-                for (i, ty) in arg_types.iter().enumerate() {
-                    if i == target {
-                        args.push("__bounded_arg".to_owned());
-                    } else if let Some(value) = valid_value(types, ty) {
-                        args.push(render_rust_for_constructor_arg(types, &value, ty));
-                    } else {
-                        mintable = false;
-                        break;
-                    }
-                }
-                if mintable {
+                if let Some(args) = render_args_with(types, arg_types, target, "__bounded_arg") {
                     let call = format!("{ctor}({})", args.join(", "));
                     let call = if ctor_can_fail {
                         format!("{call}.expect(\"{ctor} {label} must be accepted\")")
@@ -2073,6 +2057,29 @@ fn type_enforced_bounded_array_ctor_probes(
         }
     }
     blocks
+}
+
+/// Constructor arguments with `target_expr` at position `target` and a valid minted value rendered
+/// through its public constructor spelling everywhere else, or `None` when any other argument is
+/// not cheaply mintable.
+fn render_args_with(
+    types: &IntermediateTypes,
+    arg_types: &[&RustType],
+    target: usize,
+    target_expr: &str,
+) -> Option<Vec<String>> {
+    arg_types
+        .iter()
+        .enumerate()
+        .map(|(i, ty)| {
+            if i == target {
+                Some(target_expr.to_owned())
+            } else {
+                valid_value(types, ty)
+                    .map(|value| render_rust_for_constructor_arg(types, &value, ty))
+            }
+        })
+        .collect()
 }
 
 /// Boundary probes for constructor arguments whose exact-byte carrier is stored as `[u8; N]` but
@@ -2108,23 +2115,11 @@ fn exact_byte_array_ctor_probes(
             } else {
                 target_expr
             };
-            let mut args = Vec::new();
-            let mut mintable = true;
-            for (i, ty) in arg_types.iter().enumerate() {
-                if i == target {
-                    args.push(target_expr.clone());
-                } else if let Some(value) = valid_value(types, ty) {
-                    // Other arguments follow their public constructor spelling. In particular a
-                    // second exact-byte leaf stays loose, while a collection carrier is tight.
-                    args.push(render_rust_for_constructor_arg(types, &value, ty));
-                } else {
-                    mintable = false;
-                    break;
-                }
-            }
-            if !mintable {
+            // Other arguments follow their public constructor spelling. In particular a second
+            // exact-byte leaf stays loose, while a collection carrier is tight.
+            let Some(args) = render_args_with(types, arg_types, target, &target_expr) else {
                 continue;
-            }
+            };
             let call = format!("{ctor}({})", args.join(", "));
             if accept {
                 let call = if ctor_can_fail {
@@ -2360,23 +2355,8 @@ fn choice_construct_reject(
             }
             for (expr, accept, label) in cases {
                 // build the call: this arg = boundary/beyond value, valid for the rest
-                let mut call_args: Vec<String> = Vec::new();
-                let mut ok = true;
-                for (j, (ty, _)) in arg_fields.iter().enumerate() {
-                    let v = if j == i {
-                        Some(expr.clone())
-                    } else {
-                        valid_value(types, ty)
-                    };
-                    match v {
-                        Some(s) => call_args.push(render_rust_for_constructor_arg(types, &s, ty)),
-                        None => {
-                            ok = false;
-                            break;
-                        }
-                    }
-                }
-                if ok {
+                let target_expr = render_rust_for_constructor_arg(types, &expr, arg_ty);
+                if let Some(call_args) = render_args_with(types, &arg_types, i, &target_expr) {
                     let args = call_args.join(", ");
                     lines.push(if accept {
                         format!("    assert!({name}::{ctor}({args}).is_ok(), \"{name}::{ctor} {label} arg must be accepted\");")
