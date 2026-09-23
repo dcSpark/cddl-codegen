@@ -216,15 +216,7 @@ impl DeserializationCode {
     }
 
     pub(super) fn add_to_code(self, target: &mut Self) {
-        if self.read_len_used {
-            target.read_len_used = true;
-        }
-        if self.len_used {
-            target.len_used = true;
-        }
-        if self.throws {
-            target.throws = true;
-        }
+        self.merge_flags_into(target);
         target.content.push_all(self.content);
     }
 
@@ -251,16 +243,14 @@ impl DeserializationCode {
     }
 
     pub(super) fn mark_and_extract_content(self, target: &mut Self) -> BlocksOrLines {
-        if self.read_len_used {
-            target.read_len_used = true;
-        }
-        if self.len_used {
-            target.len_used = true;
-        }
-        if self.throws {
-            target.throws = true;
-        }
+        self.merge_flags_into(target);
         self.content
+    }
+
+    fn merge_flags_into(&self, target: &mut Self) {
+        target.read_len_used |= self.read_len_used;
+        target.len_used |= self.len_used;
+        target.throws |= self.throws;
     }
 }
 
@@ -767,19 +757,9 @@ impl GenerationScope {
         let mut deser_code = DeserializationCode::default();
         // joins all config.final_expr together (possibly) with the actual value into a tuple type (if multiple)
         // or otherwise the value just goes through on its own
-        let final_expr =
-            |mut encoding_exprs: Vec<String>, actual_value: Option<String>| -> String {
-                if let Some(e) = actual_value {
-                    // possibly less efficient but more concise
-                    encoding_exprs.insert(0, e);
-                }
-                if encoding_exprs.len() > 1 {
-                    format!("({})", encoding_exprs.join(", "))
-                } else {
-                    encoding_exprs.join(", ")
-                }
-            };
-        let convert_err_to_ours = CONVERT_ERR_TO_OURS;
+        let final_expr = |encoding_exprs: Vec<String>, actual_value: Option<String>| -> String {
+            tuple_str(actual_value.into_iter().chain(encoding_exprs).collect())
+        };
         // Gives a total final expression including the before_after context
         // as well as dealing with avoiding clippy warning which is why we can
         // be conditionally a direct value (if there are encoding vars thus a tuple)
@@ -1153,7 +1133,7 @@ impl GenerationScope {
                         deser_code.throws = true;
                     }
                     let error_convert = if before_after.expects_result {
-                        convert_err_to_ours
+                        CONVERT_ERR_TO_OURS
                     } else {
                         ""
                     };
@@ -1244,7 +1224,7 @@ impl GenerationScope {
                                     Some(bounds) => format!(
                                         "{}.and_then(|({}, enc)| {} else {{ Ok({}) }})",
                                         if error_convert.is_empty() && width_fn.is_empty() {
-                                            convert_err_to_ours
+                                            CONVERT_ERR_TO_OURS
                                         } else {
                                             ""
                                         },
@@ -1371,7 +1351,7 @@ impl GenerationScope {
                                         // always convert error to have consistent E for the and_then
                                         Some(if_block) => Cow::Owned(format!(
                                             "{}.and_then(|(x, enc)| {} else {{ Ok((x, enc)) }})",
-                                            convert_err_to_ours, if_block,
+                                            CONVERT_ERR_TO_OURS, if_block,
                                         )),
                                         None => Cow::Borrowed(""),
                                     }
@@ -1432,7 +1412,7 @@ impl GenerationScope {
                                         // always convert error to have consistent E for the and_then
                                         Some(if_block) => Cow::Owned(format!(
                                             "{}.and_then(|{}| {} else {{ Ok({}) }})",
-                                            convert_err_to_ours, x, if_block, x,
+                                            CONVERT_ERR_TO_OURS, x, if_block, x,
                                         )),
                                         None => Cow::Borrowed(""),
                                     }
@@ -1458,7 +1438,7 @@ impl GenerationScope {
                                     let bounds_fn = match &type_cfg.bounds {
                                         Some(bounds) => Cow::Owned(format!(
                                             "{}.and_then(|(x, _enc)| {} else {{ Ok((x, _enc)) }})",
-                                            convert_err_to_ours,
+                                            CONVERT_ERR_TO_OURS,
                                             bounds_check_if_block(
                                                 bounds,
                                                 &bounds_check_expr(*p, "x"),
@@ -1536,7 +1516,7 @@ impl GenerationScope {
                                     Some(bounds) => Cow::Owned(format!(
                                         "{}.and_then(|(x, _enc)| {} else {{ Ok((x + 1).unsigned_abs() as u64) }})",
                                         if error_convert.is_empty() {
-                                            convert_err_to_ours
+                                            CONVERT_ERR_TO_OURS
                                         } else {
                                             ""
                                         },
@@ -1636,7 +1616,7 @@ impl GenerationScope {
                                     Some(window) => format!(
                                         "{}.and_then(|(x, enc)| {{ let x = {value_expr}; {} else {{ Ok({}) }} }})",
                                         if error_convert.is_empty() && unconstrained {
-                                            convert_err_to_ours
+                                            CONVERT_ERR_TO_OURS
                                         } else {
                                             ""
                                         },
@@ -1891,7 +1871,7 @@ impl GenerationScope {
                                         "{}{}.bytes_sz(){}.and_then(|(bytes, enc)| {}){}",
                                         before_after.before_str(true),
                                         deserializer_name,
-                                        convert_err_to_ours,
+                                        CONVERT_ERR_TO_OURS,
                                         from_raw_bytes_with_conversions,
                                         before_after.after_str(true)
                                     ));
@@ -1904,7 +1884,7 @@ impl GenerationScope {
                                         "{}{}.bytes(){}.and_then(|bytes| {}){}",
                                         before_after.before_str(true),
                                         deserializer_name,
-                                        convert_err_to_ours,
+                                        CONVERT_ERR_TO_OURS,
                                         from_raw_bytes_with_conversions,
                                         before_after.after_str(true)
                                     ));
