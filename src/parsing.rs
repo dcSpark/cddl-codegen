@@ -1321,11 +1321,9 @@ fn reject_type_choice_arm_variant_name_collision(
     types.record_rejection(message);
 }
 
-/// Settle a generator-derived type-choice variant against the complete emitted namespace.
-///
-/// Explicit names are pre-reserved before the arm walk, so this must search for the first free
-/// numeric suffix rather than assume `Base2` remains available: an author may explicitly own it.
-/// The same globally-used set also preserves ordinary derived-only suffixing.
+/// The namespace key a type choice's variant names are reserved and settled under: the owning rule
+/// when there is one, otherwise the inline choice itself. `create_variants_from_type_choices`
+/// passes it to both the explicit-name pre-reservation and `settle_derived_variant_mint`.
 fn choice_variant_context(owner: Option<&RustIdent>, type_choices: &[TypeChoice]) -> String {
     match owner {
         Some(owner) => format!("type choice for rule {owner}"),
@@ -2339,9 +2337,9 @@ fn parse_type_choices(
         // `.name` and `.comment` from each choice. So on any other arm the directive generates
         // exit-0 output identical to omitting it — the silent-drop class, and the worst instance of
         // it, because the arms of a type choice are a thing people reorder. Reject instead, naming
-        // the directive and the remedy. Deliberately NOT applied to the `T / null` optional-inner
-        // branch above: that branch's metadata slot is the INNER arm's comment, which for
-        // `foo = uint ; @x / null` is the non-last one, so the same rule would be wrong there.
+        // the directive and the remedy. The `T / null` branch above reads the same rule slot
+        // (`rule_position_metadata`) and runs its own non-last-arm check, which also refuses
+        // `@name` and `@doc` because a collapse has no variants.
         for choice in &type_choices[..type_choices.len() - 1] {
             let arm_metadata = merge_metadata(
                 &RuleMetadata::from(choice.type1.comments_after_type.as_ref()),
@@ -5155,8 +5153,6 @@ fn flatten_group_entries<'a>(
     out
 }
 
-/// Parses which type of group it is for various common special cases to handle
-///
 /// How a rejection message names the composite it complains about: the enclosing rule by its
 /// SOURCE spelling when there is one (the user is looking at their CDDL, not our camel-cased
 /// output), and `anonymous` for a nested composite that has no rule of its own.
@@ -5445,6 +5441,8 @@ fn record_plain_group_map_member_rejection(
     ));
 }
 
+/// Parses which type of group it is for various common special cases to handle.
+///
 /// `rule_name` is the enclosing rule when there is one (the named-rule path through
 /// `parse_group_choice`); `None` for anonymous nested composites (`rust_type_from_type2`'s
 /// `Type2::Array` / `Type2::Map` arms), where rejection messages describe the entry instead of
@@ -6567,17 +6565,6 @@ fn exact_homogeneous_array_length_rejection(length: i128) -> String {
     )
 }
 
-/// Resolve a type/group name that may carry generic arguments into a `RustType`.
-///
-/// With `generic_args == None` this is exactly `types.new_type(&cddl_ident, cli)`, so callers that
-/// previously did that directly stay byte-identical. With generic args present it registers an
-/// anonymous generic instance under the synthesized name `<name>_<arg-variants>` (e.g. a
-/// `pair<uint, tstr>` element becomes the `PairU64Text` instance) and resolves *that* instance — otherwise the
-/// args are silently dropped and the emitted code references the bare, never-emitted generic base.
-///
-/// Shared by every member/element position that can carry a generic instantiation
-/// (`rust_type_from_type2`'s `Type2::Typename` arm and `parse_group_type`'s single-entry
-/// `TypeGroupname` array arm) so the two paths cannot drift.
 /// The INSTANTIATION-derived canonical CDDL ident of a generic invocation:
 /// `<def-name>_<args' canonical identity names>` (`set` + `[key_hash]` → `set_KeyHash`, camel-cased
 /// to `SetKeyHash` by `RustIdent::new`). The argument fragments preserve that historic spelling for
@@ -6599,6 +6586,17 @@ pub(crate) fn generic_instance_canonical_cddl_ident(
     CDDLIdent::new(format!("{cddl_ident}_{args_name}"))
 }
 
+/// Resolve a type/group name that may carry generic arguments into a `RustType`.
+///
+/// With `generic_args == None` this is exactly `types.new_type(&cddl_ident, cli)`, so callers that
+/// previously did that directly stay byte-identical. With generic args present it registers an
+/// anonymous generic instance under the synthesized name `<name>_<arg-variants>` (e.g. a
+/// `pair<uint, tstr>` element becomes the `PairU64Text` instance) and resolves *that* instance — otherwise the
+/// args are silently dropped and the emitted code references the bare, never-emitted generic base.
+///
+/// Shared by every member/element position that can carry a generic instantiation
+/// (`rust_type_from_type2`'s `Type2::Typename` arm and `parse_group_type`'s single-entry
+/// `TypeGroupname` array arm) so the two paths cannot drift.
 fn generic_instance_or_new_type(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
@@ -7787,8 +7785,8 @@ fn parse_record_from_group_choice(
             }
             // For a map record, classify the member key BEFORE field naming: only uint/text fixed
             // keys are implemented (the map-key write path and, under --preserve-encodings,
-            // `key_encoding_field`), and `group_entry_to_field_name` PANICS at parsing.rs:1278 on
-            // non-uint Type1 (arrow) member keys — so an unsupported key must be rejected here,
+            // `key_encoding_field`), and `group_entry_to_field_name` PANICS on a Type1 (arrow)
+            // member key other than uint/text — so an unsupported key must be rejected here,
             // before naming runs. `group_entry_map_key_kind` never panics.
             let map_key = if rep == Representation::Map {
                 match group_entry_map_key_kind(group_entry) {
@@ -9714,12 +9712,10 @@ fn parse_group_choice(
             // LIVE — the policy rides the transparent alias built in `register_rust_struct`,
             // swapping the member to the `PairMap`/`NonEmptyPairMap` vec-of-pairs twin. That is the
             // RULE slot's reading; the row slot's is rejected above.
-            // Same registration gap as the array arm above: a plain group used as a table key or
-            // value (`pair = (int, tstr)`, `a = { * int => pair }`) must be registered as a concrete
-            // Array-rep rust struct — a CBOR map value can only be one item, so the group is encoded
-            // as a nested array, exactly the interpretation the table alias (`BTreeMap<Int, Pair>`)
-            // already commits to. Without this the ident stays an unregistered plain group and
-            // `is_enum` trips its "must be a struct or a generic instance" assert at generation time.
+            // A plain group used as a table key or value (`pair = (int, tstr)`, `a = { * int =>
+            // pair }`) is refused by `parse_group_type` (`record_plain_group_table_domain_rejection`):
+            // a map slot holds one CBOR item. That rejection is drained at `finalize`, so this
+            // Array-rep registration of such a group never reaches generation.
             for member in [&key_type, &value_type] {
                 if member.generic_param_binding.is_none()
                     && let ConceptualRustType::Rust(member_ident) = &member.conceptual_type

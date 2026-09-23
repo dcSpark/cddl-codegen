@@ -11255,8 +11255,8 @@ fn type_scoped_directives_reject_at_every_member_position() {
 /// Fixed member keys on a struct-map record support only uint and text: the map-key write path and
 /// (under `--preserve-encodings`) `key_encoding_field` implement nothing else, so a nint/float key
 /// (`neg = { -1: uint }`) panicked generation. Reject it gracefully at parsing instead. Because
-/// `group_entry_to_field_name` itself panics at parsing.rs:1278 on non-uint Type1 (arrow) member
-/// keys, the key must be classified BEFORE field naming — which also converts the arrow-multi and
+/// `group_entry_to_field_name` itself panics on a Type1 (arrow) member key other than uint/text,
+/// the key must be classified BEFORE field naming — which also converts the arrow-multi and
 /// non-fixed-mixed field-naming panics into graceful rejections. Pins the messages, the two arrow
 /// spellings, the preserve-encodings profile (which formerly panicked at a DIFFERENT site), and the
 /// uint/text/table boundaries that must keep generating. The group-choice arm keeps its own message.
@@ -11324,8 +11324,8 @@ fn unsupported_fixed_map_key_on_record_rejects_gracefully() {
         }
     }
 
-    // Arrow spellings that used to panic at field naming (parsing.rs:1278) BEFORE the key match
-    // could run — classifying before naming converts them to graceful rejections.
+    // Arrow spellings that used to panic at field naming (`group_entry_to_field_name`) BEFORE the
+    // key match could run — classifying before naming converts them to graceful rejections.
     let arrow_kind = run("m = { -1 => uint, 1: uint }\n", "arrow_nint").expect_err(
         "a nint arrow key mixed into a record map used to panic at field naming; must reject",
     );
@@ -11398,7 +11398,7 @@ fn fixed_key_arrow_single_entry_routes_to_record_path() {
 
     // Byte-exact convergence: the arrow spelling of a literal key produces the identical crate as the
     // colon spelling (single-entry, quoted-text, optional, and the multi-field mixed form — the
-    // multi-field arrow was a parsing.rs:1278 field-naming panic before the Type1 TextValue case).
+    // multi-field arrow was a `group_entry_to_field_name` panic before the Type1 TextValue case).
     assert_eq!(
         gen_out("m = { 1 => uint }\n", "u_arrow"),
         gen_out("m = { 1: uint }\n", "u_colon"),
