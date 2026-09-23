@@ -1217,15 +1217,10 @@ impl GenerationScope {
         wrapper.push(self, types);
     }
 
-    /// Emit the RESTRICTED table wrapper for a `{+ k => v}` map — the wasm twin of the loose table
-    /// wrapper (`codegen_table_type`), but wrapping `core::NonEmptyMap<K, V>` instead of the raw map.
-    /// Created via `try_from(&MapKToV)` (borrow + clone, so the source loose wrapper stays valid) or
-    /// `new(first_key, first_value)`; `insert` stays infallible (an insert can't break a `>= 1`
-    /// bound); removal is checked in the core type. `wrapper_ident` is the JS class name — the
-    /// synthesized `NonEmptyMapKToV` for inline maps, or the rule ident for a named `{+ …}`. The
-    /// `insert`/`get`/`has`/`keys` accessors are minted by the shared `push_table_accessors` (also
-    /// used by `codegen_table_type`), delegating to `self.0`, whose `NonEmptyMap` method surface
-    /// matches the raw map's `len`/`insert`/`get`/`keys`.
+    /// Emit the wasm wrapper for an occurrence-bounded table (`{n*m k => v}`), wrapping
+    /// `core::BoundedMap<K, V, MIN, MAX>` (`BoundedPairMap` under `@duplicates preserve`). It is
+    /// built via `try_from` on the loose builder, or `new()` when the minimum is zero; `insert` is
+    /// checked against the maximum.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn generate_bounded_map_type(
         &mut self,
@@ -1430,6 +1425,15 @@ impl GenerationScope {
         wrapper.push(self, types);
     }
 
+    /// Emit the RESTRICTED table wrapper for a `{+ k => v}` map — the wasm twin of the loose table
+    /// wrapper (`codegen_table_type`), but wrapping `core::NonEmptyMap<K, V>` instead of the raw map.
+    /// Created via `try_from(&MapKToV)` (borrow + clone, so the source loose wrapper stays valid) or
+    /// `new(first_key, first_value)`; `insert` stays infallible (an insert can't break a `>= 1`
+    /// bound); removal is checked in the core type. `wrapper_ident` is the JS class name — the
+    /// synthesized `NonEmptyMapKToV` for inline maps, or the rule ident for a named `{+ …}`. The
+    /// `insert`/`get`/`has`/`keys` accessors are minted by the shared `push_table_accessors` (also
+    /// used by `codegen_table_type`), delegating to `self.0`, whose `NonEmptyMap` method surface
+    /// matches the raw map's `len`/`insert`/`get`/`keys`.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn generate_non_empty_map_type(
         &mut self,
@@ -1527,15 +1531,9 @@ impl GenerationScope {
             preserve_pair_map,
             types,
         );
-        let self_named = loose_ident.to_string() == wrapper_ident.to_string();
+        let self_named = loose_ident == *wrapper_ident;
 
         let mut wrapper = create_base_wasm_struct(self, wrapper_ident, false, cli);
-        let map_wasm = RustType::wasm_structural_map_name_for(
-            &key_type,
-            &value_type,
-            preserve_pair_map,
-            types,
-        );
         let entry_doc = if self_named {
             "The rule name coincides with the loose builder name, so no `try_from` source class \
              exists — build incrementally from the first entry (`new(first_key, first_value)` + \
@@ -1553,7 +1551,7 @@ impl GenerationScope {
             "enforced by the `NonEmptyMap` representation"
         };
         wrapper.s.doc(format!(
-            "{attr_prefix}`{{+ k => v}}` (`{map_wasm}`): at least one entry, {repr_doc}.\n{entry_doc}\n\
+            "{attr_prefix}`{{+ k => v}}` (`{loose_ident}`): at least one entry, {repr_doc}.\n{entry_doc}\n\
              `insert` can never violate the bound; removal is checked in the core type."
         ));
         wrapper.push_inner_field(&inner_type);
