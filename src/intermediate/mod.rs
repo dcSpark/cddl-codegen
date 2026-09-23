@@ -636,6 +636,28 @@ impl<'a> IntermediateTypes<'a> {
         self.auto_newtype_rules.contains(ident)
     }
 
+    /// Whether `pred` holds for any `RustType` position `visit_all_rust_types` reaches. Every
+    /// position is visited; this is the shared fold behind the `uses_*` runtime-usage gates.
+    fn any_rust_type(&self, pred: impl Fn(&RustType) -> bool) -> bool {
+        let mut found = false;
+        self.visit_all_rust_types(&mut |rt| found |= pred(rt));
+        found
+    }
+
+    /// Whether `pred` holds for any registered Rust struct.
+    fn any_struct(&self, pred: impl FnMut(&RustStruct) -> bool) -> bool {
+        self.rust_structs.values().any(pred)
+    }
+
+    /// Whether `pred` holds for any record's dynamic (typed or rest) row. Rows store their inner
+    /// types flat, so the gates that must see a row's container recover it here.
+    fn any_dynamic_row(&self, pred: impl Fn(&RestRow) -> bool) -> bool {
+        self.any_struct(|rs| {
+            matches!(rs.variant(), RustStructType::Record(record)
+                if record.dynamic_rows().any(&pred))
+        })
+    }
+
     /// Whether ANY generated type uses CDDL `any` (the `AnyCbor` runtime type), so `export`/import
     /// wiring pulls in the `any_cbor` runtime module + `AnyCbor` import only for crates that need it
     /// (keeping every non-`any` crate's output byte-identical — the usage-gating invariant). Folds
@@ -643,9 +665,7 @@ impl<'a> IntermediateTypes<'a> {
     /// uses (reaches type-alias base types, record fields, table domain AND range, wrapper inners,
     /// array elements, tagged inners, and enum variants).
     pub fn uses_any_cbor(&self) -> bool {
-        let mut found = false;
-        self.visit_all_rust_types(&mut |rt| found |= rt.contains_any_cbor());
-        found
+        self.any_rust_type(RustType::contains_any_cbor)
     }
 
     /// Whether ANY generated type uses the `[+ T]` NonEmptyVec shape, so `export`/import wiring can
@@ -667,10 +687,8 @@ impl<'a> IntermediateTypes<'a> {
     /// but that redundancy is unproven across all IR shapes, and dropping a cheap belt-and-suspenders
     /// guard on an unverified premise is how a latent regression ships — so it stays.
     pub fn uses_non_empty_vec(&self) -> bool {
-        let mut found = false;
-        self.visit_all_rust_types(&mut |rt| found |= rt.contains_non_empty_array());
-        found
-            || self.rust_structs.values().any(|rs| {
+        self.any_rust_type(RustType::contains_non_empty_array)
+            || self.any_struct(|rs| {
                 matches!(
                     rs.variant(),
                     RustStructType::Array { bounds, .. } if *bounds == Some((Some(1), None))
@@ -679,19 +697,14 @@ impl<'a> IntermediateTypes<'a> {
             // A one-or-more open-array tail stores its inner type flat in `RestRow`; its composite
             // `NonEmptyVec<T>` is recovered by `RestRow::container_type`, so the generic type walk
             // deliberately does not see it. Keep runtime provisioning tied to that real container.
-            || self.rust_structs.values().any(|rs| {
-                matches!(rs.variant(), RustStructType::Record(record)
-                    if record.dynamic_rows().any(|row| row.is_non_empty_array_tail()))
-            })
+            || self.any_dynamic_row(RestRow::is_non_empty_array_tail)
     }
 
     /// Whether any generated type uses a bounded homogeneous ARRAY occurrence. This mirrors the
     /// non-empty runtime gate and deliberately walks every IR position, including nested aliases.
     pub fn uses_bounded_vec(&self) -> bool {
-        let mut found = false;
-        self.visit_all_rust_types(&mut |rt| found |= rt.contains_bounded_array());
-        found
-            || self.rust_structs.values().any(|rs| {
+        self.any_rust_type(RustType::contains_bounded_array)
+            || self.any_struct(|rs| {
                 matches!(
                     rs.variant(),
                     RustStructType::Array { bounds: Some(bounds), .. }
@@ -705,14 +718,11 @@ impl<'a> IntermediateTypes<'a> {
             // An open-array rest tail stores its element flat in RestRow, so the generic type walk
             // does not see the reconstructed BoundedVec container. Provision the runtime from the
             // same row-local occurrence that `RestRow::container_type` uses for emitted members.
-            || self.rust_structs.values().any(|rs| {
-                matches!(rs.variant(), RustStructType::Record(record)
-                    if record.dynamic_rows().any(|row| {
-                        row.is_array_tail()
-                            && row.is_restricted()
-                            && !row.is_non_empty_array_tail()
-                            && !row.container_type().is_type_enforced_exact_homogeneous_array()
-                    }))
+            || self.any_dynamic_row(|row| {
+                row.is_array_tail()
+                    && row.is_restricted()
+                    && !row.is_non_empty_array_tail()
+                    && !row.container_type().is_type_enforced_exact_homogeneous_array()
             })
     }
 
@@ -720,21 +730,18 @@ impl<'a> IntermediateTypes<'a> {
     /// These arrays need the generic serde/schemars adapter on dependency pins that only implement
     /// trait derives through length 32; exact bytes and reject sets are intentionally excluded.
     pub fn uses_static_exact_array(&self) -> bool {
-        let mut found = false;
-        self.visit_all_rust_types(&mut |rt| found |= rt.is_type_enforced_exact_homogeneous_array());
-        found
-            || self.rust_structs.values().any(|rs| {
+        self.any_rust_type(RustType::is_type_enforced_exact_homogeneous_array)
+            || self.any_struct(|rs| {
                 matches!(rs.variant(), RustStructType::Array { bounds: Some(bounds), .. }
                     if exact_array_len_from_bounds(Some(*bounds)).is_some()
                         && rs.config().duplicates
                             != Some(crate::comment_ast::DuplicatesPolicy::Reject))
             })
-            || self.rust_structs.values().any(|rs| {
-                matches!(rs.variant(), RustStructType::Record(record)
-                if record.dynamic_rows().any(|row| {
-                    row.is_array_tail()
-                        && row.container_type().is_type_enforced_exact_homogeneous_array()
-                }))
+            || self.any_dynamic_row(|row| {
+                row.is_array_tail()
+                    && row
+                        .container_type()
+                        .is_type_enforced_exact_homogeneous_array()
             })
     }
 
@@ -755,10 +762,8 @@ impl<'a> IntermediateTypes<'a> {
     /// visitor walks. The transparent alias every such rule also registers covers it today, but that
     /// redundancy is unproven across all IR shapes, so the cheap guard stays.
     pub fn uses_non_empty_map(&self) -> bool {
-        let mut found = false;
-        self.visit_all_rust_types(&mut |rt| found |= rt.contains_non_empty_map());
-        found
-            || self.rust_structs.values().any(|rs| {
+        self.any_rust_type(RustType::contains_non_empty_map)
+            || self.any_struct(|rs| {
                 matches!(
                     rs.variant(),
                     RustStructType::Table { bounds, .. } if *bounds == Some((Some(1), None))
@@ -768,23 +773,17 @@ impl<'a> IntermediateTypes<'a> {
             // `NonEmptyMap<K, V>` is recovered by `RestRow::container_type`, so the generic walk
             // deliberately cannot see it. Preserve rows are provisioned by `uses_pair_map` instead
             // (they use `NonEmptyPairMap`, never this runtime/import).
-            || self.rust_structs.values().any(|rs| {
-                matches!(rs.variant(), RustStructType::Record(record)
-                    if record.dynamic_rows().any(|row| {
-                        row.is_non_empty()
-                            && !row.is_array_tail()
-                            && row.duplicates()
-                                != Some(crate::comment_ast::DuplicatesPolicy::Preserve)
-                    }))
+            || self.any_dynamic_row(|row| {
+                row.is_non_empty()
+                    && !row.is_array_tail()
+                    && row.duplicates() != Some(crate::comment_ast::DuplicatesPolicy::Preserve)
             })
     }
 
     /// Whether any owned type needs the finite/exact BoundedMap runtime.
     pub fn uses_bounded_map(&self) -> bool {
-        let mut found = false;
-        self.visit_all_rust_types(&mut |rt| found |= rt.contains_bounded_map());
-        found
-            || self.rust_structs.values().any(|rs| matches!(
+        self.any_rust_type(RustType::contains_bounded_map)
+            || self.any_struct(|rs| matches!(
                 rs.variant(),
                 RustStructType::Table { bounds: Some(bounds), .. }
                     if *bounds != (None, None) && *bounds != (Some(1), None)
@@ -793,12 +792,11 @@ impl<'a> IntermediateTypes<'a> {
             // Dynamic map rows store their K/V types flat, so the generic walker intentionally
             // cannot see the BoundedMap composite. Recover it through the row's single carrier
             // source, mirroring the non-empty runtime gate above.
-            || self.rust_structs.values().any(|rs| matches!(rs.variant(), RustStructType::Record(record)
-                if record.dynamic_rows().any(|row| {
-                    !row.is_array_tail()
-                        && row.container_type().is_bounded_map()
-                        && row.duplicates() != Some(crate::comment_ast::DuplicatesPolicy::Preserve)
-                })))
+            || self.any_dynamic_row(|row| {
+                !row.is_array_tail()
+                    && row.container_type().is_bounded_map()
+                    && row.duplicates() != Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+            })
     }
 
     /// Whether ANY generated type uses the `@duplicates reject` `OrderedSet`/`NonEmptyOrderedSet`
@@ -810,10 +808,8 @@ impl<'a> IntermediateTypes<'a> {
     /// alias-base walk covers it today, but the cheap guard stays for the same unproven-across-shapes
     /// reason as the non-empty twins.
     pub fn uses_ordered_set(&self) -> bool {
-        let mut found = false;
-        self.visit_all_rust_types(&mut |rt| found |= rt.contains_ordered_set());
-        found
-            || self.rust_structs.values().any(|rs| {
+        self.any_rust_type(RustType::contains_ordered_set)
+            || self.any_struct(|rs| {
                 matches!(rs.variant(), RustStructType::Array { .. })
                     && rs.config().duplicates == Some(crate::comment_ast::DuplicatesPolicy::Reject)
             })
@@ -825,12 +821,8 @@ impl<'a> IntermediateTypes<'a> {
     /// `visit_all_rust_types` plus the belt-and-suspenders on the struct config (a preserve-mode
     /// `Table` rule's policy lives on the STRUCT config and its registered alias).
     pub fn uses_pair_map(&self) -> bool {
-        let mut found = false;
-        self.visit_all_rust_types(&mut |rt| {
-            found |= rt.contains_pair_map() || rt.contains_bounded_pair_map()
-        });
-        found
-            || self.rust_structs.values().any(|rs| {
+        self.any_rust_type(|rt| rt.contains_pair_map() || rt.contains_bounded_pair_map())
+            || self.any_struct(|rs| {
                 matches!(rs.variant(), RustStructType::Table { .. })
                     && rs.config().duplicates
                         == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
@@ -838,28 +830,17 @@ impl<'a> IntermediateTypes<'a> {
             // An open struct-map rest row with `@duplicates preserve` lowers to the `PairMap` twin
             // (its `Map` type carries the policy only at emit time — `rest.domain`/`range` visited
             // above are the K/V, not the Map — so check the rest row's policy directly here).
-            || self.rust_structs.values().any(|rs| {
-                matches!(
-                    rs.variant(),
-                    RustStructType::Record(record)
-                        if record.dynamic_rows().any(|r| {
-                            r.duplicates() == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
-                        })
-                )
+            || self.any_dynamic_row(|row| {
+                row.duplicates() == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
             })
     }
 
     /// Whether a generated type needs the bounded preserve-table carrier. Kept distinct from
     /// `uses_pair_map` so loose preserve tables do not receive an unused `BoundedPairMap` import.
     pub fn uses_bounded_pair_map(&self) -> bool {
-        let mut found = false;
-        self.visit_all_rust_types(&mut |rt| found |= rt.contains_bounded_pair_map());
-        found
-            || self.rust_structs.values().any(|rs| {
-                matches!(rs.variant(), RustStructType::Record(record)
-                if record.dynamic_rows().any(|row| {
-                    !row.is_array_tail() && row.container_type().is_bounded_pair_map()
-                }))
+        self.any_rust_type(RustType::contains_bounded_pair_map)
+            || self.any_dynamic_row(|row| {
+                !row.is_array_tail() && row.container_type().is_bounded_pair_map()
             })
     }
 
@@ -871,7 +852,7 @@ impl<'a> IntermediateTypes<'a> {
     /// (tolerate-and-drop) row emits no captured field, so its JSON is a closed struct's — it needs
     /// none of the flatten machinery and does not count here.
     pub fn uses_open_struct_rest(&self) -> bool {
-        self.rust_structs.values().any(
+        self.any_struct(
             |rs| matches!(rs.variant(), RustStructType::Record(record) if record.captured_dynamic_rows().next().is_some()),
         )
     }
@@ -884,7 +865,7 @@ impl<'a> IntermediateTypes<'a> {
     /// of it rather than a module of their own: a new static module would oblige every
     /// `--export-static-crate` consumer to hand-add a `pub mod` line for a shape they may not use.
     pub fn uses_open_table(&self) -> bool {
-        self.rust_structs.values().any(
+        self.any_struct(
             |rs| matches!(rs.variant(), RustStructType::Record(record) if record.is_open_table()),
         )
     }
@@ -906,7 +887,7 @@ impl<'a> IntermediateTypes<'a> {
     /// `.default` is not `Option`-wrapped at all, so it is excluded here exactly as it is at the
     /// emission site.
     pub fn uses_double_option(&self) -> bool {
-        self.rust_structs.values().any(|rs| {
+        self.any_struct(|rs| {
             matches!(rs.variant(), RustStructType::Record(record)
                 if record.fields.iter().any(RustField::is_double_option))
         })
