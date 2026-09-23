@@ -49,9 +49,9 @@ use crate::cli::Cli;
 use crate::comment_ast::RuleMetadata;
 use crate::intermediate::{
     AliasIdent, CBOREncodingOperation, ConceptualRustType, EnumVariant, EnumVariantData,
-    FixedValue, FloatWindow, IntermediateTypes, Primitive, ROOT_SCOPE, Representation, RustField,
-    RustIdent, RustRecord, RustStruct, RustStructConfig, RustStructType, RustType,
-    RustTypeSerializeConfig,
+    FixedValue, FloatWindow, IntermediateTypes, Primitive, RESERVED_INT_IDENT, ROOT_SCOPE,
+    Representation, RustField, RustIdent, RustRecord, RustStruct, RustStructConfig, RustStructType,
+    RustType, RustTypeSerializeConfig,
 };
 
 /// A rendering failure. Both variants name the rule; `Unrenderable` also names the offending shape.
@@ -429,7 +429,7 @@ fn render_rust_ref(rule: &str, ident: &RustIdent, types: &IntermediateTypes) -> 
     if let Some(source) = types.source_rule_name(ident) {
         return Ok(source.to_string());
     }
-    if ident.to_string() == "Int" {
+    if ident.as_ref() == RESERVED_INT_IDENT {
         return Ok("int".to_string());
     }
     if let Some(prelude) = types.prelude_cddl_name(ident) {

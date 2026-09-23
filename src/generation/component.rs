@@ -45,15 +45,11 @@ use super::wit::{
 use crate::cli::Cli;
 use crate::component_wit_deps::DepWitPackages;
 use crate::intermediate::{
-    ConceptualRustType, EnumVariant, IntermediateTypes, ModuleScope, Representation, RustIdent,
-    RustStructType, RustType,
+    ConceptualRustType, EnumVariant, IntermediateTypes, ModuleScope, RESERVED_INT_IDENT,
+    Representation, RustIdent, RustStructType, RustType,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
-
-/// The reserved prelude extern carrying the full CBOR integer range. Spelled the way the other
-/// sites that special-case it are (see [`super::wit`]'s own const) so one grep finds them all.
-const INT_EXTERN_IDENT: &str = "Int";
 
 /// Rust keywords `wit_bindgen` escapes with a trailing `_` when it lowers a WIT name to a rust
 /// identifier. The emitted glue has to spell the SAME escape or the trait method it is implementing
@@ -316,9 +312,9 @@ impl Emitter<'_, '_> {
         self.types
             .rust_structs()
             .keys()
-            .find(|ident| ident.as_ref() == INT_EXTERN_IDENT)
+            .find(|ident| ident.as_ref() == RESERVED_INT_IDENT)
             .map(|ident| self.rust_path(ident))
-            .unwrap_or_else(|| format!("{}::{INT_EXTERN_IDENT}", self.cli.lib_name_code()))
+            .unwrap_or_else(|| format!("{}::{RESERVED_INT_IDENT}", self.cli.lib_name_code()))
     }
 
     /// Whether the generated rust crate's own `new` for this ident returns a `Result`.

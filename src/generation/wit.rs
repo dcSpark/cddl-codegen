@@ -28,8 +28,8 @@ use crate::cli::Cli;
 use crate::component_wit_deps::{DepWitPackage, DepWitPackages};
 use crate::intermediate::{
     AliasIdent, ConceptualRustType, EnumVariant, EnumVariantData, IntermediateTypes, ModuleScope,
-    Primitive, ROOT_SCOPE, Representation, RestKind, RustIdent, RustRecord, RustStruct,
-    RustStructType, RustType,
+    Primitive, RESERVED_INT_IDENT, ROOT_SCOPE, Representation, RestKind, RustIdent, RustRecord,
+    RustStruct, RustStructType, RustType,
 };
 use crate::utils::convert_to_kebab_case;
 use std::collections::{BTreeMap, BTreeSet};
@@ -771,10 +771,6 @@ pub(crate) const ANY_CBOR_KIND_CASES: &[(&str, &str)] = &[
     ("unassigned", "Unassigned"),
     ("float", "Float"),
 ];
-/// The ident of the reserved prelude extern for the full CBOR integer range. Spelled the same way
-/// the four other sites that special-case it do (`rust_type.rs`, `extern_interface.rs`,
-/// `emit_tests.rs`, `emit_tests_wasm.rs`) so one grep finds them all.
-const INT_EXTERN_IDENT: &str = "Int";
 
 /// A type staged for inclusion, with the named types it references (for the reference closure) and
 /// whether it pulled in the per-interface `int` / `any-cbor` definitions.
@@ -869,7 +865,7 @@ pub(crate) fn project(
         // The reserved `int` prelude extern is not a type of its own here: it projects to the `int`
         // VARIANT at each use site (B3a), so listing it as an unexported extern would be a false
         // record of a type the WIT actually carries.
-        if ident.to_string() == INT_EXTERN_IDENT {
+        if ident.as_ref() == RESERVED_INT_IDENT {
             continue;
         }
         // A named collection (`names = [+ text]`, `attrs = {* text => uint}`) is RESOLVED THROUGH at
@@ -2412,7 +2408,7 @@ fn map_conceptual(ty: &ConceptualRustType, ctx: &mut TypeCtx) -> ProjectResult<W
 /// extern becomes the `int` variant; everything class-backed becomes a handle or an enum and is
 /// recorded as a reference for the closure and the `use` graph.
 fn map_named(ident: &RustIdent, ctx: &mut TypeCtx) -> ProjectResult<WitType> {
-    if ident.to_string() == INT_EXTERN_IDENT {
+    if ident.as_ref() == RESERVED_INT_IDENT {
         ctx.uses_int = true;
         return Ok(WitType::Int);
     }

@@ -21,6 +21,9 @@ pub use structs::*;
 use std::sync::LazyLock;
 pub static ROOT_SCOPE: LazyLock<ModuleScope> = LazyLock::new(|| vec![String::from("lib")].into());
 
+/// The ident of the reserved prelude extern carrying the full CBOR integer range (`int`).
+pub(crate) const RESERVED_INT_IDENT: &str = "Int";
+
 fn rust_struct_kind(rust_struct: &RustStruct) -> &'static str {
     match rust_struct.variant() {
         RustStructType::Record(_) => "record",
