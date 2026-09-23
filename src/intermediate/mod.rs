@@ -8614,25 +8614,24 @@ pub use rust_type::*;
 /// The asserts stay as a backstop for synthesized/internal idents (which never route through here);
 /// this function is only for user-chosen names, where a panic on valid CDDL is the bug being fixed.
 pub fn reserved_ident_rejection(source_name: &str) -> Option<String> {
-    let camel = convert_to_camel_case(source_name);
-    if crate::rust_reserved::STD_TYPES.contains(&camel.as_str()) {
-        return Some(format!(
-            "rule `{source_name}`: its name camel-cases to `{camel}`, a reserved Rust std/prelude \
-             type the generated code depends on — emitting a type by that name would shadow it. A \
-             rule/group name becomes the emitted Rust type name directly, so (unlike a struct field, \
-             which a `; @name` comment renames) the CDDL identifier itself must be renamed to a \
-             non-reserved name."
-        ));
-    }
-    if source_name != "int" && is_identifier_reserved(source_name) {
-        return Some(format!(
+    match RustIdent::reserved_reason(source_name)? {
+        ReservedIdentKind::RustTypeName => {
+            let camel = convert_to_camel_case(source_name);
+            Some(format!(
+                "rule `{source_name}`: its name camel-cases to `{camel}`, a reserved Rust std/prelude \
+                 type the generated code depends on — emitting a type by that name would shadow it. A \
+                 rule/group name becomes the emitted Rust type name directly, so (unlike a struct field, \
+                 which a `; @name` comment renames) the CDDL identifier itself must be renamed to a \
+                 non-reserved name."
+            ))
+        }
+        ReservedIdentKind::CddlKeyword => Some(format!(
             "rule `{source_name}`: `{source_name}` is a reserved CDDL keyword and cannot be used as \
              a rule/group name. A rule/group name becomes the emitted Rust type name directly, so \
              (unlike a struct field, which a `; @name` comment renames) the CDDL identifier itself \
              must be renamed to a non-reserved name."
-        ));
+        )),
     }
-    None
 }
 
 /// A graceful-rejection message if a `@rust_name` PIN cannot be used as a Rust type name, else
@@ -8641,6 +8640,10 @@ pub fn reserved_ident_rejection(source_name: &str) -> Option<String> {
 /// name does — a `@rust_name Option` pin describes a type the dependency could never have emitted
 /// (its own `reserved_ident_rejection` would have fired), so the pin can never be honored. Mirrors
 /// `reserved_ident_rejection` but names the pin and the rule it sits on.
+///
+/// Unlike `RustIdent::reserved_reason`, this has no exact-`int` carve-out, so a `@rust_name int`
+/// pin is refused. That carve-out exists for `api::with_types` releasing the built-in `Int` marker
+/// to an authored `int` rule, a lifecycle a pin never passes through.
 pub fn reserved_pin_rejection(pin: &str, rule: &str) -> Option<String> {
     let camel = convert_to_camel_case(pin);
     if crate::rust_reserved::STD_TYPES.contains(&camel.as_str()) || is_identifier_reserved(pin) {
