@@ -2370,11 +2370,7 @@ impl GenerationScope {
                                 )
                             })
                             .unwrap_or(u64::MAX);
-                        let max = if max == u64::MAX {
-                            "{ u64::MAX }".to_owned()
-                        } else {
-                            max.to_string()
-                        };
+                        let max = crate::intermediate::bound_const_arg(max);
                         deser_code.content.line(&format!(
                             "let {arr_var_name} = BoundedVec::<_, {min}, {max}>::try_from({arr_var_name})?;"
                         ));
@@ -2590,11 +2586,7 @@ impl GenerationScope {
                             ))
                             .bounded_map_u64_bounds()
                             {
-                                let max = if max == u64::MAX {
-                                    "{ u64::MAX }".to_owned()
-                                } else {
-                                    max.to_string()
-                                };
+                                let max = crate::intermediate::bound_const_arg(max);
                                 deser_code.content.line(&format!(
                                     "let {table_var} = BoundedPairMap::<_, _, {min}, {max}>::try_from({table_var})?;"
                                 ));
@@ -2724,11 +2716,7 @@ impl GenerationScope {
                                     )
                                 })
                                 .unwrap_or(u64::MAX);
-                            let max = if max == u64::MAX {
-                                "{ u64::MAX }".to_owned()
-                            } else {
-                                max.to_string()
-                            };
+                            let max = crate::intermediate::bound_const_arg(max);
                             deser_code.content.line(&format!(
                                 "let {table_var} = BoundedMap::<_, _, {min}, {max}>::try_from({table_var})?;"
                             ));

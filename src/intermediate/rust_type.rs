@@ -564,6 +564,16 @@ pub fn exact_array_len_from_bounds(
     )
 }
 
+/// Const-generic argument for a bounded carrier's upper bound. `u64::MAX` is not a literal token, so
+/// the unbounded case must be a braced const expression.
+pub(crate) fn bound_const_arg(max: u64) -> String {
+    if max == u64::MAX {
+        "{ u64::MAX }".to_owned()
+    } else {
+        max.to_string()
+    }
+}
+
 #[cfg(test)]
 mod exact_byte_array_len_tests {
     use super::*;
@@ -1758,11 +1768,7 @@ impl RustType {
                     return format!("[{element}; {len}]");
                 }
                 if let Some((min, max)) = self.bounded_array_u64_bounds() {
-                    let max = if max == u64::MAX {
-                        "{ u64::MAX }".to_owned()
-                    } else {
-                        max.to_string()
-                    };
+                    let max = bound_const_arg(max);
                     let carrier = if self.is_bounded_reject_ordered_set() {
                         "BoundedOrderedSet"
                     } else {
@@ -1791,11 +1797,7 @@ impl RustType {
                     || self.is_bounded_map() =>
             {
                 if let Some((min, max)) = self.bounded_map_u64_bounds() {
-                    let max = if max == u64::MAX {
-                        "{ u64::MAX }".to_owned()
-                    } else {
-                        max.to_string()
-                    };
+                    let max = bound_const_arg(max);
                     let carrier = if self.is_bounded_pair_map() {
                         "BoundedPairMap"
                     } else {

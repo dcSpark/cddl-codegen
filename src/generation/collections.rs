@@ -709,11 +709,7 @@ impl GenerationScope {
         cli: &Cli,
     ) {
         let exact_static = min == max && max != u64::MAX;
-        let max_token = if max == u64::MAX {
-            "{ u64::MAX }".to_owned()
-        } else {
-            max.to_string()
-        };
+        let max_token = crate::intermediate::bound_const_arg(max);
         let structural_name = match (min, max == u64::MAX) {
             (0, false) => format!(
                 "{}ListMax{max}",
@@ -1008,11 +1004,7 @@ impl GenerationScope {
         self.ensure_non_empty_wrappers(types, &element_type, cli);
         let elem_rust = element_type.for_rust_member(types, true, cli);
         let inner_type = if let Some((min, max)) = bounds {
-            let max = if max == u64::MAX {
-                "{ u64::MAX }".to_owned()
-            } else {
-                max.to_string()
-            };
+            let max = crate::intermediate::bound_const_arg(max);
             format!("{twin}<{elem_rust}, {min}, {max}>")
         } else {
             format!("{twin}<{elem_rust}>")
@@ -1321,11 +1313,7 @@ impl GenerationScope {
         let open = map_inner.find('<').expect("map type has generics");
         let close = map_inner.rfind('>').expect("map type has generics");
         let kv = map_inner[open + 1..close].to_owned();
-        let max_token = if max == u64::MAX {
-            "{ u64::MAX }".to_owned()
-        } else {
-            max.to_string()
-        };
+        let max_token = crate::intermediate::bound_const_arg(max);
         let map_inner = if preserve_pair_map {
             format!("PairMap<{kv}>")
         } else {
