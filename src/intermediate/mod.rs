@@ -1003,7 +1003,7 @@ impl<'a> IntermediateTypes<'a> {
         element: &RustType,
         bounds: (Option<i128>, Option<i128>),
     ) -> Option<&RustIdent> {
-        let normalized = Self::normalized_bounded_array_window(bounds)?;
+        let normalized = Self::normalized_bounded_window(bounds)?;
         let resolved = element.clone().resolve_aliases();
         self.rust_structs
             .iter()
@@ -1011,7 +1011,7 @@ impl<'a> IntermediateTypes<'a> {
                 RustStructType::Array {
                     element_type,
                     bounds: Some(candidate),
-                } if Self::normalized_bounded_array_window(*candidate) == Some(normalized)
+                } if Self::normalized_bounded_window(*candidate) == Some(normalized)
                     // A reject-mode bounded rule owns an `OrderedSet` class, not the ordinary
                     // BoundedVec wasm class an inline preserve-policy occurrence needs. It cannot
                     // be a dedup owner without crossing incompatible core representations.
@@ -1035,7 +1035,7 @@ impl<'a> IntermediateTypes<'a> {
         bounds: (Option<i128>, Option<i128>),
         preserve: bool,
     ) -> Option<&RustIdent> {
-        let normalized = Self::normalized_bounded_map_window(bounds)?;
+        let normalized = Self::normalized_bounded_window(bounds)?;
         let key_resolved = key.clone().resolve_aliases();
         let value_resolved = value.clone().resolve_aliases();
         self.rust_structs
@@ -1045,7 +1045,7 @@ impl<'a> IntermediateTypes<'a> {
                     domain,
                     range,
                     bounds: Some(candidate),
-                } if Self::normalized_bounded_map_window(*candidate) == Some(normalized)
+                } if Self::normalized_bounded_window(*candidate) == Some(normalized)
                     && (rs.config().duplicates
                         == Some(crate::comment_ast::DuplicatesPolicy::Preserve))
                         == preserve
@@ -1059,26 +1059,14 @@ impl<'a> IntermediateTypes<'a> {
             })
     }
 
-    /// Canonicalize an array occurrence window before comparing ownership or rendering a request:
-    /// absent endpoints are the real `0` / unbounded values, and the two loose shapes are not
-    /// bounded owners.  Keeping this here makes `[? T]`/`[0*1 T]` and `[*5 T]`/`[0*5 T]` one
-    /// identity even though the parser preserves the source spelling.
-    fn normalized_bounded_array_window(bounds: (Option<i128>, Option<i128>)) -> Option<(u64, u64)> {
-        let min = u64::try_from(bounds.0.unwrap_or(0)).ok()?;
-        let max = bounds
-            .1
-            .map(u64::try_from)
-            .transpose()
-            .ok()?
-            .unwrap_or(u64::MAX);
-        (min <= max && (min, max) != (0, u64::MAX) && (min, max) != (1, u64::MAX))
-            .then_some((min, max))
-    }
-
-    /// Table-side occurrence-window canonicalization. `+` remains NonEmptyMap; all other non-loose
-    /// unique-key table windows are BoundedMap owners.
-    fn normalized_bounded_map_window(bounds: (Option<i128>, Option<i128>)) -> Option<(u64, u64)> {
-        Self::normalized_bounded_array_window(bounds)
+    /// Canonicalize an array or table occurrence window before comparing ownership or rendering a
+    /// request: absent endpoints are the real `0` / unbounded values, and the two loose shapes are
+    /// not bounded owners (`*` stays loose, `+` stays NonEmptyVec / NonEmptyMap).  Keeping this here
+    /// makes `[? T]`/`[0*1 T]` and `[*5 T]`/`[0*5 T]` one identity even though the parser preserves
+    /// the source spelling.
+    fn normalized_bounded_window(bounds: (Option<i128>, Option<i128>)) -> Option<(u64, u64)> {
+        occurrence_window_u64(bounds)
+            .filter(|&window| window != (0, u64::MAX) && window != (1, u64::MAX))
     }
 
     /// Visit every `RustType` occurrence in the IR — record fields, table domain/range, wrapper
@@ -2472,7 +2460,7 @@ impl<'a> IntermediateTypes<'a> {
                     // scope. `{+ …}` uses its native direct key; a bounded table uses the same
                     // top-level-loosened key as `generate_bounded_map_type`.
                     let bounded_source = bounds.is_some_and(|candidate| {
-                        Self::normalized_bounded_map_window(candidate).is_some()
+                        Self::normalized_bounded_window(candidate).is_some()
                     });
                     if wasm && (*bounds == Some((Some(1), None)) || bounded_source) {
                         // the rule's own `@duplicates` config picks its container flavor, so the
@@ -6526,7 +6514,7 @@ impl<'a> IntermediateTypes<'a> {
             if rs.config().duplicates == Some(crate::comment_ast::DuplicatesPolicy::Reject) {
                 continue;
             }
-            let Some((min, _)) = Self::normalized_bounded_array_window(*bounds) else {
+            let Some((min, _)) = Self::normalized_bounded_window(*bounds) else {
                 continue;
             };
             check_loose_source(
@@ -6902,7 +6890,7 @@ impl<'a> IntermediateTypes<'a> {
                         let preserve = rs.config().duplicates
                             == Some(crate::comment_ast::DuplicatesPolicy::Preserve);
                         let bounded_source = bounds.is_some_and(|candidate| {
-                            Self::normalized_bounded_map_window(candidate).is_some()
+                            Self::normalized_bounded_window(candidate).is_some()
                         });
                         let (name, builder_key, need) = if bounded_source {
                             (
@@ -7552,7 +7540,7 @@ impl<'a> IntermediateTypes<'a> {
                         continue;
                     }
                     let bounded_source = bounds.is_some_and(|candidate| {
-                        Self::normalized_bounded_map_window(candidate).is_some()
+                        Self::normalized_bounded_window(candidate).is_some()
                     });
                     let (structural, builder_key, source) = if bounded_source {
                         (

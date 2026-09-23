@@ -516,6 +516,29 @@ impl RustType {
     }
 }
 
+/// Checked `u64` form of an occurrence window: an absent minimum is `0`, an absent maximum is
+/// `u64::MAX`, and a window whose endpoints do not fit or whose minimum exceeds its maximum is
+/// `None`. Occurrence endpoints are non-negative parse quantities; the checked conversion keeps a
+/// future wider parser carrier from being silently truncated.
+pub(crate) fn occurrence_window_u64(
+    (min, max): (Option<i128>, Option<i128>),
+) -> Option<(u64, u64)> {
+    let min = u64::try_from(min.unwrap_or(0)).ok()?;
+    let max = max.map(u64::try_from).transpose().ok()?.unwrap_or(u64::MAX);
+    (min <= max).then_some((min, max))
+}
+
+/// The occurrence-window suffix of a structural wasm class name: `{infix}Max{max}` for a zero
+/// minimum, `{infix}Min{min}` for an unbounded maximum (including `(0, u64::MAX)`, which renders as
+/// `Min0`), and `{infix}Min{min}Max{max}` otherwise.
+fn window_name_suffix(infix: &str, min: u64, max: u64) -> String {
+    match (min, max == u64::MAX) {
+        (0, false) => format!("{infix}Max{max}"),
+        (_, true) => format!("{infix}Min{min}"),
+        _ => format!("{infix}Min{min}Max{max}"),
+    }
+}
+
 /// Bounds-only half of the exact static-array recognizers. Primitive decode owns only a copied
 /// config window, so keep the tuple interpretation here instead of duplicating it there.
 pub fn exact_array_len_from_bounds(
@@ -1320,11 +1343,7 @@ impl RustType {
             return None;
         }
         let (min, max) = self.config.bounds?;
-        let min = min.unwrap_or(0).try_into().ok()?;
-        let max = max
-            .map(|value| value.try_into().ok())
-            .unwrap_or(Some(u64::MAX))?;
-        (min <= max).then_some((min, max))
+        occurrence_window_u64((min, max))
     }
 
     /// Alias-aware counterpart used only for invariant decisions and minting. Naming retains the
@@ -1342,11 +1361,7 @@ impl RustType {
         {
             return None;
         }
-        let min = min.unwrap_or(0).try_into().ok()?;
-        let max = max
-            .map(|value| value.try_into().ok())
-            .unwrap_or(Some(u64::MAX))?;
-        (min <= max).then_some((min, max))
+        occurrence_window_u64((min, max))
     }
 
     /// True when this array-shaped member carries `@duplicates reject` — its representation swaps to
@@ -1443,9 +1458,7 @@ impl RustType {
             return None;
         }
         let (min, max) = self.config.bounds?;
-        let min = min.unwrap_or(0).try_into().ok()?;
-        let max = max.map(|v| v.try_into().ok()).unwrap_or(Some(u64::MAX))?;
-        (min <= max).then_some((min, max))
+        occurrence_window_u64((min, max))
     }
 
     /// Alias-aware counterpart used for invariant decisions. Naming deliberately retains the raw
@@ -1461,11 +1474,7 @@ impl RustType {
         if (min, max) == (None, None) || (min, max) == (Some(1), None) {
             return None;
         }
-        let min = min.unwrap_or(0).try_into().ok()?;
-        let max = max
-            .map(|value| value.try_into().ok())
-            .unwrap_or(Some(u64::MAX))?;
-        (min <= max).then_some((min, max))
+        occurrence_window_u64((min, max))
     }
 
     pub fn is_type_enforced_bounded_map(&self) -> bool {
@@ -1602,11 +1611,7 @@ impl RustType {
             .or_else(|| self.bounded_array_u64_bounds())
             .expect("bounded wasm wrapper has representable bounds");
         let base = inner.wasm_boundary_identity_fragment(types);
-        match (min, max == u64::MAX) {
-            (0, false) => format!("{base}ListMax{max}"),
-            (_, true) => format!("{base}ListMin{min}"),
-            _ => format!("{base}ListMin{min}Max{max}"),
-        }
+        format!("{base}{}", window_name_suffix("List", min, max))
     }
 
     pub fn bounded_wasm_wrapper_name(&self, types: &IntermediateTypes) -> String {
@@ -1638,10 +1643,10 @@ impl RustType {
     /// can never disagree. NAMED reject rules keep their rule ident as the wrapper name and never route
     /// through here (like the NonEmpty twin, the raw-`Array` `is_reject_ordered_set` gate leaves an
     /// aliased field on its rule-derived name).
-    pub fn reject_ordered_set_wasm_wrapper_name(&self, _types: &IntermediateTypes) -> String {
+    pub fn reject_ordered_set_wasm_wrapper_name(&self, types: &IntermediateTypes) -> String {
         match &self.conceptual_type {
             ConceptualRustType::Array(inner) => {
-                let variant = inner.wasm_boundary_identity_fragment(_types);
+                let variant = inner.wasm_boundary_identity_fragment(types);
                 if self.is_non_empty_array() {
                     format!("NonEmpty{variant}OrderedSet")
                 } else {
@@ -1660,7 +1665,7 @@ impl RustType {
     /// a loose/non-empty ordered-set wrapper of the same element type.
     pub fn bounded_reject_ordered_set_wasm_wrapper_name(
         &self,
-        _types: &IntermediateTypes,
+        types: &IntermediateTypes,
     ) -> String {
         let (min, max) = self
             .bounded_array_u64_bounds()
@@ -1668,12 +1673,11 @@ impl RustType {
         let ConceptualRustType::Array(inner) = &self.conceptual_type else {
             unreachable!("bounded_reject_ordered_set_wasm_wrapper_name on a non-array");
         };
-        let base = inner.wasm_boundary_identity_fragment(_types);
-        match (min, max == u64::MAX) {
-            (0, false) => format!("{base}BoundedOrderedSetMax{max}"),
-            (_, true) => format!("{base}BoundedOrderedSetMin{min}"),
-            _ => format!("{base}BoundedOrderedSetMin{min}Max{max}"),
-        }
+        let base = inner.wasm_boundary_identity_fragment(types);
+        format!(
+            "{base}{}",
+            window_name_suffix("BoundedOrderedSet", min, max)
+        )
     }
 
     /// The wasm-boundary name of the restricted map wrapper for a `{+ k => v}` table. When a NAMED
@@ -1711,11 +1715,7 @@ impl RustType {
             }
             _ => unreachable!("bounded_wasm_map_wrapper_name on a non-map"),
         };
-        match (min, max == u64::MAX) {
-            (0, false) => format!("{base}Max{max}"),
-            (_, true) => format!("{base}Min{min}"),
-            _ => format!("{base}Min{min}Max{max}"),
-        }
+        format!("{base}{}", window_name_suffix("", min, max))
     }
 
     /// Bounded maps follow bounded arrays' owner rule: a matching authored table owns an inline
