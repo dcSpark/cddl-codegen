@@ -999,7 +999,13 @@ fn wasm_record_roundtrip(
             ));
         }
     }
-    Some(roundtrip_body(name, &wasm_build, &rust_build, &readbacks))
+    Some(wasm_roundtrip_block(
+        name,
+        None,
+        &wasm_build,
+        &rust_build,
+        &readbacks,
+    ))
 }
 
 fn wasm_choice_roundtrip(
@@ -1101,9 +1107,9 @@ fn wasm_choice_roundtrip(
                 ));
             }
         }
-        blocks.push(roundtrip_case(
+        blocks.push(wasm_roundtrip_block(
             name,
-            &var,
+            Some(&var),
             &wasm_build,
             &rust_build,
             &readbacks,
@@ -1167,7 +1173,13 @@ fn wasm_wrapper_roundtrip(
             "        assert_eq!(wasm_v.{getter}(), {expected}, \"{name}.{getter}() must read back the minted inner value\");"
         ));
     }
-    Some(roundtrip_body(name, &wasm_build, &rust_build, &readbacks))
+    Some(wasm_roundtrip_block(
+        name,
+        None,
+        &wasm_build,
+        &rust_build,
+        &readbacks,
+    ))
 }
 
 /// The effective inner-value getter name for a wrapper: an explicit `@newtype <name>` renames it,
@@ -1183,29 +1195,12 @@ fn wrapper_getter_name(types: &IntermediateTypes, ident: &RustIdent) -> String {
     }
 }
 
-/// The shared body for a single-value (record/wrapper) round-trip test: §1 differential, §2 wire, §3.
-fn roundtrip_body(name: &str, wasm_build: &str, rust_build: &str, readbacks: &[String]) -> String {
-    let rb = if readbacks.is_empty() {
-        String::new()
-    } else {
-        format!("\n{}", readbacks.join("\n"))
-    };
-    format!(
-        "    {{
-        let wasm_v = {wasm_build};
-        let rust_v = {rust_build};
-        let bytes = wasm_v.to_cbor_bytes();
-        assert_eq!(bytes, rust_v.to_cbor_bytes(), \"{name}: wasm-built and rust-built bytes must match (ctor conversion)\");
-        let back = {name}::from_cbor_bytes(&bytes).ok().expect(\"{name}::from_cbor_bytes\");
-        assert_eq!(back.to_cbor_bytes(), bytes, \"{name}: wasm wire round-trip must be byte-identical\");{rb}
-    }}"
-    )
-}
-
-/// The per-variant round-trip case for a choice.
-fn roundtrip_case(
+/// One wasm round-trip block: §1 differential, §2 wire, §3 read-backs. `variant` is `None` for a
+/// single-value (record/wrapper) test and the variant's var-name for a choice's per-variant case,
+/// which qualifies the assertion labels.
+fn wasm_roundtrip_block(
     name: &str,
-    var: &str,
+    variant: Option<&str>,
     wasm_build: &str,
     rust_build: &str,
     readbacks: &[String],
@@ -1215,14 +1210,22 @@ fn roundtrip_case(
     } else {
         format!("\n{}", readbacks.join("\n"))
     };
+    let (subject, conversion, decode_suffix) = match variant {
+        None => (name.to_owned(), "ctor".to_owned(), String::new()),
+        Some(var) => (
+            format!("{name}::{var}"),
+            format!("new_{var}"),
+            format!(" ({var})"),
+        ),
+    };
     format!(
         "    {{
         let wasm_v = {wasm_build};
         let rust_v = {rust_build};
         let bytes = wasm_v.to_cbor_bytes();
-        assert_eq!(bytes, rust_v.to_cbor_bytes(), \"{name}::{var}: wasm-built and rust-built bytes must match (new_{var} conversion)\");
-        let back = {name}::from_cbor_bytes(&bytes).ok().expect(\"{name}::from_cbor_bytes ({var})\");
-        assert_eq!(back.to_cbor_bytes(), bytes, \"{name}::{var}: wasm wire round-trip must be byte-identical\");{rb}
+        assert_eq!(bytes, rust_v.to_cbor_bytes(), \"{subject}: wasm-built and rust-built bytes must match ({conversion} conversion)\");
+        let back = {name}::from_cbor_bytes(&bytes).ok().expect(\"{name}::from_cbor_bytes{decode_suffix}\");
+        assert_eq!(back.to_cbor_bytes(), bytes, \"{subject}: wasm wire round-trip must be byte-identical\");{rb}
     }}"
     )
 }
