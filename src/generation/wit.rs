@@ -2539,32 +2539,7 @@ fn wit_param_is_reject_set(ty: &RustType) -> bool {
 }
 
 fn wit_param_validates(ty: &RustType, types: &IntermediateTypes) -> bool {
-    if ty.has_value_bounds()
-        || ty.is_type_enforced_non_empty()
-        || ty.is_type_enforced_exact_homogeneous_array()
-        || ty.is_type_enforced_bounded_array()
-        || ty.is_type_enforced_bounded_map()
-        || wit_param_is_reject_set(ty)
-    {
-        return true;
-    }
-    // A field referencing a named `[+ …]` rule by a bare `Rust(ident)` (rather than through the
-    // registered alias that carries the bounds) still despecializes, so read the bound off the
-    // struct as well.
-    if let ConceptualRustType::Rust(ident) = ty.conceptual_type.resolve_alias_shallow()
-        && let Some(rust_struct) = types.rust_struct(ident)
-        && match rust_struct.variant() {
-            RustStructType::Array {
-                bounds: Some(bounds),
-                ..
-            } => *bounds != (None, None),
-            RustStructType::Table {
-                bounds: Some((Some(1), None)),
-                ..
-            } => true,
-            _ => false,
-        }
-    {
+    if ty.has_value_bounds() || wit_param_despecialized(ty, types) {
         return true;
     }
     // Read the SHAPE through any alias chain. A CDDL alias is transparent to the projection —
@@ -2609,8 +2584,8 @@ pub(crate) fn wit_param_despecialized(ty: &RustType, types: &IntermediateTypes) 
         return true;
     }
     // A field referencing a named `[+ …]` rule by a bare `Rust(ident)` (rather than through the
-    // registered alias that carries the bounds) still despecializes — the same second reading
-    // `wit_param_validates` takes off the struct, for the same reason.
+    // registered alias that carries the bounds) still despecializes, so read the bound off the
+    // struct as well.
     if let ConceptualRustType::Rust(ident) = ty.conceptual_type.resolve_alias_shallow()
         && let Some(rust_struct) = types.rust_struct(ident)
         && match rust_struct.variant() {
