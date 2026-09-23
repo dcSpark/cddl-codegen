@@ -2975,10 +2975,7 @@ impl<'a> IntermediateTypes<'a> {
                 AliasIdent::Reserved(reserved) => {
                     // we auto-include only the parts of the cddl prelude necessary (and supported)
                     cddl_prelude(reserved).unwrap_or_else(|| {
-                        panic!(
-                            "{}",
-                            "Reserved ident {reserved} not a part of cddl_prelude?"
-                        )
+                        panic!("Reserved ident {reserved} not a part of cddl_prelude?")
                     });
                     self.emit_prelude(reserved.clone(), cli);
                     // Resolve to whatever the emitted `prelude_<x>` rule resolves to, exactly
