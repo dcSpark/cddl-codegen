@@ -1,522 +1,79 @@
 # AGENTS.md
 
-Orientation for AI agents working in this repo. The durable value here is the **pipeline shape** and
-the **invariants/gotchas** — things you can't easily re-derive by reading the code. Treat file and
-function names as starting points to grep from, not guarantees:
-- the code moves
-- docs lag
-- some concepts have their own home in other documents
+`cddl-codegen` is a Rust CLI and library that generates Rust CBOR implementations from CDDL, with optional WASM, JSON, and component surfaces.
+Use Rust for production code and TypeScript on Bun for scripts.
 
-`cddl-codegen` is a CLI + library that generates a Rust crate (plus optional WASM bindings and JSON
-helpers) implementing CBOR serialize/deserialize from a CDDL specification.
+## Architecture
 
-**Languages.**:
-- Rust for the project itself (notably `src/`)
-- TypeScript-on-Bun (`bun run <script>.ts`) for scripting
+Pipeline: CDDL text → `cddl` AST → `src/parsing.rs` → `src/intermediate/` IR → `src/generation/` emitted source.
+`src/api.rs` orchestrates it; `src/main.rs` and `src/lib.rs` expose the CLI and library.
+Treat filenames as search starting points; verify behavior in the current tree.
 
-## Architecture (the mental model)
+- `static/` contains handwritten runtime code and templates copied into generated crates; runtime behavior changes usually belong there. Generated Rust is `no_std`-capable.
+- `src/tests/` tests this application and is bin-only. `src/emit_tests*.rs` is production code that generates tests into output crates.
+- The IR borrows the AST. Use the scoped callback in `api.rs`; a function that parses internally cannot return its `IntermediateTypes<'a>`.
+- **bin/lib module duplication:** declare new production modules in both `main.rs` and `lib.rs`; keep test-only library API under `#[cfg(test)]`. This is gated by `bin_and_lib_production_module_declarations_match`.
+- Preserve `snapshot_tests` / `robustness_tests` / `integration_tests` in test module paths because commands select tests by substring.
 
-Pipeline — `CDDL text → AST → IR → emitted source`:
+## Read before the relevant action
 
-1. The `cddl` crate parses the spec to an AST.
-2. `parsing.rs` walks the AST and builds the intermediate representation
-3. `intermediate/` has the IR data structures that everything else works against — split into `mod.rs` (`IntermediateTypes` + scopes), `idents.rs`, `rust_type.rs` (`RustType`/`ConceptualRustType`), and `structs.rs` (`RustStruct`/`RustRecord`/`EnumVariant`/generics).
-3. `generation/` walks the IR and emits the per-type Rust/WASM/JSON/WIT source (Rust built with the `codegen` builder crate). It's the largest area of the codebase — split by concern into `mod.rs` (the `GenerationScope` orchestration) plus `serialize`, `deserialize`, `records`, `enums`, `wrappers`, `collections`, `requests`, `bounds`, `export`, `write_tail` (the disk-writing tail of `export()` — the one module that reads prior output), `no_std_check` (the always-emitted `no-std-check/` shim crate), `wit` (the IR→WIT projection for the `--component` face) and `component` (the wit-bindgen guest glue over the rust crate).
-4. `api.rs` orchestrates the pipeline; `main.rs` is the CLI entry, `lib.rs` the library entry.
-5. Other modules:
-    1. `cli.rs` (flags)
-    2. `comment_ast.rs` (the `@name`/`@doc`/`@newtype` comment DSL)
-    3. `dep_graph.rs` (rule ordering)
-    4. `component_wit_deps.rs` (the consumer-side `wit/deps` materialization for `--component` +
-       `--extern-import` — an explicit cross-crate input, same determinism class as the
-       extern-interface reads)
-    5. `alloc_import_inject.rs` (the usage-derived `alloc`/`core` import injector for generated
-       files — the emitted rust crate is no_std-capable, so generated code uses `core::`/`alloc::`
-       paths with per-file `extern crate alloc;`; shares its ident tokenizer with
-       `import_prune.rs`)
+Read the matching guide before acting, including when a task expands into a new area.
+Read only the relevant sections of larger references; do not load every linked document at startup.
 
-**Which "tests" are which.** The app's own test suite lives under `src/tests/` (bin-crate-only,
-`#[cfg(test)]`); everything else in `src/` is production — including `emit_tests.rs` /
-`emit_tests_wasm.rs`, which are the shipped `--emit-tests` feature (they generate tests *into*
-output crates, they don't test this app).
+| Action | Required guide |
+| --- | --- |
+| Change generation, export, preservation, manifests, cross-crate inputs, or config convergence | [Generation contract](docs/development/generation-contract.md) |
+| Change architecture, emission, logging, wrapper collision detection, or config | [Settled decisions](docs/development/decisions.md) |
+| Set up a checkout, run verification, recover a run, or publish matrix annotations | [Verification](docs/development/verification.md) |
+| Reproduce a defect, build scratch output, add fixtures, or rely on a code-behavior premise | [Probes and evidence](docs/development/probes.md) |
+| Delegate work | [Delegation](docs/development/delegation.md) |
+| Edit docs or roadmaps, finish a delivery, or change these instructions | [Documentation](docs/development/documentation.md) |
 
-**`static/` is not generated code.** It holds the hand-written serialization *runtime* and the
-crate/package templates, which get copied/concatenated into the generated crate. Consequence:
-changing the *runtime behaviour* of generated code usually means editing `static/`; changing the
-*per-type emitted code* means editing the generator. Figure out which your task needs.
+## Invariants and precautions
 
-## Invariants & gotchas (the things that bite)
-
-- **Deterministic output** — two distinct properties:
-  - *Reproducibility* (same input → byte-identical output): always `BTreeMap`/`BTreeSet`, never
-    `HashMap` — hash iteration order breaks it.
-  - *Canonical layout*: stable item ordering via `codegen`'s sort + `rustfmt` post-processing.
-  - *No prior-output dependence* — generation must not read the prior contents of the output
-    directory. Three bounded exceptions, none feeding back into *what code* is generated: (1) the
-    generated `Cargo.toml`s — `export()` merges a declarative changeset (`cargo_manifest.rs`) onto the
-    existing manifest so user edits survive, bounded to "keys the op set doesn't mention pass through;
-    `SeedOnce` keys check existence only" (the `--export-static-crate` target's `Cargo.toml` is the
-    same exception class applied to a crate *outside* the output dir — same changeset machinery,
-    with a co-owned contract: deps only asserted never removed, package identity seed-only; the
-    asserted-never-removed half now also applies INSIDE the output dir, to the `--json-gen-dep`
-    entries in `wasm/json-gen/Cargo.toml`, the `--wasm-dep` entries in `wasm/Cargo.toml` and the
-    `--rust-dep` entries in `rust/Cargo.toml` — the tool
-    cannot tombstone a package name that exists only in a flag value, so a dropped flag leaves a stale
-    entry, and the "does not add extern-dep entries to manifests" / "does not touch this manifest"
-    contracts those flag families used to state are conditional on those flags now); (2) each generated crate root `src/lib.rs` (rust, wasm,
-    json-gen) is a seed-once thin root — written on a first export, then skipped if the file exists
-    (existence check only, same bounded wording as the manifest `SeedOnce`; all generated code lives
-    under the always-clobbered `src/generated/**`, alongside the dep-side extern-interface export
-    `extern-interface/<dep>/**` — a committed, tool-owned, always-clobbered sibling tree
-    delete-and-recreated each run, freshly projected from the finalized IR with no prior-output read);
-    (3) the comment/code-preservation overlay
-    (`comment_preserve.rs`) — `export()` reads a prior generated `src/generated/**` `.rs` whose only
-    effects on fresh content are (a) inserting comment bytes and tagged regions
-    (`cddl-codegen:unpreserved-comment` compile_error blocks and `cddl-codegen:replace`/`insert`/`keep`
-    user blocks), and (b) removing exactly the token span that a replace block's recorded original
-    identifies — never any other code token, in either direction. The overlay is applied to the
-    in-memory file map before the write loop, then the post-overlay recompute runs over the
-    post-overlay map: the usage-derived import prune (`import_prune.rs`) reruns once — a `use`
-    import whose last user a replace block removed is dropped too — then the alloc-import
-    injector (`alloc_import_inject.rs`) recomputes its own `use alloc::…`/`extern crate alloc;`
-    block (strip-then-recompute, so it both adds and removes), and every written surface is
-    rustfmt'd after injection (rustfmt-stable output is load-bearing for the overlay's
-    second-regen behavior). Each recompute is a pure function of the FINAL (post-overlay)
-    content — not an extra prior-output read — so the bound on what prior output ITSELF
-    contributes (comment bytes, tagged regions, the recorded replace-span removal) is unchanged,
-    and "same inputs → same bytes" still holds (default on, `--no-preserve-comments` disables
-    it). Four diagnostic-only stderr warnings read prior output but change no output bytes: the
-    legacy-root
-    check (missing `mod generated;`), the stale-file scan (orphaned `.rs` under the generated
-    trees), the missing-crate-root-re-export warning (a seed-skipped `lib.rs` lacking a name the
-    own-spec extern glue requires), and the `--export-static-crate` new-static-file notice (an
-    existence check on each runtime file written into the hand-owned target crate — a file that did
-    NOT exist needs a hand `pub mod <module>;`, so the notice names it; existence-gated, so an
-    idempotent re-export is silent). `--config` mode adds two reads of output AFTER a pass, bounded
-    the same way — no generated byte depends on either, delete them both and every emitted file is
-    identical: the convergence check (each consumed sidecar's bytes before/after a pass) and the
-    committed-state verdict (each `deps` edge's consumer `borrowed_collections.rs` against
-    the dependency's `collections.rs` wrapper index), which is the one diagnostic that changes the
-    EXIT CODE — a tree that does not build is a verdict about the tree, never an instruction about
-    the run. The convergence check has a second, non-diagnostic role: it decides WHICH crates a
-    `--config` invocation generates a SECOND time (the convergence pass — one extra pass over the
-    crates whose consumed sidecars the first pass rewrote, in the same generation order, each
-    announced with the sidecar that caused it). That decides re-RUNS, never emitted bytes: a re-run
-    crate is generated from the identical `Cli`, so what changes is only that its inputs are now the
-    settled ones. It is what makes "run twice = run once = clean run" TRUE of a config run — without
-    it a cold tree's run 1 and run 2 differ by construction — and one pass suffices because the
-    ownerless-wrapper index feedback that would need a loop is unreachable (a requested wrapper is
-    all-one-dep-owned by construction; the sidecars depend only on a crate's own spec and its
-    dependencies' `extern-interface/` exports, which the pass does not touch). The retained warning
-    fires only if a sidecar moves AGAIN across that pass, which covers what the orchestrator cannot:
-    a subset run, and a counterparty in another repo. Nothing reads prior *tool* output to decide
-    what code to generate. (Cross-crate request sidecars — `--wrapper-requests` /
-    `--key-requests` reading a CONSUMER's committed `borrowed_collections.rs` /
-    `borrowed_key_types.rs`, `--extern-import` reading a DEPENDENCY's committed
-    `extern-interface/<dep>/**` export, and `--common-import-flavor` reading a runtime exporter's
-    committed `cddl-codegen-runtime-flavor.toml` — are explicit INPUTS from another crate, not this
-    run's prior output; same inputs → same bytes still holds.)
-- **Never regenerate a downstream CONSUMER repo (e.g. a CML checkout) to validate a change.**
-  Generation clobbers the consumer's `src/generated/**`, and those working trees may hold large
-  uncommitted migrations — a "just regen it to prove the fix" step nearly destroyed one. Validate
-  against a synthetic fixture mirroring the consumer's shape, generated into a scratch/throwaway
-  directory (the `@used_as_key` flavor delivery did exactly this: an `Ord`-refusing extern + a
-  flavored union, generated to scratch, `cargo check`ed both directions). Regenerate a real
-  consumer only when its owner explicitly asks, with their tree committed.
-- **The IR borrows the AST.** `IntermediateTypes<'a>` can't be returned from a function that parses
-  internally — drive the pipeline through the scoped callback in `api.rs` (it owns the AST).
-- **bin/lib module duplication.** `main.rs` and `lib.rs` each declare the module list — a new
-  production module goes in **both** (`src/tests/` is bin-only; test-only library API is
-  `#[cfg(test)]`; this mismatch is gated by `bin_and_lib_production_module_declarations_match`).
-  Keep `snapshot_tests`/`robustness_tests`/`integration_tests` in test module
-  paths — CI and documented commands select tests by substring.
-- **The CLI flags change codegen substantially** (preserve-encodings, canonical, json, wasm, …).
-  When behaviour depends on a flag, check `cli.rs` and `docs/docs/command_line_flags.mdx`.
-- **Some comments and panic messages are load-bearing test keys.** `LOCKSTEP`-paired comments and
-  the panic-class ledgers in `src/tests/recombination_tests.rs` (keys are substrings of
-  `<message> @ <file> @ fn <symbol>`) mean: moved code carries its comments verbatim; a pinned
-  panic message is never reworded; relocating or deleting a guarded site fires the stale-pin guard
-  by design — update/prune the ledger entry in the same commit (two keys are enforced only by
-  full-tier `#[ignore]`d gates, so reason about them explicitly rather than trusting a local run).
-- **Deliberately-unrefactored structure — don't re-litigate without new evidence** (decided during
-  the 2026-07 `src/` refactoring series; rationale in that series' commit messages): string-based
-  emission stays (the rustfmt post-pass + snapshot corpus + comment-preservation overlay all key on
-  emitted-token stability — an AST/quote emitter breaks the overlay); the `codegen`-crate
-  workarounds (newline-smuggled attrs, the `derivative)]` hack) stay isolated — the real fix is
-  upstream; no `Ctx { types, cli }` param-pair struct (borrow-splitting `&mut GenerationScope` +
-  `&IntermediateTypes` gets harder behind one struct); `api::with_types` stays one linear
-  narrative; `print!` progress logging stays (humans and tests consume it as-is — WHETHER a message
-  prints is level-gated by `src/log.rs`'s six macros, default `warn`, diagnostics to stderr and run
-  output to stdout; what the ruling protects is the message TEXT, so no prefixes, no level tags and
-  no `log`/`tracing` crate); the wasm wrapper-name collision detectors stay parallel per-kind
-  siblings rather than one generic detector (their message texts differ meaningfully and are
-  pinned) — the anticipated third
-  container kind (`@duplicates reject` sets) appeared 2026-07-20 and was added as exactly such a
-  sibling, and the fourth (`@duplicates preserve` pair-map tables) followed the same day; the family
-  now guards rule-ident-vs-wrapper-ident for each name family, the two preserve ones included
-  (`preserve_pair_map_loose_wrapper_name_collisions` /
-  `preserve_pair_map_non_empty_wrapper_name_collisions`). The one detector that was ever
-  wrapper-vs-wrapper — a preserve and a default map of the same shape contending for one structural
-  class — is retired: the class name encodes the container flavor (`PairMapKToV` vs `MapKToV`), so
-  that collision is unrepresentable rather than rejected. A fifth kind gets the same treatment. Two
-  further stay-as-is rulings from the 2026-07-28 `--config` review series: the `[runtime]` table's
-  carrier derivation stays exactly as shipped — reviewed twice without agreement and ruled CLOSED
-  by the maintainer; do not re-investigate, re-litigate, or change it without explicit maintainer
-  permission. And config mode's cross-crate mediation stays committed-file sidecars plus the
-  convergence pass — no global IR, no in-memory request passing — because the byte-equivalence
-  acceptance gate (`a_whole_config_generates_what_the_hand_written_flags_generate`) is only
-  possible while config adds no semantics, and `IntermediateTypes` borrows the AST; reopening
-  signal for an in-memory fast path: the convergence pass's `[converge] re-running` lines
-  exceeding roughly half the config's crates on routine edits.
+- Preserve byte-reproducible output and canonical layout. Use `BTreeMap` / `BTreeSet`, never `HashMap`; retain stable item ordering and the rustfmt post-pass.
+- Prior-output reads are restricted to the generation contract's bounded exceptions. Preserve its manifest, seed-once, overlay, diagnostic, and config-convergence distinctions.
+- Validate against synthetic fixtures generated into scratch directories. Never regenerate a real downstream consumer to validate a change; its owner must explicitly request regeneration and its tree must be committed.
+- Preserve `LOCKSTEP` comments when moving code and never reword pinned panic messages. Relocating or deleting a guarded site requires updating its ledger in `src/tests/recombination_tests.rs` in the same commit; some pins run only in full-tier ignored gates.
+- Check `src/cli.rs` and the relevant section of [command-line flags](docs/docs/command_line_flags.mdx) for flag-dependent behavior. Spell every flag and environment coordinate on which a probe's conclusion depends: `--wasm` defaults to true, `--static-dir` resolves against the process working directory, and scratch-directory cargo can bypass the repository's toolchain pin.
+- The config `[runtime]` carrier derivation is maintainer-closed: do not investigate, reopen, or change it without explicit maintainer permission.
 
 ## Git workflow
 
-- New features should be built on master directly instead of branching unless justified (ex: a worktree)
-- Commit unsigned to avoid GPG prompts
-- **Another session can COMMIT to master while yours runs — re-read `git status`/`git log` at every
-  commit point, not just at session start.** Proven 2026-07-18: a concurrent editor session landed
-  `c7a3289` between one agent session's own commits, and that session's sub-agent separately watched
-  the same foreign edits appear and vanish in the working tree mid-task. Two concrete traps: a
-  `git add -A` without an immediately-preceding fresh `git status` read can sweep a concurrent
-  session's uncommitted edits into your commit; and any commit-range reasoning done at session start
-  (attribution, "my parent commit is X") silently retargets when a foreign commit interleaves.
-- **The conversation-start git snapshot can be stale — never baseline against it.** The harness's
-  session-start "Recent commits"/HEAD snapshot once lagged 14 commits behind the repo's real HEAD
-  (and its dirty-status flavor has also fired: a snapshot listing ~30 modified files over a tree
-  that `git status` showed clean — run `git status` fresh before reasoning about tree state);
-  a "pre-feature baseline" repro run at the snapshot's HEAD attributed another commit's behavior
-  change to the session's own work, and the wrong root-cause shipped in a commit before review
-  caught it. Before any attribution that depends on a commit range (bisecting, baselining a repro,
-  writing a root-cause or a ledger-retirement comment), read the actual topology from the repo —
-  `git rev-parse <your-first-commit>^` / `git log` — and baseline against the TRUE parent.
+Build features on `master` unless isolation justifies a branch/worktree.
+Commit unsigned.
+Another session can edit or commit concurrently: read fresh `git status` and `git log` before staging and at every commit point, and stage only your changes.
+Before bisecting, baselining, or attributing behavior to commits, inspect actual repository topology (`git log`, `git rev-parse <first-commit>^`); a conversation-start snapshot is not a baseline.
 
 ## Build & verify
 
-`bun run check.ts` at the repo root is the one entry point for verification — a self-checking gate
-registry with three tiers (details + wall times: `tests/README.md` § "Running everything"):
-- `bun run check.ts fast` — what CI runs: fmt + clippy + snapshot tests + the drift gates.
-- `bun run check.ts` (`local`, default) — fast + workspace build + full `cargo test`.
-  Run this before considering work done.
-- `bun run check.ts full` — local + every manual-only gate. Run this before shipping a feature.
+Use `bun run check.ts` from the repo root:
 
-The heavy gates memoize their nested-cargo work per generated-crate content hash (the gate cache —
-`tests/README.md` § "The gate cache (memoize-and-skip for nested cargo)"): unchanged cells skip
-with a visible `[gate-cache] … cached PASS` line, so re-runs after small changes cost far less
-than the cold wall times. `GATE_CACHE=0` forces everything to run.
+| Command | Requirement |
+| --- | --- |
+| `bun run check.ts fast` | CI tier: fmt, clippy, snapshots, and drift gates |
+| `bun run check.ts` | Local tier; run before considering work done |
+| `bun run check.ts full` | All tiers; run before shipping a feature |
 
-Rules:
-- **CI runs the `fast` tier ONLY** (cost policy — see `tests/README.md` § "CI policy"). Never add
-  steps to `build.yml` or promote a gate into `fast` — that's a maintainer decision; new gates
-  default to `local`/`full`. The heavy correctness gates are therefore a LOCAL responsibility: run
-  the appropriate tier yourself; CI won't catch what fast doesn't cover.
-- **Run multi-minute gates in the foreground** with an extended tool timeout (up to 10 min), never
-  detached into background monitors — detached runs strand their results when the agent stops.
-- **A gate too long for a foreground timeout (e.g. `check.ts full`) may run as a harness-tracked
-  background task** — and note the death-with-turn failure
-  mode is specific to SUB-AGENTS' backgrounded runs: a MAIN-session harness-tracked background task
-  survives the session's turn ends (proven 2026-07-17 — a `check.ts` local run kept executing across
-  a turn boundary to a clean exit-0; `pgrep` the process before assuming orphaning and re-running a
-  multi-minute gate).
-- **The `full` tier can NEVER complete when launched from a SUB-AGENT's turn — this is structural,
-  not a risk to manage. The main session runs it; delegating it is a guaranteed loss.** Proven
-  2026-07-25 by four sub-agent-launched `check.ts full` background runs dying mid-gate with no
-  tier-level `CHECK_TIER_RESULT:` line (60 min and ~68 min inside `verify`; ~53 and ~60–65 min inside
-  `gate_cache_closure_audit` the day before) against the SAME tier run from the MAIN session
-  completing in 74 min with `CHECK_TIER_RESULT: PASS — all in-tier gates green`. The run's own wall time
-  (~75 min) exceeds what
-  a sub-agent turn can hold open, so no amount of polling, re-launching, or foregrounding inside the
-  sub-agent changes the outcome. Working rule for a delegating session: a sub-agent may run gates
-  that fit a foreground tool timeout (up to 10 min) and must REPORT the remaining tier back for the
-  main session to run — and a partial log carries no tier verdict, so nothing in it may be cited as
-  one (attribution and recovery: `tests/README.md` § "Operational incident attribution and evidence
-  capture").
-- **Never kill processes by tool-generic pattern (`pkill -f cddl_verify`, `pkill -f cargo`) —
-  another session's live run matches the same substring.** Proven 2026-07-19: after stopping a
-  `check.ts full` background task, a session pkilled `/tmp/cddl_verify_*` cargo processes it
-  believed were its run's orphans; its run had died BEFORE the verify gate, so the processes were a
-  concurrent session's LIVE `verify.ts` warm-up — which failed with an exit -15 the other session
-  flagged as a possible harness flake. The exit was cross-session kill fallout, not a verify flake.
-  Before killing "orphans": derive the
-  candidate PIDs from the stopped task's own process tree / scratch paths (the task output names
-  them), confirm the parent is dead, and kill by PID — and treat an unexplained exit -15 in any
-  log as possible cross-session kill before suspecting the harness. **When agents share one
-  harness, ANCESTRY cannot attribute a run at all** (proven 2026-08-04: an orchestrator, its
-  sub-agent's shell, and a main-session `check.ts full` all traced to the same harness parent, and
-  a tier run was nearly killed on a wrong ancestry read — the sub-agent refused the kill on
-  better evidence). The precondition above ("confirm the parent is dead") is then unsatisfiable:
-  attribute by the INVOCATION RECORD instead — the run's self-log name class (`check-only-*` vs
-  `check-(fast|local|full)-*` are disjoint by construction), the live log's own banner
-  (tier/jobs/`--only`), and which party actually issued the command — and if ancestry is shared,
-  do not kill at all: identify, then coordinate.
-- **A fresh worktree/clone needs two setup steps before its first tier run** (both proven
-  2026-07-20, REQUEST-08 worktree; each is gitignored state present only in a checkout that has
-  run before): (1) `./fuzz/generate.sh` — the workspace manifest references the gitignored
-  `fuzz/generated` crates, and the warm-up `cargo fetch` needs them to exist BEFORE the fuzz gate
-  that would regenerate them; (2) `bun install` in `cddl-matrix/` — `matrix_typecheck` fails on
-  the absent `node_modules`. A third prerequisite usually self-provisions: the `no_std_check`
-  gate (`local` tier) needs the `thumbv7m-none-eabi` target, which `rust-toolchain.toml`
-  declares (rustup-managed checkouts install it automatically). In a non-rustup environment run
-  `rustup target add thumbv7m-none-eabi` under the PINNED toolchain — targets install
-  per-toolchain, and adding it to the wrong one reads as installed while the gate still can't
-  find `core` (the gate skips loudly at `local`, fails at `full`).
-- **When generating crates e2e outside the repo root, pass `--static-dir <checkout>/static`
-  explicitly.** The default is the RELATIVE path `static`, resolved against the process CWD — a
-  session whose CWD is a different checkout silently generates with THAT checkout's runtime
-  (proven 2026-07-20: a worktree e2e check picked up master's pre-feature `static/` and failed on
-  a type the feature had just added, masquerading as a real bug).
-- **An unspelled default silently selects a coordinate your claim doesn't name — spell every
-  coordinate a probe's conclusion depends on.** Three proven instances of the one class: the
-  `--static-dir` CWD trap above; the `wasm` flag PARSE-DEFAULTS TRUE, so any flag list without
-  `--wasm=false` is a wasm run — REGISTRY/PROFILE ROWS included, not just ad-hoc probe commands
-  (proven 2026-07-19 on a probe run; again 2026-08-08 when a spec's "every component run pairs
-  `--wasm=false`" claim missed that the corpus profile row `&["--component=true"]` is a
-  both-faces run); and a `cargo build` OUTSIDE the repo root runs the rustup DEFAULT toolchain,
-  not `rust-toolchain.toml`'s pin — proven 2026-08-08, expensively: a scratch-dir repro "at the
-  same toolchain pin" actually ran stable 1.97.1, and the false all-clear it produced shipped in
-  a committed doc for a day before a follow-up probe (whose stack dump happened to print the
-  toolchain path) caught it. For any claim naming the pin, build with
-  `rustup run <pin> cargo ...` or from inside the repo tree. Nuance, measured: a cargo spawned
-  FROM the repo's own `cargo test` stays pinned even in a scratch cwd (the rustup proxy exports
-  `RUSTUP_TOOLCHAIN` down the process tree) — the exposed spawns are those whose env lacks it,
-  i.e. anything shell- or bun-launched (verify.ts's nested cargo is the known instance;
-  tests/testing-roadmap.toml item "Pin the toolchain of verify.ts's nested cargo").
-- **A scratch-tree `E0463: can't find crate for core` is an environment-red baseline, not product
-  attribution.** Outside the repository, an unqualified cargo command can select the default
-  toolchain, where the repo's declared target is absent. Re-run with the exact repository pin and
-  install the target for that pin before using the result to distinguish a generator defect from a
-  probe-environment failure.
-- **Never share one `CARGO_TARGET_DIR` across scratch crates with the same package name unless every
-  tree is made newer before its build.** Cargo's leaf fingerprint is keyed by package name and
-  version, not manifest path, so a later-written sibling can make an older tree false-green by
-  reusing the wrong artifact. Prefer a per-crate target directory or unique package names; the
-  deliberate shared-target verifier touches each cell tree immediately before every missed build.
-- **Check `free` as well as `df` before launching a tier, and treat PEAK RESOURCE as the thing to
-  bound — not gate count.** The quantity a tier must keep under the machine's memory is the product
-  `(gates in flight) × (rustc per gate) × (per-rustc resident set)`, and **no factor of it may scale
-  with `nproc`** — core count is unrelated to a memory cap. A 32-core WSL2 box with a 32 GiB cap went
-  unresponsive for ~10 minutes under a full tier and was power-cycled, because gate-level concurrency
-  bounded the first factor while the second was still cargo's `-j $(nproc)` default. `check.ts` now
-  hands each *batched* gate a memory-derived `CARGO_BUILD_JOBS` and preflights free memory and free
-  scratch (degrade-to-sequential and refuse floors) — details and the measured before/after in
-  `tests/README.md` § "Gate-level concurrency (registry-declared, opt-in)". The failure class is
-  sharper than the disk one it sits beside: a full disk fails a gate, an overcommitted memory cap
-  takes the whole machine and everything running on it.
-- **Heavy tiers contend across sessions — coordinate before launching one while another session's
-  gates run.** Concurrent multi-minute tiers share `/tmp` scratch, disk headroom **and the memory
-  cap**, and the preflight above measures only what is free at *its* start — a second tier launched
-  into a machine the first has already committed sees a floor that was clear a minute ago. Two
-  same-day runs saturating the disk is the ENOSPC ledger entry in `tests/testing-roadmap.toml`.
-- **Serialize publishing gates with live implementation edits.** `verify.ts` rewrites
-  `cddl-matrix/annotations/cddl_codegen.toml`; one run overlapped edits under `src/` and published
-  annotations from a hybrid tree that never existed as a commit. Before a publishing run, coordinate
-  with editors and inspect the dirty marker/status; after it, inspect the annotation diff and rebuild
-  the derived matrix before treating the output as evidence.
-- **Evidence preservation: every multi-minute run leaves its FULL output in a file under
-  `draft/logs/`.** `check.ts` does this ITSELF — every run tees its complete output to a
-  timestamped `draft/logs/check-<tier>-<stamp>.log` and prints the path at start and end. For
-  everything ELSE that runs minutes (an isolated `cargo test --bin cddl-codegen <gate>` confirm, a
-  standalone `bun run verify.ts`, corpus mints), redirect full output to a `draft/logs/` file
-  yourself from the FIRST run. Rationale, learned expensively: piping through `tail` truncates the
-  failure detail and masks the exit code (the pipeline reports `tail`'s); a one-line summary of a
-  failed run is unactionable, and a transient failure whose only sighting went through
-  `tail`/`grep` is evidence burned — reruns come back green and the flake stays unattributed.
-  Proven end to end by the `acquire_scratch_lock_serializes` watch in
-  `tests/README.md` § "Operational incident attribution and evidence capture": four unattributed
-  sightings (three lost to `tail`/`grep`/truncation),
-  then the fifth — full-logged under this rule — attributed and retired the flake in the same
-  session.
-- **A log is a working artifact for the session that produced it, never evidence of record.**
-  Within your own turn, read it freely and cite its path to the user. But when a finding lands in a
-  message, a commit, or a doc, it carries **the conclusion and the numbers** — the wall time, the
-  exit signature, the tier verdict — never a bare path standing in for them. Two independent
-  reasons the path cannot be the evidence: `/draft/` is gitignored, so the citation dangles by
-  construction in every other checkout and CANNOT fail loudly (no existence check can see it); and
-  `check.ts` now deletes all but the last 10 `check-<tier>-*.log` per tier at run start, so a cited
-  log is typically gone within ten runs. A committed doc citing a path that no longer exists, in a
-  directory nobody else has, is worse than no citation — it reads as evidence while being
-  unverifiable. Retention holds back any log a committed file still names and warns about it, so if
-  that warning fires, the fix is to move the fact into the doc, not to keep the log.
-- **What survives is `tests/timings.json`** (committed, one measured row per gate; see
-  `tests/README.md` § "Measured gate durations"). Durations belong there rather than in prose,
-  because it re-measures itself and prose rots. `draft/timings.jsonl` and `draft/timing-cells.jsonl`
-  are the local ledgers behind it — gitignored, trimmed, and disposable like the logs — and
-  `draft/memory-peaks.jsonl` is the same class for the per-run memory sampler's peaks (one row per
-  run, kept to the last 200; `tests/README.md` § "Gate-level concurrency").
-- **A fail-fast FAIL plus a single-gate retry is NOT a tier pass.** Fail-fast SKIPS every gate
-  after the failure point, so "the failed gate passed on isolated retry" leaves the rest unrun —
-  re-run the tier before claiming it green (the gate cache keeps already-passed cells cheap). A
-  shipped "check.ts full green" commit claim was falsified exactly this way (2026-07-18, caught in
-  review: 8 full-tier gates never ran on the shipped tree).
-- **When the tier CANNOT go green (e.g. another session's uncommitted state fails an early gate),
-  a "my work is green" decomposition must enumerate every gate fail-fast skipped and run each
-  one's underlying suite — omitting one is the same falsified-claim class.** Proven 2026-07-18: a
-  commit adding a comment-DSL directive ran its tier, fail-fasted on a foreign `build_matrix_check`
-  failure BEFORE `project_corpus` ever ran, and shipped with the directive missing from
-  `corpus_detect.ts`'s LOCKSTEP mirror — the drift its skipped gate exists to catch — masked for
-  two further commits until a clean-tree tier run surfaced it. The skipped-gate list is in the
-  tier's own output; walk it, don't sample it.
-- **TDD.** For every failure, ask what could have systematically caught it: add the missing test
-  vector, or record the missing system in `tests/testing-roadmap.toml`.
+CI runs `fast` only. Adding CI steps or promoting gates to `fast` requires a maintainer decision; new gates default to `local` / `full`.
+The main session must run `full`; do not delegate it.
+Coordinate heavy runs across sessions and check memory as well as disk before launching.
+Never kill by a generic tool pattern; shared harness ancestry cannot prove ownership, so identify the invocation and coordinate.
+Keep full output from every multi-minute run under `draft/logs/`; `check.ts` does this automatically.
+A fail-fast run plus an isolated retry is not a tier pass: rerun the tier before claiming success.
+For each failure, add the missing regression vector or record the missing system in `tests/testing-roadmap.toml`.
 
-## Which AI model to use
+## Documentation and navigation
 
-Opus is the session orchestrator. The following should be inline in the main session:
-- session orchestration
-- implementation plan creation
-- review of implementation/plan
-- any problem deemed very hard
-- tasks cheaper to inline (ex: run a single command)
+Write the current choice first, followed by the failure it prevents.
+Keep README files about current behavior and TOML roadmaps about future work; use stable citations.
+Finish each delivery with the documentation guide's confirm-or-fix sweep.
+Use `draft/` for disposable investigation notes and `draft/logs/` for run output.
 
-### Delegation to other agents
+For feature details, find the relevant section in `docs/docs/`: `current_capacities`, `command_line_flags`, `comment_dsl`, `output_format`, `preserving_edits`, `config_file`, `wasm_differences`, or `component_differences`.
+For test-layer design and adding/blessing fixtures, find the relevant section in `tests/README.md`; for matrix work use `cddl-matrix/README.md`.
+Example specs live in `supported.cddl` and `example/`; `GENERATING_MULTIPLATFORM_LIB.md` is a consumer example, and `cddl-matrix/sources/` contains specification sources.
 
-- Never use Haiku
-- Do not choose Sonnet 5 manually (only when Claude Code itself selects it or, or is used by tool)
-- Use Opus for implementing anything with a clear implementation plan
-- Use Fable for a review whenever you are not sure even with an Opus review of an idea, and more expensive model is worth a review for a different world view
-
-For workflows:
-- Always pass an explicit `model:` in normal `agent()` calls to avoid auto-inheriting the model.
-- Given the cost, never fan out multiple Fable agents without explicit user permission.
-- Generally avoid running tests in parallel agents unless explicitly intended, since this can happen accidentally when using multiple parallel high-capability agents for implementation.
-
-For sessions that spawn their own sub-agents (an orchestrating session, or a subagent delegating to Opus):
-- **Never end your turn to "stand by" for a sub-agent's completion** — a stopped agent is only
-  resumed by an explicit message from its spawner, so "armed watchers"/"completion callbacks" never
-  fire and the session stalls until a human (or the coordinator) manually nudges it. Poll the
-  sub-agent's transcript/output with bounded foreground waits (extended tool timeouts) and end the
-  turn only when reporting completed, reviewed results. Two polling gotchas (each misread once
-  before being learned): the harness's task `.output` paths are SYMLINKS to the real transcript
-  (`stat -L`, or a bare `stat` measures the 150-byte link and reads as a dead agent); and an idle
-  transcript does NOT mean stalled/done — nothing is written for the whole duration of a long
-  foreground tool call (a `check.ts local` run is silent for ~4 min), so before invoking recovery,
-  check the last entry's type (a trailing `tool_use` = mid-call) and for live build processes.
-  Same rationale as the foreground rule for multi-minute gates above.
-  Scope refinement (proven 2026-07-19, twice in one session — async Agent-tool agents): async work
-  the harness TRACKS for the MAIN session DOES
-  re-invoke the main session with a task-notification on completion, so the main session may end
-  its turn after launching such work and report interim status to the user. The stall class this
-  rule guards against is everything that is NOT a harness-tracked completion notification: a
-  sub-agent ending its own turn to await anything, and any "armed watcher" that isn't the
-  harness's own task tracking.
-- **Write the operational rules INTO the delegation prompt — sub-agents don't reliably act on this
-  file even when instructed to read it (and the review must diff the report against the plan
-  item-by-item).** Two same-session instances from the corpus-decode-leg delivery: an implementing
-  sub-agent that had read this file still ended its turn to "stand by" for its own backgrounded
-  gate run (the exact stall above — the run died with its turn, leaving no log and no process); and
-  another silently dropped one item of a reviewed plan (an ENOSPC preflight), visible only by
-  checking its completion report against the plan point-by-point — a report reads complete on its
-  own terms. So: spell out the multi-minute-gate run discipline (foreground, extended timeout,
-  full-output-to-file) in every delegation prompt that runs gates, re-assert it in mid-task
-  corrections, and treat plan-vs-report diffing as a mandatory review step, not a spot check.
-- **Sequential-phase delegation patterns, proven 2026-07-22/23 (set-architecture Delivery 2,
-  five Opus phases):** (1) prompt-embedded foreground-gate rules still failed once — an agent
-  backgrounded its tier run and stopped to "await" it despite an explicit prohibition; the
-  recovery that works is cheap because `check.ts` self-logs to `draft/logs/`: read the run's own
-  log, then SendMessage-resume the SAME agent with findings — resuming preserves its context and
-  beat respawning every time it was used (mid-task rulings, budget-limit continuations).
-  (2) Write an explicit budget-exhaustion protocol INTO the prompt: "commit only the green
-  subset, report the precise remainder, stop cleanly — never stall." (3) A per-phase spec file
-  (`draft/<delivery>-spec.md`) with every code-behavior premise marked as a claim-to-probe, plus
-  a report structured item-by-item against that spec, made the plan-vs-report diff mechanical —
-  each phase's report diff caught something (a hardcoded tag in a pinned message, an
-  under-specified wasm surface, a scope deviation needing a ruling).
-- **A plan's cited code-behavior premises are claims to verify, not facts — require implementing
-  sub-agents to probe them empirically before building on them, and independently re-verify any
-  premise a reviewer's approval rests on.** Proven 2026-07-19, twice in one reviewed delivery (the
-  `Int`-under-`--common-import-override` feature): the plan asserted a helper returned the wasm
-  crate name (it returned the rust-crate path verbatim — the implementation built on it passed
-  every test because the single-crate fixture masked the split-crate case; caught only by
-  orchestrator review reading the helper), and asserted a hard-reject panic plus a missing
-  registration (neither existed — caught by the implementing agent probing before coding, which
-  deleted a planned dead-code work item). Both premises had survived plan review; one even
-  originated in a misleading code comment at the site itself.
-- **A probe has a SCOPE, and a premise is only evidence within it — so state the scope in the claim.**
-  The failure this guards is not a skipped probe but a correct one silently generalized: "no gate
-  demands this" established against a `fast`-tier gate says nothing about a `full`-tier gate, and
-  "the directive works" established on the rule shapes in a fixture says nothing about a shape whose
-  parse path the fixture never touched. Proven twice in one cycle (2026-07-25,
-  `@no_json_schema_export`): a matrix-registration deferral was probed against `project_corpus`
-  (where it genuinely holds) and was false for `cddl-matrix/verify.ts`'s completeness lint, leaving
-  the FULL tier red for five commits; and the directive shipped silently inert on plain group rules,
-  a parse path no fixture covered. Both were caught by orchestrator code-reading, not by any run.
-  Working rule: **write premises as "probed against X (tier T); not probed against Y"** so the
-  unprobed remainder is visible in the claim instead of implied — and remember CI runs `fast` only,
-  so a `full`-tier gate is where such a premise survives longest. Corollary for reviewers: when a
-  premise's scope is narrower than the conclusion drawn from it, that gap is the finding.
-- **A NEGATIVE premise ("nothing does X") is bounded by its search VOCABULARY, not just its scope —
-  so establish absence by enumerating the registry, never by a keyword grep.** Distinct from the
-  rule above and not caught by it: a grep can cover exactly the right scope and still miss the
-  mechanism because the mechanism does not use the words you guessed, and absence-of-hits then
-  reads as absence-of-thing. Proven 2026-07-27: a cycle-3 delegation spec asserted "no gate
-  enumerates fixture dirs for orphans" from a grep over the whole `src/tests/` tree for
-  `read_dir("tests")` / `fixture_dirs` / `orphan` — none of which
-  `wasm_api_parity_axes_and_pins_are_live` spells, while that gate requires every
-  `tests/*/input.cddl` dir to be registered. The implementer built on the premise; the `local` tier
-  caught it, fail-fast, skipping twelve later gates. Working rule: to claim NO mechanism does X,
-  list the mechanism's members (the `check.ts` gate registry, the `#[test]` fns in the module, the
-  registry consts) and check them — a grep can support a POSITIVE finding, never a negative one.
-- **A delegation that writes into a registry-governed tree must name the TIER that enforces the
-  registry.** `fast`'s only cargo TEST invocation is `cargo test --bin cddl-codegen snapshot_tests`
-  — a substring filter — so every `#[test]` outside that module is `local` or later. (It runs
-  `cargo fmt` and `cargo clippy` too, which is where the operationally useful asymmetry comes from:
-  `clippy --all-targets` TYPE-CHECKS test code, so a `fast`-restricted lane catches a new `#[test]`
-  that fails to COMPILE and never one that FAILS.) So a sub-agent
-  restricted to `fast` (as it should be when heavy tiers are serialized) gets NO signal from the
-  drift/registry gates that own most `tests/` trees. Adding `tests/<dir>/input.cddl` obliges a
-  `CORPUS_PARITY_INPUTS`/`CORPUS_PARITY_EXCLUDED` row (`src/tests/wasm_parity_tests.rs`); other
-  trees have their own. Say so in the prompt, with the enforcing gate named — otherwise the
-  omission surfaces only when the orchestrator runs the tier, which is the most expensive place to
-  find it.
-
-
-
-A lot of components of this library have documents following two different structures:
-1. `README.md` which stores the *current* state of the project. It shouldn't contain historical notes, unless important for backwards-compatibility
-2. a roadmap which stores the *future* state of the project. It shouldn't contain "done" marks (always be future-facing) unless context for a partially completed item is important for a future item
-
-The two repository roadmaps are authored as TOML — `cddl-matrix/roadmap.toml` and
-`tests/testing-roadmap.toml` — and the TOML sources are the ONLY committed form: read and edit the
-TOML, never a rendered markdown. Human-review markdown renders are generated on demand into the
-gitignored `draft/roadmaps/` directory (`cd cddl-matrix && bun run project_roadmaps.ts --roadmap
-matrix|testing --write`); they are disposable, may be stale, and must never be checked in (the
-`lint_doc_citations` gate refuses a tracked copy). The authoring commands are in `tests/README.md`
-§ "Editing the testing roadmap".
-
-Entries in both projects should generally avoid "we tried X, then we did Y", and instead prefer "we did Y, to avoid issues like X". Otherwise, it's unclear if Y was the proper fix, whereas if you start with Y and properly justify it, it's easier to understand as an approach reached through thinking from first principles and easier to verify for correctness (important for our test-driven development)
-
-A roadmap entry that defers or declines work carries a **reopening signal** — the observable that
-would make us build it. A signal is only worth writing if it can actually fire, which constrains it
-twice. It must name something **measurable by a party who already has the problem**, not by us and
-not by a hypothetical future reporter. And it must lie on **the dimension along which the deferred
-cost actually grows**: a generality signal ("a second consumer hits this") is the wrong instrument
-for a cost whose magnitude grows *within* a single consumer — put a magnitude signal there instead
-(the count of the thing that is duplicated, the size of what must be hand-maintained). Check the
-signal against the entry's own body before shipping it: a signal that the entry already records
-evidence for is not a signal, it is a deferral with no exit, and such an entry must be either built
-or re-signalled onto an observable it does not already meet.
-
-Given this means we actively prune the roadmaps as features are implemented, code should generally not store references to roadmap items long-term. They can be acceptable as an intermediate step (i.e. call-outs so reviewing agents know how to code maps to implementation plans), but should generally be fixed up before features are shipped. Never cite a roadmap item by NUMBER or position ("ROADMAP item <N>") in any document or comment: pruning/renumbering retargets a positional citation silently — it never dangles, so no existence check can flag it. Cite a stable identifier instead (a pin/test/gate name, the delivered system's doc section, or the item's exact title): those fail loudly and greppably when the referent goes away. Both halves are mechanically enforced by the `lint_doc_citations` gate (check.ts `fast` tier): it bans the positional form tree-wide (outside `draft/`) and asserts hand-doc citations still resolve.
-
-Note: there is no roadmap that isn't related to the testing framework. That's because a "feature" roadmap is encoded indirectly in tests: any test that fail is a feature we need to support, and any new feature we decide to add should be encoded as a test (that first fails, then passes when the test is implemented)
-
-Every delivery cycle ends with a **completeness sweep over the durable docs** — `docs/docs/*.mdx`,
-`cddl-matrix/README.md` + `roadmap.toml`, `tests/README.md` + `testing-roadmap.toml` — checking each
-surface against the cycle's implications and either confirming it accurate WITH the reason or
-fixing it in the sweep's own commit. The classes it exists to catch, each proven by a shipped
-instance: a delta documented on one face while the sibling face's doc stays silent (a
-"described-as-shared" delta is two docs' delta); prose mirrors of registries/consts rotting when
-the registry changes (a "N classes remain" sentence outliving the count); and a retired
-limitation or refusal lingering as if still current. Confirm-or-fix per doc, never sampled.
-
-Additionally, `draft/` is the recommended location for scratchpads (for agents to write/iterate on investigations, etc.). Run LOGS do not go in the `draft/` root — they go in `draft/logs/` (`check.ts` writes its own there automatically; put ad-hoc command logs there too), so the root stays readable as documents-only.
-
-## Testing & further docs
-
-- `tests/README.md` — how the test layers work and how to add/bless snapshots.
-- `tests/testing-roadmap.toml` — prioritized plan for the next testing improvements.
-- `docs/docs/*.mdx` — authoritative user-facing reference: `current_capacities` (supported CDDL +
-  limitations), `command_line_flags`, `comment_dsl`, `output_format`, `wasm_differences`,
-  `component_differences`.
-- `supported.cddl` and `example/` — example specs to run the tool against.
-- `GENERATING_MULTIPLATFORM_LIB.md` — an example document provided by CML - a consumer of this library
-- specifications (ex: RFCs) for CBOR and CDDL can be found here in cddl-matrix/sources/
+Keep this entry point within 1,200 words.
+New guidance must change an actionable decision; place task-specific detail in its owning guide and add a read trigger here only when needed.
+Preserve rules, exceptions, and useful rationale when editing; do not accumulate incident narratives or duplicate authoritative procedures.

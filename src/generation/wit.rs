@@ -2931,8 +2931,8 @@ pub(crate) fn wit_files(
 /// name at PACKAGE level, type names AND free-function names within one INTERFACE, and member names
 /// (including a member equal to the resource's own name) within one RESOURCE. All three fall out of one walk of the
 /// projection, which is why they are one function with three message shapes rather than three
-/// sibling detectors — the AGENTS.md parallel-sibling ruling is about the wasm WRAPPER-name family,
-/// whose members have genuinely different inputs.
+/// sibling detectors — the docs/development/decisions.md parallel-sibling ruling is about the wasm
+/// WRAPPER-name family, whose members have genuinely different inputs.
 ///
 /// The resource-level check is the one that cannot be delegated to the validity gate: a
 /// `transaction.transaction` collision survives `wit-parser` resolve AND `wit_component::encode`,

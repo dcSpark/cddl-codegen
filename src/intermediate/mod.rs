@@ -5722,9 +5722,9 @@ impl<'a> IntermediateTypes<'a> {
             for msg in self.bounded_pair_map_wrapper_name_collisions() {
                 self.record_rejection(msg);
             }
-            // `@duplicates reject` uniqueness-twin wasm-wrapper name collisions — the third container
-            // kind's sibling of the two detectors above (the reject twin is the new container kind
-            // AGENTS.md's twin-detector note reserved as the trigger for this expansion).
+            // Keep `@duplicates reject` uniqueness-twin wasm-wrapper collision detection as a
+            // per-kind sibling: its diagnostic differs from the other containers' messages.
+            // See docs/development/decisions.md, "WASM wrapper-name collisions".
             for msg in self.reject_ordered_set_wrapper_name_collisions() {
                 self.record_rejection(msg);
             }

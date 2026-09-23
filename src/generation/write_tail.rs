@@ -13,8 +13,8 @@
 //! comment-preservation overlay, the seed-once existence checks and the two diagnostics that peek
 //! at a seed-skipped root, the `--export-static-crate` existence checks and manifest read, the
 //! stale-file scan and the surrounding-workspace collision scan. Each is bounded by the contract
-//! AGENTS.md states (and the per-site comments below restate): what prior output contributes is
-//! comment bytes, tagged regions, a recorded replace-span removal, `SeedOnce`/seed-once existence
+//! docs/development/generation-contract.md states (and the per-site comments below restate): what
+//! prior output contributes is comment bytes, tagged regions, a recorded replace-span removal, `SeedOnce`/seed-once existence
 //! answers, and stderr text — never a decision about WHAT code is generated.
 
 use crate::cargo_manifest::{KeyPath, ManifestOp};
@@ -52,8 +52,8 @@ pub(crate) struct StaticCrateWrite {
 /// computed, so a test constructs one directly (`..Default::default()` for the parts a case does
 /// not exercise).
 ///
-/// This is NOT the `Ctx { types, cli }` param-pair struct AGENTS.md rules against: that ruling is
-/// about borrow-splitting the generator pair behind one struct. The point of this one is the
+/// This is NOT the `Ctx { types, cli }` param-pair struct docs/development/decisions.md rules
+/// against: that ruling is about borrow-splitting the generator pair behind one struct. The point of this one is the
 /// opposite — it is what keeps the pair OUT.
 #[derive(Default)]
 pub(crate) struct WriteTailPlan {
@@ -534,8 +534,8 @@ fn write_rs_with_preserve(
 /// `impl<T, U> TryFrom<U> for T`),
 /// pointing a reviewer at phantom problems before the one-line real cause. This is a diagnostic-only
 /// prior-output read (an existence check; it changes no output byte) — the notice is printed AFTER
-/// the write so the file state it reports is the pre-write one. See AGENTS.md's determinism
-/// invariant (the enumerated diagnostic-only stderr reads) and the consumer-migration notes.
+/// the write so the file state it reports is the pre-write one. See
+/// docs/development/generation-contract.md, "Diagnostic reads", and the consumer-migration notes.
 fn warn_new_static_file(is_new: bool, filename: &str) {
     if is_new {
         crate::warn!("{}", new_static_file_notice(filename));

@@ -1901,7 +1901,7 @@ The same test pins private native storage and the absence of a public `new()` by
 
 `cargo_manifest_disk_round_trip` and `cargo_manifest_rejects_unparseable_existing` pin the
 manifest merge contract on real disk (the only place generation reads prior output — see
-`cargo_manifest.rs` and AGENTS.md's determinism note): user edits outside tool-owned keys survive a
+`cargo_manifest.rs` and [the generation contract](../docs/development/generation-contract.md)): user edits outside tool-owned keys survive a
 regen, the seeded `package.version` stays bumped, tool-owned keys (incl. the version stamp) are
 restored, a further regen is a byte-identical fixed point, and an unparseable existing manifest is a
 hard error naming the file rather than a clobber. Note for harness authors: because manifests merge

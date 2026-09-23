@@ -7299,8 +7299,8 @@ fn a_mid_run_sidecar_refusal_names_the_crates_already_regenerated() {
 /// Also the DEFAULT-VERBOSITY visibility pin for the run-level orchestration lines. Every run below
 /// passes no `--verbosity`, so what this reads off stdout is what a user sees with no flags: the
 /// per-crate `[name] generating …` banners (a multi-crate run's only orientation) and the
-/// `[converge] re-running` note. That second one matters beyond readability — AGENTS.md makes those
-/// lines the REOPENING SIGNAL for config mode's in-memory fast path ("exceeding roughly half the
+/// `[converge] re-running` note. That second one matters beyond readability —
+/// docs/development/decisions.md makes those lines the REOPENING SIGNAL for config mode's in-memory fast path ("exceeding roughly half the
 /// config's crates on routine edits"), and a signal nobody sees by default cannot fire.
 #[test]
 fn with_deps_settles_the_subset_case_in_one_command() {
