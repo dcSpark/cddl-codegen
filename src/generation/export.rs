@@ -706,6 +706,16 @@ fn composed_runtime_static_files(
     Ok(out)
 }
 
+/// Alloc-import injection over one ALREADY-rustfmt'd source, re-formatting only when the injector
+/// changed it: its block lands in source order, not rustfmt's `use`-sort order, while unchanged
+/// content is already a rustfmt fixed point.
+fn inject_formatted(formatted: &str) -> std::io::Result<String> {
+    match crate::alloc_import_inject::inject(formatted) {
+        Cow::Owned(injected) => Ok(rustfmt_generated_string(&injected)?.into_owned()),
+        Cow::Borrowed(_) => Ok(formatted.to_owned()),
+    }
+}
+
 /// Prepend the codegen header onto a (already rustfmt'd) generated file's content. The header is
 /// pure `//` comments, so it leads the file verbatim regardless of whether the body opens with an
 /// inner `#![…]` attribute (both orderings are valid Rust; a comment may precede an inner attr).
@@ -1154,8 +1164,7 @@ impl GenerationScope {
             for (filename, content) in &runtime_files {
                 composed_runtime_files.push((
                     format!("rust/src/generated/{filename}"),
-                    rustfmt_generated_string(crate::alloc_import_inject::inject(content).as_ref())?
-                        .into_owned(),
+                    inject_formatted(content)?,
                 ));
             }
         }
@@ -1179,13 +1188,7 @@ impl GenerationScope {
                     // HAND-OWNED crate root that this tool never writes, so they cannot rely on a
                     // root `extern crate alloc;` and must carry their own alloc imports as written
                     // output.
-                    runtime_files.push((
-                        filename.clone(),
-                        rustfmt_generated_string(
-                            crate::alloc_import_inject::inject(content).as_ref(),
-                        )?
-                        .into_owned(),
-                    ));
+                    runtime_files.push((filename.clone(), inject_formatted(content)?));
                 }
                 // serialization.rs — the static prelude only. `export_raw_bytes_encoding_trait` and
                 // `needs_hex` are both forced true (always include raw_bytes_encoding and the canonical
@@ -1203,14 +1206,11 @@ impl GenerationScope {
                      use cbor_event::se::Serializer;\n\n{}",
                     Self::serialization_prelude(true, true, cli)?
                 );
-                let prelude = crate::alloc_import_inject::inject(
-                    rustfmt_generated_string(&prelude)?.as_ref(),
-                )
-                .into_owned();
+                let prelude = rustfmt_generated_string(&prelude)?.into_owned();
                 Some(crate::generation::write_tail::StaticCrateWrite {
                     dir: export_crate.clone(),
                     runtime_files,
-                    serialization: rustfmt_generated_string(&prelude)?.into_owned(),
+                    serialization: inject_formatted(&prelude)?,
                     manifest_ops: crate::cargo_manifest::ops_for_static_runtime(cli)?,
                     runtime_flavor_record: crate::runtime_flavor::RuntimeFlavor::from_depth_limit(
                         cli.deserialize_depth_limit,
