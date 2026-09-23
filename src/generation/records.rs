@@ -784,6 +784,25 @@ pub(super) fn map_record_deser_refusals(
     reasons
 }
 
+/// The constructor parameter that takes the first element of a one-or-more open-array tail
+/// (`first_<row>_element`), suffixed `_2`, `_3`, ... until it collides with no field or dynamic-row
+/// name. The rust, wasm and component constructors all spell the parameter through this one helper.
+pub(super) fn first_array_tail_element_param_ident(record: &RustRecord, rest: &RestRow) -> String {
+    let mut first_arg = format!("first_{}_element", rest.field_name);
+    let reserved: Vec<String> = record
+        .fields
+        .iter()
+        .map(|field| field.name.clone())
+        .chain(record.dynamic_rows().map(|row| row.field_name.clone()))
+        .collect();
+    let mut suffix = 2;
+    while reserved.iter().any(|name| name == &first_arg) {
+        first_arg = format!("first_{}_element_{suffix}", rest.field_name);
+        suffix += 1;
+    }
+    first_arg
+}
+
 /// Generates deserialization code for an array-encoded record into `deser_code` EXCEPT FOR:
 /// 1) any final length check (so it can be used for generating embedded deserialization impls)
 /// 2) the final constructor block, which is not added to `deser_code`; its vars/exprs are returned
@@ -3720,23 +3739,12 @@ pub(super) fn codegen_struct(
         }
         // A one-or-more open-array tail has the same valid-by-construction door as its Rust record:
         // take one element here and let the Rust `new(first)` build the restricted `NonEmptyVec`.
-        // The name follows the Rust constructor's collision-safe synthesis exactly.
+        // The parameter name is shared with the Rust constructor (`first_array_tail_element_param_ident`).
         for rest in record
             .captured_dynamic_rows()
             .filter(|row| !multi_array_segments && row.is_non_empty_array_tail())
         {
-            let mut first_arg = format!("first_{}_element", rest.field_name);
-            let reserved: Vec<String> = record
-                .fields
-                .iter()
-                .map(|field| field.name.clone())
-                .chain(record.dynamic_rows().map(|row| row.field_name.clone()))
-                .collect();
-            let mut suffix = 2;
-            while reserved.iter().any(|name| name == &first_arg) {
-                first_arg = format!("first_{}_element_{suffix}", rest.field_name);
-                suffix += 1;
-            }
+            let first_arg = first_array_tail_element_param_ident(record, rest);
             wasm_new.arg(
                 &first_arg,
                 gen_scope.wasm_param_type(
@@ -4542,18 +4550,7 @@ pub(super) fn codegen_struct(
         } else if rest.is_array_tail() && multi_array_segments {
             native_new_block.line(format!("{},", rest.field_name));
         } else if rest.is_non_empty_array_tail() {
-            let mut first_arg = format!("first_{}_element", rest.field_name);
-            let reserved: Vec<String> = record
-                .fields
-                .iter()
-                .map(|field| field.name.clone())
-                .chain(record.dynamic_rows().map(|row| row.field_name.clone()))
-                .collect();
-            let mut suffix = 2;
-            while reserved.iter().any(|name| name == &first_arg) {
-                first_arg = format!("first_{}_element_{suffix}", rest.field_name);
-                suffix += 1;
-            }
+            let first_arg = first_array_tail_element_param_ident(record, rest);
             native_new.arg(&first_arg, rest.element().for_rust_move(types, cli));
             new_arg_count += 1;
             native_new_comments.push(if !array_segment_is_final(record, rest) {

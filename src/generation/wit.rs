@@ -1843,18 +1843,7 @@ fn project_record(
         .captured_dynamic_rows()
         .filter(|row| !multi_array_segments && row.is_non_empty_array_tail())
     {
-        let mut rust_name = format!("first_{}_element", rest.field_name);
-        let reserved: Vec<String> = record
-            .fields
-            .iter()
-            .map(|field| field.name.clone())
-            .chain(record.dynamic_rows().map(|row| row.field_name.clone()))
-            .collect();
-        let mut suffix = 2;
-        while reserved.iter().any(|name| name == &rust_name) {
-            rust_name = format!("first_{}_element_{suffix}", rest.field_name);
-            suffix += 1;
-        }
+        let rust_name = super::records::first_array_tail_element_param_ident(record, rest);
         let element = rest.element();
         let validates = wit_param_validates(element, ctx.types);
         params.push(WitParam {
