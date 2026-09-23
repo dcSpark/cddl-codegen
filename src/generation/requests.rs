@@ -147,7 +147,7 @@ impl GenerationScope {
 
         // Decide, per unioned shape, whether the dep already produces it (skip), produces it under a
         // different rule name (criterion 8 #3, hard error), or must emit it.
-        let mut to_emit: Vec<(String, RustType, String, Vec<String>)> = Vec::new();
+        let mut to_emit: Vec<(&String, &Unioned)> = Vec::new();
         for (canonical, u) in &union {
             match self
                 .wasm_collection_wrapper_registry
@@ -167,24 +167,15 @@ impl GenerationScope {
                         u.requesters, u.structural, u.structural, u.structural
                     );
                 }
-                None => {
-                    let mut requesters: Vec<String> = u.requesters.iter().cloned().collect();
-                    requesters.sort();
-                    to_emit.push((
-                        canonical.clone(),
-                        u.rt.clone(),
-                        u.structural.clone(),
-                        requesters,
-                    ));
-                }
+                None => to_emit.push((canonical, u)),
             }
         }
 
         // Criterion 8 #5: a requested NESTED shape whose inner collection wrapper is neither requested
         // nor own-spec-produced — an integrity check against a hand-edited / truncated sidecar (a real
         // consumer closes over its nested shapes automatically, so the inner should always be present).
-        for (canonical, rt, _, _) in &to_emit {
-            for inner in inner_collection_shapes(rt) {
+        for (canonical, u) in &to_emit {
+            for inner in inner_collection_shapes(&u.rt) {
                 let requested = union.contains_key(&inner);
                 let own = self
                     .wasm_collection_wrapper_registry
@@ -209,8 +200,9 @@ impl GenerationScope {
         // (indexed, no attribution — a benign transitive superset). Byte-identical under any flag /
         // regen order because the input set is fully sorted.
         let requested_scope = ModuleScope::from(vec!["requested_collections".to_owned()]);
-        for (_, _, structural, requesters) in &to_emit {
-            let ident = RustIdent::new(CDDLIdent::new(structural.clone()));
+        for (_, u) in &to_emit {
+            let ident = RustIdent::new(CDDLIdent::new(u.structural.clone()));
+            let requesters: Vec<&str> = u.requesters.iter().map(String::as_str).collect();
             self.requested_attribution.insert(
                 ident,
                 format!("Generated at the request of: {}.", requesters.join(", ")),
@@ -223,8 +215,9 @@ impl GenerationScope {
         // explicitly here. Keep one shared set for the whole union — two requested map shapes can
         // return the same `<Key>List`, which is one wasm class in this requested scope.
         let mut requested_keys_lists_generated = BTreeSet::new();
-        for (_, rt, structural, _) in &to_emit {
-            let ident = RustIdent::new(CDDLIdent::new(structural.clone()));
+        for (_, u) in &to_emit {
+            let rt = &u.rt;
+            let ident = RustIdent::new(CDDLIdent::new(u.structural.clone()));
             match &rt.conceptual_type {
                 ConceptualRustType::Array(inner) => {
                     if rt.is_reject_ordered_set() {
@@ -337,27 +330,17 @@ impl GenerationScope {
         // record it so the runtime-provisioning gates (mod decl + static file copy) fire, and import
         // the type into this scope explicitly (the per-scope loop's import gate is keyed off the dep's
         // own IR, which doesn't see the requested wrappers).
-        self.requested_non_empty_vec = to_emit
-            .iter()
-            .any(|(_, rt, _, _)| rt.contains_non_empty_array());
-        self.requested_bounded_vec = to_emit
-            .iter()
-            .any(|(_, rt, _, _)| rt.contains_bounded_array());
-        self.requested_bounded_map = to_emit
-            .iter()
-            .any(|(_, rt, _, _)| rt.contains_bounded_map());
-        self.requested_non_empty_map = to_emit
-            .iter()
-            .any(|(_, rt, _, _)| rt.contains_non_empty_map());
+        self.requested_non_empty_vec = to_emit.iter().any(|(_, u)| u.rt.contains_non_empty_array());
+        self.requested_bounded_vec = to_emit.iter().any(|(_, u)| u.rt.contains_bounded_array());
+        self.requested_bounded_map = to_emit.iter().any(|(_, u)| u.rt.contains_bounded_map());
+        self.requested_non_empty_map = to_emit.iter().any(|(_, u)| u.rt.contains_non_empty_map());
         // A requested reject wrapper pulls in the `ordered_set` runtime the dep's OWN spec may not
         // use; record it so the runtime-provisioning gates (mod decl + static file copy) fire.
-        self.requested_ordered_set = to_emit
-            .iter()
-            .any(|(_, rt, _, _)| rt.contains_ordered_set());
+        self.requested_ordered_set = to_emit.iter().any(|(_, u)| u.rt.contains_ordered_set());
         // The map-side twin: a requested `@duplicates preserve` table wraps `PairMap`/`NonEmptyPairMap`,
         // a runtime the dep's OWN spec may never mention — without this the hosted class references a
         // type the dep's crate neither declares nor copies in (E0433 at the dep's build).
-        self.requested_pair_map = to_emit.iter().any(|(_, rt, _, _)| rt.contains_pair_map());
+        self.requested_pair_map = to_emit.iter().any(|(_, u)| u.rt.contains_pair_map());
         let non_empty_import = self
             .requested_non_empty_vec
             .then(|| format!("{}::non_empty", cli.common_import_wasm()));
@@ -459,14 +442,7 @@ fn primitive_cddl_name(p: &Primitive) -> &'static str {
 pub(crate) fn render_wrapper_shape(rt: &RustType) -> String {
     match &rt.conceptual_type {
         ConceptualRustType::Array(inner) => {
-            let occ = match rt.config.bounds {
-                Some((Some(1), None)) => "+".to_owned(),
-                Some((None, Some(1))) => "?".to_owned(),
-                Some((None, Some(max))) => format!("*{max}"),
-                Some((Some(min), None)) => format!("{min}*"),
-                Some((Some(min), Some(max))) => format!("{min}*{max}"),
-                None | Some((None, None)) => "*".to_owned(),
-            };
+            let occ = render_occurrence(rt.config.bounds);
             // A `@duplicates reject` collection appends its policy marker so the shape column
             // round-trips the uniqueness twin (parsed back by `parse_requested_shape`, and matched as
             // a distinct canonical shape from the same loose/non-empty list). Kept byte-identical to
@@ -479,14 +455,7 @@ pub(crate) fn render_wrapper_shape(rt: &RustType) -> String {
             format!("[{occ} {}]{reject}", render_wrapper_shape(inner))
         }
         ConceptualRustType::Map(key, value) => {
-            let occ = match rt.config.bounds {
-                Some((Some(1), None)) => "+".to_owned(),
-                Some((None, Some(1))) => "?".to_owned(),
-                Some((None, Some(max))) => format!("*{max}"),
-                Some((Some(min), None)) => format!("{min}*"),
-                Some((Some(min), Some(max))) => format!("{min}*{max}"),
-                None | Some((None, None)) => "*".to_owned(),
-            };
+            let occ = render_occurrence(rt.config.bounds);
             // The map-side twin of the array arm's reject marker: a `@duplicates preserve` table's
             // backing container (`PairMap`) is part of its structural identity, so the shape column
             // carries the policy and the reconstruction rebuilds the same flavored wrapper.
@@ -515,6 +484,19 @@ pub(crate) fn render_wrapper_shape(rt: &RustType) -> String {
         // Fixed values carry no CDDL ident and never appear as a real wrapper element; render a
         // placeholder rather than panicking so the advisory hint text stays best-effort.
         ConceptualRustType::Fixed(_) => "_".to_owned(),
+    }
+}
+
+/// The occurrence marker of a collection shape in the W1 shape-column grammar (`*`, `+`, `?`,
+/// `*5`, `2*`, `2*5`), shared by the list and map arms of [`render_wrapper_shape`].
+fn render_occurrence(bounds: Option<(Option<i128>, Option<i128>)>) -> String {
+    match bounds {
+        Some((Some(1), None)) => "+".to_owned(),
+        Some((None, Some(1))) => "?".to_owned(),
+        Some((None, Some(max))) => format!("*{max}"),
+        Some((Some(min), None)) => format!("{min}*"),
+        Some((Some(min), Some(max))) => format!("{min}*{max}"),
+        None | Some((None, None)) => "*".to_owned(),
     }
 }
 
