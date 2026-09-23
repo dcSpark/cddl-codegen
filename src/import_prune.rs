@@ -108,8 +108,8 @@
 //! **Second rule — re-export-only files (file-shape scoped).** An extern-only CDDL scope generates
 //! a `mod.rs` containing nothing but extern re-export glue (`pub use crate::Address;`). The
 //! unconditional common-import push still adds `error::*` and (under `--preserve-encodings`) the
-//! encoding enums into it, none of which the allowlist rule above can touch (`error::*` is a glob;
-//! before Deliverable-2's edition bump `TryFrom` was a trait). For a file whose *shape* proves
+//! encoding enums into it, none of which the allowlist rule above can touch (`error::*` is a glob).
+//! For a file whose *shape* proves
 //! nothing local can consume any import, [`prune_generated_files`] applies a stronger rule that
 //! removes ALL private `use` items (traits, globs, macros included — allowlist irrelevant). A file
 //! F **qualifies** (see [`is_reexport_only_file`] plus the driver's descendant check) when: (a) it
@@ -180,7 +180,7 @@ pub(crate) const ALLOWLIST: &[&str] = &[
 
 /// The concrete-type names the static `error` module (`static/error.rs`) binds into a module's
 /// namespace. A `use <common>::error::*;` glob supplies EXACTLY these, so this is the complete
-/// universe for deciding whether such a glob is unused (see [`error_glob_needed`]). Held here as the
+/// universe for deciding whether such a glob is unused (see [`enumerated_glob_needed`]). Held here as the
 /// single owner and drift-guarded against `static/error.rs` by `error_exports_match_static_source`
 /// (a stale entry there is a compile-time-caught test failure, not a silent under-prune). In
 /// `--common-import-override` mode the glob targets the dependency crate's `error` module, which is
@@ -336,42 +336,13 @@ pub(crate) fn prune_unused_type_imports(source: &str) -> Cow<'_, str> {
     }
 }
 
-/// Import prune over the full generated-file map, at module-family precision. Two removals per file
-/// F (a `.rs` under a `/generated/` dir): named-candidate leaves ([`PruneConfig`] ∪ [`ALLOWLIST`])
-/// and unused private globs (`use super::*;` / `use <common>::error::*;`). Both are gated on whether
-/// F's private binding can still be CONSUMED by any file — F's own body, or a descendant.
-///
-/// **Who can consume F's private import: the super-glob edge graph.** A private `use` binding in
-/// module M is nameable only inside M and M's descendants, and a descendant reaches it exclusively
-/// through a `use super::*;` chain (a glob from a non-descendant imports only `pub` items; explicit
-/// `super::X` paths are not emitted by the generator — verified). So the ONLY files that can consume
-/// F's privates are the descendants D linked to F by an UNBROKEN chain of `use super::*;` edges
-/// (`reachable_via_super`). This is what makes a scope `mod.rs`'s blindly-pushed imports prunable:
-/// the sub-scope `serialization.rs`/`cbor_encodings.rs` files that name the same idents do NOT
-/// `use super::*;` the ROOT (their own scope `mod.rs` doesn't re-glob upward), so they never chained
-/// to the root's copy in the first place — they resolve their idents inside their own scope.
-///
-/// **Named-candidate protection.** X (a candidate F imports privately) is protected iff F's own body
-/// names X, or a super-reachable descendant D names X and D does NOT resolve X through a nearer
-/// binding of its own. Three disqualifiers, all from nearest-binding resolution:
-///   1. **Direct import** — D carries `use …::X;` (`direct_by_path`).
-///   2. **Target module** — D is at/under the crate-anchored module F imports X FROM
-///      (`collect_candidate_import_targets`) — the self-contained `serialization.rs`-DEFINES-it shape.
-///   3. **Source glob** — D carries a `use M::*;` of the SAME module F imports X from
-///      (`collect_candidate_import_sources` ∩ D's private glob paths) — the
-///      `--common-import-override` `serialization::*` shape, where the definition is external and
-///      target-module cannot see it. Over-removal stays loud (E0412/E0432/E0433) in the compile gates.
-///
-/// **Glob pruning.** `use super::*;` is removed from a file with no super-reachable descendant whose
-/// own body names no PARENT-bound name it doesn't itself bind (`super_glob_needed`, universe =
-/// `bound_names(parent)`). The enumerable `error::*` and generated sibling
-/// `super::cbor_encodings::*` globs are removed when neither F nor a super-reachable descendant
-/// demands a name from their respective universes that it doesn't resolve locally
-/// ([`enumerated_glob_needed`]).
-///
-/// A super-reachable descendant that fails to parse might consume ANY private import, so it poisons F
-/// (F is skipped). Returns `(path, pruned_content)` for each CHANGED file; the content is NOT
-/// rustfmt'd (the splice can leave loose spacing), so the caller must rustfmt each returned entry.
+/// Import prune over the full generated-file map, at module-family precision: the entry point for
+/// every rule in the module docs (named-candidate leaves from [`PruneConfig`] ∪ [`ALLOWLIST`], the
+/// enumerable private globs, and the re-export-only file shape). `files` is the whole map, since a
+/// file's private imports are protected by its super-reachable descendants; `.rs` files under a
+/// `/generated/` dir are the prune targets. Returns `(path, pruned_content)` for each CHANGED file;
+/// the content is NOT rustfmt'd (the splice can leave loose spacing), so the caller must rustfmt
+/// each returned entry.
 pub(crate) fn prune_generated_files(
     files: &BTreeMap<String, String>,
     config: &PruneConfig,
@@ -829,18 +800,7 @@ pub(crate) fn collect_used_idents_from_source(source: &str) -> Option<BTreeSet<S
     Some(used)
 }
 
-/// Ident collector with the path-tail exclusion (see the module docs' "Soundness boundary —
-/// path-tail idents"): an `Ident` immediately preceded by the path separator `::` is a path-tail
-/// segment (module path, associated item, enum variant) that resolves relative to the preceding
-/// segment, NEVER through the local module namespace, so it can never consume a `use` binding and
-/// must not protect an import or glob. `::` is two adjacent `Punct(':')` tokens — the first with
-/// `Spacing::Joint`, the second with `Spacing::Alone` — so the precise test is: the previous token
-/// is `Punct(':')` AND the one before it is `Punct(':')` with `Spacing::Joint`. A LONE `:` (struct
-/// field type, `let x: BTreeMap<…>`) fails the two-token joint check, so the ident after it still
-/// counts (over-skipping there would un-protect a load-bearing import — failure asymmetry: an
-/// over-prune is a consumer compile error, an under-prune only a warning). The last-two-token
-/// context is per token stream: a `Group`'s inner stream starts unpreceded, so recursion begins with
-/// a fresh context.
+/// Collect every ident [`walk_ident_uses`] reports (all forms, path tails excluded) into `used`.
 fn collect_idents_in_tokens(tokens: TokenStream, used: &mut BTreeSet<String>) {
     // Every reported form counts here: this pass asks only "does this name appear somewhere that
     // could consume a `use` binding", for which a method ident (`x.to_string()`) and a macro ident
