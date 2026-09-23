@@ -52,12 +52,14 @@
 //! with a `warn!`.
 
 use crate::cli::Cli;
+use crate::comment_ast::DuplicatesPolicy;
 use crate::intermediate::{
     ConceptualRustType, EnumVariant, EnumVariantData, FixedValue, IntermediateTypes, Primitive,
     Representation, RestRow, RustField, RustIdent, RustRecord, RustStruct, RustStructType,
     RustType,
 };
 use crate::utils::convert_to_snake_case;
+use std::collections::BTreeSet;
 
 type Bounds = (Option<i128>, Option<i128>);
 
@@ -407,10 +409,7 @@ fn render_rust_for_direct_storage(
                     let array = render_array(element_type);
                     let static_len = types
                         .rust_struct(type_ident)
-                        .filter(|array| {
-                            array.config().duplicates
-                                != Some(crate::comment_ast::DuplicatesPolicy::Reject)
-                        })
+                        .filter(|array| array.config().duplicates != Some(DuplicatesPolicy::Reject))
                         .and_then(|_| crate::intermediate::exact_array_len_from_bounds(*bounds))
                         .and_then(Result::ok);
                     if let Some(len) = static_len {
@@ -577,7 +576,7 @@ pub fn emit_generated_tests(
     types: &IntermediateTypes,
     cli: &Cli,
     submodules: &[String],
-    no_deserialize: &std::collections::BTreeSet<RustIdent>,
+    no_deserialize: &BTreeSet<RustIdent>,
 ) -> Option<String> {
     if !cli.to_from_bytes_methods {
         // both halves need to_cbor_bytes/from_cbor_bytes
@@ -944,10 +943,7 @@ const STD_RESTORE: &str = "    extern crate std;\n    #[allow(unused_imports)]\n
 /// Two consumers depend on this: the flag-gated `--emit-tests-conformance` validate call, and the
 /// always-on env-gated minted-bytes dump (`CDDL_CODEGEN_DUMP_MINTED`) the decorrelated ruby sweep
 /// reads — so a `None` here drops the type from BOTH oracles for this fixture.
-fn conformance_rule_name(
-    types: &IntermediateTypes,
-    ident: &crate::intermediate::RustIdent,
-) -> Option<String> {
+fn conformance_rule_name(types: &IntermediateTypes, ident: &RustIdent) -> Option<String> {
     if !types.is_toplevel_rule(ident) {
         return None;
     }
@@ -983,14 +979,14 @@ fn conformance_rule_name(
 /// named structs already entered stops recursion at the first repeat, so a recursive type
 /// terminates.
 fn struct_uses_custom_ser(types: &IntermediateTypes, rust_struct: &RustStruct) -> bool {
-    let mut visited = std::collections::BTreeSet::new();
+    let mut visited = BTreeSet::new();
     struct_uses_custom_ser_inner(types, rust_struct, &mut visited)
 }
 
 fn struct_uses_custom_ser_inner(
     types: &IntermediateTypes,
     rust_struct: &RustStruct,
-    visited: &mut std::collections::BTreeSet<RustIdent>,
+    visited: &mut BTreeSet<RustIdent>,
 ) -> bool {
     let cfg = rust_struct.config();
     if cfg.custom_serialize.is_some() || cfg.custom_deserialize.is_some() {
@@ -1025,7 +1021,7 @@ fn struct_uses_custom_ser_inner(
 fn field_uses_custom_ser(
     types: &IntermediateTypes,
     field: &RustField,
-    visited: &mut std::collections::BTreeSet<RustIdent>,
+    visited: &mut BTreeSet<RustIdent>,
 ) -> bool {
     field.rule_metadata.custom_serialize.is_some()
         || field.rule_metadata.custom_deserialize.is_some()
@@ -1035,12 +1031,12 @@ fn field_uses_custom_ser(
 fn type_uses_custom_ser(
     types: &IntermediateTypes,
     ty: &RustType,
-    visited: &mut std::collections::BTreeSet<RustIdent>,
+    visited: &mut BTreeSet<RustIdent>,
 ) -> bool {
     fn walk(
         types: &IntermediateTypes,
         ct: &ConceptualRustType,
-        visited: &mut std::collections::BTreeSet<RustIdent>,
+        visited: &mut BTreeSet<RustIdent>,
     ) -> bool {
         match ct {
             ConceptualRustType::Alias(ident, inner) => {
@@ -1539,11 +1535,7 @@ fn record_roundtrip(
         .typed_row()
         .filter(|_| record.is_non_empty_open_table())
     {
-        if type_uses_custom_ser(
-            types,
-            typed.domain(),
-            &mut std::collections::BTreeSet::new(),
-        ) {
+        if type_uses_custom_ser(types, typed.domain(), &mut BTreeSet::new()) {
             crate::warn!(
                 "cddl-codegen --emit-tests: no round-trip for {name} (NonEmpty typed key is written by a custom codec)"
             );
@@ -1759,9 +1751,7 @@ fn record_roundtrip(
                 if rest.has_exact_occurrence_window() {
                     continue;
                 }
-                if typed
-                    && type_uses_custom_ser(types, domain, &mut std::collections::BTreeSet::new())
-                {
+                if typed && type_uses_custom_ser(types, domain, &mut BTreeSet::new()) {
                     crate::warn!(
                         "cddl-codegen --emit-tests: {name} typed row's key is written by a custom codec — round-trip covers an empty typed row only"
                     );
@@ -2538,7 +2528,7 @@ pub(crate) fn measure_kind(ty: &RustType) -> Option<MeasureKind> {
 }
 
 /// In-range measure for a valid baseline: the inclusive min (or max, or 0).
-pub(crate) fn valid_measure(b: Bounds) -> i128 {
+fn valid_measure(b: Bounds) -> i128 {
     b.0.or(b.1).unwrap_or(0)
 }
 
@@ -2950,7 +2940,7 @@ fn semantic_tag_content(wrapped: &RustType) -> Option<&'static str> {
 /// absorbs by minting empty — loudly — while any other enclosing mint gets the caller's loud skip).
 pub(crate) fn mint_struct(
     types: &IntermediateTypes,
-    ident: &crate::intermediate::RustIdent,
+    ident: &RustIdent,
     depth: u8,
 ) -> Option<MintValue> {
     if depth >= MAX_MINT_DEPTH {
@@ -3107,8 +3097,7 @@ pub(crate) fn mint_struct(
             // mint one element so the element serialize/deserialize path runs; fall back to empty
             // (valid for `*`) when the element isn't cheaply mintable.
             let count = valid_measure(bounds.unwrap_or((None, None)));
-            let reject = rust_struct.config().duplicates
-                == Some(crate::comment_ast::DuplicatesPolicy::Reject);
+            let reject = rust_struct.config().duplicates == Some(DuplicatesPolicy::Reject);
             let unique_elems = if reject {
                 unique_array_elems(types, element_type, count, depth + 1)?
             } else {
@@ -3186,7 +3175,7 @@ fn empty_collection(ty: &RustType) -> Option<MintValue> {
             count: 0,
             non_empty: false,
             bounded: None,
-            reject: ty.config.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Reject),
+            reject: ty.config.duplicates == Some(DuplicatesPolicy::Reject),
             unique_elems: None,
         }),
         ConceptualRustType::Map(_, _) => Some(MintValue::DefaultMap),
@@ -3231,11 +3220,7 @@ fn unique_array_elems(
 
 /// Build a minted value for `ty` whose bound-relevant measure equals `measure`
 /// (the value itself for integers, the length for text/bytes/array/map).
-pub(crate) fn materialize(
-    types: &IntermediateTypes,
-    ty: &RustType,
-    measure: i128,
-) -> Option<MintValue> {
+fn materialize(types: &IntermediateTypes, ty: &RustType, measure: i128) -> Option<MintValue> {
     materialize_at(types, ty, measure, 0)
 }
 
@@ -3286,7 +3271,7 @@ fn materialize_at(
             },
         },
         ConceptualRustType::Array(elem) => {
-            let reject = ty.config.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Reject);
+            let reject = ty.config.duplicates == Some(DuplicatesPolicy::Reject);
             let unique_elems = if reject {
                 unique_array_elems(types, elem, measure, depth)?
             } else {
@@ -3349,8 +3334,7 @@ fn materialize_at(
                 count: measure,
                 non_empty: ty.is_type_enforced_non_empty(),
                 bounded: ty.type_enforced_bounded_map_u64_bounds(),
-                preserve: ty.config.duplicates
-                    == Some(crate::comment_ast::DuplicatesPolicy::Preserve),
+                preserve: ty.config.duplicates == Some(DuplicatesPolicy::Preserve),
             })
         }
         _ => None,

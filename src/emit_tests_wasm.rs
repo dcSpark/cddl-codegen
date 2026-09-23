@@ -71,6 +71,7 @@
 //!       (3 `new_uint` differentials red).
 
 use crate::cli::Cli;
+use crate::comment_ast::DuplicatesPolicy;
 use crate::emit_tests::{
     self, MintValue, arg_can_fail, bound_cases, map_key_expr, map_key_literal, measure_kind,
     mint_struct, multi_array_occurrence_ctor_arg_slots, record_ctor_arg_types,
@@ -484,9 +485,7 @@ fn rust_scoped_for_named(
             });
             let static_len = types
                 .rust_struct(type_ident)
-                .filter(|array| {
-                    array.config().duplicates != Some(crate::comment_ast::DuplicatesPolicy::Reject)
-                })
+                .filter(|array| array.config().duplicates != Some(DuplicatesPolicy::Reject))
                 .and_then(|_| crate::intermediate::exact_array_len_from_bounds(*bounds))
                 .and_then(Result::ok);
             if let Some(len) = static_len {
@@ -647,7 +646,7 @@ fn wasm_value(
 /// Build a named generated type through its wasm wrapper API from `mv`.
 fn wasm_named(
     types: &IntermediateTypes,
-    ident: &crate::intermediate::RustIdent,
+    ident: &RustIdent,
     mv: &MintValue,
     scoped: &ScopeMap,
     cli: &Cli,
@@ -1037,7 +1036,7 @@ fn finish_fallible(call: String, can_fail: bool, what: &str) -> String {
 
 fn wasm_record_roundtrip(
     types: &IntermediateTypes,
-    ident: &crate::intermediate::RustIdent,
+    ident: &RustIdent,
     name: &str,
     record: &RustRecord,
     scoped: &ScopeMap,
@@ -1213,7 +1212,7 @@ fn wasm_choice_roundtrip(
 
 fn wasm_wrapper_roundtrip(
     types: &IntermediateTypes,
-    ident: &crate::intermediate::RustIdent,
+    ident: &RustIdent,
     name: &str,
     scoped: &ScopeMap,
     cli: &Cli,
@@ -1268,10 +1267,7 @@ fn wasm_wrapper_roundtrip(
 /// The effective inner-value getter name for a wrapper: an explicit `@newtype <name>` renames it,
 /// otherwise every wrapper (bare tag, plain `@newtype`, bounded/range) exposes the inner under `get`
 /// — the same resolution `generate_wrapper_struct` uses to emit the getter.
-fn wrapper_getter_name(
-    types: &IntermediateTypes,
-    ident: &crate::intermediate::RustIdent,
-) -> String {
+fn wrapper_getter_name(types: &IntermediateTypes, ident: &RustIdent) -> String {
     match types
         .rust_struct(ident)
         .and_then(|s| s.config().newtype_getter.as_ref())
