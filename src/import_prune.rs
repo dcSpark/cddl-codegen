@@ -161,7 +161,7 @@ use syn::{Item, ItemUse, UseTree};
 /// entry must be a concrete type (never a trait/macro/glob), or the "ident absent from the module
 /// family ⇒ unused" implication that makes name-scanning sound breaks — the three encoding enums are
 /// concrete enums (`static/serialization_preserve.rs`) only ever consumed by being named.
-pub(crate) const ALLOWLIST: &[&str] = &[
+const ALLOWLIST: &[&str] = &[
     "BTreeMap",
     "OrderedHashMap",
     "NonEmptyVec",
@@ -185,7 +185,7 @@ pub(crate) const ALLOWLIST: &[&str] = &[
 /// (a stale entry there is a compile-time-caught test failure, not a silent under-prune). In
 /// `--common-import-override` mode the glob targets the dependency crate's `error` module, which is
 /// this same runtime copied into the dependency — the contract that keeps the universe complete.
-pub(crate) const ERROR_MODULE_EXPORTS: &[&str] = &["Key", "DeserializeFailure", "DeserializeError"];
+const ERROR_MODULE_EXPORTS: &[&str] = &["Key", "DeserializeFailure", "DeserializeError"];
 
 /// Per-run configuration for [`prune_generated_files`]: the name-scan-prunable idents BEYOND the
 /// built-in [`ALLOWLIST`]. Everything here is a CONCRETE type, an attribute macro, or a
@@ -204,51 +204,11 @@ pub(crate) struct PruneConfig {
     ///     `JsError`/`JsValue`/`wasm_bindgen` in scope), the contract documented next to those flags;
     ///   - cross-scope generator-minted type idents pushed by `add_imports_from_scope_refs`, which
     ///     a referencing module over-imports (the `scope_references` set is an over-approximation).
-    pub extra_candidates: std::collections::BTreeSet<String>,
+    pub extra_candidates: BTreeSet<String>,
 }
 
 fn is_candidate(ident: &str, config: &PruneConfig) -> bool {
     ALLOWLIST.contains(&ident) || config.extra_candidates.contains(ident)
-}
-
-/// Test-only: the driver uses [`is_candidate`] (allowlist ∪ per-run extras). Kept for the
-/// self-contained unit-test path that exercises the built-in allowlist alone.
-#[cfg(test)]
-fn is_allowlisted(ident: &str) -> bool {
-    ALLOWLIST.contains(&ident)
-}
-
-/// Prune allowlisted imports from `source` using an EXTERNALLY-supplied `used` ident set. `used`
-/// must be the PROTECTED set for this file: the union of [`collect_used_idents_from_source`] over
-/// the file itself and every strict path-descendant module in the same crate (see the module docs —
-/// a descendant's `use super::*;` chain can consume this file's private imports, so passing only
-/// this file's own idents is unsound for any file that has descendant modules). The driver
-/// [`prune_generated_files`] computes that set; leaf files get exactly their own idents.
-///
-/// Only PRIVATE `use` items (inherited visibility) are candidates: a `pub use` is API surface a
-/// downstream crate may import, which no in-crate analysis can rule out. Conservative-keep on
-/// everything else: a parse failure returns `source` byte-identical; globs, renames, and
-/// non-allowlisted names are never touched.
-///
-/// Re-emission is targeted span-based splicing (never whole-file token re-printing, which would
-/// drop comments and break the comment-preservation overlay): only the byte range of each modified
-/// `use` item is replaced; every comment and every other byte survives untouched. A whole-item
-/// deletion also consumes the line's leading indentation and trailing newline when the item was
-/// alone on its line(s), so no blank-line scar is left behind (rustfmt does NOT collapse those).
-/// rustfmt runs after this pass and normalizes the splice's spacing.
-#[cfg(test)]
-pub(crate) fn prune_unused_type_imports_with_used<'a>(
-    source: &'a str,
-    used: &BTreeSet<String>,
-) -> Cow<'a, str> {
-    // Allowlist-only behaviour (unit-test path): drop allowlisted leaves absent from `used`; no glob
-    // is ever removed.
-    splice_private_uses(
-        source,
-        false,
-        &|ident| is_allowlisted(ident) && !used.contains(ident),
-        &BTreeSet::new(),
-    )
 }
 
 /// Shared span-splicing edit loop for every prune rule. Iterates top-level PRIVATE `use` items;
@@ -322,18 +282,6 @@ fn splice_private_uses<'a>(
         }
     }
     Cow::Owned(out)
-}
-
-/// Single-file convenience: prune using only this file's own idents as the used set — the leaf-file
-/// case (no descendant modules). The driver [`prune_generated_files`] never calls this; it always
-/// computes the descendant-protected set. Kept for unit tests that exercise a self-contained
-/// snippet.
-#[cfg(test)]
-pub(crate) fn prune_unused_type_imports(source: &str) -> Cow<'_, str> {
-    match collect_used_idents_from_source(source) {
-        Some(used) => prune_unused_type_imports_with_used(source, &used),
-        None => Cow::Borrowed(source),
-    }
 }
 
 /// Import prune over the full generated-file map, at module-family precision: the entry point for
@@ -1278,6 +1226,55 @@ fn line_col_to_byte(line_starts: &[usize], source: &str, line: usize, column: us
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Test-only: the driver uses [`is_candidate`] (allowlist ∪ per-run extras). Kept for the
+    /// self-contained unit-test path that exercises the built-in allowlist alone.
+    fn is_allowlisted(ident: &str) -> bool {
+        ALLOWLIST.contains(&ident)
+    }
+
+    /// Prune allowlisted imports from `source` using an EXTERNALLY-supplied `used` ident set. `used`
+    /// must be the PROTECTED set for this file: the union of [`collect_used_idents_from_source`] over
+    /// the file itself and every strict path-descendant module in the same crate (see the module docs —
+    /// a descendant's `use super::*;` chain can consume this file's private imports, so passing only
+    /// this file's own idents is unsound for any file that has descendant modules). The driver
+    /// [`prune_generated_files`] computes that set; leaf files get exactly their own idents.
+    ///
+    /// Only PRIVATE `use` items (inherited visibility) are candidates: a `pub use` is API surface a
+    /// downstream crate may import, which no in-crate analysis can rule out. Conservative-keep on
+    /// everything else: a parse failure returns `source` byte-identical; globs, renames, and
+    /// non-allowlisted names are never touched.
+    ///
+    /// Re-emission is targeted span-based splicing (never whole-file token re-printing, which would
+    /// drop comments and break the comment-preservation overlay): only the byte range of each modified
+    /// `use` item is replaced; every comment and every other byte survives untouched. A whole-item
+    /// deletion also consumes the line's leading indentation and trailing newline when the item was
+    /// alone on its line(s), so no blank-line scar is left behind (rustfmt does NOT collapse those).
+    /// rustfmt runs after this pass and normalizes the splice's spacing.
+    fn prune_unused_type_imports_with_used<'a>(
+        source: &'a str,
+        used: &BTreeSet<String>,
+    ) -> Cow<'a, str> {
+        // Allowlist-only behaviour (unit-test path): drop allowlisted leaves absent from `used`; no glob
+        // is ever removed.
+        splice_private_uses(
+            source,
+            false,
+            &|ident| is_allowlisted(ident) && !used.contains(ident),
+            &BTreeSet::new(),
+        )
+    }
+
+    /// Single-file convenience: prune using only this file's own idents as the used set — the leaf-file
+    /// case (no descendant modules). The driver [`prune_generated_files`] never calls this; it always
+    /// computes the descendant-protected set. Kept for unit tests that exercise a self-contained
+    /// snippet.
+    fn prune_unused_type_imports(source: &str) -> Cow<'_, str> {
+        match collect_used_idents_from_source(source) {
+            Some(used) => prune_unused_type_imports_with_used(source, &used),
+            None => Cow::Borrowed(source),
+        }
+    }
 
     fn prune(s: &str) -> String {
         prune_unused_type_imports(s).into_owned()

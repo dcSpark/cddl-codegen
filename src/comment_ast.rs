@@ -1,4 +1,5 @@
-extern crate nom;
+use std::collections::BTreeSet;
+
 use nom::{
     IResult, Parser,
     branch::alt,
@@ -78,7 +79,7 @@ pub enum DuplicatesPolicy {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExternCompanions {
     pub path_prefix: String,
-    pub classes: std::collections::BTreeSet<String>,
+    pub classes: BTreeSet<String>,
 }
 
 /// One codec-visible encoding VARIABLE a `@custom_encodings` declaration names, in the order the
@@ -962,7 +963,7 @@ fn tag_extern_companions(input: &str) -> IResult<&str, ParseResult> {
              `use <prefix>::<Class>;`."
         );
     }
-    let mut classes = std::collections::BTreeSet::new();
+    let mut classes = BTreeSet::new();
     for class in class_list.split(',') {
         if !is_rust_ident(class) {
             panic!(
