@@ -240,14 +240,9 @@ pub fn rule_position_name_rejection(cddl_rule: &cddl::ast::Rule) -> Option<Strin
             // Mirror `parse_type`'s top-level metadata merge (inherited defaults to empty there):
             // the cddl parser can attach the rule's trailing comment to either the Type1 or the
             // enclosing TypeChoice, so read both.
-            in_scope.iter().any(|tc| {
-                merge_metadata(
-                    &RuleMetadata::from(tc.type1.comments_after_type.as_ref()),
-                    &RuleMetadata::from(tc.comments_after_type.as_ref()),
-                )
-                .name
-                .is_some()
-            })
+            in_scope
+                .iter()
+                .any(|tc| type_choice_metadata(tc).name.is_some())
         }
         cddl::ast::Rule::Group { rule, .. } => match &rule.entry {
             cddl::ast::GroupEntry::InlineGroup {
@@ -684,6 +679,28 @@ fn custom_codec_directives(metadata: &RuleMetadata) -> Vec<&'static str> {
     found
 }
 
+/// The custom-codec pair plus the declarations that describe its wire (`@custom_encodings`,
+/// `@custom_wire_major`), in that order.
+fn custom_codec_family_directives(metadata: &RuleMetadata) -> Vec<&'static str> {
+    let mut found = custom_codec_directives(metadata);
+    if metadata.custom_encodings.is_some() {
+        found.push("@custom_encodings");
+    }
+    if metadata.custom_wire_major.is_some() {
+        found.push("@custom_wire_major");
+    }
+    found
+}
+
+/// Directive spellings for a diagnostic: each backtick-quoted, joined by `sep`.
+fn quoted_directive_list(directives: &[&str], sep: &str) -> String {
+    directives
+        .iter()
+        .map(|directive| format!("`{directive}`"))
+        .collect::<Vec<_>>()
+        .join(sep)
+}
+
 /// An exact-zero keyed member (`0*0` / `*0`) deliberately mints no value field: it is record
 /// constraint metadata only, used to reject that one CBOR/JSON key and to guard open-map
 /// construction.  Most member-scoped directives already take their normal placement refusal
@@ -708,19 +725,9 @@ fn reject_exact_zero_field_only_metadata(
              or remove the member doc."
         ));
     }
-    let mut codec_directives = custom_codec_directives(metadata);
-    if metadata.custom_encodings.is_some() {
-        codec_directives.push("@custom_encodings");
-    }
-    if metadata.custom_wire_major.is_some() {
-        codec_directives.push("@custom_wire_major");
-    }
+    let codec_directives = custom_codec_family_directives(metadata);
     if !codec_directives.is_empty() {
-        let written = codec_directives
-            .iter()
-            .map(|directive| format!("`{directive}`"))
-            .collect::<Vec<_>>()
-            .join(" / ");
+        let written = quoted_directive_list(&codec_directives, " / ");
         types.record_rejection(format!(
             "{written} on exact-zero field `{field_name}` of rule `{source_name}`: `0*0` / `*0` \
              forbids the member completely and emits no value codec or encoding sidecar for these \
@@ -1528,22 +1535,9 @@ fn reject_field_directives_on_single_entry_arm(
         "the single-entry group-choice arm `{arm_desc}` of rule `{}`",
         source_rule_name_of(types, name)
     );
-    let codec_directives = {
-        let mut found = custom_codec_directives(&metadata);
-        if metadata.custom_encodings.is_some() {
-            found.push("@custom_encodings");
-        }
-        if metadata.custom_wire_major.is_some() {
-            found.push("@custom_wire_major");
-        }
-        found
-    };
+    let codec_directives = custom_codec_family_directives(&metadata);
     if !codec_directives.is_empty() {
-        let written = codec_directives
-            .iter()
-            .map(|d| format!("`{d}`"))
-            .collect::<Vec<_>>()
-            .join(" / ");
+        let written = quoted_directive_list(&codec_directives, " / ");
         // The remedy is spelled for the arm as WRITTEN: a keyed member keeps its key, a keyless one
         // (`// kv`) references the new rule directly. Both spellings were asserted to route the
         // pair into this very arm's serialize/deserialize before this text shipped.
@@ -1668,6 +1662,15 @@ fn single_arm_array_effective_metadata(
         ),
         None => rule_metadata.clone(),
     }
+}
+
+/// A type-choice arm's metadata, merged across the `Type1` and `TypeChoice` comment slots because
+/// the cddl parser may bind an arm's trailing comment to either.
+fn type_choice_metadata(choice: &TypeChoice) -> RuleMetadata {
+    merge_metadata(
+        &RuleMetadata::from(choice.type1.comments_after_type.as_ref()),
+        &RuleMetadata::from(choice.comments_after_type.as_ref()),
+    )
 }
 
 /// The RULE-POSITION metadata of a multi-arm type rule: the LAST arm's trailing comment, merged
@@ -2222,10 +2225,7 @@ fn parse_type_choices(
         // caught too (`@name` additionally rejects at the parse-walk seam,
         // `rule_position_name_rejection`, which covers both arms of this shape).
         for choice in &type_choices[..type_choices.len() - 1] {
-            let arm_metadata = merge_metadata(
-                &RuleMetadata::from(choice.type1.comments_after_type.as_ref()),
-                &RuleMetadata::from(choice.comments_after_type.as_ref()),
-            );
+            let arm_metadata = type_choice_metadata(choice);
             let mut misplaced = arm_metadata.non_variant_directives();
             if arm_metadata.comment.is_some() {
                 misplaced.push("@doc");
@@ -2325,10 +2325,7 @@ fn parse_type_choices(
         // (`rule_position_metadata`) and runs its own non-last-arm check, which also refuses
         // `@name` and `@doc` because a collapse has no variants.
         for choice in &type_choices[..type_choices.len() - 1] {
-            let arm_metadata = merge_metadata(
-                &RuleMetadata::from(choice.type1.comments_after_type.as_ref()),
-                &RuleMetadata::from(choice.comments_after_type.as_ref()),
-            );
+            let arm_metadata = type_choice_metadata(choice);
             let misplaced = arm_metadata.non_variant_directives();
             if !misplaced.is_empty() {
                 types.record_rejection(format!(
@@ -3424,23 +3421,12 @@ pub(crate) fn inline_group_occurrence_trailing_directive_rejection(
         else {
             return None;
         };
-        let trailing = buffer.get(inline_span.1..group_choice.span.1)?;
-        let metadata = trailing
-            .lines()
-            .filter_map(|line| line.trim_start().strip_prefix(';'))
-            .map(|comment| metadata_from_comments(&[comment]))
-            .fold(RuleMetadata::default(), |acc, found| {
-                merge_metadata(&acc, &found)
-            });
+        let metadata = trailing_comment_metadata(buffer.get(inline_span.1..group_choice.span.1)?);
         let directives = metadata.all_directives();
         if directives.is_empty() {
             return None;
         }
-        let found = directives
-            .iter()
-            .map(|directive| format!("`{directive}`"))
-            .collect::<Vec<_>>()
-            .join(", ");
+        let found = quoted_directive_list(&directives, ", ");
         if matches!(
             occur.occur,
             Occur::Exact {
@@ -3579,22 +3565,12 @@ pub(crate) fn named_plain_group_occurrence_trailing_directive_rejection(
         {
             return None;
         }
-        let metadata = buffer
-            .get(name.span.1..group_choice.span.1)?
-            .lines()
-            .filter_map(|line| line.trim_start().strip_prefix(';'))
-            .map(|comment| metadata_from_comments(&[comment]))
-            .fold(RuleMetadata::default(), |acc, found| {
-                merge_metadata(&acc, &found)
-            });
-        let found = metadata
-            .all_directives()
-            .into_iter()
-            .map(|directive| format!("`{directive}`"))
-            .collect::<Vec<_>>();
-        if found.is_empty() {
+        let metadata = trailing_comment_metadata(buffer.get(name.span.1..group_choice.span.1)?);
+        let directives = metadata.all_directives();
+        if directives.is_empty() {
             return None;
         }
+        let found = quoted_directive_list(&directives, ", ");
         let owner = rule.name.to_string();
         let group_source = group_source.clone();
         Some(format!(
@@ -3604,7 +3580,7 @@ pub(crate) fn named_plain_group_occurrence_trailing_directive_rejection(
              `{owner} = [* {group_source}] ; @doc <text>`); directives for the repeated item belong \
              on the named plain-group rule `{group_source} = (…)`. Remove `@name` here: it cannot \
              rename either generated surface.",
-            found.join(", ")
+            found
         ))
     })
 }
@@ -3647,6 +3623,16 @@ fn multiline_group_trailing_directive_offence(
     Some(multiline_group_trailing_directive_message(name, &tags))
 }
 
+/// The merged metadata of every `;` comment line in `text`, a source slice after a rule's body.
+fn trailing_comment_metadata(text: &str) -> RuleMetadata {
+    text.lines()
+        .filter_map(|line| line.trim_start().strip_prefix(';'))
+        .map(|comment| metadata_from_comments(&[comment]))
+        .fold(RuleMetadata::default(), |acc, found| {
+            merge_metadata(&acc, &found)
+        })
+}
+
 /// The one multi-line group-rule refusal message. `tags` is the non-empty directive list, in the
 /// stable order `RuleMetadata::all_directives` produces; the first is reused as the example
 /// spelling. Pinned by the `robustness_tests` vectors
@@ -3654,11 +3640,7 @@ fn multiline_group_trailing_directive_offence(
 /// `KNOWN_RULE_METADATA_TAGS` sweep beside it), which assert the rule ident, the directive spelling
 /// and BOTH remedies as substrings; do not reword it.
 fn multiline_group_trailing_directive_message(name: &str, tags: &[&str]) -> String {
-    let found = tags
-        .iter()
-        .map(|tag| format!("`{tag}`"))
-        .collect::<Vec<_>>()
-        .join(", ");
+    let found = quoted_directive_list(tags, ", ");
     format!(
         "group rule `{name}`: a trailing comment on a multi-line group rule's closing-paren line \
          cannot carry a directive — the pinned CDDL parser binds that comment to the FOLLOWING rule \
@@ -4839,10 +4821,7 @@ pub fn create_variants_from_type_choices(
     // or enum name to cite, but it still has arms and a generated variant, so it receives the
     // role-generic diagnostic rather than keeping an invalid repeated variant.
     for (arm_idx, choice) in type_choices.iter().enumerate() {
-        let metadata = merge_metadata(
-            &RuleMetadata::from(choice.type1.comments_after_type.as_ref()),
-            &RuleMetadata::from(choice.comments_after_type.as_ref()),
-        );
+        let metadata = type_choice_metadata(choice);
         if let Some(source_name) = metadata.name {
             let emitted_name = convert_to_camel_case(&source_name);
             if let Some(first) = types.reserve_explicit_variant_mint(
@@ -4891,10 +4870,7 @@ pub fn create_variants_from_type_choices(
         // The cddl parser attaches a type-choice element's trailing comment to
         // TypeChoice.comments_after_type, not Type1.comments_after_type, so merge both — otherwise
         // @name/@doc on a variant is silently dropped. Mirrors parse_type's merge for single types.
-        let rule_metadata = merge_metadata(
-            &RuleMetadata::from(choice.type1.comments_after_type.as_ref()),
-            &RuleMetadata::from(choice.comments_after_type.as_ref()),
-        );
+        let rule_metadata = type_choice_metadata(choice);
         // Two arms that build the SAME `RustType` are one arm on the wire: the dispatch tries arms in
         // order and always first-matches the earlier one, so every later twin mints a variant no
         // decode can ever produce (`c = tstr / tstr` minted `C::Text` + an undecodable `C::Text2`,
@@ -6097,6 +6073,12 @@ fn group_entry_to_field_name(
     already_generated: &mut BTreeMap<String, u32>,
     optional_comma: &OptionalComma,
 ) -> String {
+    // An explicit `@name` from the entry's own trailing comment and the comma's.
+    let explicit_name = |trailing_comments: &Option<Comments>| {
+        let combined_comments =
+            combine_comments(trailing_comments, &optional_comma.trailing_comments);
+        metadata_from_comments(&combined_comments.unwrap_or_default()).name
+    };
     let field_name = convert_to_snake_case(&match entry {
         GroupEntry::ValueMemberKey {
             trailing_comments,
@@ -6104,72 +6086,43 @@ fn group_entry_to_field_name(
             ..
         } => match ge.member_key.as_ref() {
             Some(member_key) => match member_key {
-                MemberKey::Value { value, .. } => {
-                    let combined_comments =
-                        combine_comments(trailing_comments, &optional_comma.trailing_comments);
-                    match metadata_from_comments(&combined_comments.unwrap_or_default()) {
-                        RuleMetadata {
-                            name: Some(name), ..
-                        } => name,
-                        // a quoted text key `"a":` is sugar for the bareword key `a:` (same wire
-                        // key), so it must converge on the bareword field name, not `key_"a"`
-                        // (which is invalid Rust). Non-text values keep the `key_{value}` fallback.
-                        _ => match value {
-                            cddl::token::Value::TEXT(t) => t.to_string(),
-                            _ => format!("key_{value}"),
-                        },
-                    }
-                }
+                MemberKey::Value { value, .. } => explicit_name(trailing_comments)
+                    // a quoted text key `"a":` is sugar for the bareword key `a:` (same wire
+                    // key), so it must converge on the bareword field name, not `key_"a"`
+                    // (which is invalid Rust). Non-text values keep the `key_{value}` fallback.
+                    .unwrap_or_else(|| match value {
+                        cddl::token::Value::TEXT(t) => t.to_string(),
+                        _ => format!("key_{value}"),
+                    }),
                 MemberKey::Bareword { ident, .. } => {
                     // Honor a `@name` directive the same way the Value/Type1 arms do; otherwise the
                     // directive is silently dropped on bareword-keyed entries (the same directive-drop
                     // bug class the Type1 arm below fixes for arrow keys).
-                    let combined_comments =
-                        combine_comments(trailing_comments, &optional_comma.trailing_comments);
-                    match metadata_from_comments(&combined_comments.unwrap_or_default()) {
-                        RuleMetadata {
-                            name: Some(name), ..
-                        } => name,
-                        _ => ident.to_string(),
-                    }
+                    explicit_name(trailing_comments).unwrap_or_else(|| ident.to_string())
                 }
                 MemberKey::Type1 { t1, .. } => {
                     // An integer arrow key `0 => x` is the Type1 spelling of the value key `0: x`, so
                     // honor a @name directive the same way the Value arm above does (falling back to
                     // key_{value}); otherwise the directive is silently dropped on arrow-keyed entries.
-                    let combined_comments =
-                        combine_comments(trailing_comments, &optional_comma.trailing_comments);
-                    match metadata_from_comments(&combined_comments.unwrap_or_default()) {
-                        RuleMetadata {
-                            name: Some(name), ..
-                        } => name,
-                        _ => match &t1.type2 {
-                            Type2::UintValue { value, .. } => format!("key_{value}"),
-                            // A quoted-text arrow key `"a" => v` is the Type1 spelling of the value
-                            // key `"a": v` / bareword `a:` (same wire key), so it must converge on the
-                            // same field name. Nint/float Type1 keys never reach naming — they are
-                            // rejected during key classification first — so no cases for them here.
-                            Type2::TextValue { value, .. } => value.to_string(),
-                            _ => panic!(
-                                "Encountered Type1 member key in multi-field map - not supported: {:?}",
-                                entry
-                            ),
-                        },
-                    }
+                    explicit_name(trailing_comments).unwrap_or_else(|| match &t1.type2 {
+                        Type2::UintValue { value, .. } => format!("key_{value}"),
+                        // A quoted-text arrow key `"a" => v` is the Type1 spelling of the value
+                        // key `"a": v` / bareword `a:` (same wire key), so it must converge on the
+                        // same field name. Nint/float Type1 keys never reach naming — they are
+                        // rejected during key classification first — so no cases for them here.
+                        Type2::TextValue { value, .. } => value.to_string(),
+                        _ => panic!(
+                            "Encountered Type1 member key in multi-field map - not supported: {:?}",
+                            entry
+                        ),
+                    })
                 }
                 MemberKey::NonMemberKey { .. } => {
                     panic!("Please open a github issue with repro steps")
                 }
             },
             None => type_to_field_name(&ge.entry_type).unwrap_or_else(|| {
-                let combined_comments =
-                    combine_comments(trailing_comments, &optional_comma.trailing_comments);
-                match metadata_from_comments(&combined_comments.unwrap_or_default()) {
-                    RuleMetadata {
-                        name: Some(name), ..
-                    } => name,
-                    _ => format!("index_{index}"),
-                }
+                explicit_name(trailing_comments).unwrap_or_else(|| format!("index_{index}"))
             }),
         },
         GroupEntry::TypeGroupname {
@@ -6177,16 +6130,7 @@ fn group_entry_to_field_name(
             ge: TypeGroupnameEntry { name, .. },
             ..
         } => match !is_identifier_user_defined(&name.to_string()) {
-            true => {
-                let combined_comments =
-                    combine_comments(trailing_comments, &optional_comma.trailing_comments);
-                match metadata_from_comments(&combined_comments.unwrap_or_default()) {
-                    RuleMetadata {
-                        name: Some(name), ..
-                    } => name,
-                    _ => format!("index_{index}"),
-                }
-            }
+            true => explicit_name(trailing_comments).unwrap_or_else(|| format!("index_{index}")),
             false => name.to_string(),
         },
         GroupEntry::InlineGroup { group, .. } => panic!(
@@ -6311,7 +6255,7 @@ fn reject_inline_group_occurrence_directives(
         ("@doc", comment.is_some()),
     ]
     .into_iter()
-    .filter_map(|(directive, written)| written.then_some(format!("`{directive}`")))
+    .filter_map(|(directive, written)| written.then_some(directive))
     .collect::<Vec<_>>();
     if found.is_empty() {
         return false;
@@ -6320,7 +6264,7 @@ fn reject_inline_group_occurrence_directives(
     types.record_rejection(inline_group_occurrence_directive_message(
         &source,
         item_ident.as_ref(),
-        &found.join(", "),
+        &quoted_directive_list(&found, ", "),
     ));
     true
 }
@@ -6350,12 +6294,8 @@ fn reject_named_plain_group_occurrence_directives(
     group_source: &str,
     metadata: &RuleMetadata,
 ) -> bool {
-    let found = metadata
-        .all_directives()
-        .into_iter()
-        .map(|directive| format!("`{directive}`"))
-        .collect::<Vec<_>>();
-    if found.is_empty() {
+    let directives = metadata.all_directives();
+    if directives.is_empty() {
         return false;
     }
     let owner_source = source_rule_name_of(types, owner);
@@ -6366,7 +6306,7 @@ fn reject_named_plain_group_occurrence_directives(
          `{owner_source} = [* {group_source}] ; @doc <text>`); directives for the repeated item \
          belong on the named plain-group rule `{group_source} = (…)`. Remove `@name` here: it \
          cannot rename either generated surface.",
-        found.join(", ")
+        quoted_directive_list(&directives, ", ")
     ));
     true
 }
@@ -7024,10 +6964,7 @@ fn rust_type(
             // and discard them.  The LAST arm is the containing field's normal directive slot and
             // is consumed by `parse_record_from_group_choice`; do not reject it here.
             for choice in &t.type_choices[..1] {
-                let arm_metadata = merge_metadata(
-                    &RuleMetadata::from(choice.type1.comments_after_type.as_ref()),
-                    &RuleMetadata::from(choice.comments_after_type.as_ref()),
-                );
+                let arm_metadata = type_choice_metadata(choice);
                 let mut misplaced = arm_metadata.non_variant_directives();
                 if arm_metadata.name.is_some() {
                     misplaced.push("@name");
