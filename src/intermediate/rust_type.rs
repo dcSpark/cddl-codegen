@@ -996,16 +996,12 @@ impl RustType {
     }
 
     // deep resolve aliases
-    pub fn resolve_aliases(self) -> Self {
-        Self {
-            conceptual_type: self.conceptual_type.resolve_aliases(),
-            encodings: self.encodings,
-            config: self.config,
-            generic_param_binding: self.generic_param_binding,
-        }
+    pub fn resolve_aliases(mut self) -> Self {
+        self.conceptual_type = self.conceptual_type.resolve_aliases();
+        self
     }
 
-    pub fn with_bounds(self, mut bounds: (Option<i128>, Option<i128>)) -> Self {
+    pub fn with_bounds(mut self, mut bounds: (Option<i128>, Option<i128>)) -> Self {
         assert!(self.config.bounds.is_none());
         // remove redundant 0 for unsigned types
         if bounds.0 == Some(0)
@@ -1022,22 +1018,10 @@ impl RustType {
         {
             bounds.0 = None;
         }
-        Self {
-            conceptual_type: self.conceptual_type,
-            encodings: self.encodings,
-            config: RustTypeSerializeConfig {
-                default: self.config.default,
-                bounds: if bounds.0.is_some() || bounds.1.is_some() {
-                    Some(bounds)
-                } else {
-                    None
-                },
-                float_bounds: self.config.float_bounds,
-                basic_override: self.config.basic_override,
-                duplicates: self.config.duplicates,
-            },
-            generic_param_binding: self.generic_param_binding,
+        if bounds.0.is_some() || bounds.1.is_some() {
+            self.config.bounds = Some(bounds);
         }
+        self
     }
 
     /// Attach a per-rule `@duplicates` policy to a collection member `RustType`. Applied at the
@@ -1064,19 +1048,9 @@ impl RustType {
         self
     }
 
-    pub fn not_basic(self) -> Self {
-        Self {
-            conceptual_type: self.conceptual_type,
-            encodings: self.encodings,
-            config: RustTypeSerializeConfig {
-                default: self.config.default,
-                bounds: self.config.bounds,
-                float_bounds: self.config.float_bounds,
-                basic_override: true,
-                duplicates: self.config.duplicates,
-            },
-            generic_param_binding: self.generic_param_binding,
-        }
+    pub fn not_basic(mut self) -> Self {
+        self.config.basic_override = true;
+        self
     }
 
     /// Checks whether FROM THIS CONTEXT the type is a basic group.

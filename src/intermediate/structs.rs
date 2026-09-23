@@ -1354,24 +1354,10 @@ impl RestRow {
     /// arm), so the container spelling cannot drift between them — a rest row's container is
     /// indistinguishable from a map/array FIELD's container to each of them.
     pub fn container_type(&self) -> RustType {
-        match &self.kind {
-            RestKind::ArrayTail { element, .. } => {
-                let ty: RustType = ConceptualRustType::Array(Box::new(element.clone())).into();
-                self.rust_bounds()
-                    .map_or(ty.clone(), |bounds| ty.with_bounds(bounds))
-            }
-            RestKind::MapEntries {
-                domain,
-                range,
-                duplicates,
-            } => {
-                let ty: RustType =
-                    ConceptualRustType::Map(Box::new(domain.clone()), Box::new(range.clone()))
-                        .into();
-                let ty = ty.with_duplicates_policy(*duplicates);
-                self.rust_bounds()
-                    .map_or(ty.clone(), |bounds| ty.with_bounds(bounds))
-            }
+        let ty = self.staging_container_type();
+        match self.rust_bounds() {
+            Some(bounds) => ty.with_bounds(bounds),
+            None => ty,
         }
     }
 
