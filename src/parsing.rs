@@ -5575,19 +5575,8 @@ fn parse_group_type<'a>(
                     cli,
                 );
                 let item_type: RustType = ConceptualRustType::Rust(item_ident.clone()).into();
-                // The outer decoder advances by each materialized group's mandatory width. A
-                // zero-width group could succeed without consuming input, so an unbounded outer
-                // decode would never terminate. Use the IR authority after materialization, not a
-                // syntactic optionality guess, because nested plain groups contribute their own
-                // mandatory width.
-                if item_type.expanded_mandatory_field_count(types) == 0 {
-                    types.record_rejection(format!(
-                        "rule `{}`: a zero-width repeated group is unsupported — each successful \
-                         repetition must consume at least one CBOR item so the flat array decoder can \
-                         advance. Make one group member mandatory or use a separately framed array item.",
-                        source_rule_name_of(types, owner)
-                    ));
-                }
+                // The zero-width repetition check runs in `parse_group_choice`, which covers this
+                // inline spelling and the named one alike.
                 return GroupParsingType::FlatGroupArray(item_type, Some(bounds));
             }
             // An unflattened `InlineGroup` here is a parenthesized group carrying an occurrence
@@ -9641,8 +9630,6 @@ fn parse_group_choice(
                 // onto the stored inner array type, selecting the `OrderedSet`/`NonEmptyOrderedSet`
                 // twin. `@newtype` carries a custom getter on the wrapper; a bare set nominal emits no
                 // inherent `get()` (it would shadow `OrderedSet::get(index)` through `Deref`).
-                let effective_metadata =
-                    single_arm_array_effective_metadata(&rule_metadata, tag, name);
                 let mut array_type: RustType =
                     ConceptualRustType::Array(Box::new(element_type)).into();
                 if let Some(bounds) = bounds {
@@ -9673,8 +9660,6 @@ fn parse_group_choice(
                 // `@duplicates` policy lands in the wrapper's struct config; the register-side
                 // `Wrapper` arm then threads it onto the stored inner collection type so generation
                 // selects the `OrderedSet` twin.
-                let effective_metadata =
-                    single_arm_array_effective_metadata(&rule_metadata, tag, name);
                 let mut array_type: RustType =
                     ConceptualRustType::Array(Box::new(element_type)).into();
                 if let Some(bounds) = bounds {
@@ -9691,8 +9676,6 @@ fn parse_group_choice(
                 // Array - homogeneous element type with proper occurence operator. A single-arm
                 // tag-258 set picks up the registry's reject default via the helper (no-op for a
                 // non-258 tag or an explicit directive).
-                let effective_metadata =
-                    single_arm_array_effective_metadata(&rule_metadata, tag, name);
                 RustStruct::new_array(
                     name.clone(),
                     tag,
