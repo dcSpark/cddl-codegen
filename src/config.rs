@@ -1793,6 +1793,24 @@ impl Config {
     ///
     /// Every selector answers it identically because it IS the same question — a typo on the command
     /// line does not become a different mistake depending on which selector carried it.
+    /// The RUN level: the command-line `--verbosity` if given, else `[defaults].verbosity`, else the
+    /// built-in default. Shared by [`generate`] and [`print_flags`].
+    fn run_verbosity(&self) -> Verbosity {
+        self.verbosity_override
+            .or(self.defaults.verbosity)
+            .unwrap_or_default()
+    }
+
+    /// Refuse a selection naming a crate the config does not configure.
+    fn check_selected(&self, selected: &[String]) -> Result<(), String> {
+        for name in selected {
+            if !self.crates.contains_key(name) {
+                return Err(self.unknown_crate(name));
+            }
+        }
+        Ok(())
+    }
+
     fn unknown_crate(&self, name: &str) -> String {
         format!(
             "`{name}` is not a crate in this config. Configured crates: {}",
@@ -1831,11 +1849,7 @@ impl Config {
                     .to_owned(),
             );
         }
-        for name in selected {
-            if !self.crates.contains_key(name) {
-                return Err(self.unknown_crate(name));
-            }
-        }
+        self.check_selected(selected)?;
 
         let mut closed: BTreeSet<String> = BTreeSet::new();
         let mut pending: Vec<String> = selected.to_vec();
@@ -1904,11 +1918,7 @@ impl Config {
         let chosen: Vec<String> = if selected.is_empty() {
             order
         } else {
-            for name in selected {
-                if !self.crates.contains_key(name) {
-                    return Err(self.unknown_crate(name));
-                }
-            }
+            self.check_selected(selected)?;
             // Deduplicated and re-ordered into generation order: the selection picks WHICH crates
             // run, never in what order — that is the config's business — so `a b` and `b a` must
             // generate the same thing.
@@ -2997,7 +3007,7 @@ fn resolve_path(base_dir: &Path, value: &str) -> String {
 // Every parameter is a distinct INPUT to the expansion — the settings after merging, the derivations
 // that are not settings, and the one value that comes from neither — so folding them into a struct
 // would rename the list rather than shorten it, and hide from the signature which of them a caller
-// legitimately has nothing to pass (`ungraphed` passes four empties).
+// legitimately has nothing to pass (`ungraphed` passes five empty slices and an empty `Provenance`).
 #[allow(clippy::too_many_arguments)]
 fn argv_fragments(
     entry: &CrateEntry,
@@ -3097,14 +3107,15 @@ fn argv_fragments(
         );
     }
 
-    // `ArgAction::Set` booleans take an explicit `true`/`false`, so an absent key is the only way to
-    // mean "leave clap's built-in default alone" — which is exactly what `None` does here.
-    macro_rules! set_bool {
+    // Scalar keys, rendered through `Display`. `ArgAction::Set` booleans take an explicit
+    // `true`/`false`, so an absent key is the only way to mean "leave clap's built-in default alone" —
+    // which is exactly what `None` does here.
+    macro_rules! scalar {
         ($($opt:ident => $key:literal),* $(,)?) => {$(
             if let Some(v) = $opt { flag!($key, $key, v.to_string()); }
         )*};
     }
-    set_bool!(
+    scalar!(
         annotate_fields => "annotate-fields",
         to_from_bytes_methods => "to-from-bytes-methods",
         binary_wrappers => "binary-wrappers",
@@ -3131,45 +3142,17 @@ fn argv_fragments(
         ));
     }
 
-    if let Some(v) = rust_wasm_feature {
-        flag!("rust-wasm-feature", "rust-wasm-feature", v.clone());
-    }
-    if let Some(v) = deserialize_depth_limit {
-        flag!(
-            "deserialize-depth-limit",
-            "deserialize-depth-limit",
-            v.to_string(),
-        );
-    }
-    if let Some(v) = common_import_override {
-        flag!(
-            "common-import-override",
-            "common-import-override",
-            v.clone()
-        );
-    }
-    if let Some(v) = wasm_cbor_json_api_macro {
-        flag!(
-            "wasm-cbor-json-api-macro",
-            "wasm-cbor-json-api-macro",
-            v.clone(),
-        );
-    }
-    if let Some(v) = wasm_conversions_macro {
-        flag!(
-            "wasm-conversions-macro",
-            "wasm-conversions-macro",
-            v.clone()
-        );
-    }
-    if let Some(v) = wasm_list_macro {
-        flag!("wasm-list-macro", "wasm-list-macro", v.clone());
-    }
-    // `wit-package` is a plain scalar: the value is a WIT package IDENTIFIER, not a path, so nothing
-    // here resolves it against the config file's directory.
-    if let Some(v) = wit_package {
-        flag!("wit-package", "wit-package", v.clone());
-    }
+    scalar!(
+        rust_wasm_feature => "rust-wasm-feature",
+        deserialize_depth_limit => "deserialize-depth-limit",
+        common_import_override => "common-import-override",
+        wasm_cbor_json_api_macro => "wasm-cbor-json-api-macro",
+        wasm_conversions_macro => "wasm-conversions-macro",
+        wasm_list_macro => "wasm-list-macro",
+        // `wit-package` is a plain scalar: the value is a WIT package IDENTIFIER, not a path, so
+        // nothing here resolves it against the config file's directory.
+        wit_package => "wit-package",
+    );
     // `verbosity`, on the same two-arm shape as `static-dir` above and for the same reason: a
     // command-line `--verbosity` overrides the committed key for every crate, and `--print-flags`
     // must be able to say WHY the key in the file is not the value in use.
@@ -3254,30 +3237,21 @@ fn argv_fragments(
     for (k, v) in json_gen_dep {
         flag!("json-gen-dep", "json-gen-dep", format!("{k}={v}"));
     }
-    // `wasm-dep`'s right side is a path on exactly the terms `json-gen-dep`'s is, into
-    // `<output>/wasm/Cargo.toml` instead — so it does not resolve here either. Derived before raw,
-    // matching the sibling.
-    for derived_dep in wasm_deps {
-        flag!(derived_dep.key, "wasm-dep", derived_dep.value.clone());
-    }
-    for (k, v) in wasm_dep {
-        flag!("wasm-dep", "wasm-dep", format!("{k}={v}"));
-    }
-    // `rust-dep`'s right side is a path on exactly the same terms, into `<output>/rust/Cargo.toml`.
-    // Derived before raw, matching the two siblings.
-    for derived_dep in rust_deps {
-        flag!(derived_dep.key, "rust-dep", derived_dep.value.clone());
-    }
-    for (k, v) in rust_dep {
-        flag!("rust-dep", "rust-dep", format!("{k}={v}"));
-    }
-    // `component-dep`'s right side is a path on exactly the same terms, into
-    // `<output>/component/Cargo.toml`. Derived before raw, matching the three siblings.
-    for derived_dep in component_deps {
-        flag!(derived_dep.key, "component-dep", derived_dep.value.clone());
-    }
-    for (k, v) in component_dep {
-        flag!("component-dep", "component-dep", format!("{k}={v}"));
+    // `wasm-dep`, `rust-dep` and `component-dep`'s right sides are paths on exactly the terms
+    // `json-gen-dep`'s is, into `<output>/wasm/Cargo.toml`, `<output>/rust/Cargo.toml` and
+    // `<output>/component/Cargo.toml` — so they do not resolve here either. Derived before raw,
+    // matching the siblings.
+    for (derived_deps, raw_deps, key) in [
+        (wasm_deps, wasm_dep, "wasm-dep"),
+        (rust_deps, rust_dep, "rust-dep"),
+        (component_deps, component_dep, "component-dep"),
+    ] {
+        for derived_dep in derived_deps {
+            flag!(derived_dep.key, key, derived_dep.value.clone());
+        }
+        for (k, v) in raw_deps {
+            flag!(key, key, format!("{k}={v}"));
+        }
     }
     // `--std-forward-dep` is the other half of a `rust-dep` entry, so it emits right after one, on
     // the same derived-before-raw rule. Its value is a bare package name — the path side is the
@@ -3640,12 +3614,7 @@ pub fn generate(
     // than a special case: a `[profiles.*]` or `[crates.*]` verbosity governs only that crate's own
     // generation, and only `[defaults]` moves these run-level lines. `[defaults]` is defined as the
     // value that reaches every crate, and the run is what contains every crate.
-    let _run_verbosity = crate::log::scoped(
-        config
-            .verbosity_override
-            .or(config.defaults.verbosity)
-            .unwrap_or_default(),
-    );
+    let _run_verbosity = crate::log::scoped(config.run_verbosity());
     let expanded = config
         .expand(selected)
         .map_err(|e| about_the_config(config_path, e))?;
@@ -3875,12 +3844,7 @@ pub fn print_flags(
     // The run level, on the same `??` chain [`generate`] uses. The listing itself is the output of a
     // COMMAND rather than logging — like `--help`, it is never gated — but installing the level keeps
     // the two entry points saying the same thing about what this invocation's level is.
-    let _run_verbosity = crate::log::scoped(
-        config
-            .verbosity_override
-            .or(config.defaults.verbosity)
-            .unwrap_or_default(),
-    );
+    let _run_verbosity = crate::log::scoped(config.run_verbosity());
     let listing = config
         .flag_listing(selected)
         .map_err(|e| about_the_config(config_path, e))?;
