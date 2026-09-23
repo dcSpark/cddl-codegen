@@ -2910,12 +2910,6 @@ impl<'a> IntermediateTypes<'a> {
     /// arm fails that derivation until the name is added here, and adding it here demands cells in
     /// every context. A name refused for its SHAPE (a recursion cycle, an inline composite) is not
     /// a member — this axis is name-keyed refusals only.
-    ///
-    /// `dead_code`-allowed because its only consumer is `#[cfg(test)]`-gated (the sweep), the same
-    /// shape `wrapper_requests::BORROWED_SHAPES` uses: the constant belongs BESIDE the arms it
-    /// describes, not in the test module that reads it — a list living in the test tree is exactly
-    /// the mirror this design exists to avoid.
-    #[allow(dead_code)]
     pub const REFUSED_PRELUDE_NAMES: &'static [&'static str] = &["cbor-any"];
 
     // note: this is mut so the unregistered-reserved fallback can mark which reserved idents
