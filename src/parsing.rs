@@ -1045,14 +1045,10 @@ fn apply_inline_table_row_metadata(
     // …and a `@custom_encodings` declaration with no pair to describe is dropped the same way.
     reject_custom_encodings_without_pair(types, &format!("the {position}"), &metadata);
     reject_inert_inline_table_row_directives(types, position, &metadata);
-    match metadata.duplicates {
-        Some(DuplicatesPolicy::Preserve) => {
-            map_type.with_duplicates_policy(Some(DuplicatesPolicy::Preserve))
-        }
-        Some(DuplicatesPolicy::Reject) => {
-            map_type.with_duplicates_policy(Some(DuplicatesPolicy::Reject))
-        }
-        _ => map_type,
+    if let Some(policy) = metadata.duplicates {
+        map_type.with_duplicates_policy(Some(policy))
+    } else {
+        map_type
     }
 }
 
@@ -2129,12 +2125,8 @@ fn parse_type_choices(
         if reject_plain_group_type_choice_arm(types, &inner_rust_type, &collapse_site) {
             return;
         }
-        let final_type = match tag {
-            Some(tag) => {
-                RustType::new(ConceptualRustType::Optional(Box::new(inner_rust_type))).tag(tag)
-            }
-            None => RustType::new(ConceptualRustType::Optional(Box::new(inner_rust_type))),
-        };
+        let final_type =
+            RustType::new(ConceptualRustType::Optional(Box::new(inner_rust_type))).tag_if(tag);
         // The RULE-POSITION metadata slots, read exactly as the non-collapse branch below reads
         // them: the LAST arm's trailing comment, merged across the `TypeChoice` and `Type1` levels
         // because the cddl parser may bind a rule's trailing comment to either. Reading the INNER
@@ -3783,6 +3775,10 @@ fn parse_type(
     // binding to a generic set nominal. Its type is minted during finalize's generic resolution,
     // from the DEFINITION's config, so a directive whose only carrier is that config is written on
     // one rule and read from another.
+    // The marker the rule spells, for the "invalid HERE" rejections that name it.
+    let marker = is_extern_marker
+        .then_some(EXTERN_MARKER)
+        .or(is_raw_bytes_marker.then_some(RAW_BYTES_MARKER));
     let is_generic_instantiation = matches!(
         &type1.type2,
         Type2::Typename {
@@ -3797,9 +3793,7 @@ fn parse_type(
     // "valid only on X" family, but phrased as "invalid HERE" — the message names the marker the
     // rule actually spells, like the custom-codec pair's extern rejection below.
     if rule_metadata.custom_json
-        && let Some(marker) = is_extern_marker
-            .then_some(EXTERN_MARKER)
-            .or(is_raw_bytes_marker.then_some(RAW_BYTES_MARKER))
+        && let Some(marker) = marker
     {
         types.record_rejection(format!(
             "@custom_json on `{type_name}`: a {marker} rule names a type this crate does not \
@@ -3811,21 +3805,13 @@ fn parse_type(
         ));
     }
     if rule_metadata.raw_bytes_flavor && !is_extern_marker {
-        types.record_rejection(format!(
-            "@raw_bytes_flavor on `{type_name}`: this tag is only valid on a {EXTERN_MARKER} \
-             rule — it selects the `<ExternName>RawBytes` wrapper flavor for generic instances \
-             whose argument is a {RAW_BYTES_MARKER} type. Remove it from this rule."
-        ));
+        types.record_rejection(raw_bytes_flavor_not_extern_rejection(type_name));
     }
     // `@copy` is valid ONLY on a `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule
     // (the marker branches below record it). Anywhere else it would silently do nothing, so reject
     // loudly here in the house style of the other comment-DSL misuse rejections.
     if rule_metadata.copy && !is_extern_marker && !is_raw_bytes_marker {
-        types.record_rejection(format!(
-            "@copy on `{type_name}`: this tag is only valid on a {EXTERN_MARKER} or \
-             {RAW_BYTES_MARKER} rule — it declares that the externally-defined rust type derives \
-             `Copy` so the generator stops cloning it at boundaries. Remove it from this rule."
-        ));
+        types.record_rejection(copy_not_extern_rejection(type_name));
     }
     // `@extern_companions` is valid ONLY on a `_CDDL_CODEGEN_EXTERN_TYPE_` or
     // `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule (each marker branch below records it, after the
@@ -3861,10 +3847,7 @@ fn parse_type(
         // the honored "this rule is that type, written differently on the wire" spelling (the
         // general type-level override, applied to a type the crate does not define), which is why
         // the message advertises it as the second remedy.
-        if let Some(marker) = is_extern_marker
-            .then_some(EXTERN_MARKER)
-            .or(is_raw_bytes_marker.then_some(RAW_BYTES_MARKER))
-        {
+        if let Some(marker) = marker {
             types.record_rejection(format!(
                 "{directive} on `{type_name}`: a {marker} rule names a type this crate does \
                  not define, so that type owns its own serialization impls and the custom \
@@ -3923,35 +3906,26 @@ fn parse_type(
             ));
         }
     }
+    let is_collection_body = matches!(
+        &type1.type2,
+        Type2::Map { .. }
+            | Type2::Array { .. }
+            | Type2::TaggedData { .. }
+            | Type2::ParenthesizedType { .. }
+    );
     // `@duplicates` is a collection concept. A `Map`/`Array` body (and a tag-head / parenthesized
     // wrapper of one) delegates to `parse_group` / a recursion that performs the shape-aware routing
     // (a `[a, b]` record vs a `[* a]` collection is only distinguishable there, and the tag-set
     // collapse only in `parse_type_choices`), so skip those here and reject only the leaf
     // non-collection rule bodies (aliases, extern/raw-bytes markers, literals, …) permanently.
-    if rule_metadata.duplicates.is_some()
-        && !matches!(
-            &type1.type2,
-            Type2::Map { .. }
-                | Type2::Array { .. }
-                | Type2::TaggedData { .. }
-                | Type2::ParenthesizedType { .. }
-        )
-    {
+    if rule_metadata.duplicates.is_some() && !is_collection_body {
         reject_duplicates_not_applicable(types, type_name);
     }
     // `@ignore` on a leaf non-collection type rule (`x = uint ; @ignore`) is a misplacement — it is
     // valid only on an open struct-map rest row. Map/Array/Tagged/Paren bodies route to the
     // group/collection arms (or the heterogenous record arm), which reject a rule-position `@ignore`
     // there, so exclude them here exactly as `@duplicates` does.
-    if rule_metadata.ignore
-        && !matches!(
-            &type1.type2,
-            Type2::Map { .. }
-                | Type2::Array { .. }
-                | Type2::TaggedData { .. }
-                | Type2::ParenthesizedType { .. }
-        )
-    {
+    if rule_metadata.ignore && !is_collection_body {
         reject_ignore_not_applicable(types, type_name);
     }
     handle_rust_name_pin(types, type_name, &rule_metadata);
