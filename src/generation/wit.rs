@@ -484,8 +484,7 @@ pub(crate) struct WitEnumCase {
     /// UNESCAPED WIT name.
     pub name: String,
     /// The rust enum variant ident (`Color::<rust_variant>`). See [`WitMemberOp`] for why the
-    /// rust-side half of every pair is carried and why it reads as dead until the emitters land.
-    #[allow(dead_code)]
+    /// rust-side half of every pair is carried.
     pub rust_variant: String,
 }
 
@@ -515,14 +514,12 @@ pub(crate) struct WitMember {
 
 /// The rust-side operation a WIT member bridges to.
 ///
-/// `#[allow(dead_code)]` on the payloads (here and on [`WitParam::rust_name`],
-/// [`WitEnumCase::rust_variant`], [`WitFunc::op`]): this is the half of the projection the RENDERER
-/// never reads and the guest emitter reads exclusively. It is carried anyway — that is the whole
-/// point of projecting to a VALUE rather than to text — because an emitter that re-derived a rust
-/// name from a WIT name would drift silently from both this module and the parity gate. The
-/// attributes come off with `component.rs`.
+/// These payloads (like [`WitParam::rust_name`], [`WitEnumCase::rust_variant`] and [`WitFunc::op`])
+/// are the half of the projection the RENDERER never reads and the guest emitter reads exclusively.
+/// They are carried anyway — that is the whole point of projecting to a VALUE rather than to text —
+/// because an emitter that re-derived a rust name from a WIT name would drift silently from both
+/// this module and the parity gate.
 #[derive(Clone, Debug)]
-#[allow(dead_code)]
 pub(crate) enum WitMemberOp {
     /// Read `self.0.borrow().<field>` and clone it across the boundary.
     Getter {
@@ -607,7 +604,6 @@ pub(crate) struct WitParam {
     pub name: String,
     /// The rust field/argument name this parameter feeds. Positional for constructors, but carried
     /// anyway so the emitter never re-kebabs a name back. See [`WitMemberOp`].
-    #[allow(dead_code)]
     pub rust_name: String,
     pub ty: WitType,
     /// Whether THIS parameter's WIT→rust conversion is the one that can fail — i.e. whether the
@@ -647,7 +643,6 @@ pub(crate) struct WitFunc {
     pub result: Option<WitType>,
     pub fallible: bool,
     /// See [`WitMemberOp`].
-    #[allow(dead_code)]
     pub op: WitFuncOp,
 }
 
