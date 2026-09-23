@@ -95,14 +95,8 @@ pub(crate) enum MintValue {
     /// an in-window (or boundary/NaN) float literal for a bounded float type. `is_f32` selects the
     /// typed constant needed for NaN / suffix (an f32 ctor param can't take `f64::NAN`).
     FloatLit { value: f64, is_f32: bool },
-    /// an integer literal; `prim` is the backing rust primitive (load-bearing for the wasm renderer,
-    /// unused by `render_rust`). Covers unsigned/signed ints and `N64` (nint magnitude).
-    Int {
-        value: i128,
-        // read by the wasm renderer (emit_tests_wasm); `render_rust` needs only `value`
-        #[allow(dead_code)]
-        prim: Primitive,
-    },
+    /// an integer literal. Covers unsigned/signed ints and `N64` (nint magnitude).
+    Int { value: i128 },
     /// a text string of the given length: `"a".repeat(len)`
     Str { len: i128 },
     /// a fixed text literal: `"content".to_owned()`. Used to mint a semantically-VALID inner value
@@ -196,7 +190,7 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
         MintValue::Bool => "false".to_owned(),
         MintValue::Float => "0.0".to_owned(),
         MintValue::FloatLit { value, is_f32 } => render_float_lit(*value, *is_f32),
-        MintValue::Int { value, .. } => format!("{value}"),
+        MintValue::Int { value } => format!("{value}"),
         MintValue::Str { len } => format!("\"a\".repeat({len})"),
         MintValue::StrLit { content } => format!("\"{content}\".to_owned()"),
         MintValue::Bytes { len } => format!("vec![0u8; {len}]"),
@@ -2889,7 +2883,6 @@ fn valid_value_at(types: &IntermediateTypes, ty: &RustType, depth: u8) -> Option
                 .unwrap_or((None, None));
             Some(MintValue::Int {
                 value: valid_measure(b),
-                prim: Primitive::N64,
             })
         }
         // a field nesting a NAMED generated type: mint an instance of that type recursively
@@ -3264,18 +3257,12 @@ fn materialize_at(
                 // coincides with the type's domain (e.g. `uint .lt 256` backed by `u8`) there's no
                 // representable out-of-bounds value — skip rather than emit uncompilable code.
                 let (lo, hi) = prim_range(p);
-                (measure >= lo && measure <= hi).then_some(MintValue::Int {
-                    value: measure,
-                    prim: *p,
-                })
+                (measure >= lo && measure <= hi).then_some(MintValue::Int { value: measure })
             }
             // nint stored values are non-negative u64 magnitudes. A "below min" boundary case can
             // ask for magnitude -1 (e.g. a `.le -1` wrapper whose magnitude floor is 0); that isn't
             // representable in the u64 backing type, so drop it rather than render `new(-1)`.
-            Primitive::N64 => (measure >= 0).then_some(MintValue::Int {
-                value: measure,
-                prim: Primitive::N64,
-            }),
+            Primitive::N64 => (measure >= 0).then_some(MintValue::Int { value: measure }),
             Primitive::Str => Some(MintValue::Str { len: measure }),
             Primitive::Bytes => Some(MintValue::Bytes { len: measure }),
             Primitive::Bool => Some(MintValue::Bool),
