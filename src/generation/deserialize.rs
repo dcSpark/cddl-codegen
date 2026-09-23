@@ -508,7 +508,7 @@ pub(super) fn add_deserialize_final_len_check(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn create_deserialize_impls(
     ident: &RustIdent,
-    rep: Option<Representation>,
+    rep: Representation,
     tag: Option<usize>,
     len_info: Option<RustStructCBORLen>,
     generate_deserialize_embedded: bool,
@@ -533,7 +533,6 @@ pub(super) fn create_deserialize_impls(
     // path, which passes generate_deserialize_embedded=false); every other case keeps the original
     // sequential emission below unchanged, so non-embedded records and enums stay byte-identical.
     if generate_deserialize_embedded && cli.annotate_fields {
-        let rep = rep.expect("embedded groups always have an array/map representation");
         let len_info =
             len_info.expect("embedded plain-group deserialize() is always given its len_info");
         // Pre-delegation scaffolding, built into a closure returning the bindings later code needs.
@@ -627,56 +626,51 @@ pub(super) fn create_deserialize_impls(
         }
         deser_body.push_block(tag_check);
     }
-    if let Some(rep) = rep {
-        match rep {
-            Representation::Array => {
-                if cli.preserve_encodings {
-                    deser_body.line("let len = raw.array_sz()?;");
-                } else {
-                    deser_body.line("let len = raw.array()?;");
-                }
-                if !generate_deserialize_embedded && let Some(encoding_var_name) = store_encoding {
-                    deser_body.line(&format!(
-                        "let {encoding_var_name}: LenEncoding = len.into();"
-                    ));
-                }
-                if let Some(len_info) = len_info {
-                    add_deserialize_initial_len_check(deser_body, len_info, cli);
-                }
-                if generate_deserialize_embedded {
-                    deser_body.line(
-                        "let ret = Self::deserialize_as_embedded_group(raw, &mut read_len, len);",
-                    );
-                }
+    match rep {
+        Representation::Array => {
+            if cli.preserve_encodings {
+                deser_body.line("let len = raw.array_sz()?;");
+            } else {
+                deser_body.line("let len = raw.array()?;");
             }
-            Representation::Map => {
-                if cli.preserve_encodings {
-                    deser_body.line("let len = raw.map_sz()?;");
-                } else {
-                    deser_body.line("let len = raw.map()?;");
-                }
-                if !generate_deserialize_embedded && let Some(encoding_var_name) = store_encoding {
-                    deser_body.line(&format!(
-                        "let {encoding_var_name}: LenEncoding = len.into();"
-                    ));
-                }
-                if let Some(len_info) = len_info {
-                    add_deserialize_initial_len_check(deser_body, len_info, cli);
-                }
-                if generate_deserialize_embedded {
-                    deser_body.line(
-                        "let ret = Self::deserialize_as_embedded_group(raw, &mut read_len, len);",
-                    );
-                }
+            if !generate_deserialize_embedded && let Some(encoding_var_name) = store_encoding {
+                deser_body.line(&format!(
+                    "let {encoding_var_name}: LenEncoding = len.into();"
+                ));
             }
-        };
-    } else {
-        panic!("TODO: how should we handle this considering we are dealing with Len?");
-        //deser_body.line("Self::deserialize_as_embedded_group(serializer)");
-    }
+            if let Some(len_info) = len_info {
+                add_deserialize_initial_len_check(deser_body, len_info, cli);
+            }
+            if generate_deserialize_embedded {
+                deser_body.line(
+                    "let ret = Self::deserialize_as_embedded_group(raw, &mut read_len, len);",
+                );
+            }
+        }
+        Representation::Map => {
+            if cli.preserve_encodings {
+                deser_body.line("let len = raw.map_sz()?;");
+            } else {
+                deser_body.line("let len = raw.map()?;");
+            }
+            if !generate_deserialize_embedded && let Some(encoding_var_name) = store_encoding {
+                deser_body.line(&format!(
+                    "let {encoding_var_name}: LenEncoding = len.into();"
+                ));
+            }
+            if let Some(len_info) = len_info {
+                add_deserialize_initial_len_check(deser_body, len_info, cli);
+            }
+            if generate_deserialize_embedded {
+                deser_body.line(
+                    "let ret = Self::deserialize_as_embedded_group(raw, &mut read_len, len);",
+                );
+            }
+        }
+    };
     let deser_embedded_impl = if generate_deserialize_embedded {
         if let Some(len_info) = len_info {
-            add_deserialize_final_len_check(deser_body, rep, len_info, cli);
+            add_deserialize_final_len_check(deser_body, Some(rep), len_info, cli);
         }
         deser_body.line("ret");
         let mut embedded_impl = codegen::Impl::new(name);

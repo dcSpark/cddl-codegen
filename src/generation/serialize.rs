@@ -530,7 +530,7 @@ pub(super) fn write_string_sz(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn create_serialize_impls(
     ident: &RustIdent,
-    rep: Option<Representation>,
+    rep: Representation,
     tag: Option<usize>,
     definite_len: &str,
     use_this_encoding: Option<&str>,
@@ -559,57 +559,47 @@ pub(super) fn create_serialize_impls(
         );
     }
     // TODO: do definite length encoding for optional fields too
-    if let Some(rep) = rep {
-        if let Some(definite) = use_this_encoding {
-            start_len(
+    if let Some(definite) = use_this_encoding {
+        start_len(
+            &mut ser_func,
+            rep,
+            "serializer",
+            definite,
+            definite_len,
+            cli,
+        );
+    } else {
+        let len = cbor_event_len_n(definite_len, cli);
+        match rep {
+            Representation::Array => ser_func.line(format!("serializer.write_array({len})?;")),
+            Representation::Map => ser_func.line(format!("serializer.write_map({len})?;")),
+        };
+    }
+    if generate_serialize_embedded {
+        if cli.preserve_encodings {
+            // The embedded serialize writes only the group's contents — the entity that wrote
+            // the array/map head owns the ending break (see the embedded-impl comment in
+            // codegen). So the standalone serialize writes the break itself, after the contents,
+            // rather than delegating it to the embedded call. Without this split an
+            // indefinite-length container would double-write the break.
+            ser_func.line(format!(
+                "self.serialize_as_embedded_group(serializer{})?;",
+                canonical_param(cli)
+            ));
+            end_len(
                 &mut ser_func,
-                rep,
                 "serializer",
-                definite,
-                definite_len,
+                use_this_encoding.expect(
+                    "preserve-encodings embedded serialize: the array/map head was written from \
+                     `use_this_encoding` (always Some under preserve — see the len_encoding_var \
+                     caller), so its ending break must reference the same length-encoding \
+                     variable; a None here would emit a free-floating `.end(serializer, ..)` on \
+                     no receiver — an uncompilable generated crate",
+                ),
+                true,
                 cli,
             );
         } else {
-            let len = cbor_event_len_n(definite_len, cli);
-            match rep {
-                Representation::Array => ser_func.line(format!("serializer.write_array({len})?;")),
-                Representation::Map => ser_func.line(format!("serializer.write_map({len})?;")),
-            };
-        }
-        if generate_serialize_embedded {
-            if cli.preserve_encodings {
-                // The embedded serialize writes only the group's contents — the entity that wrote
-                // the array/map head owns the ending break (see the embedded-impl comment in
-                // codegen). So the standalone serialize writes the break itself, after the contents,
-                // rather than delegating it to the embedded call. Without this split an
-                // indefinite-length container would double-write the break.
-                ser_func.line(format!(
-                    "self.serialize_as_embedded_group(serializer{})?;",
-                    canonical_param(cli)
-                ));
-                end_len(
-                    &mut ser_func,
-                    "serializer",
-                    use_this_encoding.expect(
-                        "preserve-encodings embedded serialize: the array/map head was written from \
-                         `use_this_encoding` (always Some under preserve — see the len_encoding_var \
-                         caller), so its ending break must reference the same length-encoding \
-                         variable; a None here would emit a free-floating `.end(serializer, ..)` on \
-                         no receiver — an uncompilable generated crate",
-                    ),
-                    true,
-                    cli,
-                );
-            } else {
-                ser_func.line(format!(
-                    "self.serialize_as_embedded_group(serializer{})",
-                    canonical_param(cli)
-                ));
-            }
-        }
-    } else {
-        // not array or map, generate serialize directly
-        if generate_serialize_embedded {
             ser_func.line(format!(
                 "self.serialize_as_embedded_group(serializer{})",
                 canonical_param(cli)

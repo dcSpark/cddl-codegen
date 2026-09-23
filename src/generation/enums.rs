@@ -1286,7 +1286,7 @@ fn generate_enum(
         };
         let (deser_impl, _deser_embedded_impl) = create_deserialize_impls(
             name,
-            rep,
+            rep.expect("group choices always carry a representation"),
             tag,
             None,
             false,

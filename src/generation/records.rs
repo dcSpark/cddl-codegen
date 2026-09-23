@@ -5031,7 +5031,7 @@ pub(super) fn codegen_struct(
     } else {
         let (ser_func, mut ser_impl, mut ser_embedded_impl) = create_serialize_impls(
             name,
-            Some(record.rep),
+            record.rep,
             tag,
             &record.definite_info("self", false, types, cli),
             len_encoding_var
@@ -6137,7 +6137,7 @@ pub(super) fn codegen_struct(
         let scaffolding_annotated = cli.annotate_fields && !types.is_plain_group(name);
         let (mut deser_impl, mut deser_embedded_impl) = create_deserialize_impls(
             name,
-            Some(record.rep),
+            record.rep,
             tag,
             Some(record.cbor_len_info(types)),
             types.is_plain_group(name),
