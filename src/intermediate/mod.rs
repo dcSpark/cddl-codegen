@@ -5694,7 +5694,7 @@ impl<'a> IntermediateTypes<'a> {
             // WIT requires interfaces linked with `use` to be acyclic, and each exported module
             // scope becomes one interface. Cyclic cross-scope references generate fine on the rust
             // face, so this restriction arrives with `--component` and nowhere else.
-            for msg in crate::generation::wit::wit_scope_cycles(self, cli) {
+            for msg in crate::generation::wit::wit_scope_cycles(self) {
                 self.record_rejection(msg);
             }
         }

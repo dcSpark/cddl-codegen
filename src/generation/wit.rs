@@ -3077,7 +3077,7 @@ pub(crate) fn wit_identifier_problem(name: &str) -> Option<String> {
 /// Deliberately NOT built on `dep_graph::find_references`: that walks the AST rather than the IR,
 /// and its cycle handling is a warn-and-continue over RULES, which is the wrong granularity twice
 /// over.
-pub(crate) fn wit_scope_cycles(types: &IntermediateTypes, _cli: &Cli) -> Vec<String> {
+pub(crate) fn wit_scope_cycles(types: &IntermediateTypes) -> Vec<String> {
     // scope -> scope -> one witness edge (`referencing type`, `referenced type`), kept for the
     // message. `BTreeMap` throughout: the message text is generated output and must be reproducible.
     let mut edges: BTreeMap<ModuleScope, BTreeMap<ModuleScope, (RustIdent, RustIdent)>> =

@@ -124,10 +124,8 @@ pub(crate) fn render_c_style_enum_body(
     rule: &str,
     variants: &[EnumVariant],
     metadata: Option<&RuleMetadata>,
-    types: &IntermediateTypes,
 ) -> RenderResult {
     reject_custom_serialize(rule, metadata)?;
-    let _ = types; // symmetry with the transparent-rule entry; not needed for pure value choices
     if variants.is_empty() {
         return Err(unrenderable(rule, "a c-style enum with no variants"));
     }
@@ -1004,7 +1002,7 @@ fn project_extern_interface(
             // lives in the dep, so it still needs the `@rust_name` pin. Value choices reference no
             // rules. The self-check is a `use` existence check on the enum.
             RustStructType::CStyleEnum { variants } => (
-                render_c_style_enum_body(source, variants, Some(&md), types)
+                render_c_style_enum_body(source, variants, Some(&md))
                     .map(|body| (body, Vec::new(), BTreeSet::new())),
                 ExternCheckKind::Use,
             ),
@@ -1827,34 +1825,31 @@ mod tests {
 
     #[test]
     fn c_style_enum_value_choices() {
-        let t = IntermediateTypes::new();
         let variants = vec![
             fixed_variant("I0", FixedValue::Uint(0)),
             fixed_variant("I1", FixedValue::Uint(1)),
             fixed_variant("I2", FixedValue::Uint(2)),
         ];
         assert_eq!(
-            render_c_style_enum_body("fe", &variants, None, &t).unwrap(),
+            render_c_style_enum_body("fe", &variants, None).unwrap(),
             "0 / 1 / 2"
         );
     }
 
     #[test]
     fn c_style_enum_empty_hard_errors() {
-        let t = IntermediateTypes::new();
-        render_c_style_enum_body("fe", &[], None, &t).unwrap_err();
+        render_c_style_enum_body("fe", &[], None).unwrap_err();
     }
 
     #[test]
     fn c_style_enum_non_fixed_variant_hard_errors() {
-        let t = IntermediateTypes::new();
         let variants = vec![EnumVariant::new(
             VariantIdent::new_custom("X"),
             RustType::new(ConceptualRustType::Primitive(Primitive::U64)),
             false,
             None,
         )];
-        render_c_style_enum_body("fe", &variants, None, &t).unwrap_err();
+        render_c_style_enum_body("fe", &variants, None).unwrap_err();
     }
 
     // --- Custom-serialize projection hard error ------------------------------------------------
@@ -1902,10 +1897,9 @@ mod tests {
 
     #[test]
     fn custom_serialize_on_c_style_enum_hard_errors() {
-        let t = IntermediateTypes::new();
         let md = metadata_with_custom_serialize();
         let variants = vec![fixed_variant("I0", FixedValue::Uint(0))];
-        render_c_style_enum_body("fe", &variants, Some(&md), &t).unwrap_err();
+        render_c_style_enum_body("fe", &variants, Some(&md)).unwrap_err();
     }
 
     // --- Float value windows -------------------------------------------------------------------
