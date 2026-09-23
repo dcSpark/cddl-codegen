@@ -6099,7 +6099,6 @@ fn group_entry_to_field_name(
     already_generated: &mut BTreeMap<String, u32>,
     optional_comma: &OptionalComma,
 ) -> String {
-    //println!("group_entry_to_field_name() = {:#?}", entry);
     let field_name = convert_to_snake_case(&match entry {
         GroupEntry::ValueMemberKey {
             trailing_comments,
@@ -6474,7 +6473,6 @@ fn rust_type_from_type1(
         .as_ref()
         .map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op, None, cli));
     let base_type = rust_type_from_type2(types, parent_visitor, &type1.type2, cli);
-    // println!("type1: {:#?}", type1);
     let result = match control {
         Some(ControlOperator::CBOR(ty)) => {
             // The MEMBER route to the rule-position `.cbor` head check in `parse_type`: RFC 8610
@@ -6839,12 +6837,6 @@ fn rust_type_from_type2(
                     ) {
                         // Table map - homogenous key/value types
                         GroupParsingType::HomogenousMap(key_type, value_type, bounds) => {
-                            // Generate a MapTToV for a { t => v } table-type map as we are an anonymous type
-                            // defined as part of another type if we're in this level of parsing.
-                            // We also can't have plain groups unlike arrays, so don't try and generate those
-                            // for general map types we can though but not for tables
-                            //let table_type_ident = RustIdent::new(CDDLIdent::new(format!("Map{}To{}", key_type.for_wasm_member(), value_type.for_wasm_member())));
-                            //types.register_rust_struct(RustStruct::new_table(table_type_ident, None, key_type.clone(), value_type.clone()));
                             // An inline `{+ k => v}` field carries the non-empty bound on its own
                             // RustType (mirroring the inline `[+ T]` array arm), so `for_rust_member`
                             // renders `NonEmptyMap<K, V>` and deserialize routes through its TryFrom.
@@ -8431,7 +8423,6 @@ fn recognize_dynamic_rows(
     }
     let (rest, rest_index) = recognize_rest_row(
         types,
-        rep,
         parent_visitor,
         name,
         flattened,
@@ -8878,12 +8869,12 @@ fn open_table_row(
 /// Recognize a trailing open-map rest row (`* K => V`) in a map-rep record, or reject an
 /// unsupported placement/shape gracefully. Returns the built `RestRow` (if recognized and every
 /// guard passes) and the flattened index of the rest-CANDIDATE row (so the caller's field loop
-/// skips it — whether recognized or rejected). Non-map reps and maps with no non-fixed entry
-/// return `(None, None)`.
+/// skips it — whether recognized or rejected). A map with no non-fixed entry returns
+/// `(None, None)`. Only `recognize_dynamic_rows` calls it, after the Array case has returned; the
+/// array analog (a final-position `* T` tail) is `recognize_array_rest_tail`.
 #[allow(clippy::too_many_arguments)]
 fn recognize_rest_row(
     types: &mut IntermediateTypes,
-    rep: Representation,
     parent_visitor: &ParentVisitor,
     name: &RustIdent,
     flattened: &[&(GroupEntry, OptionalComma)],
@@ -8891,23 +8882,6 @@ fn recognize_rest_row(
     in_choice_arm: bool,
     cli: &Cli,
 ) -> (Option<Box<RestRow>>, Option<usize>) {
-    // The array analog of a map rest row is a final-position `* T` tail (`[a, b, * t]`), recognized by
-    // a dedicated sibling (no keys → no key dispatch / duplicate policy / domain typing, so the
-    // key-specific map body does not fit). Everything below is map-only.
-    if rep == Representation::Array {
-        return recognize_array_rest_tail(
-            types,
-            parent_visitor,
-            name,
-            flattened,
-            entry_count,
-            in_choice_arm,
-            cli,
-        );
-    }
-    if rep != Representation::Map {
-        return (None, None);
-    }
     let nonfixed_indices: Vec<usize> = flattened
         .iter()
         .enumerate()
@@ -10081,16 +10055,6 @@ pub fn parse_group(
                         rule_metadata.comment.clone(),
                     )
                     .with_key(variant_key)
-                    // None => {
-                    //     // TODO: Weird case, group choice with only one fixed-value field.
-                    //     // What should we do here? In the future we could make this a
-                    //     // non-value-taking enum then handle this in the serialization code.
-                    //     // However, for now we just default to default behavior:
-                    //     let variant_name = format!("{}{}", name, i);
-                    //     // TODO: Should we generate these within their own namespace?
-                    //     codegen_group_choice(global, group_choice, &variant_name, rep, None);
-                    //     EnumVariant::new(variant_name.clone(), RustType::Rust(variant_name), true)
-                    // },
                 } else {
                     let (ident_name, explicit_name) = match rule_metadata.name.clone() {
                         Some(explicit) => (explicit, true),
@@ -10531,24 +10495,5 @@ fn get_comment_after<'a>(
             Some(cddl_type),
         ),
         _ => None,
-    }
-}
-
-#[allow(unused)]
-fn get_rule_name<'a>(
-    parent_visitor: &'a ParentVisitor,
-    cddl_type: &CDDLType<'a, '_>,
-) -> Identifier<'a> {
-    match cddl_type {
-        CDDLType::CDDL(_) => panic!("Cannot get the rule name of a top-level CDDL node"),
-        CDDLType::Rule(t) => match t {
-            Rule::Type { rule, .. } => get_rule_name(parent_visitor, &CDDLType::from(rule)),
-            Rule::Group { rule, .. } => {
-                get_rule_name(parent_visitor, &CDDLType::from(rule.as_ref()))
-            }
-        },
-        CDDLType::TypeRule(t) => t.name.clone(),
-        CDDLType::GroupRule(t) => t.name.clone(),
-        other => get_rule_name(parent_visitor, other.parent(parent_visitor).unwrap()),
     }
 }
