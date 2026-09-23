@@ -232,7 +232,9 @@ fn splice_private_uses<'a>(
         Err(_) => return Cow::Borrowed(source),
     };
 
-    let line_starts = line_start_offsets(source);
+    // `syn::parse_file` strips a leading BOM (or shebang line) before parsing, so span byte offsets
+    // would then be relative to the stripped text. Generated sources never start with either.
+    debug_assert!(!source.starts_with('\u{feff}'), "BOM-prefixed source");
     let mut edits: Vec<(usize, usize, Option<String>)> = Vec::new();
     for item in &file.items {
         let Item::Use(use_item) = item else {
@@ -246,7 +248,7 @@ fn splice_private_uses<'a>(
         let drop_whole = |edits: &mut Vec<(usize, usize, Option<String>)>| {
             // Drop the whole item, including the line it occupied — plain span deletion would leave a
             // blank-line scar rustfmt does not collapse.
-            let (start, end) = item_byte_range(use_item, &line_starts, source);
+            let (start, end) = item_byte_range(use_item);
             let (start, end) = expand_to_whole_line(source, start, end);
             edits.push((start, end, None));
         };
@@ -259,7 +261,7 @@ fn splice_private_uses<'a>(
                 if !trees_equal(&use_item.tree, &pruned_tree) {
                     let mut new_item = use_item.clone();
                     new_item.tree = pruned_tree;
-                    let (start, end) = item_byte_range(use_item, &line_starts, source);
+                    let (start, end) = item_byte_range(use_item);
                     edits.push((start, end, Some(new_item.to_token_stream().to_string())));
                 }
             }
@@ -1151,11 +1153,9 @@ fn trees_equal(a: &UseTree, b: &UseTree) -> bool {
 /// Byte range `[start, end)` covering the whole `use ...;` item (including any leading attributes,
 /// which are part of the item's span). Regular `//` comments are trivia, not tokens, so they fall
 /// OUTSIDE this range and survive the splice.
-fn item_byte_range(item: &ItemUse, line_starts: &[usize], source: &str) -> (usize, usize) {
-    let span = item.span();
-    let start = line_col_to_byte(line_starts, source, span.start().line, span.start().column);
-    let end = line_col_to_byte(line_starts, source, span.end().line, span.end().column);
-    (start, end)
+fn item_byte_range(item: &ItemUse) -> (usize, usize) {
+    let range = item.span().byte_range();
+    (range.start, range.end)
 }
 
 /// For a whole-item DELETION: when the item is alone on its line(s) — only indentation before it,
@@ -1188,39 +1188,6 @@ fn expand_to_whole_line(source: &str, start: usize, end: usize) -> (usize, usize
     } else {
         (start, end)
     }
-}
-
-/// Byte offset of the start of each 1-based line.
-fn line_start_offsets(source: &str) -> Vec<usize> {
-    let mut starts = vec![0usize];
-    for (idx, byte) in source.bytes().enumerate() {
-        if byte == b'\n' {
-            starts.push(idx + 1);
-        }
-    }
-    starts
-}
-
-/// Convert a proc-macro2 `LineColumn` (1-based line, 0-based column counted in characters) to a
-/// byte offset. Column is advanced character-by-character so the mapping is correct even if a line
-/// contains multi-byte UTF-8 before the column (generated `use` lines are ASCII, but this stays
-/// correct regardless).
-fn line_col_to_byte(line_starts: &[usize], source: &str, line: usize, column: usize) -> usize {
-    // `line` is 1-based; clamp defensively rather than panic on an unexpected span.
-    let line_start = line_starts
-        .get(line.saturating_sub(1))
-        .copied()
-        .unwrap_or(source.len());
-    let mut offset = line_start;
-    let mut remaining = column;
-    for ch in source[line_start..].chars() {
-        if remaining == 0 {
-            break;
-        }
-        offset += ch.len_utf8();
-        remaining -= 1;
-    }
-    offset
 }
 
 #[cfg(test)]
@@ -1538,6 +1505,16 @@ mod tests {
             "same-line trailing comment must survive: {out}"
         );
         assert!(!out.contains("BTreeMap"), "import still removed: {out}");
+    }
+
+    /// Splice offsets are byte offsets, so multi-byte UTF-8 before an item (on an earlier line or
+    /// earlier on the same line) must not shift the deleted range.
+    #[test]
+    fn splice_is_exact_after_multi_byte_utf8() {
+        let src = "// héllo — ünïcode\nuse std::collections::BTreeMap;\nstruct Foo;\n";
+        assert_eq!(prune(src), "// héllo — ünïcode\nstruct Foo;\n");
+        let same_line = "const S: &str = \"ü—é\"; use std::collections::BTreeMap;\nstruct Foo;\n";
+        assert_eq!(prune(same_line), "const S: &str = \"ü—é\"; \nstruct Foo;\n");
     }
 
     // ----- path-tail ident exclusion (`collect_idents_in_tokens`) -----

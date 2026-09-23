@@ -50,11 +50,11 @@ codegen = { git = "https://github.com/dcSpark/codegen", branch = "master" }
 nom = "8"
 pathdiff = "0.2.3"
 # Powers `import_prune.rs`, the usage-derived import-pruning post-pass over every generated `.rs`
-# string. `proc-macro2`'s `span-locations` feature makes `Span::start()`/`Span::end()` report real
-# line/column info when parsing a plain string, which the pass maps to byte offsets to splice out
-# only the exact use-item range (never whole-file token re-printing, which would drop comments and
-# break the comment-preservation overlay). `quote` supplies `ToTokens` to render the filtered use
-# item back to source. Both are already in-tree transitively (via `syn`), so this adds no lockfile
+# string. `proc-macro2`'s `span-locations` feature makes `Span::byte_range()` report real byte
+# offsets when parsing a plain string, which the pass uses to splice out only the exact use-item
+# range (never whole-file token re-printing, which would drop comments and break the
+# comment-preservation overlay). `quote` supplies `ToTokens` to render the filtered use item back
+# to source. Both are already in-tree transitively (via `syn`), so this adds no lockfile
 # weight. None of the three become generated-crate deps — they run inside this tool only.
 proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = "1"
