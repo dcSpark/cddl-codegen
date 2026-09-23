@@ -689,6 +689,20 @@ fn classify(toks: &[CodeTok]) -> (String, String) {
     (kw.to_owned(), name)
 }
 
+/// When `code[i..]` starts an inner attribute `#![ … ]`, the index just past it (just past `#!`
+/// when no `[` follows); `None` otherwise.
+fn inner_attr_end(code: &[CodeTok], i: usize) -> Option<usize> {
+    if code.get(i)?.text != "#" || code.get(i + 1)?.text != "!" {
+        return None;
+    }
+    let j = i + 2;
+    Some(if code.get(j).is_some_and(|t| t.text == "[") {
+        skip_balanced(code, j, "[", "]")
+    } else {
+        j
+    })
+}
+
 /// Partition a code-token stream into a contiguous list of top-level items. Between items there are
 /// no code tokens (only whitespace/comments), so every code token belongs to exactly one item.
 fn split_items(code: &[CodeTok]) -> Vec<Item> {
@@ -698,11 +712,7 @@ fn split_items(code: &[CodeTok]) -> Vec<Item> {
     while i < n {
         let start = i;
         // Inner attribute `#![ … ]` is a standalone item with no `;` or body brace.
-        if code[i].text == "#" && i + 1 < n && code[i + 1].text == "!" {
-            let mut j = i + 2;
-            if j < n && code[j].text == "[" {
-                j = skip_balanced(code, j, "[", "]");
-            }
+        if let Some(j) = inner_attr_end(code, i) {
             let (kind, name) = classify(&code[start..j]);
             items.push(Item {
                 kind,
@@ -2105,14 +2115,7 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
     // blocks (verbatim, for byte-stable carry-forward) precede freshly-minted ones.
     let top_offset = {
         let mut idx = 0;
-        while idx + 1 < new_lex.code.len()
-            && new_lex.code[idx].text == "#"
-            && new_lex.code[idx + 1].text == "!"
-        {
-            let mut j = idx + 2;
-            if j < new_lex.code.len() && new_lex.code[j].text == "[" {
-                j = skip_balanced(&new_lex.code, j, "[", "]");
-            }
+        while let Some(j) = inner_attr_end(&new_lex.code, idx) {
             idx = j;
         }
         new_lex
