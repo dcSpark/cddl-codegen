@@ -72,19 +72,44 @@ fn dep_path(cli: &Cli) -> &'static str {
     }
 }
 
-/// The attribution header, and the caveat that keeps it honest.
+/// The attribution paragraph and the red-check caveat, shared by both files and rendered into each
+/// one's comment syntax by [`comment_block`].
 ///
-/// Both files say the same two things, in their own comment syntax — LOCKSTEP, because a consumer
-/// reads whichever one they opened: a red check over an unmodified crate attributes to hand-written
-/// additions, and a RED check is only ever a verdict about the FIRST crate cargo failed on. The
-/// second half exists because the first one, alone, is read as a verdict about the crate under test
-/// even when that crate was never compiled: cargo aborts at the first failing crate, so a broken
-/// DEPENDENCY produces a red check whose output never mentions the generated crate at all, and the
-/// header above it then reads as an accusation. Reported by the first consumer to take the no_std
-/// path — their shim failed on a third-party dependency that does not declare `#![no_std]`, and the
-/// six real errors in the generated crate only surfaced after that dependency was patched. Hence
-/// the `Checking <name>` line as the reached-test: it is the one thing in cargo's output that
+/// LOCKSTEP by construction: a consumer reads whichever file they opened, so both must say that a
+/// red check over an unmodified crate attributes to hand-written additions, AND that a RED check is
+/// only ever a verdict about the FIRST crate cargo failed on — cargo aborts there, so a broken
+/// DEPENDENCY produces a red check whose output never mentions the generated crate at all. The
+/// `Checking <name>` line is the reached-test: it is the one thing in cargo's output that
 /// distinguishes "compiled clean" from "never reached".
+const ATTRIBUTION: &[&str] = &[
+    "A failure here with an otherwise unmodified generated crate is caused by hand-written additions —",
+    "which, in a split layout, includes the hand-owned half of a runtime crate this one depends on: its",
+    "crate root, and any dependency it adds. The tool-written half forwards: every dependency this crate",
+    "takes with `default-features = false` is named by its own `std` feature, so turning `std` off here",
+    "turns it off all the way down.",
+    "",
+    "One caveat when reading a RED check: cargo stops at the first crate that fails, so everything after",
+    "it — the crate under test included — is never compiled at all. A failure in a dependency is a",
+    "verdict about that dependency and clears nothing behind it. A crate was actually reached only if a",
+    "`Checking <name>` line for it appears in the output; the rest becomes visible once the first",
+    "failure is fixed.",
+];
+
+/// `lines` as a comment block under `prefix` (`#`, `//!`), one line each; an empty line is the bare
+/// prefix, with no trailing space.
+fn comment_block(prefix: &str, lines: &[&str]) -> String {
+    lines
+        .iter()
+        .map(|line| {
+            if line.is_empty() {
+                format!("{prefix}\n")
+            } else {
+                format!("{prefix} {line}\n")
+            }
+        })
+        .collect()
+}
+
 fn cargo_toml(cli: &Cli) -> String {
     let lib_name = &cli.lib_name;
     format!(
@@ -98,18 +123,7 @@ fn cargo_toml(cli: &Cli) -> String {
 #
 #   {CHECK_COMMAND}
 #
-# A failure here with an otherwise unmodified generated crate is caused by hand-written additions —
-# which, in a split layout, includes the hand-owned half of a runtime crate this one depends on: its
-# crate root, and any dependency it adds. The tool-written half forwards: every dependency this crate
-# takes with `default-features = false` is named by its own `std` feature, so turning `std` off here
-# turns it off all the way down.
-#
-# One caveat when reading a RED check: cargo stops at the first crate that fails, so everything after
-# it — the crate under test included — is never compiled at all. A failure in a dependency is a
-# verdict about that dependency and clears nothing behind it. A crate was actually reached only if a
-# `Checking <name>` line for it appears in the output; the rest becomes visible once the first
-# failure is fixed.
-
+{attribution}
 [package]
 name = \"{lib_name}{NO_STD_CHECK_PACKAGE_SUFFIX}\"
 version = \"0.0.0\"
@@ -127,6 +141,7 @@ publish = false
 [workspace]
 ",
         dep_path = dep_path(cli),
+        attribution = comment_block("#", ATTRIBUTION),
     )
 }
 
@@ -193,20 +208,10 @@ use {lib_name_code} as _;
 //!
 //!   {CHECK_COMMAND}
 //!
-//! A failure here with an otherwise unmodified generated crate is caused by hand-written additions —
-//! which, in a split layout, includes the hand-owned half of a runtime crate this one depends on: its
-//! crate root, and any dependency it adds. The tool-written half forwards: every dependency this crate
-//! takes with `default-features = false` is named by its own `std` feature, so turning `std` off here
-//! turns it off all the way down.
-//!
-//! One caveat when reading a RED check: cargo stops at the first crate that fails, so everything after
-//! it — the crate under test included — is never compiled at all. A failure in a dependency is a
-//! verdict about that dependency and clears nothing behind it. A crate was actually reached only if a
-//! `Checking <name>` line for it appears in the output; the rest becomes visible once the first
-//! failure is fixed.
-{depth_limit_note}
+{attribution}{depth_limit_note}
 #![no_std]
 
-{body}"
+{body}",
+        attribution = comment_block("//!", ATTRIBUTION),
     )
 }
