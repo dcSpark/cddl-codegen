@@ -2663,7 +2663,7 @@ impl GenerationScope {
         // keys keep the order deterministic. Caveat: glob imports can collide (E0659) if two
         // submodules export the same type name — no matrix cell or corpus fixture does; if a
         // consumer ever hits it, the robust long-term shape is fully-qualified rendering (thread
-        // `types.scope(ident)` into `render_rust`/`render_wasm`) instead of globs.
+        // `types.scope(ident)` into the `emit_tests` renderers) instead of globs.
         let submodule_glob_paths = |scopes: &BTreeMap<ModuleScope, codegen::Scope>| -> Vec<String> {
             scopes
                 .keys()

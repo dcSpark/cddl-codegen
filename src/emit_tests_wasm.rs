@@ -51,7 +51,8 @@
 //! variant-specific backstop nothing can reach (kept as the site a future extern-minting change
 //! must teach), while `wasm_wrapper_roundtrip`'s from_cbor_bytes fallback IS live for a DIFFERENT
 //! cause — an inner the rust minter can mint but this renderer can't express, verified on
-//! `#6.42(any)` — which is why its message names the condition rather than the class.
+//! `#6.42(any)`, or a wrapper collection past a name-erasing point — which is why its message names
+//! the condition rather than the class.
 //!
 //! Optional-nullable flatten points need no skip: optional fields are not ctor args, so no
 //! mint ever constructs a present-null state (the three-state write/read surface is covered by the
@@ -633,9 +634,10 @@ fn wasm_value(
         // `wasm_arg` where the wrapper name survives; a resolved `Map(_,_)` here has lost it.
         ConceptualRustType::Map(_, _) => None,
         ConceptualRustType::Rust(ident) => wasm_named(types, ident, mv, scoped, cli),
-        // `any` has no wasm ctor mint path (silent skip, like Fixed/Alias): the wasm `AnyCbor`
-        // wrapper is byte-oriented with no value-destructuring ctor, so a minted `any` value has no
-        // wasm-side round-trip differential — the rust-leg mint covers it. Lifting follows demand.
+        // `any` has no wasm ctor mint path (`None`, skipped loudly by the caller, like
+        // Fixed/Alias): the wasm `AnyCbor` wrapper is byte-oriented with no value-destructuring
+        // ctor, so a minted `any` value has no wasm-side round-trip differential — the rust-leg
+        // mint covers it. Lifting follows demand.
         ConceptualRustType::Fixed(_)
         | ConceptualRustType::Alias(_, _)
         | ConceptualRustType::Any => None,
@@ -702,13 +704,7 @@ fn wasm_named(
             "{name}::from({})",
             rust_scoped_for_named(types, mv, ident, scoped)
         )),
-        // extern / raw-bytes reference user-supplied types with no generated conversion to lean on.
-        // Defensive backstop, unreachable at HEAD and unreachable by anything else either — the arm
-        // is variant-specific, and the shared minter never produces a `MintValue` for these two
-        // variants (see the module header), so the enclosing type is dropped rust-side — loudly —
-        // before any `mv` can arrive here. Kept, not deleted: it is the site a future
-        // extern-minting change must teach, and deleting it would silently widen `wasm_named`'s
-        // contract to "every variant is buildable".
+        // extern / raw-bytes: unreachable backstop (see the module header for why no mint arrives).
         RustStructType::Extern | RustStructType::RawBytesType => {
             crate::warn!(
                 "cddl-codegen --emit-tests: no wasm build for {name} ctor arg (extern/raw-bytes — user-supplied type)"
@@ -1235,12 +1231,7 @@ fn wasm_wrapper_roundtrip(
     // Build the inner value through the SAME ctor-arg machinery the wrapper's `new(inner)` param uses
     // (`wasm_arg` applies the by-ref/`&` boundary of `for_wasm_param`). When the inner has no faithful
     // wasm build, fall back to decoding the rust twin's bytes with a loud skip of the ctor
-    // differential — the wire round-trip still runs. This arm IS live, but never for the
-    // extern/raw-bytes class: those fail the shared mint upstream and no wrapper around one is ever
-    // reached (module header). What reaches it is an inner the wasm renderer can't express while the
-    // rust minter can — verified on `#6.42(any)`, whose `AnyCbor` inner has no value-destructuring
-    // wasm ctor — plus a wrapper collection that sat past a name-erasing point. So the message names
-    // the CONDITION rather than a cause it cannot have.
+    // differential — the wire round-trip still runs. Reachability: see the module header.
     let Some(inner_expr) = wasm_arg(types, inner, wrapped, scoped, cli) else {
         crate::warn!(
             "cddl-codegen --emit-tests: no wasm ctor build for {name} (inner has no wasm ctor expression); building via from_cbor_bytes, ctor differential skipped"

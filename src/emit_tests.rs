@@ -46,9 +46,10 @@
 //! `tests/deser_test_conformance.rs`, whose helpers it reuses).
 //!
 //! Deliberately scoped to the cheap cases:
-//! valid values are minted from compile-time literals, so any field that can't be cheaply
-//! minted (nested rust structs/tags, bounded `nint`s — whose stored/wire direction is inverted)
-//! causes that one type/case to be skipped with a `warn!`.
+//! valid values are minted from compile-time literals (nested generated types recursively, up to
+//! `MAX_MINT_DEPTH`), so any field that can't be cheaply minted (extern/raw-bytes types, a
+//! recursion past the depth cap, a bound with no representable value) causes that one type/case to be skipped
+//! with a `warn!`.
 
 use crate::cli::Cli;
 use crate::intermediate::{
@@ -63,10 +64,11 @@ type Bounds = (Option<i128>, Option<i128>);
 // ============================================================================================
 // The MINT-VALUE data layer. Value derivation (`valid_value`/`materialize`/`mint_struct` and the
 // `bound_cases` boundary triples) produces this abstract tree; a renderer turns it into source.
-// `render_rust` reproduces the rust-crate API strings byte-for-byte (the ONLY renderer today).
-// A second renderer (`emit_tests_wasm::render_wasm`, off in this module) targets the wasm wrapper
-// API from the SAME tree, so a single derivation surface feeds both crates' emitted tests. Kept
-// only as abstract as those two renderers need — deliberately NOT a general codegen IR.
+// `render_rust` reproduces the rust-crate API strings byte-for-byte. The wasm renderer
+// (`emit_tests_wasm`: `wasm_value`/`wasm_arg` for the wrapper API, `rust_scoped` for its
+// `cddl_lib::` twin) targets the wasm crate from the SAME tree, so a single derivation surface
+// feeds both crates' emitted tests. Kept only as abstract as those renderers need — deliberately
+// NOT a general codegen IR.
 // ============================================================================================
 
 /// The synthesized-key kind for a minted map (distinct keys `key_base..key_base+count`).
