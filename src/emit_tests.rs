@@ -671,22 +671,7 @@ pub fn emit_generated_tests(
             RustStructType::GroupChoice { variants, .. } => {
                 choice_roundtrip(types, &name, variants, true, conf, rule_name, rt)
             }
-            RustStructType::Wrapper {
-                wrapped,
-                min_max,
-                float_min_max,
-            } => wrapper_roundtrip(
-                types,
-                ident,
-                types.can_new_fail(ident),
-                &name,
-                wrapped,
-                *min_max,
-                *float_min_max,
-                conf,
-                rule_name,
-                rt,
-            ),
+            RustStructType::Wrapper { .. } => wrapper_roundtrip(types, ident, conf, rule_name, rt),
             // c-style enums have no standalone Serialize/Deserialize impls (they serialize inline
             // in their containing types) — they're exercised wherever a record embeds them
             RustStructType::CStyleEnum { .. } => None,
@@ -1924,36 +1909,26 @@ fn choice_roundtrip(
 
 /// Wrapper round-trip: one wire cycle with a valid inner value (bounds-respecting when `min_max`
 /// is present — the wrapper checks the raw measure, no nint transform).
-#[allow(clippy::too_many_arguments)]
 fn wrapper_roundtrip(
     types: &IntermediateTypes,
     ident: &RustIdent,
-    can_fail: bool,
-    name: &str,
-    wrapped: &RustType,
-    min_max: Option<Bounds>,
-    float_min_max: Option<crate::intermediate::FloatWindow>,
     conf: Option<&str>,
     dump_rule: Option<&str>,
     rt: RtEmit,
 ) -> Option<String> {
-    // Tag-aware, same as mint_struct's Wrapper arm: a semantically-enforced tag (e.g. tdate) gets a
-    // valid literal so this standalone round-trip stays consistent with the aggregate-record mint.
-    let inner = match semantic_tag_content(wrapped) {
-        Some(content) => Some(MintValue::StrLit {
-            content: content.to_owned(),
-        }),
-        None => match float_min_max {
-            Some(window) => Some(MintValue::FloatLit {
-                value: valid_float_in_window_of_class(&window, float_class_of(wrapped)),
-                is_f32: float_is_f32(wrapped),
-            }),
-            None => match min_max {
-                Some(mm) => materialize(types, wrapped, wrapper_measure(wrapped, mm)),
-                None => valid_value(types, wrapped),
-            },
-        },
+    let Some(RustStructType::Wrapper {
+        wrapped,
+        min_max,
+        float_min_max,
+    }) = types.rust_struct(ident).map(RustStruct::variant)
+    else {
+        unreachable!("wrapper_roundtrip called for a non-wrapper type")
     };
+    let name = &ident.to_string();
+    let can_fail = types.can_new_fail(ident);
+    // Same inner mint as `mint_struct`'s Wrapper arm, so this standalone round-trip stays consistent
+    // with the aggregate-record mint.
+    let inner = mint_wrapper_inner(types, wrapped, *min_max, float_min_max.as_ref(), 0);
     let Some(inner) = inner else {
         crate::warn!(
             "cddl-codegen --emit-tests: no round-trip for {name} (inner value not cheaply mintable)"
@@ -2917,6 +2892,39 @@ fn valid_value_at(types: &IntermediateTypes, ty: &RustType, depth: u8) -> Option
     }
 }
 
+/// A valid inner value for a wrapper around `wrapped`, minted at `depth`.
+///
+/// Tag-aware: when the wrapped type carries a CBOR tag whose RFC 8949 content the reference `cddl`
+/// validator SEMANTICALLY enforces, the generic `"a"` baseline is spec-violating (it round-trips
+/// byte-identically but the conformance oracle rejects it). Mint a fixed valid literal for exactly
+/// those tags instead. `None` for every other tag — no speculative coverage beyond what the oracle
+/// demands.
+fn mint_wrapper_inner(
+    types: &IntermediateTypes,
+    wrapped: &RustType,
+    min_max: Option<Bounds>,
+    float_min_max: Option<&crate::intermediate::FloatWindow>,
+    depth: u8,
+) -> Option<MintValue> {
+    match semantic_tag_content(wrapped) {
+        Some(content) => Some(MintValue::StrLit {
+            content: content.to_owned(),
+        }),
+        None => match float_min_max {
+            // a bounded float wrapper mints an inner that is both in-window and a member of its
+            // float class (`0.0` is generally neither)
+            Some(window) => Some(MintValue::FloatLit {
+                value: valid_float_in_window_of_class(window, float_class_of(wrapped)),
+                is_f32: float_is_f32(wrapped),
+            }),
+            None => match min_max {
+                Some(mm) => materialize_at(types, wrapped, wrapper_measure(wrapped, mm), depth),
+                None => valid_value_at(types, wrapped, depth),
+            },
+        },
+    }
+}
+
 /// A semantically-VALID inner literal for a CBOR tag whose RFC 8949 content requirements the
 /// reference `cddl` validator enforces on decode. Returns `None` for tags the validator accepts with
 /// any well-typed content (only the enforced ones need a constant). Reads the tag off the wrapped
@@ -3019,33 +3027,8 @@ pub(crate) fn mint_struct(
             min_max,
             float_min_max,
         } => {
-            // Tag-aware minting: when the wrapped type carries a CBOR tag whose RFC 8949 content the
-            // reference `cddl` validator SEMANTICALLY enforces, the generic `"a"` baseline is
-            // spec-violating (it round-trips byte-identically but the conformance oracle rejects it).
-            // Mint a fixed valid literal for exactly those tags instead. `None` for every other tag —
-            // no speculative coverage beyond what the oracle demands.
-            let inner = match semantic_tag_content(wrapped) {
-                Some(content) => MintValue::StrLit {
-                    content: content.to_owned(),
-                },
-                None => match float_min_max {
-                    // a bounded float wrapper mints an inner that is both in-window and a member of
-                    // its float class (`0.0` is generally neither)
-                    Some(window) => MintValue::FloatLit {
-                        value: valid_float_in_window_of_class(window, float_class_of(wrapped)),
-                        is_f32: float_is_f32(wrapped),
-                    },
-                    None => match min_max {
-                        Some(mm) => materialize_at(
-                            types,
-                            wrapped,
-                            wrapper_measure(wrapped, *mm),
-                            depth + 1,
-                        )?,
-                        None => valid_value_at(types, wrapped, depth + 1)?,
-                    },
-                },
-            };
+            let inner =
+                mint_wrapper_inner(types, wrapped, *min_max, float_min_max.as_ref(), depth + 1)?;
             Some(MintValue::Wrapper {
                 ident: name,
                 inner: Box::new(inner),
