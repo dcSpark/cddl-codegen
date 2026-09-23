@@ -73,11 +73,11 @@
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
-use proc_macro2::{Spacing, TokenStream, TokenTree};
+use proc_macro2::{TokenStream, TokenTree};
 use quote::ToTokens;
 use syn::Item;
 
-use crate::import_prune::{IdentForm, walk_ident_uses};
+use crate::import_prune::{IdentForm, follows_path_sep, walk_ident_uses};
 
 /// One row of the name→import table: what triggers the line, and what the line binds.
 struct Row {
@@ -329,11 +329,7 @@ fn references_alloc_crate(source: &str) -> bool {
         for (i, tree) in trees.iter().enumerate() {
             match tree {
                 TokenTree::Ident(ident) if ident == "alloc" => {
-                    let prev1 = i.checked_sub(1).map(|j| &trees[j]);
-                    let prev2 = i.checked_sub(2).map(|j| &trees[j]);
-                    let after_path_sep = matches!(prev1, Some(TokenTree::Punct(p)) if p.as_char() == ':')
-                        && matches!(prev2, Some(TokenTree::Punct(p)) if p.as_char() == ':' && p.spacing() == Spacing::Joint);
-                    if !after_path_sep {
+                    if !follows_path_sep(&trees, i) {
                         // Root-path `alloc::…`, or a bare `alloc` — either way the crate is named.
                         return true;
                     }

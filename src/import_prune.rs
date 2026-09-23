@@ -853,13 +853,10 @@ pub(crate) fn walk_ident_uses(tokens: TokenStream, sink: &mut impl FnMut(&str, I
     for (i, tree) in trees.iter().enumerate() {
         match tree {
             TokenTree::Ident(ident) => {
-                let prev1 = i.checked_sub(1).map(|j| &trees[j]);
-                let prev2 = i.checked_sub(2).map(|j| &trees[j]);
-                let after_path_sep = matches!(prev1, Some(TokenTree::Punct(p)) if p.as_char() == ':')
-                    && matches!(prev2, Some(TokenTree::Punct(p)) if p.as_char() == ':' && p.spacing() == Spacing::Joint);
-                if after_path_sep {
+                if follows_path_sep(&trees, i) {
                     continue;
                 }
+                let prev1 = i.checked_sub(1).map(|j| &trees[j]);
                 let form = if matches!(trees.get(i + 1), Some(TokenTree::Punct(p)) if p.as_char() == '!')
                 {
                     IdentForm::Macro
@@ -874,6 +871,16 @@ pub(crate) fn walk_ident_uses(tokens: TokenStream, sink: &mut impl FnMut(&str, I
             TokenTree::Punct(_) | TokenTree::Literal(_) => {}
         }
     }
+}
+
+/// Whether `trees[i]` is immediately preceded by the path separator `::`: the previous token is
+/// `Punct(':')` and the one before it is `Punct(':')` with `Spacing::Joint`. A lone `:` fails the
+/// test. Shared by [`walk_ident_uses`] and the alloc-import injector's crate-reference scan.
+pub(crate) fn follows_path_sep(trees: &[TokenTree], i: usize) -> bool {
+    let prev1 = i.checked_sub(1).map(|j| &trees[j]);
+    let prev2 = i.checked_sub(2).map(|j| &trees[j]);
+    matches!(prev1, Some(TokenTree::Punct(p)) if p.as_char() == ':')
+        && matches!(prev2, Some(TokenTree::Punct(p)) if p.as_char() == ':' && p.spacing() == Spacing::Joint)
 }
 
 /// Collect the leaf idents every `use` item in `source` DIRECTLY binds into this module's namespace:
