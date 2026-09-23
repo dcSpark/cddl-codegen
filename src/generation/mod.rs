@@ -2430,97 +2430,6 @@ impl GenerationScope {
             }
         }
 
-        fn add_imports_from_scope_refs(
-            scope: &ModuleScope,
-            content: &mut codegen::Scope,
-            imports: &BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
-            // The crate-root prefix for cross-scope references within the SAME crate: both the rust
-            // and wasm crates nest their generated tree one level (`crate::generated`). Root-scope
-            // items and non-exported scopes are still reached relatively.
-            crate_prefix: &str,
-            // Wasm pass only: `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>` -> wasm crate name. When a
-            // non-exported (cross-crate extern-dep) import scope's leading component is mapped, the
-            // wasm import is qualified through the dep's wasm crate instead of its rust crate (the
-            // rust type has no wasm-bindgen bindings under the split `<dep>`/`<dep>-wasm` layout).
-            // `None` for the rust pass and for unmapped deps => import path stays verbatim.
-            extern_wasm_crate_map: Option<&BTreeMap<String, String>>,
-            // `@rust_name` pins: a consumer-derived `RustIdent` -> the dependency's own final Rust
-            // name. Only extern-dep (non-exported) idents ever appear here. A pinned ident is imported
-            // under the dependency's real name and aliased back to the derived spelling
-            // (`use <dep>::<Pinned> as <Derived>;`) so every internal reference stays unchanged; the
-            // wasm pass aliases identically (the dep's wasm wrapper is named after its rust ident =
-            // the pin). Empty map => today's plain imports for every ident.
-            rust_name_pins: &BTreeMap<RustIdent, String>,
-        ) {
-            // might not exist if we don't use stuff from other scopes
-            if let Some(scope_imports) = imports.get(scope) {
-                for (import_scope, idents) in scope_imports.iter() {
-                    let import_scope = if *import_scope == *ROOT_SCOPE {
-                        Cow::from(crate_prefix.to_owned())
-                    } else if *scope == *ROOT_SCOPE || !import_scope.export() {
-                        // Cross-crate extern-dep scopes are non-exported: their leading component is
-                        // the dependency crate name. In the wasm pass, remap that component to the
-                        // dep's wasm crate when a mapping is present.
-                        let components = import_scope.components();
-                        match (extern_wasm_crate_map, components.split_first()) {
-                            (Some(map), Some((first, rest)))
-                                if !import_scope.export() && map.contains_key(first) =>
-                            {
-                                let wasm_crate = &map[first];
-                                if rest.is_empty() {
-                                    Cow::from(wasm_crate.clone())
-                                } else {
-                                    Cow::from(format!("{}::{}", wasm_crate, rest.join("::")))
-                                }
-                            }
-                            _ => Cow::from(import_scope.to_string()),
-                        }
-                    } else {
-                        Cow::from(format!("{crate_prefix}::{import_scope}"))
-                    };
-                    // Split off `@rust_name`-pinned idents: each is imported under the dependency's
-                    // real (pinned) name and aliased back to the consumer-derived spelling, so the
-                    // grouped `use` below — and every reference in the emitted body — stay in the
-                    // derived name. Only extern-dep idents are ever pinned, so an empty pin map (the
-                    // common case) leaves `plain == idents` and the output byte-identical.
-                    let mut plain: Vec<&RustIdent> = Vec::new();
-                    for ident in idents.iter() {
-                        match rust_name_pins.get(ident) {
-                            // A pin that MATCHES the consumer-derived spelling imports plainly: an
-                            // aliased `use dep::Foo as Foo;` would be noise, and — decisive for the
-                            // migration acceptance criterion — a consumer moving from a pinless
-                            // hand-stub to a pin-carrying export must produce byte-identical output
-                            // whenever the pins agree with today's derivation.
-                            Some(pinned) if pinned != ident.as_ref() => {
-                                content.push_import(
-                                    import_scope.clone(),
-                                    pinned.clone(),
-                                    Some(ident.as_ref()),
-                                );
-                            }
-                            _ => plain.push(ident),
-                        }
-                    }
-                    #[allow(clippy::comparison_chain)]
-                    if plain.len() > 1 {
-                        content.push_import(
-                            import_scope,
-                            format!(
-                                "{{{}}}",
-                                plain
-                                    .iter()
-                                    .map(|i| i.to_string())
-                                    .collect::<Vec<_>>()
-                                    .join(", ")
-                            ),
-                            None,
-                        );
-                    } else if plain.len() == 1 {
-                        content.push_import(import_scope, plain[0].to_string(), None);
-                    }
-                }
-            }
-        }
         // imports for generated structs from other files (struct files)
         // The rust pass registers no collection-wrapper class imports (those are wasm-only), so
         // deferral never applies here — pass an empty map so rust output is untouched by the flag.
@@ -3132,6 +3041,101 @@ impl GenerationScope {
     ) -> &mut codegen::Scope {
         let scope = types.scope(ident).clone();
         self.cbor_encodings_scopes.entry(scope).or_default()
+    }
+}
+
+/// Pushes into `content` the imports `scope` needs for idents it references from other scopes.
+fn add_imports_from_scope_refs(
+    scope: &ModuleScope,
+    content: &mut codegen::Scope,
+    imports: &BTreeMap<ModuleScope, BTreeMap<ModuleScope, BTreeSet<RustIdent>>>,
+    // The crate-root prefix for cross-scope references within the SAME crate: both the rust
+    // and wasm crates nest their generated tree one level (`crate::generated`). Root-scope
+    // items and non-exported scopes are still reached relatively.
+    crate_prefix: &str,
+    // Wasm pass only: `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>` -> wasm crate name. When a
+    // non-exported (cross-crate extern-dep) import scope's leading component is mapped, the
+    // wasm import is qualified through the dep's wasm crate instead of its rust crate (the
+    // rust type has no wasm-bindgen bindings under the split `<dep>`/`<dep>-wasm` layout).
+    // `None` for the rust pass and for unmapped deps => import path stays verbatim.
+    extern_wasm_crate_map: Option<&BTreeMap<String, String>>,
+    // `@rust_name` pins: a consumer-derived `RustIdent` -> the dependency's own final Rust
+    // name. Only extern-dep (non-exported) idents ever appear here. A pinned ident is imported
+    // under the dependency's real name and aliased back to the derived spelling
+    // (`use <dep>::<Pinned> as <Derived>;`) so every internal reference stays unchanged; the
+    // wasm pass aliases identically (the dep's wasm wrapper is named after its rust ident =
+    // the pin). Empty map => today's plain imports for every ident.
+    rust_name_pins: &BTreeMap<RustIdent, String>,
+) {
+    // might not exist if we don't use stuff from other scopes
+    if let Some(scope_imports) = imports.get(scope) {
+        for (import_scope, idents) in scope_imports.iter() {
+            let import_scope = if *import_scope == *ROOT_SCOPE {
+                Cow::from(crate_prefix.to_owned())
+            } else if *scope == *ROOT_SCOPE || !import_scope.export() {
+                // Cross-crate extern-dep scopes are non-exported: their leading component is
+                // the dependency crate name. In the wasm pass, remap that component to the
+                // dep's wasm crate when a mapping is present.
+                let components = import_scope.components();
+                match (extern_wasm_crate_map, components.split_first()) {
+                    (Some(map), Some((first, rest)))
+                        if !import_scope.export() && map.contains_key(first) =>
+                    {
+                        let wasm_crate = &map[first];
+                        if rest.is_empty() {
+                            Cow::from(wasm_crate.clone())
+                        } else {
+                            Cow::from(format!("{}::{}", wasm_crate, rest.join("::")))
+                        }
+                    }
+                    _ => Cow::from(import_scope.to_string()),
+                }
+            } else {
+                Cow::from(format!("{crate_prefix}::{import_scope}"))
+            };
+            // Split off `@rust_name`-pinned idents: each is imported under the dependency's
+            // real (pinned) name and aliased back to the consumer-derived spelling, so the
+            // grouped `use` below — and every reference in the emitted body — stay in the
+            // derived name. Only extern-dep idents are ever pinned, so an empty pin map (the
+            // common case) leaves `plain == idents` and the output byte-identical.
+            let mut plain: Vec<&RustIdent> = Vec::new();
+            for ident in idents.iter() {
+                match rust_name_pins.get(ident) {
+                    // A pin that MATCHES the consumer-derived spelling imports plainly: an
+                    // aliased `use dep::Foo as Foo;` would be noise, and — decisive for the
+                    // migration acceptance criterion — a consumer moving from a pinless
+                    // hand-stub to a pin-carrying export must produce byte-identical output
+                    // whenever the pins agree with today's derivation.
+                    Some(pinned) if pinned != ident.as_ref() => {
+                        content.push_import(
+                            import_scope.clone(),
+                            pinned.clone(),
+                            Some(ident.as_ref()),
+                        );
+                    }
+                    _ => plain.push(ident),
+                }
+            }
+            match plain.as_slice() {
+                [] => {}
+                [one] => {
+                    content.push_import(import_scope, one.to_string(), None);
+                }
+                many => {
+                    content.push_import(
+                        import_scope,
+                        format!(
+                            "{{{}}}",
+                            many.iter()
+                                .map(|i| i.to_string())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ),
+                        None,
+                    );
+                }
+            }
+        }
     }
 }
 
