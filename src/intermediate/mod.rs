@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::cli::Cli;
-use crate::comment_ast::{DemandSet, RuleMetadata};
+use crate::comment_ast::{DemandSet, DuplicatesPolicy, RuleMetadata};
 use crate::parsing::EXTERN_MARKER;
 use crate::utils::{
     cddl_prelude, convert_to_camel_case, convert_to_snake_case, is_identifier_reserved,
@@ -727,8 +727,7 @@ impl<'a> IntermediateTypes<'a> {
                         if *bounds != (None, None)
                             && *bounds != (Some(1), None)
                             && exact_array_len_from_bounds(Some(*bounds)).is_none()
-                            && rs.config().duplicates
-                                != Some(crate::comment_ast::DuplicatesPolicy::Reject)
+                            && !rs.config().duplicates_reject()
                 )
             })
             // An open-array rest tail stores its element flat in RestRow, so the generic type walk
@@ -750,8 +749,7 @@ impl<'a> IntermediateTypes<'a> {
             || self.any_struct(|rs| {
                 matches!(rs.variant(), RustStructType::Array { bounds: Some(bounds), .. }
                     if exact_array_len_from_bounds(Some(*bounds)).is_some()
-                        && rs.config().duplicates
-                            != Some(crate::comment_ast::DuplicatesPolicy::Reject))
+                        && !rs.config().duplicates_reject())
             })
             || self.any_dynamic_row(|row| {
                 row.is_array_tail()
@@ -792,7 +790,7 @@ impl<'a> IntermediateTypes<'a> {
             || self.any_dynamic_row(|row| {
                 row.is_non_empty()
                     && !row.is_array_tail()
-                    && row.duplicates() != Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+                    && row.duplicates() != Some(DuplicatesPolicy::Preserve)
             })
     }
 
@@ -803,7 +801,7 @@ impl<'a> IntermediateTypes<'a> {
                 rs.variant(),
                 RustStructType::Table { bounds: Some(bounds), .. }
                     if *bounds != (None, None) && *bounds != (Some(1), None)
-                        && rs.config().duplicates != Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+                        && !rs.config().duplicates_preserve()
             ))
             // Dynamic map rows store their K/V types flat, so the generic walker intentionally
             // cannot see the BoundedMap composite. Recover it through the row's single carrier
@@ -811,7 +809,7 @@ impl<'a> IntermediateTypes<'a> {
             || self.any_dynamic_row(|row| {
                 !row.is_array_tail()
                     && row.container_type().is_bounded_map()
-                    && row.duplicates() != Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+                    && row.duplicates() != Some(DuplicatesPolicy::Preserve)
             })
     }
 
@@ -827,7 +825,7 @@ impl<'a> IntermediateTypes<'a> {
         self.any_rust_type(RustType::contains_ordered_set)
             || self.any_struct(|rs| {
                 matches!(rs.variant(), RustStructType::Array { .. })
-                    && rs.config().duplicates == Some(crate::comment_ast::DuplicatesPolicy::Reject)
+                    && rs.config().duplicates_reject()
             })
     }
 
@@ -840,14 +838,13 @@ impl<'a> IntermediateTypes<'a> {
         self.any_rust_type(|rt| rt.contains_pair_map() || rt.contains_bounded_pair_map())
             || self.any_struct(|rs| {
                 matches!(rs.variant(), RustStructType::Table { .. })
-                    && rs.config().duplicates
-                        == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+                    && rs.config().duplicates_preserve()
             })
             // An open struct-map rest row with `@duplicates preserve` lowers to the `PairMap` twin
             // (its `Map` type carries the policy only at emit time — `rest.domain`/`range` visited
             // above are the K/V, not the Map — so check the rest row's policy directly here).
             || self.any_dynamic_row(|row| {
-                row.duplicates() == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+                row.duplicates() == Some(DuplicatesPolicy::Preserve)
             })
     }
 
@@ -948,7 +945,7 @@ impl<'a> IntermediateTypes<'a> {
                     // core type — a loud-but-broken wasm crate (`From<NonEmptyMap>` for the preserve
                     // wrapper does not exist). The map-side of the reject-set guard in
                     // `non_empty_named_owner`: only a non-preserve named rule may own the loose inline.
-                    && rs.config().duplicates != Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+                    && !rs.config().duplicates_preserve()
                     && !self.is_anonymous_collection_instance(ident)
                     && domain.clone().resolve_aliases() == key_resolved
                     && range.clone().resolve_aliases() == value_resolved =>
@@ -982,7 +979,7 @@ impl<'a> IntermediateTypes<'a> {
                     // preserve inline surface onto the reject rule would name it after a wrapper of
                     // the wrong core type — a loud-but-broken wasm crate (`From<NonEmptyVec>` for the
                     // reject wrapper does not exist). Only a preserve-policy named rule may own it.
-                    && rs.config().duplicates != Some(crate::comment_ast::DuplicatesPolicy::Reject)
+                    && !rs.config().duplicates_reject()
                     && !self.is_anonymous_collection_instance(ident)
                     && element_type.clone().resolve_aliases() == resolved =>
                 {
@@ -1012,7 +1009,7 @@ impl<'a> IntermediateTypes<'a> {
                     // A reject-mode bounded rule owns an `OrderedSet` class, not the ordinary
                     // BoundedVec wasm class an inline preserve-policy occurrence needs. It cannot
                     // be a dedup owner without crossing incompatible core representations.
-                    && rs.config().duplicates != Some(crate::comment_ast::DuplicatesPolicy::Reject)
+                    && !rs.config().duplicates_reject()
                     && !self.is_anonymous_collection_instance(ident)
                     && element_type.clone().resolve_aliases() == resolved =>
                 {
@@ -1043,9 +1040,7 @@ impl<'a> IntermediateTypes<'a> {
                     range,
                     bounds: Some(candidate),
                 } if Self::normalized_bounded_window(*candidate) == Some(normalized)
-                    && (rs.config().duplicates
-                        == Some(crate::comment_ast::DuplicatesPolicy::Preserve))
-                        == preserve
+                    && rs.config().duplicates_preserve() == preserve
                     && !self.is_anonymous_collection_instance(ident)
                     && domain.clone().resolve_aliases() == key_resolved
                     && range.clone().resolve_aliases() == value_resolved =>
@@ -1326,7 +1321,7 @@ impl<'a> IntermediateTypes<'a> {
                     bounds,
                 } if matches!(bounds, None | Some((None, None)))
                     && element_type.clone().resolve_aliases() == *element_resolved
-            ) && rs.config().duplicates != Some(crate::comment_ast::DuplicatesPolicy::Reject)
+            ) && !rs.config().duplicates_reject()
         })
     }
 
@@ -1355,7 +1350,7 @@ impl<'a> IntermediateTypes<'a> {
         let ident = RustIdent::new(CDDLIdent::new(name));
         self.rust_structs.get(&ident).is_some_and(|rs| {
             let preserve =
-                rs.config().duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve);
+                rs.config().duplicates_preserve();
             matches!(
                 rs.variant(),
                 RustStructType::Table {
@@ -1384,9 +1379,10 @@ impl<'a> IntermediateTypes<'a> {
         preserve: bool,
     ) -> bool {
         let ident = RustIdent::new(CDDLIdent::new(name));
-        let rule_preserve = self.rust_structs.get(&ident).is_some_and(|rs| {
-            rs.config().duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
-        });
+        let rule_preserve = self
+            .rust_structs
+            .get(&ident)
+            .is_some_and(|rs| rs.config().duplicates_preserve());
         rule_preserve == preserve
             && matches!(
                 self.rust_structs.get(&ident).map(|rs| rs.variant()),
@@ -1487,8 +1483,7 @@ impl<'a> IntermediateTypes<'a> {
                 let structural = RustType::wasm_structural_map_name_for(
                     domain,
                     range,
-                    rust_struct.config().duplicates
-                        == Some(crate::comment_ast::DuplicatesPolicy::Preserve),
+                    rust_struct.config().duplicates_preserve(),
                     self,
                 )
                 .to_string();
@@ -2121,15 +2116,13 @@ impl<'a> IntermediateTypes<'a> {
                         bounds,
                         Some(window) if *window != (None, None) && *window != (Some(1), None)
                     ) && !exact_static;
-                    let always_needs_loose_source = rust_struct.config().duplicates
-                        != Some(crate::comment_ast::DuplicatesPolicy::Reject)
-                        && (bounded || exact_static);
+                    let always_needs_loose_source =
+                        !rust_struct.config().duplicates_reject() && (bounded || exact_static);
                     if wasm
                         && (*bounds == Some((Some(1), None))
                             || bounded
                             || exact_static
-                            || rust_struct.config().duplicates
-                                == Some(crate::comment_ast::DuplicatesPolicy::Reject))
+                            || rust_struct.config().duplicates_reject())
                     {
                         // The deferred (`--extern-wrapper-index`) analogue: when the loose `<Elem>List`
                         // is owned by a mapped dependency, import it from the dep's `collections`
@@ -2392,8 +2385,7 @@ impl<'a> IntermediateTypes<'a> {
                     if wasm && (*bounds == Some((Some(1), None)) || bounded_source) {
                         // the rule's own `@duplicates` config picks its container flavor, so the
                         // `try_from` source resolved below is the loose wrapper of the SAME flavor
-                        let preserve = rust_struct.config().duplicates
-                            == Some(crate::comment_ast::DuplicatesPolicy::Preserve);
+                        let preserve = rust_struct.config().duplicates_preserve();
                         let source_key = if bounded_source {
                             domain.loosened_for_wasm_table_boundary_key()
                         } else {
@@ -5406,8 +5398,7 @@ impl<'a> IntermediateTypes<'a> {
             // never satisfy that `Ord` bound, so it is rejected gracefully (the set-side analog of
             // the float-key rejection above) instead of emitting a non-compiling crate.
             if let RustStructType::Array { element_type, .. } = rust_struct.variant()
-                && rust_struct.config().duplicates
-                    == Some(crate::comment_ast::DuplicatesPolicy::Reject)
+                && rust_struct.config().duplicates_reject()
             {
                 element_type.visit_types(self, &mut |ty| mark_key_demand(ty, &mut key_demand, ord));
                 if key_contains_float(&element_type.conceptual_type, self) {
@@ -5420,8 +5411,7 @@ impl<'a> IntermediateTypes<'a> {
             // transparent alias), notably the flat repeated-group carrier. Its element needs the
             // same `Ord` demand for `OrderedSet::try_from(Vec<_>)` to compile.
             if let RustStructType::Wrapper { wrapped, .. } = rust_struct.variant()
-                && rust_struct.config().duplicates
-                    == Some(crate::comment_ast::DuplicatesPolicy::Reject)
+                && rust_struct.config().duplicates_reject()
                 && !rust_struct.config().set_nominal
                 && let ConceptualRustType::Array(element_type) = &wrapped.conceptual_type
             {
@@ -5475,12 +5465,11 @@ impl<'a> IntermediateTypes<'a> {
                 // Same relaxation as the `Table` branch: a `@duplicates preserve` row's keys live in
                 // a `PairMap`, compared by a linear `PartialEq` scan rather than hashed/ordered, so
                 // the `ord` (Eq-containing) flavor suffices where the loose container needs `bare`.
-                let key_flavor =
-                    if rest.duplicates() == Some(crate::comment_ast::DuplicatesPolicy::Preserve) {
-                        ord
-                    } else {
-                        bare
-                    };
+                let key_flavor = if rest.duplicates() == Some(DuplicatesPolicy::Preserve) {
+                    ord
+                } else {
+                    bare
+                };
                 rest.domain().visit_types(self, &mut |ty| {
                     mark_key_demand(ty, &mut key_demand, key_flavor)
                 });
@@ -5497,9 +5486,7 @@ impl<'a> IntermediateTypes<'a> {
                 // `OrderedHashMap` key — so it needs only the `ord` (Eq-containing) flavor, not the
                 // full `bare` (`Hash + Eq + Ord`) bundle the loose table forces on its key. This is
                 // the map-side of the reject-set `ord` relaxation above.
-                let key_flavor = if rust_struct.config().duplicates
-                    == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
-                {
+                let key_flavor = if rust_struct.config().duplicates_preserve() {
                     ord
                 } else {
                     bare
@@ -6412,7 +6399,7 @@ impl<'a> IntermediateTypes<'a> {
             else {
                 continue;
             };
-            if rs.config().duplicates == Some(crate::comment_ast::DuplicatesPolicy::Reject) {
+            if rs.config().duplicates_reject() {
                 continue;
             }
             let Some((min, _)) = Self::normalized_bounded_window(*bounds) else {
@@ -6788,8 +6775,7 @@ impl<'a> IntermediateTypes<'a> {
                     bounds,
                 } => {
                     if *bounds != Some((Some(1), None)) {
-                        let preserve = rs.config().duplicates
-                            == Some(crate::comment_ast::DuplicatesPolicy::Preserve);
+                        let preserve = rs.config().duplicates_preserve();
                         let bounded_source = bounds.is_some_and(|candidate| {
                             Self::normalized_bounded_window(candidate).is_some()
                         });
@@ -6968,8 +6954,7 @@ impl<'a> IntermediateTypes<'a> {
             if *bounds != Some((Some(1), None)) {
                 continue;
             }
-            let preserve =
-                rs.config().duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve);
+            let preserve = rs.config().duplicates_preserve();
             let loose =
                 RustType::wasm_structural_map_name_for(domain, range, preserve, self).to_string();
             if loose == ident.to_string() {
@@ -7010,8 +6995,7 @@ impl<'a> IntermediateTypes<'a> {
                 continue;
             };
             let Some(rest) = record.captured_rest().filter(|r| {
-                !r.is_array_tail()
-                    && r.duplicates() != Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+                !r.is_array_tail() && r.duplicates() != Some(DuplicatesPolicy::Preserve)
             }) else {
                 continue;
             };
@@ -7303,14 +7287,12 @@ impl<'a> IntermediateTypes<'a> {
             };
             // Only INLINE (anonymous instance) reject sets synthesize a structural class; a named
             // reject rule owns its rule ident and mints there.
-            if rs.config().duplicates != Some(crate::comment_ast::DuplicatesPolicy::Reject)
-                || !self.is_anonymous_collection_instance(ident)
-            {
+            if !rs.config().duplicates_reject() || !self.is_anonymous_collection_instance(ident) {
                 continue;
             }
             let mut reject_array =
                 RustType::new(ConceptualRustType::Array(Box::new(element_type.clone())))
-                    .with_duplicates_policy(Some(crate::comment_ast::DuplicatesPolicy::Reject));
+                    .with_duplicates_policy(Some(DuplicatesPolicy::Reject));
             if let Some(bounds) = bounds {
                 reject_array = reject_array.with_bounds(*bounds);
             }
@@ -7435,9 +7417,7 @@ impl<'a> IntermediateTypes<'a> {
                     range,
                     bounds,
                 } => {
-                    if rs.config().duplicates
-                        != Some(crate::comment_ast::DuplicatesPolicy::Preserve)
-                    {
+                    if !rs.config().duplicates_preserve() {
                         continue;
                     }
                     let bounded_source = bounds.is_some_and(|candidate| {
@@ -7486,9 +7466,7 @@ impl<'a> IntermediateTypes<'a> {
                     // open table's TYPED row is flattened onto the minted struct's own wasm class
                     // and mints no PairMap container, so it has no ident to be shadowed.
                     let Some(rest) = record.captured_rest().filter(|r| {
-                        !r.is_array_tail()
-                            && r.duplicates()
-                                == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+                        !r.is_array_tail() && r.duplicates() == Some(DuplicatesPolicy::Preserve)
                     }) else {
                         continue;
                     };
@@ -7579,7 +7557,7 @@ impl<'a> IntermediateTypes<'a> {
             };
             let Some(typed) = record.typed_row().filter(|row| {
                 row.container_type().bounded_map_u64_bounds().is_some()
-                    && row.duplicates() == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+                    && row.duplicates() == Some(DuplicatesPolicy::Preserve)
             }) else {
                 continue;
             };
@@ -7668,7 +7646,7 @@ impl<'a> IntermediateTypes<'a> {
             else {
                 continue;
             };
-            if rs.config().duplicates != Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+            if !rs.config().duplicates_preserve()
                 || *bounds != Some((Some(1), None))
                 || !self.is_anonymous_collection_instance(ident)
             {
@@ -8422,7 +8400,7 @@ fn rewrite_inline_sets_in_type(rt: &mut RustType, minted: &mut BTreeMap<RustIden
     // 258 ⇒ `@duplicates reject` (IANA set semantics); `register_rust_struct` reads this off the
     // wrapper config to swap the inner to the `OrderedSet`/`NonEmptyOrderedSet` twin.
     let effective_metadata = RuleMetadata {
-        duplicates: Some(crate::comment_ast::DuplicatesPolicy::Reject),
+        duplicates: Some(DuplicatesPolicy::Reject),
         ..Default::default()
     };
     let nominal = RustStruct::new_wrapper(

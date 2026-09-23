@@ -394,7 +394,7 @@ pub struct RustStructConfig {
     /// `@duplicates` policy for a collection rule (`[* a]` / `[+ a]` / the tag-258 set idiom / a
     /// table). Carried onto the registered transparent alias's `RustType` at `register_rust_struct`
     /// so every embed site (and generic use-site re-resolution) sees the policy.
-    pub duplicates: Option<crate::comment_ast::DuplicatesPolicy>,
+    pub duplicates: Option<DuplicatesPolicy>,
     /// A named non-generic SET rule (the tag-258 idiom or single-arm mandatory-258 form) nominalized
     /// into a `Wrapper` struct that OWNS its `{tag, len, elem}` encodings (Phase 2.2). Distinct from
     /// a plain `@newtype` wrapper: the set nominal suppresses the inherent `get()` (it shadows
@@ -402,6 +402,19 @@ pub struct RustStructConfig {
     /// (`Deref`/`DerefMut`/`IntoIterator`/`From`/`TryFrom`), and mandates always-on
     /// encodings-ignored comparison derives for parity with `OrderedSet`'s unconditional derives.
     pub set_nominal: bool,
+}
+
+impl RustStructConfig {
+    /// Whether the rule carries `@duplicates reject`. The struct-config twin of
+    /// `RustType::duplicates_reject`.
+    pub fn duplicates_reject(&self) -> bool {
+        self.duplicates == Some(DuplicatesPolicy::Reject)
+    }
+
+    /// Whether the rule carries `@duplicates preserve`.
+    pub fn duplicates_preserve(&self) -> bool {
+        self.duplicates == Some(DuplicatesPolicy::Preserve)
+    }
 }
 
 impl From<Option<&RuleMetadata>> for RustStructConfig {
@@ -1075,7 +1088,7 @@ pub enum RestKind {
         /// is value equality, so the default (reject) is enforced structurally by
         /// `insert().is_some()`; `Preserve` (the positional pair-list twin) selects the `PairMap`
         /// container.
-        duplicates: Option<crate::comment_ast::DuplicatesPolicy>,
+        duplicates: Option<DuplicatesPolicy>,
     },
     /// `* T` occurrence-bearing segment of an open array (a positional analog of the map rest row:
     /// no keys, so no key dispatch, no duplicate policy, no canonical key merge).  Most shipped
@@ -1237,7 +1250,7 @@ impl RestRow {
 
     /// The `@duplicates` policy of a map rest row; `None` for an array tail (no keys → no duplicate
     /// policy, so an array tail is never a `PairMap`).
-    pub fn duplicates(&self) -> Option<crate::comment_ast::DuplicatesPolicy> {
+    pub fn duplicates(&self) -> Option<DuplicatesPolicy> {
         match &self.kind {
             RestKind::MapEntries { duplicates, .. } => *duplicates,
             RestKind::ArrayTail { .. } => None,

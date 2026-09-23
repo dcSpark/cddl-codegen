@@ -407,8 +407,8 @@ impl RustType {
         }
         if let Some(policy) = self.config.duplicates {
             out.push_str(match policy {
-                crate::comment_ast::DuplicatesPolicy::Preserve => "__DuplicatesPreserve",
-                crate::comment_ast::DuplicatesPolicy::Reject => "__DuplicatesReject",
+                DuplicatesPolicy::Preserve => "__DuplicatesPreserve",
+                DuplicatesPolicy::Reject => "__DuplicatesReject",
             });
         }
         if self.config.basic_override {
@@ -625,8 +625,8 @@ mod exact_byte_array_len_tests {
             .exact_homogeneous_array_len(),
             Some(Err(i128::from(i32::MAX) + 1))
         );
-        let reject = array((Some(3), Some(3)))
-            .with_duplicates_policy(Some(crate::comment_ast::DuplicatesPolicy::Reject));
+        let reject =
+            array((Some(3), Some(3))).with_duplicates_policy(Some(DuplicatesPolicy::Reject));
         assert_eq!(reject.exact_homogeneous_array_len(), None);
         let bytes = RustType::new(ConceptualRustType::Primitive(Primitive::Bytes))
             .with_bounds((Some(3), Some(3)));
@@ -843,7 +843,7 @@ pub struct RustTypeSerializeConfig {
     /// POST-arm at the `register_rust_struct` collection arms, never on the raw arm types the
     /// tag-set collapse recognizer compares for structural equality (see
     /// `parsing::recognize_optional_tag_set`).
-    pub duplicates: Option<crate::comment_ast::DuplicatesPolicy>,
+    pub duplicates: Option<DuplicatesPolicy>,
     /// Float value window to check (NaN-safe). Mutually exclusive with `bounds`; only ever set on
     /// a float primitive member (`float64 .le 10.5`, `[f: 0.5..10.5]`).
     pub float_bounds: Option<FloatWindow>,
@@ -1028,10 +1028,7 @@ impl RustType {
     /// `register_rust_struct` collection arms so it rides the transparent alias to every embed site,
     /// exactly like `with_bounds`. `None`/`Preserve` are no-ops on representation (`Vec` stays
     /// `Vec`); only `Reject` swaps in the uniqueness twin at `for_rust_member`.
-    pub fn with_duplicates_policy(
-        mut self,
-        policy: Option<crate::comment_ast::DuplicatesPolicy>,
-    ) -> Self {
+    pub fn with_duplicates_policy(mut self, policy: Option<DuplicatesPolicy>) -> Self {
         self.config.duplicates = policy;
         self
     }
@@ -1345,7 +1342,7 @@ impl RustType {
     /// member type must stay the alias name rather than re-inline the container.
     pub fn is_reject_ordered_set(&self) -> bool {
         matches!(self.conceptual_type, ConceptualRustType::Array(_))
-            && self.config.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Reject)
+            && self.config.duplicates == Some(DuplicatesPolicy::Reject)
     }
 
     /// The compound bounded-unique shape. This intentionally excludes loose `*` and the existing
@@ -1361,7 +1358,7 @@ impl RustType {
     /// (the config survives that wrap). Used at the generic-instance convergence seams, which work on
     /// alias-resolved `RustType`s.
     pub fn duplicates_reject(&self) -> bool {
-        self.config.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Reject)
+        self.config.duplicates == Some(DuplicatesPolicy::Reject)
     }
 
     /// Whether `pred` holds for this type or for any type nested in its Array / Optional / Map
@@ -1395,7 +1392,7 @@ impl RustType {
     /// REFERENCING a named preserve table is an `Alias` whose target already resolves to the twin.
     pub fn is_preserve_pair_map(&self) -> bool {
         matches!(self.conceptual_type, ConceptualRustType::Map(_, _))
-            && self.config.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve)
+            && self.config.duplicates == Some(DuplicatesPolicy::Preserve)
     }
 
     /// Whether this type, at ANY nesting level, contains the `@duplicates preserve` `PairMap` shape
