@@ -3,12 +3,20 @@ use cddl::ast::parent::ParentVisitor;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::cli::Cli;
 use crate::comment_ast::{DemandSet, RuleMetadata};
 use crate::parsing::EXTERN_MARKER;
 use crate::utils::{
     cddl_prelude, convert_to_camel_case, convert_to_snake_case, is_identifier_reserved,
     is_identifier_user_defined, is_valid_rust_ident,
 };
+
+mod idents;
+mod rust_type;
+mod structs;
+pub use idents::*;
+pub use rust_type::*;
+pub use structs::*;
 
 use std::sync::LazyLock;
 pub static ROOT_SCOPE: LazyLock<ModuleScope> = LazyLock::new(|| vec![String::from("lib")].into());
@@ -421,9 +429,6 @@ pub struct IntermediateTypes<'a> {
     // node distinct. `rejections` remains the ordered public result, so the ledger cannot affect
     // diagnostic order or emitted bytes beyond suppressing a repeated visit.
     diagnostic_node_claims: BTreeSet<(usize, &'static str)>,
-    // for scope() to work we keep this here.
-    // Returning a reference to the const ROOT_SCOPE complains of returning a temporary
-    root_scope: ModuleScope,
 }
 
 impl Default for IntermediateTypes<'_> {
@@ -539,7 +544,6 @@ impl<'a> IntermediateTypes<'a> {
             rejections: Vec::new(),
             rejection_observations: 0,
             diagnostic_node_claims: BTreeSet::new(),
-            root_scope: ROOT_SCOPE.clone(),
         }
     }
 
@@ -7936,7 +7940,7 @@ impl<'a> IntermediateTypes<'a> {
     }
 
     pub fn scope(&self, ident: &RustIdent) -> &ModuleScope {
-        self.scopes.get(ident).unwrap_or(&self.root_scope)
+        self.scopes.get(ident).unwrap_or(&*ROOT_SCOPE)
     }
 
     /// The set of cross-crate extern-dependency crate names in use — the leading component of every
@@ -8482,9 +8486,6 @@ fn rewrite_inline_sets_in_record(
     }
 }
 
-mod rust_type;
-pub use rust_type::*;
-
 /// A graceful-rejection message if `source_name` (a user-chosen rule / plain-group name, as spelled
 /// in the CDDL) cannot be used as a Rust type name, else `None`. This mirrors the two `assert!`
 /// guards in `RustIdent::new` exactly — a camel-cased form that collides with a reserved Rust
@@ -8931,10 +8932,3 @@ mod registration_tests {
         );
     }
 }
-
-mod idents;
-use crate::cli::Cli;
-pub use idents::*;
-
-mod structs;
-pub use structs::*;
