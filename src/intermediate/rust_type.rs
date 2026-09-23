@@ -2577,8 +2577,23 @@ impl ConceptualRustType {
         cli: &Cli,
     ) -> String {
         format!(
-            "{}<{}, {}>",
+            "{}<{}>",
             table_type(cli),
+            Self::rust_map_kv_args(types, k, v, from_wasm, cli)
+        )
+    }
+
+    /// The `K, V` generic arguments of [`Self::name_for_rust_map`], for carriers other than the
+    /// table type that store the same key and value spellings.
+    pub fn rust_map_kv_args(
+        types: &IntermediateTypes,
+        k: &RustType,
+        v: &RustType,
+        from_wasm: bool,
+        cli: &Cli,
+    ) -> String {
+        format!(
+            "{}, {}",
             // RustType-level so a `[+ T]` map value picks up NonEmptyVec (bounds live on RustType)
             k.for_rust_member(types, from_wasm, cli),
             v.for_rust_member(types, from_wasm, cli)

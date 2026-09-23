@@ -1296,16 +1296,12 @@ impl GenerationScope {
             return;
         }
         self.record_collection_wrapper(types, wrapper_ident, &shape);
-        let map_inner =
-            ConceptualRustType::name_for_rust_map(types, &key_type, &value_type, true, cli);
-        let open = map_inner.find('<').expect("map type has generics");
-        let close = map_inner.rfind('>').expect("map type has generics");
-        let kv = map_inner[open + 1..close].to_owned();
+        let kv = ConceptualRustType::rust_map_kv_args(types, &key_type, &value_type, true, cli);
         let max_token = crate::intermediate::bound_const_arg(max);
         let map_inner = if preserve_pair_map {
             format!("PairMap<{kv}>")
         } else {
-            map_inner
+            ConceptualRustType::name_for_rust_map(types, &key_type, &value_type, true, cli)
         };
         let core = if preserve_pair_map {
             "BoundedPairMap"
@@ -1388,24 +1384,31 @@ impl GenerationScope {
             .ret(format!("Result<{wrapper_ident}, JsError>"))
             .arg("map", format!("&{loose_ident}"));
         if key_needs_restriction {
-            let mut loose_map_inner = ConceptualRustType::name_for_rust_map(
-                types,
-                &loose_key_type,
-                &value_type,
-                true,
-                cli,
-            );
-            let iterator = if preserve_pair_map {
-                let open = loose_map_inner
-                    .find('<')
-                    .expect("loose map type has generics");
-                let close = loose_map_inner
-                    .rfind('>')
-                    .expect("loose map type has generics");
-                loose_map_inner = format!("PairMap<{}>", &loose_map_inner[open + 1..close]);
-                "inner.into_inner().into_iter()"
+            let (loose_map_inner, iterator) = if preserve_pair_map {
+                (
+                    format!(
+                        "PairMap<{}>",
+                        ConceptualRustType::rust_map_kv_args(
+                            types,
+                            &loose_key_type,
+                            &value_type,
+                            true,
+                            cli,
+                        )
+                    ),
+                    "inner.into_inner().into_iter()",
+                )
             } else {
-                "inner.into_iter()"
+                (
+                    ConceptualRustType::name_for_rust_map(
+                        types,
+                        &loose_key_type,
+                        &value_type,
+                        true,
+                        cli,
+                    ),
+                    "inner.into_iter()",
+                )
             };
             try_from
                 .line(format!(
@@ -1491,16 +1494,11 @@ impl GenerationScope {
             return;
         }
         self.record_collection_wrapper(types, wrapper_ident, &shape);
-        let inner_map =
-            ConceptualRustType::name_for_rust_map(types, &key_type, &value_type, true, cli);
-        // the shared `K, V` spelling — strip the leading table-type token
-        // (`BTreeMap<K, V>` / `OrderedHashMap<K, V>`) so the wrapper's inner stays in lockstep with the
-        // rust field regardless of table flavor.
-        let kv_spelling = {
-            let open = inner_map.find('<').expect("map type has generics");
-            let close = inner_map.rfind('>').expect("map type has generics");
-            inner_map[open + 1..close].to_owned()
-        };
+        // the `K, V` arguments of the rust field's table type (`BTreeMap<K, V>` /
+        // `OrderedHashMap<K, V>`), so the wrapper's inner stays in lockstep with the rust field
+        // regardless of table flavor.
+        let kv_spelling =
+            ConceptualRustType::rust_map_kv_args(types, &key_type, &value_type, true, cli);
         // `@duplicates preserve` wraps the vec-of-pairs twin `NonEmptyPairMap`; the loose flavor wraps
         // `NonEmptyMap`. The core-type token (`NonEmptyPairMap`/`NonEmptyMap`) is what `try_from`/`new`
         // construct and what the parent's `.into()` converts to.
@@ -1515,7 +1513,7 @@ impl GenerationScope {
         let source_inner_type = if preserve_pair_map {
             format!("PairMap<{kv_spelling}>")
         } else {
-            inner_map.clone()
+            ConceptualRustType::name_for_rust_map(types, &key_type, &value_type, true, cli)
         };
         // the loose structural table wrapper (`MapKToV`) is the `try_from` source; when its ident
         // coincides with THIS wrapper's ident (a self-named rule like `map_text_to_uint = {+ …}`),
@@ -2620,15 +2618,15 @@ pub(super) fn codegen_table_type(
     let inner_type = if exists_in_rust {
         rust_crate_struct_from_wasm(types, name, cli)
     } else {
-        let loose = ConceptualRustType::name_for_rust_map(types, &key_type, &value_type, true, cli);
         if preserve_pair_map {
             // reuse the `K, V` spelling from the loose table type but wrap the pair-map core — this is
             // the loose `try_from` source for a `{+ …}` preserve wrapper (`NePmap::try_from(&MapKToV)`).
-            let open = loose.find('<').expect("map type has generics");
-            let close = loose.rfind('>').expect("map type has generics");
-            format!("PairMap<{}>", &loose[open + 1..close])
+            format!(
+                "PairMap<{}>",
+                ConceptualRustType::rust_map_kv_args(types, &key_type, &value_type, true, cli)
+            )
         } else {
-            loose
+            ConceptualRustType::name_for_rust_map(types, &key_type, &value_type, true, cli)
         }
     };
     wrapper.push_inner_field(&inner_type);
