@@ -365,6 +365,9 @@ pub(crate) fn prune_generated_files(
     // A file re-imports its PARENT's namespace via `use super::*;`.
     let has_super = |p: &str| glob_by_path.get(p).is_some_and(|g| g.contains("super"));
 
+    let error_universe: BTreeSet<String> =
+        ERROR_MODULE_EXPORTS.iter().map(|s| s.to_string()).collect();
+
     let mut changed = Vec::new();
     for (path, content) in files {
         if !is_prunable_generated_rs(path) {
@@ -460,13 +463,11 @@ pub(crate) fn prune_generated_files(
         {
             remove_globs.insert("super".to_owned());
         }
-        let error_universe: BTreeSet<String> =
-            ERROR_MODULE_EXPORTS.iter().map(|s| s.to_string()).collect();
         for gp in own_globs {
             if gp == "super" {
                 continue;
             }
-            let universe = if gp.rsplit("::").next() == Some("error") {
+            let universe = if is_error_glob(gp) {
                 Some(&error_universe)
             } else if gp == "super::cbor_encodings" {
                 sibling_module_file(path, "cbor_encodings", files)
@@ -500,6 +501,12 @@ pub(crate) fn prune_generated_files(
         }
     }
     changed
+}
+
+/// Whether the private glob module path `gp` names an `error` module (`use <common>::error::*;`),
+/// whose exports are exactly [`ERROR_MODULE_EXPORTS`].
+fn is_error_glob(gp: &str) -> bool {
+    gp.rsplit("::").next() == Some("error")
 }
 
 /// Walk from descendant `d` up the module tree to `f`, requiring an unbroken chain of `use super::*;`
@@ -600,7 +607,7 @@ fn super_glob_needed(
     let mut own_resolvable = direct_by_path.get(f).unwrap_or(&empty).clone();
     own_resolvable.extend(defs_by_path.get(f).unwrap_or(&empty).iter().cloned());
     if let Some(globs) = glob_by_path.get(f)
-        && globs.iter().any(|g| g.rsplit("::").next() == Some("error"))
+        && globs.iter().any(|g| is_error_glob(g))
     {
         own_resolvable.extend(ERROR_MODULE_EXPORTS.iter().map(|s| s.to_string()));
     }
@@ -641,7 +648,7 @@ fn bound_names(
     }
     if let Some(globs) = glob_by_path.get(m) {
         for gp in globs {
-            if gp.rsplit("::").next() == Some("error") {
+            if is_error_glob(gp) {
                 result.extend(ERROR_MODULE_EXPORTS.iter().map(|s| s.to_string()));
             } else if gp == "super" {
                 let parent = parent_mod_file(m, files)?;
@@ -680,9 +687,9 @@ fn enumerated_glob_needed(
         let Some(Some(used)) = used_by_path.get(file) else {
             return false;
         };
-        let direct = direct_by_path.get(file).cloned().unwrap_or_default();
+        let direct = direct_by_path.get(file);
         used.iter()
-            .any(|y| universe.contains(y) && !direct.contains(y))
+            .any(|y| universe.contains(y) && !direct.is_some_and(|d| d.contains(y)))
     };
     if demands(f) {
         return true;
