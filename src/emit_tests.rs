@@ -2536,7 +2536,18 @@ fn float_width_rank(name: &str) -> u8 {
     match name {
         "Two" => 0,
         "Four" => 1,
-        _ => 2,
+        "Eight" => 2,
+        other => unreachable!("float class-window endpoint {other} is not a float width"),
+    }
+}
+
+/// Rank of a float head width in the same order as `float_width_rank`.
+fn sz_rank(sz: cbor_event::Sz) -> u8 {
+    match sz {
+        cbor_event::Sz::Two => 0,
+        cbor_event::Sz::Four => 1,
+        cbor_event::Sz::Eight => 2,
+        other => unreachable!("{other:?} is not a float head width"),
     }
 }
 
@@ -2550,11 +2561,7 @@ fn float_class_admits(p: Primitive, value: f64) -> bool {
     let Some((min, max)) = p.float_class_window() else {
         return false;
     };
-    let smallest = match cbor_event::se::smallest_float_sz(value) {
-        cbor_event::Sz::Two => 0,
-        cbor_event::Sz::Four => 1,
-        _ => 2,
-    };
+    let smallest = sz_rank(cbor_event::se::smallest_float_sz(value));
     smallest >= float_width_rank(min) && smallest <= float_width_rank(max)
 }
 
@@ -3423,6 +3430,37 @@ fn ty_as_record<'a>(types: &'a IntermediateTypes, ty: &RustType) -> Option<&'a R
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn float_class_windows_rank_and_admit_by_width() {
+        // (class, narrowest rank, widest rank)
+        let classes = [
+            (Primitive::F16, 0, 0),
+            (Primitive::F32, 1, 1),
+            (Primitive::F64, 2, 2),
+            (Primitive::F16To32, 0, 1),
+            (Primitive::F32To64, 1, 2),
+            (Primitive::Float, 0, 2),
+        ];
+        // one value per shortest lossless width: f16, f32, f64
+        let values = [1.5, 100000.0, 1.1];
+        for (class, lo, hi) in classes {
+            let (min, max) = class.float_class_window().unwrap();
+            assert_eq!(
+                (float_width_rank(min), float_width_rank(max)),
+                (lo, hi),
+                "{class:?}"
+            );
+            for (rank, value) in values.into_iter().enumerate() {
+                let rank = rank as u8;
+                assert_eq!(
+                    float_class_admits(class, value),
+                    lo <= rank && rank <= hi,
+                    "{class:?} admits {value}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn minted_map_key_fixed_value_covers_storage_domains() {
