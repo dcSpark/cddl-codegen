@@ -2969,56 +2969,35 @@ impl GenerationScope {
                         deser_code.content.line("read_len.read_elems(1)?;");
                         deser_code.read_len_used = true;
                     }
-                    let mut tag_check = if cli.preserve_encodings {
-                        let mut tag_check = Block::new(format!(
-                            "{}match {}.tag_sz()?",
-                            before_after.before, deserializer_name
-                        ));
+                    // Under preserve the tag's size is bound alongside its value, and its
+                    // `Some(..)` final expr must be pushed before the child consumes `config`.
+                    let (reader, arm_pattern) = if cli.preserve_encodings {
                         config.final_exprs.push(format!("Some({tag_enc_binding})"));
-                        let some_deser_code = self
-                            .generate_deserialize(
-                                types,
-                                *child,
-                                DeserializeBeforeAfter::new("", "", before_after.expects_result),
-                                config.optional_field(false).tag_depth(tag_level),
-                                cli,
-                            )
-                            .mark_and_extract_content(&mut deser_code);
-                        if let Some(single_line) = some_deser_code.as_single_line() {
-                            tag_check.line(format!("({tag}, {tag_enc_binding}) => {single_line},"));
-                        } else {
-                            let mut deser_block =
-                                Block::new(format!("({tag}, {tag_enc_binding}) =>"));
-                            deser_block.push_all(some_deser_code);
-                            deser_block.after(",");
-                            tag_check.push_block(deser_block);
-                        }
-                        tag_check
+                        ("tag_sz", format!("({tag}, {tag_enc_binding})"))
                     } else {
-                        let mut tag_check = Block::new(format!(
-                            "{}match {}.tag()?",
-                            before_after.before, deserializer_name
-                        ));
-
-                        let some_deser_code = self
-                            .generate_deserialize(
-                                types,
-                                *child,
-                                DeserializeBeforeAfter::new("", "", before_after.expects_result),
-                                config.optional_field(false).tag_depth(tag_level),
-                                cli,
-                            )
-                            .mark_and_extract_content(&mut deser_code);
-                        if let Some(single_line) = some_deser_code.as_single_line() {
-                            tag_check.line(format!("{tag} => {single_line},"));
-                        } else {
-                            let mut deser_block = Block::new(format!("{tag} =>"));
-                            deser_block.push_all(some_deser_code);
-                            deser_block.after(",");
-                            tag_check.push_block(deser_block);
-                        }
-                        tag_check
+                        ("tag", tag.to_string())
                     };
+                    let mut tag_check = Block::new(format!(
+                        "{}match {}.{reader}()?",
+                        before_after.before, deserializer_name
+                    ));
+                    let some_deser_code = self
+                        .generate_deserialize(
+                            types,
+                            *child,
+                            DeserializeBeforeAfter::new("", "", before_after.expects_result),
+                            config.optional_field(false).tag_depth(tag_level),
+                            cli,
+                        )
+                        .mark_and_extract_content(&mut deser_code);
+                    if let Some(single_line) = some_deser_code.as_single_line() {
+                        tag_check.line(format!("{arm_pattern} => {single_line},"));
+                    } else {
+                        let mut deser_block = Block::new(format!("{arm_pattern} =>"));
+                        deser_block.push_all(some_deser_code);
+                        deser_block.after(",");
+                        tag_check.push_block(deser_block);
+                    }
                     tag_check.line(format!(
                     "{} => {}Err(DeserializeFailure::TagMismatch{{ found: tag, expected: {} }}.into()),",
                     if cli.preserve_encodings { "(tag, _enc)" } else { "tag" },
