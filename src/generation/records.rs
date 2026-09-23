@@ -601,13 +601,6 @@ fn generate_array_segment_deserialization(
     }
 }
 
-// generates deserialization code for an array-encoded record into deser_code EXCEPT FOR:
-// 1) any final length check (so it can be used for generating embedded deserialization impls)
-// 2) the final constructor block is not added to deser_code but has the vars/exprs returned in two vectors:
-//    i) all root-level vars/exprs
-//    ii) if Some, all vars/exprs that need to be put inside of an *Encodings struct's constructor
-// so you will need to construct the constructor expression from these
-#[allow(clippy::too_many_arguments)]
 /// Every deserialize refusal an ARRAY-representation record earns from its own shape, derived
 /// PURELY from the finalized IR — no emission, no `GenerationScope`, no dependence on when it runs.
 ///
@@ -791,6 +784,16 @@ pub(super) fn map_record_deser_refusals(
     reasons
 }
 
+/// Generates deserialization code for an array-encoded record into `deser_code` EXCEPT FOR:
+/// 1) any final length check (so it can be used for generating embedded deserialization impls)
+/// 2) the final constructor block, which is not added to `deser_code`; its vars/exprs are returned
+///    in the [`ArrayStructDeserializeCode`] field lists instead:
+///    i) `deser_ctor_fields`: all root-level vars/exprs
+///    ii) `encoding_struct_ctor_fields`: all vars/exprs that need to be put inside of an
+///    *Encodings struct's constructor
+///
+/// so the caller constructs the constructor expression from these.
+///
 /// (No `name` parameter: this emitter no longer records deserialize refusals — the verdict for
 /// every ident is seeded from the IR before emission, see `array_record_deser_refusals`.)
 pub(super) fn generate_array_struct_deserialization(
@@ -2466,20 +2469,6 @@ fn emit_open_table_json(
     gen_scope.rust(types, name).raw(&out);
 }
 
-/// Emit a rest capture into `block`: account the entry in `read_len`, bind the key (`rest_key`) —
-/// either from `key_val_expr` (already read by the record loop's uint/text peek — for an `any`
-/// domain this is the reconstructed `AnyCbor`, carrying the peeked wire width under preserve) or by
-/// deserializing the domain from `raw` (for `any`-domain other-type / special keys) — bind the
-/// value (`rest_value`), populate the per-entry encoding sidecars for concrete domains under
-/// preserve, push the wire-position index (`rest_index_base + <container>.len()`) onto
-/// `orig_deser_order`, then insert with the default (reject) duplicate check. Duplicate detection
-/// is keyed on CBOR VALUE equality (not the domain's spelling): for a concrete
-/// key the container `Eq` IS value equality (`insert().is_some()`); for an `any`-domain key under
-/// preserve the container `Eq` is REPRESENTATIONAL, so the dup check is a value-normalized
-/// `value_eq` side scan (confined to any-domain containers). `key_enc_expr` is the raw peeked-key
-/// encoding var (a `Sz`/`StringLenSz`) for a concrete uint/text key under preserve — stored in the
-/// key sidecar; `None` for self-carried `any` keys and non-preserve.
-#[allow(clippy::too_many_arguments)]
 /// How ONE dynamic row's entries index into the `orig_deser_order` wire-position vector.
 ///
 /// The vector stays `Vec<usize>` in every shape — it is a `pub` field of the generated encoding
@@ -2765,6 +2754,19 @@ fn append_open_table_dispatch(
     type_match.push_block(rest_arm);
 }
 
+/// Emit a rest capture into `block`: account the entry in `read_len`, bind the key (`rest_key`) —
+/// either from `key_val_expr` (already read by the record loop's uint/text peek — for an `any`
+/// domain this is the reconstructed `AnyCbor`, carrying the peeked wire width under preserve) or by
+/// deserializing the domain from `raw` (for `any`-domain other-type / special keys) — bind the
+/// value (`rest_value`), populate the per-entry encoding sidecars for concrete domains under
+/// preserve, push the wire-position index (`slots.push_expr`) onto
+/// `orig_deser_order`, then insert with the default (reject) duplicate check. Duplicate detection
+/// is keyed on CBOR VALUE equality (not the domain's spelling): for a concrete
+/// key the container `Eq` IS value equality (`insert().is_some()`); for an `any`-domain key under
+/// preserve the container `Eq` is REPRESENTATIONAL, so the dup check is a value-normalized
+/// `value_eq` side scan (confined to any-domain containers). `key_enc_expr` is the raw peeked-key
+/// encoding var (a `Sz`/`StringLenSz`) for a concrete uint/text key under preserve — stored in the
+/// key sidecar; `None` for self-carried `any` keys and non-preserve.
 #[allow(clippy::too_many_arguments)]
 fn append_rest_capture(
     gen_scope: &mut GenerationScope,

@@ -911,6 +911,11 @@ impl GenerationScope {
         }
     }
 
+    /// The dependency WIT packages this run imports, for the producers that emit the WIT tree.
+    pub(crate) fn component_dep_wits(&self) -> &crate::component_wit_deps::DepWitPackages {
+        &self.component_dep_wits
+    }
+
     /// The graceful errors the component face recorded during `generate()`, or `Ok`: the WIT
     /// strong-uniqueness collisions, and the cross-crate import seam's own refusals.
     ///
@@ -921,11 +926,6 @@ impl GenerationScope {
     /// The two classes are joined into one error rather than checked in sequence because they are
     /// independent verdicts about one run: a spec with both should show the user both, not the first
     /// one the check happened to reach.
-    /// The dependency WIT packages this run imports, for the producers that emit the WIT tree.
-    pub(crate) fn component_dep_wits(&self) -> &crate::component_wit_deps::DepWitPackages {
-        &self.component_dep_wits
-    }
-
     pub(crate) fn component_collision_check(&self) -> std::io::Result<()> {
         let msgs = self
             .component_import_errors
@@ -2979,13 +2979,6 @@ impl GenerationScope {
             // what records them, and the component face runs after it — so the projection can drop
             // the `from-cbor-bytes` seam of a type that has no `Deserialize` impl to bridge to.
             let no_deserialize = self.no_deserialize_idents();
-            // WIT strong uniqueness, against the REAL verdict: an interface is one flat namespace
-            // and names compare with the `[method]`/`[static]`/`[constructor]` prefixes stripped, so
-            // a collision the rust and wasm faces resolve by scoping is a broken WIT package. The
-            // `<resource>.<resource>` member case in particular survives BOTH resolve and encode and
-            // fails only at binary validation, which is why the tool catches it rather than leaving
-            // it to a downstream one. Recorded rather than returned: `generate` populates state and
-            // has no error channel; the two producers below it do.
             // The dependencies' committed WIT packages, read ONCE for the whole component face.
             // A read failure is recorded rather than returned for the same reason a collision is:
             // `generate` populates state and has no error channel, and the two producers below it do.
@@ -2993,6 +2986,13 @@ impl GenerationScope {
                 Ok(dep_wits) => self.component_dep_wits = dep_wits,
                 Err(msg) => self.component_import_errors.push(msg),
             }
+            // WIT strong uniqueness, against the REAL verdict: an interface is one flat namespace
+            // and names compare with the `[method]`/`[static]`/`[constructor]` prefixes stripped, so
+            // a collision the rust and wasm faces resolve by scoping is a broken WIT package. The
+            // `<resource>.<resource>` member case in particular survives BOTH resolve and encode and
+            // fails only at binary validation, which is why the tool catches it rather than leaving
+            // it to a downstream one. Recorded rather than returned: `generate` populates state and
+            // has no error channel; the two producers below it do.
             self.component_name_collisions = super::generation::wit::wit_name_collisions(
                 types,
                 cli,
@@ -3281,7 +3281,6 @@ fn create_base_rust_struct(
     };
     add_struct_derives(&mut s, key_demand, false, false, manual_json_impl, cli);
     let group_impl = codegen::Impl::new(name);
-    // TODO: anything here?
     (s, group_impl)
 }
 
@@ -5018,8 +5017,6 @@ fn push_encoding_struct_field(
     encoding_struct.field(format!("pub {field_name}"), field_type);
 }
 
-/// the derivative crate doesn't accept Eq="ignore" but omitting it
-/// seems to behave correctly
 /// The SINGLE demand→traits mapping (pinned semantics 6), used by every derive/ignore emission site so
 /// the bare path stays byte-identical. Resolves a `DemandSet` to the comparison/hash traits it demands,
 /// in the canonical emission order `Eq, PartialEq, Ord, PartialOrd, Hash`:
