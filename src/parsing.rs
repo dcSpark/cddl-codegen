@@ -5350,6 +5350,60 @@ fn record_plain_group_table_domain_rejection(
     ));
 }
 
+/// The domain guards shared by the plain (`{ * k => v }`) and parenthesized (`{ * (k => v) }`)
+/// table arms, in this order:
+/// - a fixed VALUE (`{ * uint => 5 }`): a `Fixed` has no type to store per row in the map's `V`,
+///   and would reach the same `for_rust_member` panic as `[* 5]`. (A fixed KEY is handled at each
+///   arm: per RFC 8610 `1 => v` is the same wire entry as `1: v`, so it diverts to the record path.)
+/// - a bare plain group as the KEY, then as the VALUE (`record_plain_group_table_domain_rejection`).
+///
+/// Rejections cite the rule by its SOURCE spelling when there is one; anonymous nested maps
+/// describe the entry instead.
+fn reject_table_domains(
+    types: &mut IntermediateTypes,
+    rule_name: Option<&RustIdent>,
+    t1: &Type1,
+    value: &Type,
+    key_type: &RustType,
+    value_type: &RustType,
+) {
+    let site = rejection_site(types, rule_name, "inline map");
+    let entry_src = format!("{t1} => {value}");
+    if let ConceptualRustType::Fixed(fixed) = value_type.conceptual_type.resolve_alias_shallow() {
+        let fixed = fixed.clone();
+        record_fixed_table_value_rejection(types, &site, &entry_src, &fixed);
+    }
+    if let Some(group_name) = resolved_plain_group_source_name(types, key_type) {
+        record_plain_group_table_domain_rejection(
+            types,
+            &site,
+            &entry_src,
+            "KEY",
+            &group_name,
+            &format!(
+                "{} => {value}",
+                array_wrapped_domain_src(&t1.to_string(), &t1.type2)
+            ),
+        );
+    }
+    if let Some(group_name) = resolved_plain_group_source_name(types, value_type) {
+        record_plain_group_table_domain_rejection(
+            types,
+            &site,
+            &entry_src,
+            "VALUE",
+            &group_name,
+            &format!(
+                "{t1} => {}",
+                match single_type2(value) {
+                    Some(t2) => array_wrapped_domain_src(&value.to_string(), t2),
+                    None => format!("[{value}]"),
+                }
+            ),
+        );
+    }
+}
+
 /// The rejection for an open struct-map REST ROW (`{ c: uint, * k => v }`) whose key or value slot
 /// is a plain group — the fixed-prefix sibling of `record_plain_group_table_domain_rejection`,
 /// refused for exactly the same reason and kept as its own message because the shapes are told
@@ -5764,12 +5818,6 @@ fn parse_group_type<'a>(
                                     //   `*`/`0*` — unbounded 0..N table (bounds `None`), unchanged
                                     //   `+`/`1*` — non-empty table (`NonEmptyMap`), bounds (Some(1),None)
                                     //   else     — bounded (`?` / `n*m` / `*n` / `n*` / `0*n`): BoundedMap
-                                    //
-                                    // cite the rule by its SOURCE spelling when we have one (the user
-                                    // is looking at their CDDL, not our output); anonymous nested maps
-                                    // describe the entry instead.
-                                    let site = rejection_site(types, rule_name, "inline map");
-                                    let value = &ge.entry_type;
                                     let occ_bounds =
                                         ge.occur.as_ref().map(|o| occur_bounds(&o.occur));
                                     let table_bounds = match occ_bounds {
@@ -5791,69 +5839,14 @@ fn parse_group_type<'a>(
                                     // in between.
                                     let value_type =
                                         rust_type(types, parent_visitor, &ge.entry_type, cli);
-                                    // The map sibling of the array-element fixed guard: a table's
-                                    // VALUE domain lands in the `BTreeMap<K, V>`'s `V`, and a
-                                    // `Fixed` has no `V` — `{ * uint => 5 }` reaches the same
-                                    // `for_rust_member` panic as `[* 5]`. (A fixed KEY is a
-                                    // different story and is handled above: per RFC 8610 `1 => v`
-                                    // is the same wire entry as `1: v`, so it diverts to the record
-                                    // path. A fixed VALUE has no such re-reading — the entry really
-                                    // is a table row whose value is pinned.)
-                                    if let ConceptualRustType::Fixed(fixed) =
-                                        value_type.conceptual_type.resolve_alias_shallow()
-                                    {
-                                        let fixed = fixed.clone();
-                                        record_fixed_table_value_rejection(
-                                            types,
-                                            &site,
-                                            &format!("{t1} => {value}"),
-                                            &fixed,
-                                        );
-                                    }
-                                    // A bare plain group in EITHER domain has no single-item CBOR
-                                    // form to occupy a map slot — see
-                                    // `record_plain_group_table_domain_rejection`. Both roles are
-                                    // checked here, so the named-rule and inline consumers of this
-                                    // one seam refuse identically.
-                                    if let Some(group_name) =
-                                        resolved_plain_group_source_name(types, &key_type)
-                                    {
-                                        record_plain_group_table_domain_rejection(
-                                            types,
-                                            &site,
-                                            &format!("{t1} => {value}"),
-                                            "KEY",
-                                            &group_name,
-                                            &format!(
-                                                "{} => {value}",
-                                                array_wrapped_domain_src(
-                                                    &t1.to_string(),
-                                                    &t1.type2,
-                                                )
-                                            ),
-                                        );
-                                    }
-                                    if let Some(group_name) =
-                                        resolved_plain_group_source_name(types, &value_type)
-                                    {
-                                        record_plain_group_table_domain_rejection(
-                                            types,
-                                            &site,
-                                            &format!("{t1} => {value}"),
-                                            "VALUE",
-                                            &group_name,
-                                            &format!(
-                                                "{t1} => {}",
-                                                match single_type2(value) {
-                                                    Some(t2) => array_wrapped_domain_src(
-                                                        &value.to_string(),
-                                                        t2,
-                                                    ),
-                                                    None => format!("[{value}]"),
-                                                }
-                                            ),
-                                        );
-                                    }
+                                    reject_table_domains(
+                                        types,
+                                        rule_name,
+                                        t1,
+                                        &ge.entry_type,
+                                        &key_type,
+                                        &value_type,
+                                    );
                                     return GroupParsingType::HomogenousMap(
                                         key_type,
                                         value_type,
@@ -5912,66 +5905,14 @@ fn parse_group_type<'a>(
                                 ) {
                                     let value_type =
                                         rust_type(types, parent_visitor, &ge.entry_type, cli);
-                                    // same fixed-VALUE guard as the single-entry table arm:
-                                    // `{ * (uint => 5) }` puts a `Fixed` in the map's value
-                                    // position, which has no type to store per row.
-                                    if let ConceptualRustType::Fixed(fixed) =
-                                        value_type.conceptual_type.resolve_alias_shallow()
-                                    {
-                                        let fixed = fixed.clone();
-                                        let site = rejection_site(types, rule_name, "inline map");
-                                        let entry_src = format!("{t1} => {}", ge.entry_type);
-                                        record_fixed_table_value_rejection(
-                                            types, &site, &entry_src, &fixed,
-                                        );
-                                    }
-                                    // same bare-plain-group domain guard as the single-entry table
-                                    // arm, for both roles: `{ * (uint => coords) }` puts a keyless
-                                    // group in a map slot that holds exactly one item.
-                                    let key_group =
-                                        resolved_plain_group_source_name(types, &key_type);
-                                    let value_group =
-                                        resolved_plain_group_source_name(types, &value_type);
-                                    if key_group.is_some() || value_group.is_some() {
-                                        let site = rejection_site(types, rule_name, "inline map");
-                                        let value = &ge.entry_type;
-                                        let entry_src = format!("{t1} => {value}");
-                                        if let Some(group_name) = key_group {
-                                            record_plain_group_table_domain_rejection(
-                                                types,
-                                                &site,
-                                                &entry_src,
-                                                "KEY",
-                                                &group_name,
-                                                &format!(
-                                                    "{} => {value}",
-                                                    array_wrapped_domain_src(
-                                                        &t1.to_string(),
-                                                        &t1.type2,
-                                                    )
-                                                ),
-                                            );
-                                        }
-                                        if let Some(group_name) = value_group {
-                                            record_plain_group_table_domain_rejection(
-                                                types,
-                                                &site,
-                                                &entry_src,
-                                                "VALUE",
-                                                &group_name,
-                                                &format!(
-                                                    "{t1} => {}",
-                                                    match single_type2(value) {
-                                                        Some(t2) => array_wrapped_domain_src(
-                                                            &value.to_string(),
-                                                            t2,
-                                                        ),
-                                                        None => format!("[{value}]"),
-                                                    }
-                                                ),
-                                            );
-                                        }
-                                    }
+                                    reject_table_domains(
+                                        types,
+                                        rule_name,
+                                        t1,
+                                        &ge.entry_type,
+                                        &key_type,
+                                        &value_type,
+                                    );
                                     // `{ * (k => v) }`: the inline group's own `*` marker is the
                                     // cardinality (unbounded); the inner entry carries no honored
                                     // bound of its own here.
