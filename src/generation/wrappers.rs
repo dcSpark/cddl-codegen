@@ -323,8 +323,7 @@ pub(super) fn generate_wrapper_struct(
             // This is the sole mutable wasm door for a bounded set: both duplicate and overflow
             // are errors, so it must not normalize an attempted insertion into a no-op.
             let elem_handover = |name: &str| {
-                super::collections::wasm_exact_byte_handover(&element_type, name, cli)
-                    .unwrap_or_else(|| from_elem(name))
+                super::collections::wasm_direct_storage_expr(&element_type, name, types, cli)
             };
             wrapper
                 .s_impl

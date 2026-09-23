@@ -849,13 +849,7 @@ impl GenerationScope {
                 )
                 .line(format!(
                     "self.0.push({}).map_err(|e| JsError::new(&e.to_string()))",
-                    wasm_exact_byte_handover(&element_type, "elem", cli).unwrap_or_else(|| {
-                        ToWasmBoundaryOperations::format(
-                            element_type
-                                .from_wasm_boundary_clone(types, "elem", false)
-                                .into_iter(),
-                        )
-                    })
+                    wasm_direct_storage_expr(&element_type, "elem", types, cli)
                 ));
         }
         if element_type.vec_of_self_directly_wasm_exposable(types) {
@@ -1129,13 +1123,7 @@ impl GenerationScope {
             )
             .line(format!(
                 "self.0.push({}).map_err(|e| JsError::new(&e.to_string()))",
-                wasm_exact_byte_handover(&element_type, "elem", cli).unwrap_or_else(|| {
-                    ToWasmBoundaryOperations::format(
-                        element_type
-                            .from_wasm_boundary_clone(types, "elem", false)
-                            .into_iter(),
-                    )
-                })
+                wasm_direct_storage_expr(&element_type, "elem", types, cli)
             ));
         // Only loose/non-empty twins expose the standard normalizing insert. Bounded set mutation
         // must stay checked for both duplicate and maximum overflow.
@@ -1594,21 +1582,8 @@ impl GenerationScope {
                     "non-empty map constructor value parameter",
                 ),
             );
-        let key = wasm_exact_byte_handover(&key_type, "first_key", cli).unwrap_or_else(|| {
-            ToWasmBoundaryOperations::format(
-                key_type
-                    .from_wasm_boundary_clone(types, "first_key", false)
-                    .into_iter(),
-            )
-        });
-        let value =
-            wasm_exact_byte_handover(&value_type, "first_value", cli).unwrap_or_else(|| {
-                ToWasmBoundaryOperations::format(
-                    value_type
-                        .from_wasm_boundary_clone(types, "first_value", false)
-                        .into_iter(),
-                )
-            });
+        let key = wasm_direct_storage_expr(&key_type, "first_key", types, cli);
+        let value = wasm_direct_storage_expr(&value_type, "first_value", types, cli);
         if wasm_exact_byte_handover(&key_type, "first_key", cli).is_some()
             || wasm_exact_byte_handover(&value_type, "first_value", cli).is_some()
         {
@@ -1925,6 +1900,21 @@ pub(super) fn wasm_exact_byte_handover(ty: &RustType, expr: &str, cli: &Cli) -> 
     }
 }
 
+/// The native value a wasm argument is stored as: the exact-byte handover when `ty` needs one,
+/// otherwise the ordinary boundary clone conversion.
+pub(super) fn wasm_direct_storage_expr(
+    ty: &RustType,
+    expr: &str,
+    types: &IntermediateTypes,
+    cli: &Cli,
+) -> String {
+    wasm_exact_byte_handover(ty, expr, cli).unwrap_or_else(|| {
+        ToWasmBoundaryOperations::format(
+            ty.from_wasm_boundary_clone(types, expr, false).into_iter(),
+        )
+    })
+}
+
 /// The fallible leaf conversion without a terminal `?`. Optional handovers map this Result through
 /// their `Option` and then transpose it, whereas direct storage consumes it immediately.
 fn wasm_exact_byte_conversion(len: usize, expr: &str, cli: &Cli) -> String {
@@ -1995,8 +1985,9 @@ pub(super) fn push_table_accessors(
     };
     // insert
     let mut insert_func = codegen::Function::new("insert");
-    let handover_can_fail = wasm_exact_byte_handover(key_type, "key", cli).is_some()
-        || wasm_exact_byte_handover(value_type, "value", cli).is_some();
+    let key_handover = wasm_exact_byte_handover(key_type, "key", cli);
+    let handover_can_fail =
+        key_handover.is_some() || wasm_exact_byte_handover(value_type, "value", cli).is_some();
     insert_func
         .vis("pub")
         .arg_mut_self()
@@ -2052,20 +2043,8 @@ pub(super) fn push_table_accessors(
     } else {
         ".map(Into::into)".to_owned()
     };
-    let key_expr = wasm_exact_byte_handover(key_type, "key", cli).unwrap_or_else(|| {
-        ToWasmBoundaryOperations::format(
-            key_type
-                .from_wasm_boundary_clone(types, "key", false)
-                .into_iter(),
-        )
-    });
-    let value_expr = wasm_exact_byte_handover(value_type, "value", cli).unwrap_or_else(|| {
-        ToWasmBoundaryOperations::format(
-            value_type
-                .from_wasm_boundary_clone(types, "value", false)
-                .into_iter(),
-        )
-    });
+    let key_expr = wasm_direct_storage_expr(key_type, "key", types, cli);
+    let value_expr = wasm_direct_storage_expr(value_type, "value", types, cli);
     let insert_expr = format!(
         "{receiver}.insert({}, {}){}",
         key_expr, value_expr, insert_return_conversion
@@ -2101,7 +2080,7 @@ pub(super) fn push_table_accessors(
         ".map(|v| v.clone().into())"
     };
     let mut getter = codegen::Function::new("get");
-    let key_handover_can_fail = wasm_exact_byte_handover(key_type, "key", cli).is_some();
+    let key_handover_can_fail = key_handover.is_some();
     getter
         .arg_ref_self()
         .arg(
@@ -2134,27 +2113,29 @@ pub(super) fn push_table_accessors(
             modifier.to_owned()
         }
     };
-    if let Some(key) = wasm_exact_byte_handover(key_type, "key", cli) {
-        getter.line(format!(
-            "Ok({receiver}.get(&{key}){}{})",
-            copied_or(get_ret_modifier),
-            value_flatten
-        ));
-    } else if key_type.directly_wasm_exposable(types) {
-        getter.line(format!(
-            "{receiver}.get({}){}{}",
-            key_type.from_wasm_boundary_ref(types, "key"),
-            copied_or(get_ret_modifier),
-            value_flatten
-        ));
-    } else {
-        getter.line(format!(
-            "{receiver}.get({}.as_ref()){}{}",
-            key_type.from_wasm_boundary_ref(types, "key"),
-            copied_or(get_ret_modifier),
-            value_flatten
-        ));
-    }
+    // The key lookup shared by `get` and `has`; an exact-byte key handover makes both fallible.
+    let key_lookup = match &key_handover {
+        Some(key) => format!("{receiver}.get(&{key})"),
+        None if key_type.directly_wasm_exposable(types) => format!(
+            "{receiver}.get({})",
+            key_type.from_wasm_boundary_ref(types, "key")
+        ),
+        None => format!(
+            "{receiver}.get({}.as_ref())",
+            key_type.from_wasm_boundary_ref(types, "key")
+        ),
+    };
+    let wrap_key_result = |expr: String| {
+        if key_handover_can_fail {
+            format!("Ok({expr})")
+        } else {
+            expr
+        }
+    };
+    getter.line(wrap_key_result(format!(
+        "{key_lookup}{}{value_flatten}",
+        copied_or(get_ret_modifier)
+    )));
     wrapper.s_impl.push_fn(getter);
     // has(key): key-presence accessor, emitted from exactly the `value_nullable` flatten condition
     // above (single source of truth) so it can never drift from `get`. When the value is nullable,
@@ -2181,19 +2162,7 @@ pub(super) fn push_table_accessors(
             })
             .vis("pub")
             .doc("Returns whether the key is present, distinguishing an absent key from a present-but-null value (both of which `get` reports as None).");
-        if let Some(key) = wasm_exact_byte_handover(key_type, "key", cli) {
-            has_func.line(format!("Ok({receiver}.get(&{key}).is_some())"));
-        } else if key_type.directly_wasm_exposable(types) {
-            has_func.line(format!(
-                "{receiver}.get({}).is_some()",
-                key_type.from_wasm_boundary_ref(types, "key")
-            ));
-        } else {
-            has_func.line(format!(
-                "{receiver}.get({}.as_ref()).is_some()",
-                key_type.from_wasm_boundary_ref(types, "key")
-            ));
-        }
+        has_func.line(wrap_key_result(format!("{key_lookup}.is_some()")));
         wrapper.s_impl.push_fn(has_func);
     }
     // keys
