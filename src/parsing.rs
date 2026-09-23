@@ -585,10 +585,7 @@ fn recognize_optional_tag_set(variants: &[EnumVariant]) -> Option<(usize, RustTy
 /// house style of the other comment-DSL misuse rejections (`@raw_bytes_flavor`), never a panic and
 /// never a silent no-op.
 fn reject_duplicates_not_applicable(types: &mut IntermediateTypes, name: &RustIdent) {
-    let source_name = types
-        .source_rule_name(name)
-        .map(str::to_owned)
-        .unwrap_or_else(|| name.to_string());
+    let source_name = source_rule_name_of(types, name);
     types.record_rejection(format!(
         "@duplicates on rule `{source_name}`: this directive only applies to set/array collection \
          rules (`[* a]` / `[+ a]`, including the tag-258 set idiom) and table rules \
@@ -603,10 +600,7 @@ fn reject_duplicates_not_applicable(types: &mut IntermediateTypes, name: &RustId
 /// metadata consumer is a misplacement, rejected loudly (never silently dropped), naming the one
 /// valid placement.
 fn reject_ignore_not_applicable(types: &mut IntermediateTypes, name: &RustIdent) {
-    let source_name = types
-        .source_rule_name(name)
-        .map(str::to_owned)
-        .unwrap_or_else(|| name.to_string());
+    let source_name = source_rule_name_of(types, name);
     types.record_rejection(format!(
         "@ignore on rule `{source_name}`: this directive is only valid on an open struct-map rest \
          row (`* k => v ; @ignore`) or an open-array rest tail (`* t ; @ignore`), written in the \
@@ -1847,10 +1841,7 @@ fn register_fixed_singleton(
     // rather than parse order so a later `fixed_bool_true = uint` cannot silently overwrite the
     // earlier synthesized owner (or vice versa).
     if synthesized && types.is_toplevel_rule(&owner) {
-        let claimant = types
-            .source_rule_name(&owner)
-            .map(str::to_owned)
-            .unwrap_or_else(|| owner.to_string());
+        let claimant = source_rule_name_of(types, &owner);
         types.record_rejection(format!(
             "fixed singleton `{owner}` for {} collides with the authored rule `{}`. Rename the rule; synthesized fixed/null owners reserve this deterministic name.",
             fixed.cddl_source_desc(),
@@ -4832,10 +4823,7 @@ fn parse_type(
             // its SOURCE spelling and the offending construct (with an honest hint where one
             // exists), instead of panicking. `finalize` drains the recorded rejection into a
             // graceful `Err` before any generation runs.
-            let source_name = types
-                .source_rule_name(type_name)
-                .map(str::to_owned)
-                .unwrap_or_else(|| type_name.to_string());
+            let source_name = source_rule_name_of(types, type_name);
             let (construct, hint) = match x {
                 Type2::Unwrap { .. } => (
                     "an unwrap (`~name`)".to_string(),
@@ -5204,13 +5192,7 @@ fn rejection_site(
     anonymous: &str,
 ) -> String {
     match rule_name {
-        Some(name) => format!(
-            "rule `{}`",
-            types
-                .source_rule_name(name)
-                .map(str::to_owned)
-                .unwrap_or_else(|| name.to_string())
-        ),
+        Some(name) => format!("rule `{}`", source_rule_name_of(types, name)),
         None => anonymous.to_owned(),
     }
 }
@@ -5250,10 +5232,7 @@ fn reject_plain_group_type_choice_arm(
     else {
         return false;
     };
-    let group_name = types
-        .source_rule_name(group_ident)
-        .map(str::to_owned)
-        .unwrap_or_else(|| group_ident.to_string());
+    let group_name = source_rule_name_of(types, group_ident);
     types.record_rejection(format!(
         "{site}: a type-choice arm cannot be the plain group `{group_name}` — a plain group has no \
          type of its own, it splices its members flat into the enclosing array or map, while a \
@@ -7801,6 +7780,8 @@ fn parse_record_from_group_choice(
         in_choice_arm,
         cli,
     );
+    // Rejections cite the rule by its SOURCE spelling (`m`), not the camel-cased RustIdent (`M`).
+    let source_name = source_rule_name_of(types, name);
     let fields: Vec<RustField> = flattened
         .into_iter()
         .enumerate()
@@ -7817,10 +7798,6 @@ fn parse_record_from_group_choice(
             // `group_entry_to_field_name` / `group_entry_to_type` / `group_entry_optional`; reject
             // gracefully here BEFORE they run, citing the rule's SOURCE spelling.
             if let GroupEntry::InlineGroup { occur, .. } = group_entry {
-                let source_name = types
-                    .source_rule_name(name)
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| name.to_string());
                 if occur.is_some() {
                     // the remedy differs by representation: naming the group only helps arrays —
                     // a plain-group reference inside a map record is itself unsupported (it hits
@@ -7868,10 +7845,6 @@ fn parse_record_from_group_choice(
                     // cite the rule by its SOURCE spelling (`neg`), not the camel-cased RustIdent —
                     // the user is looking at their CDDL, not our output.
                     MapKeyKind::Fixed(other) => {
-                        let source_name = types
-                            .source_rule_name(name)
-                            .map(str::to_owned)
-                            .unwrap_or_else(|| name.to_string());
                         // The table remedy must not be advertised for a FLOAT key: a float-family
                         // table key domain is itself rejected (floats have no total order, so they
                         // cannot key a BTreeMap) — pointing there would send the user to a second
@@ -7917,10 +7890,6 @@ fn parse_record_from_group_choice(
             // catches the case-converted hazards too. The remedy renames the field without touching
             // the CBOR wire key (which stays the bareword text).
             if RUST_KEYWORDS.contains(&field_name.as_str()) {
-                let source_name = types
-                    .source_rule_name(name)
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| name.to_string());
                 types.record_rejection(format!(
                     "rule `{source_name}`: field `{field_name}` is a Rust keyword and cannot be a \
                      struct field identifier. Rename the field with a `; @name <other>` comment \
@@ -7937,10 +7906,7 @@ fn parse_record_from_group_choice(
             // `raw: bytes ; @name raw2` renames OUT of it and must pass.
             if let Some(msg) = generated_local_field_rejection(
                 &field_name,
-                &types
-                    .source_rule_name(name)
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| name.to_string()),
+                &source_name,
                 rep,
                 tagged,
             ) {
@@ -7962,7 +7928,7 @@ fn parse_record_from_group_choice(
                 types,
                 &format!(
                     "field `{field_name}` of rule `{}`",
-                    source_rule_name_of(types, name)
+                    source_name
                 ),
                 "a field",
                 &rule_metadata,
@@ -7973,10 +7939,6 @@ fn parse_record_from_group_choice(
             // none) describes no codec.
             if rule_metadata.custom_encodings.is_some() || rule_metadata.custom_wire_major.is_some()
             {
-                let source_name = types
-                    .source_rule_name(name)
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| name.to_string());
                 reject_custom_encodings_without_pair(
                     types,
                     &format!("field `{field_name}` of rule `{source_name}`"),
@@ -8022,10 +7984,6 @@ fn parse_record_from_group_choice(
                 )),
                 _ => None,
             } {
-                let source_name = types
-                    .source_rule_name(name)
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| name.to_string());
                 types.record_rejection(format!(
                     "{directive} alone on field `{field_name}` of rule `{source_name}`: the field's \
                      {declared} while its {kept} the field type's own generated codec — so the bytes \
@@ -8076,10 +8034,6 @@ fn parse_record_from_group_choice(
                 })
                 .unwrap_or(false);
                 if narrows {
-                    let source_name = types
-                        .source_rule_name(name)
-                        .map(str::to_owned)
-                        .unwrap_or_else(|| name.to_string());
                     types.record_rejection(format!(
                         "rule `{source_name}`: array field `{field_name}` has an occurrence \
                          (`*` / `+` / `n*m`), which would be silently narrowed to a single \
@@ -8116,14 +8070,7 @@ fn parse_record_from_group_choice(
                     && let ConceptualRustType::Rust(group_ident) =
                         field_type.conceptual_type.resolve_alias_shallow()
                 {
-                    let source_name = types
-                        .source_rule_name(name)
-                        .map(str::to_owned)
-                        .unwrap_or_else(|| name.to_string());
-                    let group_name = types
-                        .source_rule_name(group_ident)
-                        .map(str::to_owned)
-                        .unwrap_or_else(|| group_ident.to_string());
+                    let group_name = source_rule_name_of(types, group_ident);
                     types.record_rejection(format!(
                         "rule `{source_name}`: array field `{field_name}` is an OPTIONAL (`?`) \
                          reference to the plain group `{group_name}`, which is unsupported — a plain \
@@ -8142,12 +8089,6 @@ fn parse_record_from_group_choice(
             }
             let key = match rep {
                 Representation::Map => {
-                    // cite the rule by its SOURCE spelling (`m`), not the camel-cased
-                    // RustIdent (`M`) — the user is looking at their CDDL, not our output
-                    let source_name = types
-                        .source_rule_name(name)
-                        .map(str::to_owned)
-                        .unwrap_or_else(|| name.to_string());
                     // `map_key` was classified before field naming (unsupported/non-fixed keys
                     // already returned None); `Some` is a supported uint/text key, `None` is a
                     // keyless entry that falls to the "map field has no key" rejection below.
@@ -8217,10 +8158,7 @@ fn parse_record_from_group_choice(
                                 && let ConceptualRustType::Rust(group_ident) =
                                     field_type.conceptual_type.resolve_alias_shallow()
                             {
-                                let group_name = types
-                                    .source_rule_name(group_ident)
-                                    .map(str::to_owned)
-                                    .unwrap_or_else(|| group_ident.to_string());
+                                let group_name = source_rule_name_of(types, group_ident);
                                 record_plain_group_map_member_rejection(
                                     types,
                                     &format!("rule `{source_name}`"),
@@ -8265,10 +8203,6 @@ fn parse_record_from_group_choice(
             // seam cannot tell the two apart, and warning on both is the honest reading — the
             // control is inert either way.
             if !optional_field && field_type.config.default.is_some() {
-                let source_name = types
-                    .source_rule_name(name)
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| name.to_string());
                 crate::warn!(
                     "rule `{source_name}`: `.default` on the mandatory member `{field_name}` has \
                      no effect (RFC 8610: a default substitutes for an ABSENT value, which is \
@@ -8462,10 +8396,7 @@ fn reject_encoding_companion_collisions(
     if collisions.is_empty() {
         return;
     }
-    let source_name = types
-        .source_rule_name(name)
-        .map(str::to_owned)
-        .unwrap_or_else(|| name.to_string());
+    let source_name = source_rule_name_of(types, name);
     for (base, other, why) in collisions {
         let why = why.replace("{other}", &other);
         types.record_rejection(format!(
@@ -9014,12 +8945,6 @@ fn recognize_rest_row(
     if rep != Representation::Map {
         return (None, None);
     }
-    let source_name = || {
-        types
-            .source_rule_name(name)
-            .map(str::to_owned)
-            .unwrap_or_else(|| name.to_string())
-    };
     let nonfixed_indices: Vec<usize> = flattened
         .iter()
         .enumerate()
@@ -9030,7 +8955,7 @@ fn recognize_rest_row(
         // No non-fixed entry: an ordinary closed struct. Byte-identical to pre-feature output.
         return (None, None);
     };
-    let src = source_name();
+    let src = source_rule_name_of(types, name);
     // A rest row cannot be collapsed into an enum variant (it would drop the open-map semantics),
     // so reject it in a group-choice arm; the row is still skipped so no fixed field is built.
     if in_choice_arm {
@@ -9345,12 +9270,6 @@ fn recognize_array_rest_tail(
     in_choice_arm: bool,
     cli: &Cli,
 ) -> (Option<Box<RestRow>>, Option<usize>) {
-    let source_name = || {
-        types
-            .source_rule_name(name)
-            .map(str::to_owned)
-            .unwrap_or_else(|| name.to_string())
-    };
     // Count-permitting occurrences are exactly the markers the field-loop narrowing guard matches:
     // anything present that is NOT `?` (optional) or the pedantic `1*1` (exactly-once). `*` / `+` /
     // `n*m` all qualify as tail CANDIDATES here (every final bare-type window is ultimately honored;
@@ -9387,7 +9306,7 @@ fn recognize_array_rest_tail(
         // No count-permitting entry: an ordinary closed array. Byte-identical to pre-feature output.
         return (None, None);
     };
-    let src = source_name();
+    let src = source_rule_name_of(types, name);
     // A rest tail cannot be collapsed into an enum variant (it would drop the open-array semantics),
     // so reject it in a group-choice arm; the candidate is still skipped so no fixed field is built.
     if in_choice_arm {
@@ -9499,10 +9418,7 @@ fn recognize_array_rest_tail(
             ));
             return (None, Some(candidate));
         }
-        let group_name = types
-            .source_rule_name(group_ident)
-            .map(str::to_owned)
-            .unwrap_or_else(|| group_ident.to_string());
+        let group_name = source_rule_name_of(types, group_ident);
         types.record_rejection(format!(
             "rule `{src}`: an open-array rest tail cannot capture the plain group `{group_name}` \
              — a plain group has no type of its own, it splices its members flat into the \
@@ -9831,10 +9747,7 @@ fn parse_group_choice(
                 && !matches!(row_ge, GroupEntry::InlineGroup { .. })
             {
                 let row_metadata = group_entry_rule_metadata(row_ge, row_comma);
-                let src = types
-                    .source_rule_name(name)
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| name.to_string());
+                let src = source_rule_name_of(types, name);
                 reject_custom_codec_on_row_entry(
                     types,
                     &format!("table row (`* k => v`) of rule `{src}`"),
@@ -10152,16 +10065,10 @@ pub fn parse_group(
                             // different shape and stays supported — the referenced struct owns its
                             // own keys, so `{ x: uint // kv }` writes a conformant 2-entry map.)
                             MapKeyKind::Fixed(FixedValue::Uint(_) | FixedValue::Text(_)) => {
-                                let source_name = types
-                                    .source_rule_name(name)
-                                    .map(str::to_owned)
-                                    .unwrap_or_else(|| name.to_string());
+                                let source_name = source_rule_name_of(types, name);
                                 let group_name =
                                     match ty.conceptual_type.resolve_alias_shallow() {
-                                        ConceptualRustType::Rust(group_ident) => types
-                                            .source_rule_name(group_ident)
-                                            .map(str::to_owned)
-                                            .unwrap_or_else(|| group_ident.to_string()),
+                                        ConceptualRustType::Rust(group_ident) => source_rule_name_of(types, group_ident),
                                         // unreachable while `is_basic` is the guard, which only
                                         // says true for a `Rust` ident — kept total rather than
                                         // asserted, since the message is the whole point here.
@@ -10176,10 +10083,7 @@ pub fn parse_group(
                                 None
                             }
                             MapKeyKind::Fixed(other) => {
-                                let source_name = types
-                                    .source_rule_name(name)
-                                    .map(str::to_owned)
-                                    .unwrap_or_else(|| name.to_string());
+                                let source_name = source_rule_name_of(types, name);
                                 types.record_rejection(format!(
                                     "rule `{source_name}`: unsupported map key kind in a group-choice \
                                      arm (only uint/text keys are supported): {other:?}"
@@ -10191,10 +10095,7 @@ pub fn parse_group(
                                 None
                             }
                             MapKeyKind::Keyless => {
-                                let source_name = types
-                                    .source_rule_name(name)
-                                    .map(str::to_owned)
-                                    .unwrap_or_else(|| name.to_string());
+                                let source_name = source_rule_name_of(types, name);
                                 types.record_rejection(format!(
                                     "rule `{source_name}`: a map group-choice arm has an entry with \
                                      no key. Each map entry needs a key: use `k: v` / `k => v`, or a \
@@ -10203,10 +10104,7 @@ pub fn parse_group(
                                 None
                             }
                             MapKeyKind::NonFixed => {
-                                let source_name = types
-                                    .source_rule_name(name)
-                                    .map(str::to_owned)
-                                    .unwrap_or_else(|| name.to_string());
+                                let source_name = source_rule_name_of(types, name);
                                 types.record_rejection(format!(
                                     "rule `{source_name}`: a map group-choice arm has a non-fixed key \
                                      (`k => v`). Collapsing it into an enum variant would drop the key \
