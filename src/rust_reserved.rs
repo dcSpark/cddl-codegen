@@ -4,7 +4,7 @@
 // So we only disallow types that can be found in the prelude
 // https://doc.rust-lang.org/std/prelude/index.html
 
-pub const STD_TYPES: [&str; 40] = [
+pub const STD_TYPES: &[&str] = &[
     "Copy",
     "Send",
     "Sized",
@@ -14,7 +14,6 @@ pub const STD_TYPES: [&str; 40] = [
     "Fn",
     "FnMut",
     "FnOnce",
-    "drop",
     "Box",
     "ToOwned",
     "Clone",
