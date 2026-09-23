@@ -147,7 +147,7 @@
 //! and attributes, and `pub use` re-export paths — keeps its import family-wide.
 
 use std::borrow::Cow;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 
 use proc_macro2::{Spacing, TokenStream, TokenTree};
 use quote::ToTokens;
@@ -239,7 +239,7 @@ fn is_allowlisted(ident: &str) -> bool {
 #[cfg(test)]
 pub(crate) fn prune_unused_type_imports_with_used<'a>(
     source: &'a str,
-    used: &HashSet<String>,
+    used: &BTreeSet<String>,
 ) -> Cow<'a, str> {
     // Allowlist-only behaviour (unit-test path): drop allowlisted leaves absent from `used`; no glob
     // is ever removed.
@@ -247,7 +247,7 @@ pub(crate) fn prune_unused_type_imports_with_used<'a>(
         source,
         false,
         &|ident| is_allowlisted(ident) && !used.contains(ident),
-        &HashSet::new(),
+        &BTreeSet::new(),
     )
 }
 
@@ -263,7 +263,7 @@ fn splice_private_uses<'a>(
     source: &'a str,
     remove_all: bool,
     remove_named: &dyn Fn(&str) -> bool,
-    remove_globs: &HashSet<String>,
+    remove_globs: &BTreeSet<String>,
 ) -> Cow<'a, str> {
     let file = match syn::parse_file(source) {
         Ok(file) => file,
@@ -379,10 +379,10 @@ pub(crate) fn prune_generated_files(
     // Per `.rs` file, computed once. `None` in `used_by_path` marks an unparseable file. `direct` is
     // the DIRECTLY-imported leaf idents; `glob` is the module paths of the file's PRIVATE globs
     // (`super`, `cml_core::error`, …); `defs` is the top-level item names it defines.
-    let mut used_by_path: BTreeMap<&str, Option<HashSet<String>>> = BTreeMap::new();
-    let mut direct_by_path: BTreeMap<&str, HashSet<String>> = BTreeMap::new();
-    let mut glob_by_path: BTreeMap<&str, HashSet<String>> = BTreeMap::new();
-    let mut defs_by_path: BTreeMap<&str, HashSet<String>> = BTreeMap::new();
+    let mut used_by_path: BTreeMap<&str, Option<BTreeSet<String>>> = BTreeMap::new();
+    let mut direct_by_path: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
+    let mut glob_by_path: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
+    let mut defs_by_path: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
     for (path, content) in files {
         if path.ends_with(".rs") {
             used_by_path.insert(path, collect_used_idents_from_source(content));
@@ -437,7 +437,7 @@ pub(crate) fn prune_generated_files(
         // is all `use` items with only `crate::`-anchored `pub use`s — every private `use` is dead and
         // removed wholesale, regardless of the candidate set.
         if !has_descendant && is_reexport_only_file(content) {
-            let pruned = splice_private_uses(content, true, &|_| false, &HashSet::new());
+            let pruned = splice_private_uses(content, true, &|_| false, &BTreeSet::new());
             if let Cow::Owned(new_content) = pruned {
                 changed.push((path.clone(), new_content));
             }
@@ -474,7 +474,7 @@ pub(crate) fn prune_generated_files(
         }
 
         // Glob pruning.
-        let mut remove_globs: HashSet<String> = HashSet::new();
+        let mut remove_globs: BTreeSet<String> = BTreeSet::new();
         let own_globs = &glob_by_path[path.as_str()];
         if own_globs.contains("super")
             && reach.is_empty()
@@ -489,7 +489,7 @@ pub(crate) fn prune_generated_files(
         {
             remove_globs.insert("super".to_owned());
         }
-        let error_universe: HashSet<String> =
+        let error_universe: BTreeSet<String> =
             ERROR_MODULE_EXPORTS.iter().map(|s| s.to_string()).collect();
         for gp in own_globs {
             if gp == "super" {
@@ -608,15 +608,15 @@ fn sibling_module_file(
 fn super_glob_needed(
     f: &str,
     files: &BTreeMap<String, String>,
-    used_by_path: &BTreeMap<&str, Option<HashSet<String>>>,
-    glob_by_path: &BTreeMap<&str, HashSet<String>>,
-    defs_by_path: &BTreeMap<&str, HashSet<String>>,
-    direct_by_path: &BTreeMap<&str, HashSet<String>>,
+    used_by_path: &BTreeMap<&str, Option<BTreeSet<String>>>,
+    glob_by_path: &BTreeMap<&str, BTreeSet<String>>,
+    defs_by_path: &BTreeMap<&str, BTreeSet<String>>,
+    direct_by_path: &BTreeMap<&str, BTreeSet<String>>,
 ) -> bool {
     let Some(parent) = parent_mod_file(f, files) else {
         return true;
     };
-    let empty = HashSet::new();
+    let empty = BTreeSet::new();
     let own_used = match used_by_path.get(f) {
         Some(Some(u)) => u,
         _ => return true, // unparseable F — keep conservatively (the splicer refuses it anyway)
@@ -656,11 +656,11 @@ fn super_glob_needed(
 fn bound_names(
     m: &str,
     files: &BTreeMap<String, String>,
-    defs_by_path: &BTreeMap<&str, HashSet<String>>,
-    direct_by_path: &BTreeMap<&str, HashSet<String>>,
-    glob_by_path: &BTreeMap<&str, HashSet<String>>,
+    defs_by_path: &BTreeMap<&str, BTreeSet<String>>,
+    direct_by_path: &BTreeMap<&str, BTreeSet<String>>,
+    glob_by_path: &BTreeMap<&str, BTreeSet<String>>,
     depth: usize,
-) -> Option<HashSet<String>> {
+) -> Option<BTreeSet<String>> {
     if depth > 32 {
         return None;
     }
@@ -698,12 +698,12 @@ fn bound_names(
 /// top-level definition, not only public ones), so imprecision can only keep a dead glob.
 fn enumerated_glob_needed(
     gp: &str,
-    universe: &HashSet<String>,
+    universe: &BTreeSet<String>,
     f: &str,
     reach: &[&str],
-    used_by_path: &BTreeMap<&str, Option<HashSet<String>>>,
-    direct_by_path: &BTreeMap<&str, HashSet<String>>,
-    glob_by_path: &BTreeMap<&str, HashSet<String>>,
+    used_by_path: &BTreeMap<&str, Option<BTreeSet<String>>>,
+    direct_by_path: &BTreeMap<&str, BTreeSet<String>>,
+    glob_by_path: &BTreeMap<&str, BTreeSet<String>>,
 ) -> bool {
     let demands = |file: &str| -> bool {
         let Some(Some(used)) = used_by_path.get(file) else {
@@ -815,9 +815,9 @@ fn is_plain_path_tail(tree: &UseTree) -> bool {
 /// private binding in scope, so its idents must protect the corresponding import. Returns `None` if
 /// `source` doesn't parse (the caller must then treat this file as possibly-using-anything and skip
 /// pruning any file it might be protecting).
-pub(crate) fn collect_used_idents_from_source(source: &str) -> Option<HashSet<String>> {
+pub(crate) fn collect_used_idents_from_source(source: &str) -> Option<BTreeSet<String>> {
     let file = syn::parse_file(source).ok()?;
-    let mut used = HashSet::new();
+    let mut used = BTreeSet::new();
     for item in &file.items {
         if let Item::Use(use_item) = item
             && matches!(use_item.vis, syn::Visibility::Inherited)
@@ -841,7 +841,7 @@ pub(crate) fn collect_used_idents_from_source(source: &str) -> Option<HashSet<St
 /// over-prune is a consumer compile error, an under-prune only a warning). The last-two-token
 /// context is per token stream: a `Group`'s inner stream starts unpreceded, so recursion begins with
 /// a fresh context.
-fn collect_idents_in_tokens(tokens: TokenStream, used: &mut HashSet<String>) {
+fn collect_idents_in_tokens(tokens: TokenStream, used: &mut BTreeSet<String>) {
     // Every reported form counts here: this pass asks only "does this name appear somewhere that
     // could consume a `use` binding", for which a method ident (`x.to_string()`) and a macro ident
     // (`vec![…]`) count exactly like a bare one.
@@ -918,8 +918,8 @@ pub(crate) fn walk_ident_uses(tokens: TokenStream, sink: &mut impl FnMut(&str, I
 /// contributes nothing. Returns an empty set if `source` doesn't parse — such a file is already
 /// `None` in `used_by_path` and poisons its ancestors, so it never reaches the per-descendant
 /// filter that consults this set.
-pub(crate) fn collect_directly_imported_idents(source: &str) -> HashSet<String> {
-    let mut direct = HashSet::new();
+pub(crate) fn collect_directly_imported_idents(source: &str) -> BTreeSet<String> {
+    let mut direct = BTreeSet::new();
     if let Ok(file) = syn::parse_file(source) {
         for item in &file.items {
             if let Item::Use(use_item) = item {
@@ -930,7 +930,7 @@ pub(crate) fn collect_directly_imported_idents(source: &str) -> HashSet<String> 
     direct
 }
 
-fn collect_use_tree_leaf_idents(tree: &UseTree, direct: &mut HashSet<String>) {
+fn collect_use_tree_leaf_idents(tree: &UseTree, direct: &mut BTreeSet<String>) {
     match tree {
         UseTree::Name(name) => {
             direct.insert(name.ident.to_string());
@@ -1066,8 +1066,8 @@ fn walk_use_sources(
 /// `cml_core::error`, `super::cbor_encodings`, … Used both as the source-glob disqualifier's
 /// membership set and to detect a file's own prunable `super`/`error` globs. Empty if `source`
 /// doesn't parse.
-fn collect_private_glob_paths(source: &str) -> HashSet<String> {
-    let mut globs = HashSet::new();
+fn collect_private_glob_paths(source: &str) -> BTreeSet<String> {
+    let mut globs = BTreeSet::new();
     if let Ok(file) = syn::parse_file(source) {
         for item in &file.items {
             if let Item::Use(use_item) = item
@@ -1080,7 +1080,7 @@ fn collect_private_glob_paths(source: &str) -> HashSet<String> {
     globs
 }
 
-fn walk_glob_paths(tree: &UseTree, prefix: &mut Vec<String>, globs: &mut HashSet<String>) {
+fn walk_glob_paths(tree: &UseTree, prefix: &mut Vec<String>, globs: &mut BTreeSet<String>) {
     match tree {
         UseTree::Path(path) => {
             prefix.push(path.ident.to_string());
@@ -1105,8 +1105,8 @@ fn walk_glob_paths(tree: &UseTree, prefix: &mut Vec<String>, globs: &mut HashSet
 /// `const`/`static`/`trait`/`union`/`mod`/`macro_rules`/`extern crate`). Combined with the module's
 /// `use`-bound leaves and its globs' exports, this is what `use super::*;` re-exports downward — the
 /// universe for deciding whether a child's `super::*` is load-bearing. Empty if `source` doesn't parse.
-pub(crate) fn collect_module_item_defs(source: &str) -> HashSet<String> {
-    let mut defs = HashSet::new();
+pub(crate) fn collect_module_item_defs(source: &str) -> BTreeSet<String> {
+    let mut defs = BTreeSet::new();
     if let Ok(file) = syn::parse_file(source) {
         for item in &file.items {
             let name = match item {
@@ -1172,7 +1172,7 @@ fn filter_use_tree(
     tree: &UseTree,
     prefix: &mut Vec<String>,
     remove_named: &dyn Fn(&str) -> bool,
-    remove_globs: &HashSet<String>,
+    remove_globs: &BTreeSet<String>,
 ) -> Option<UseTree> {
     match tree {
         UseTree::Name(name) => {
@@ -1571,8 +1571,8 @@ mod tests {
 
     // ----- path-tail ident exclusion (`collect_idents_in_tokens`) -----
 
-    fn idents_in(src: &str) -> HashSet<String> {
-        let mut used = HashSet::new();
+    fn idents_in(src: &str) -> BTreeSet<String> {
+        let mut used = BTreeSet::new();
         collect_idents_in_tokens(src.parse().expect("tokenizes"), &mut used);
         used
     }
