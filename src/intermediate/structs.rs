@@ -1309,20 +1309,6 @@ impl RestRow {
         })
     }
 
-    /// The rest row's CONTAINER type — the composite the emitted code actually names: `Array(T)` for
-    /// an array `* T` tail, `Map(K, V)` carrying the row's `@duplicates` policy and, for a `+` typed
-    /// open-table row, its `>= 1` bound (so `for_rust_member` routes a `preserve` row to the
-    /// `PairMap<K, V>` / `NonEmptyPairMap<K, V>` twin and
-    /// `for_wasm_member` / `wasm_collection_wrapper` name the `PairMapKToV` class rather than the
-    /// loose `MapKToV`).
-    ///
-    /// The IR stores the inner types FLAT (`RestKind`), so without this every walk sees a rest row's
-    /// `domain`/`range`/`element` as unrelated occurrences and never as a container — which is why
-    /// the wasm wrapper the rest accessor returns has to be minted explicitly and why the
-    /// dependency walk has to be told about it. Every consumer that needs the container goes
-    /// through HERE (the rust member type, the wasm wrapper mint, `scope_references`' Record rest
-    /// arm), so the container spelling cannot drift between them — a rest row's container is
-    /// indistinguishable from a map/array FIELD's container to each of them.
     /// Whether a map rest row's key domain takes the FAST (peeked-key) deserialize path — the record
     /// loop's own `cbor_type()` dispatch has already read the key as a `u64`/`String`/`AnyCbor`, so the
     /// capture reconstructs it from those parts instead of running `K::deserialize`.
@@ -1358,6 +1344,20 @@ impl RestRow {
         )
     }
 
+    /// The rest row's CONTAINER type — the composite the emitted code actually names: `Array(T)` for
+    /// an array `* T` tail, `Map(K, V)` carrying the row's `@duplicates` policy and, for a `+` typed
+    /// open-table row, its `>= 1` bound (so `for_rust_member` routes a `preserve` row to the
+    /// `PairMap<K, V>` / `NonEmptyPairMap<K, V>` twin and
+    /// `for_wasm_member` / `wasm_collection_wrapper` name the `PairMapKToV` class rather than the
+    /// loose `MapKToV`).
+    ///
+    /// The IR stores the inner types FLAT (`RestKind`), so without this every walk sees a rest row's
+    /// `domain`/`range`/`element` as unrelated occurrences and never as a container — which is why
+    /// the wasm wrapper the rest accessor returns has to be minted explicitly and why the
+    /// dependency walk has to be told about it. Every consumer that needs the container goes
+    /// through HERE (the rust member type, the wasm wrapper mint, `scope_references`' Record rest
+    /// arm), so the container spelling cannot drift between them — a rest row's container is
+    /// indistinguishable from a map/array FIELD's container to each of them.
     pub fn container_type(&self) -> RustType {
         match &self.kind {
             RestKind::ArrayTail { element, .. } => {

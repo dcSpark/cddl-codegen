@@ -636,6 +636,18 @@ impl<'a> IntermediateTypes<'a> {
         self.auto_newtype_rules.contains(ident)
     }
 
+    /// Whether ANY generated type uses CDDL `any` (the `AnyCbor` runtime type), so `export`/import
+    /// wiring pulls in the `any_cbor` runtime module + `AnyCbor` import only for crates that need it
+    /// (keeping every non-`any` crate's output byte-identical — the usage-gating invariant). Folds
+    /// `contains_any_cbor` over `visit_all_rust_types`, the same superset walk `uses_non_empty_map`
+    /// uses (reaches type-alias base types, record fields, table domain AND range, wrapper inners,
+    /// array elements, tagged inners, and enum variants).
+    pub fn uses_any_cbor(&self) -> bool {
+        let mut found = false;
+        self.visit_all_rust_types(&mut |rt| found |= rt.contains_any_cbor());
+        found
+    }
+
     /// Whether ANY generated type uses the `[+ T]` NonEmptyVec shape, so `export`/import wiring can
     /// pull in the `non_empty` runtime module + `NonEmptyVec` import only for crates that need it
     /// (keeping every non-`+` crate's output byte-identical).
@@ -654,18 +666,6 @@ impl<'a> IntermediateTypes<'a> {
     /// visitor's alias-base walk does cover today, so this check is redundant in every shape observed;
     /// but that redundancy is unproven across all IR shapes, and dropping a cheap belt-and-suspenders
     /// guard on an unverified premise is how a latent regression ships — so it stays.
-    /// Whether ANY generated type uses CDDL `any` (the `AnyCbor` runtime type), so `export`/import
-    /// wiring pulls in the `any_cbor` runtime module + `AnyCbor` import only for crates that need it
-    /// (keeping every non-`any` crate's output byte-identical — the usage-gating invariant). Folds
-    /// `contains_any_cbor` over `visit_all_rust_types`, the same superset walk `uses_non_empty_map`
-    /// uses (reaches type-alias base types, record fields, table domain AND range, wrapper inners,
-    /// array elements, tagged inners, and enum variants).
-    pub fn uses_any_cbor(&self) -> bool {
-        let mut found = false;
-        self.visit_all_rust_types(&mut |rt| found |= rt.contains_any_cbor());
-        found
-    }
-
     pub fn uses_non_empty_vec(&self) -> bool {
         let mut found = false;
         self.visit_all_rust_types(&mut |rt| found |= rt.contains_non_empty_array());
