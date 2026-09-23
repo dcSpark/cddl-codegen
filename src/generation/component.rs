@@ -397,14 +397,9 @@ impl Emitter<'_, '_> {
     /// the emitted crate, which the cross-crate wasip2 build gate exercises.
     fn native_rust_type(&self, ty: &WitType) -> String {
         match ty {
-            WitType::Handle(r) => {
-                if self.imported(r).is_some() {
-                    self.imported_rust_path(r)
-                } else {
-                    self.rust_path(&r.ident)
-                }
-            }
-            WitType::Enum(r) => self.rust_path(&r.ident),
+            // An imported handle's native value is the dependency's own type, which the same
+            // crate-boundary resolver spells (see [`Self::imported_rust_path`]).
+            WitType::Handle(r) | WitType::Enum(r) => self.rust_path(&r.ident),
             WitType::Int => self.int_path(),
             WitType::AnyCbor => format!("{}::any_cbor::AnyCbor", self.runtime()),
             WitType::AnyCborKind => format!("{}::any_cbor::AnyCborKind", self.runtime()),
