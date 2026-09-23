@@ -13148,7 +13148,7 @@ fn stacked_tag_encoding_members_are_depth_disambiguated() {
 #[test]
 fn concat_files_missing_path_yields_error_not_panic() {
     let missing = "/nonexistent/cddl-codegen/definitely/not/here.rs";
-    let err = crate::generation::concat_files(&vec![missing])
+    let err = crate::generation::concat_files(&[missing])
         .expect_err("a nonexistent path must yield Err, never panic");
     assert!(
         err.to_string().contains(missing),

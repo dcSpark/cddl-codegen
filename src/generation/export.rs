@@ -835,7 +835,7 @@ fn is_ident_byte(b: u8) -> bool {
     b == b'_' || b.is_ascii_alphanumeric()
 }
 
-pub(crate) fn concat_files<P: AsRef<Path>>(paths: &Vec<P>) -> std::io::Result<String> {
+pub(crate) fn concat_files<P: AsRef<Path>>(paths: &[P]) -> std::io::Result<String> {
     let mut buf = String::new();
     for path in paths {
         buf.push_str(&std::fs::read_to_string(path).map_err(|e| {
@@ -871,13 +871,11 @@ fn rustfmt_path() -> std::io::Result<std::path::PathBuf> {
         return Ok(rustfmt.into());
     }
     #[cfg(feature = "which-rustfmt")]
-    match which::which("rustfmt") {
-        Ok(p) => Ok(p),
-        Err(e) => Err(std::io::Error::other(format!("{e}"))),
+    {
+        which::which("rustfmt").map_err(std::io::Error::other)
     }
     #[cfg(not(feature = "which-rustfmt"))]
-    Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
+    Err(std::io::Error::other(
         "which wasn't enabled, and no rustfmt binary specified",
     ))
 }
@@ -1100,7 +1098,7 @@ impl GenerationScope {
             merged.append(&self.rust_serialize_lib_scope);
             for (scope, content) in &self.serialize_scopes {
                 if *scope == *ROOT_SCOPE {
-                    merged.append(&content.clone());
+                    merged.append(content);
                 }
             }
             // Restamp: `generated_files` already stamped its generated-only serialization.rs, but
@@ -1272,14 +1270,13 @@ impl GenerationScope {
         dir: &str,
         mut merged_scope: codegen::Scope,
         other_scopes: &BTreeMap<ModuleScope, codegen::Scope>,
-        root_name: &str,
-        inner_name: &str,
+        file_name: &str,
     ) -> std::io::Result<()> {
         for (scope, content) in other_scopes {
             if *scope == *ROOT_SCOPE {
-                merged_scope.append(&content.clone());
+                merged_scope.append(content);
             } else if scope.export() {
-                let path = format!("{dir}/{}/{inner_name}", scope.components().join("/"));
+                let path = format!("{dir}/{}/{file_name}", scope.components().join("/"));
                 out.insert(
                     path,
                     rustfmt_generated_string(&content.to_string())?.into_owned(),
@@ -1287,7 +1284,7 @@ impl GenerationScope {
             }
         }
         out.insert(
-            format!("{dir}/{root_name}"),
+            format!("{dir}/{file_name}"),
             rustfmt_generated_string(&merged_scope.to_string())?.into_owned(),
         );
         Ok(())
@@ -1404,7 +1401,6 @@ impl GenerationScope {
             self.rust_lib_scope.clone(),
             &self.rust_scopes,
             "mod.rs",
-            "mod.rs",
         )?;
 
         // The seed-once thin root: written to `rust/src/lib.rs` only if absent (existence-only,
@@ -1423,7 +1419,6 @@ impl GenerationScope {
             "rust/src/generated",
             serialize_scope,
             &self.serialize_scopes,
-            "serialization.rs",
             "serialization.rs",
         )?;
 
@@ -1865,7 +1860,6 @@ impl GenerationScope {
                 self.wasm_lib_scope.clone(),
                 &self.wasm_scopes,
                 "mod.rs",
-                "mod.rs",
             )?;
             // W2 (`--wrapper-requests`): the synthetic `requested_collections` scope has no
             // submodules, so materialize it as the flat `generated/requested_collections.rs` the
@@ -2000,7 +1994,6 @@ impl GenerationScope {
                 "component/src/generated",
                 self.component_lib_scope.clone(),
                 &self.component_scopes,
-                "mod.rs",
                 "mod.rs",
             )?;
             out.insert(
