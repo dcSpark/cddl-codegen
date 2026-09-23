@@ -219,6 +219,30 @@ impl Conv {
     }
 }
 
+/// A rust tuple expression, type or pattern over already-rendered parts; a one-tuple keeps its
+/// trailing comma.
+fn rust_tuple(parts: &[String]) -> String {
+    if parts.len() == 1 {
+        format!("({},)", parts[0])
+    } else {
+        format!("({})", parts.join(", "))
+    }
+}
+
+/// Convert every part of a WIT tuple bound to `{prefix}0`, `{prefix}1`, …: the destructuring head,
+/// the rebuilt tuple of converted (and unwrapped) parts, and whether any part conversion can fail.
+fn convert_parts(
+    parts: &[WitType],
+    prefix: &str,
+    conv: impl Fn(&WitType, &str) -> Conv,
+) -> (String, String, bool) {
+    let names: Vec<String> = (0..parts.len()).map(|i| format!("{prefix}{i}")).collect();
+    let convs: Vec<Conv> = parts.iter().zip(&names).map(|(t, n)| conv(t, n)).collect();
+    let fallible = convs.iter().any(|c| c.fallible);
+    let rendered: Vec<String> = convs.iter().map(|c| c.unwrapped()).collect();
+    (rust_tuple(&names), rust_tuple(&rendered), fallible)
+}
+
 struct Emitter<'a, 'b> {
     types: &'a IntermediateTypes<'b>,
     cli: &'a Cli,
@@ -372,11 +396,7 @@ impl Emitter<'_, '_> {
             WitType::List(inner) => format!("Vec<{}>", self.native_rust_type(inner)),
             WitType::Tuple(parts) => {
                 let parts: Vec<String> = parts.iter().map(|t| self.native_rust_type(t)).collect();
-                if parts.len() == 1 {
-                    format!("({},)", parts[0])
-                } else {
-                    format!("({})", parts.join(", "))
-                }
+                rust_tuple(&parts)
             }
             // A nested accumulator hands over the `Vec` it settled, so the containing one stores
             // exactly that.
@@ -416,11 +436,7 @@ impl Emitter<'_, '_> {
                     .iter()
                     .map(|t| self.wit_rust_type(t, iface, param))
                     .collect();
-                if parts.len() == 1 {
-                    format!("({},)", parts[0])
-                } else {
-                    format!("({})", parts.join(", "))
-                }
+                rust_tuple(&parts)
             }
             WitType::Option(inner) => {
                 format!("Option<{}>", self.wit_rust_type(inner, iface, param))
@@ -742,24 +758,8 @@ impl Emitter<'_, '_> {
                 }
             }
             WitType::Tuple(inner) => {
-                let names: Vec<String> = (0..inner.len()).map(|i| format!("t{i}")).collect();
-                let convs: Vec<Conv> = inner
-                    .iter()
-                    .zip(&names)
-                    .map(|(t, n)| self.wit_to_rust(t, n, iface))
-                    .collect();
-                let fallible = convs.iter().any(|c| c.fallible);
-                let parts: Vec<String> = convs.iter().map(|c| c.unwrapped()).collect();
-                let tuple = if parts.len() == 1 {
-                    format!("({},)", parts[0])
-                } else {
-                    format!("({})", parts.join(", "))
-                };
-                let destructure = if names.len() == 1 {
-                    format!("({},)", names[0])
-                } else {
-                    format!("({})", names.join(", "))
-                };
+                let (destructure, tuple, fallible) =
+                    convert_parts(inner, "t", |t, n| self.wit_to_rust(t, n, iface));
                 if fallible {
                     Conv {
                         expr: format!(
@@ -785,25 +785,8 @@ impl Emitter<'_, '_> {
                     // better than a nested block — and matches the shape both `Vec<(K, V)>` and a
                     // map's `iter()` present.
                     WitType::Tuple(parts) => {
-                        let names: Vec<String> =
-                            (0..parts.len()).map(|i| format!("x{i}")).collect();
-                        let convs: Vec<Conv> = parts
-                            .iter()
-                            .zip(&names)
-                            .map(|(t, n)| self.wit_to_rust(t, n, iface))
-                            .collect();
-                        let fallible = convs.iter().any(|c| c.fallible);
-                        let rendered: Vec<String> = convs.iter().map(|c| c.unwrapped()).collect();
-                        let head = if names.len() == 1 {
-                            format!("({},)", names[0])
-                        } else {
-                            format!("({})", names.join(", "))
-                        };
-                        let body = if rendered.len() == 1 {
-                            format!("({},)", rendered[0])
-                        } else {
-                            format!("({})", rendered.join(", "))
-                        };
+                        let (head, body, fallible) =
+                            convert_parts(parts, "x", |t, n| self.wit_to_rust(t, n, iface));
                         (
                             head,
                             Conv {
@@ -944,24 +927,8 @@ impl Emitter<'_, '_> {
                 }
             }
             WitType::Tuple(inner) => {
-                let names: Vec<String> = (0..inner.len()).map(|i| format!("t{i}")).collect();
-                let convs: Vec<Conv> = inner
-                    .iter()
-                    .zip(&names)
-                    .map(|(t, n)| self.rust_to_wit(t, n, iface, true))
-                    .collect();
-                let fallible = convs.iter().any(|c| c.fallible);
-                let parts: Vec<String> = convs.iter().map(|c| c.unwrapped()).collect();
-                let head = if names.len() == 1 {
-                    format!("({},)", names[0])
-                } else {
-                    format!("({})", names.join(", "))
-                };
-                let body = if parts.len() == 1 {
-                    format!("({},)", parts[0])
-                } else {
-                    format!("({})", parts.join(", "))
-                };
+                let (head, body, fallible) =
+                    convert_parts(inner, "t", |t, n| self.rust_to_wit(t, n, iface, true));
                 if fallible {
                     Conv {
                         expr: format!(
@@ -982,25 +949,8 @@ impl Emitter<'_, '_> {
                 // and a map's `(&K, &V)` pair identically under default binding modes.
                 let (head, element) = match &**inner {
                     WitType::Tuple(parts) => {
-                        let names: Vec<String> =
-                            (0..parts.len()).map(|i| format!("x{i}")).collect();
-                        let convs: Vec<Conv> = parts
-                            .iter()
-                            .zip(&names)
-                            .map(|(t, n)| self.rust_to_wit(t, n, iface, true))
-                            .collect();
-                        let fallible = convs.iter().any(|c| c.fallible);
-                        let rendered: Vec<String> = convs.iter().map(|c| c.unwrapped()).collect();
-                        let head = if names.len() == 1 {
-                            format!("({},)", names[0])
-                        } else {
-                            format!("({})", names.join(", "))
-                        };
-                        let body = if rendered.len() == 1 {
-                            format!("({},)", rendered[0])
-                        } else {
-                            format!("({})", rendered.join(", "))
-                        };
+                        let (head, body, fallible) =
+                            convert_parts(parts, "x", |t, n| self.rust_to_wit(t, n, iface, true));
                         (
                             head,
                             Conv {
