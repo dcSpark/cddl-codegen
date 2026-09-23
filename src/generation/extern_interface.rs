@@ -202,12 +202,8 @@ pub(crate) fn render_group_body(
             continue;
         }
         let field = forbidden.expect("one ordered member kind");
-        let key_s = match &field.key {
-            FixedValue::Uint(x) => format!("{x}: "),
-            FixedValue::Text(x) if is_cddl_bareword(x) => format!("{x}: "),
-            FixedValue::Text(x) => format!("{x:?}: "),
-            _ => return Err(unrenderable(rule, "a non-uint/text forbidden map key")),
-        };
+        let key_s = fixed_member_key(&field.key)
+            .ok_or_else(|| unrenderable(rule, "a non-uint/text forbidden map key"))?;
         let mut member = format!(
             "0*0 {key_s}{}",
             render_rust_type(
@@ -265,18 +261,28 @@ fn render_member_key(
     match rep {
         Representation::Array => Ok(format!("{}: ", field.name)),
         Representation::Map => match &field.key {
-            Some(FixedValue::Uint(n)) => Ok(format!("{n}: ")),
-            Some(FixedValue::Text(s)) if is_cddl_bareword(s) => Ok(format!("{s}: ")),
-            Some(FixedValue::Text(s)) => Ok(format!("{s:?}: ")),
-            Some(other) => Err(unrenderable(
-                rule,
-                format!("a map-rep group member with an unsupported fixed key kind ({other:?})"),
-            )),
+            Some(key) => fixed_member_key(key).ok_or_else(|| {
+                unrenderable(
+                    rule,
+                    format!("a map-rep group member with an unsupported fixed key kind ({key:?})"),
+                )
+            }),
             None => Err(unrenderable(
                 rule,
                 "a map-rep group member with no member key",
             )),
         },
+    }
+}
+
+/// The `<key>: ` spelling of a fixed map member key — a uint, a bareword text key, or a quoted text
+/// key — or `None` for a key kind with no member spelling (each caller names its own shape).
+fn fixed_member_key(key: &FixedValue) -> Option<String> {
+    match key {
+        FixedValue::Uint(n) => Some(format!("{n}: ")),
+        FixedValue::Text(s) if is_cddl_bareword(s) => Some(format!("{s}: ")),
+        FixedValue::Text(s) => Some(format!("{s:?}: ")),
+        _ => None,
     }
 }
 
@@ -455,12 +461,16 @@ fn render_primitive(rule: &str, p: Primitive, config: &RustTypeSerializeConfig) 
         Primitive::Bool => plain_primitive(rule, "bool", bounds),
         // float windows (the only bound a float carries) are handled above; a float with an INTEGER
         // window is an unexpected shape.
-        Primitive::Float => plain_primitive(rule, "float", bounds),
-        Primitive::F16 => plain_primitive(rule, "float16", bounds),
-        Primitive::F32 => plain_primitive(rule, "float32", bounds),
-        Primitive::F64 => plain_primitive(rule, "float64", bounds),
-        Primitive::F16To32 => plain_primitive(rule, "float16-32", bounds),
-        Primitive::F32To64 => plain_primitive(rule, "float32-64", bounds),
+        Primitive::Float
+        | Primitive::F16
+        | Primitive::F32
+        | Primitive::F64
+        | Primitive::F16To32
+        | Primitive::F32To64 => plain_primitive(
+            rule,
+            float_cddl_name(p).expect("every float primitive has a CDDL name"),
+            bounds,
+        ),
         Primitive::Str => render_text_or_bytes_size(rule, "tstr", bounds),
         Primitive::Bytes => render_text_or_bytes_size(rule, "bytes", bounds),
         // Fixed-width integer identities: no bare CDDL name — spelled as a provably-equivalent
@@ -486,6 +496,19 @@ fn render_primitive(rule: &str, p: Primitive, config: &RustTypeSerializeConfig) 
             _ => render_int_bounds(rule, "int", bounds),
         },
         Primitive::N64 => render_int_bounds(rule, "nint", bounds),
+    }
+}
+
+/// The CDDL prelude name of a float primitive, or `None` for every other primitive.
+fn float_cddl_name(p: Primitive) -> Option<&'static str> {
+    match p {
+        Primitive::Float => Some("float"),
+        Primitive::F16 => Some("float16"),
+        Primitive::F32 => Some("float32"),
+        Primitive::F64 => Some("float64"),
+        Primitive::F16To32 => Some("float16-32"),
+        Primitive::F32To64 => Some("float32-64"),
+        _ => None,
     }
 }
 
@@ -576,20 +599,8 @@ fn render_int_bounds(
 /// `float64`, so a two-sided window on `float32` would change the wire precision and a
 /// mixed-exclusivity window has no single-op form; both hard-error.
 fn render_float_primitive(rule: &str, p: Primitive, window: FloatWindow) -> RenderResult {
-    let base = match p {
-        Primitive::Float => "float",
-        Primitive::F16 => "float16",
-        Primitive::F32 => "float32",
-        Primitive::F64 => "float64",
-        Primitive::F16To32 => "float16-32",
-        Primitive::F32To64 => "float32-64",
-        _ => {
-            return Err(unrenderable(
-                rule,
-                "a float value window on a non-float primitive",
-            ));
-        }
-    };
+    let base = float_cddl_name(p)
+        .ok_or_else(|| unrenderable(rule, "a float value window on a non-float primitive"))?;
     match window {
         (Some((lo, lo_excl)), None) => {
             let op = if lo_excl { ".gt" } else { ".ge" };
@@ -1373,12 +1384,9 @@ fn render_export_files(
         rules_by_scope.entry(exc.components.clone()).or_default();
     }
 
-    let mut all_scopes: BTreeSet<&Vec<String>> = BTreeSet::new();
-    all_scopes.extend(rules_by_scope.keys());
-    all_scopes.extend(excluded_by_scope.keys());
-
     let mut files = BTreeMap::new();
-    for components in all_scopes {
+    // Every excluded scope was inserted into `rules_by_scope` above, so its keys are all scopes.
+    for components in rules_by_scope.keys() {
         let subpath = if components.is_empty() {
             "mod.cddl".to_string()
         } else {
