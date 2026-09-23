@@ -13156,6 +13156,40 @@ fn concat_files_missing_path_yields_error_not_panic() {
     );
 }
 
+/// A missing `--static-dir` is a graceful `io::Error` naming the flag and the path, returned before
+/// the output root is created, never a bare assertion panic.
+#[test]
+fn missing_static_dir_yields_error_not_panic() {
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_missing_static_dir_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    std::fs::write(&input, "foo = [x: uint]\n").unwrap();
+    let out = scratch.join("crate");
+    let static_dir = scratch.join("no-such-static-dir");
+    let cli = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        input.to_str().unwrap(),
+        "--output",
+        out.to_str().unwrap(),
+        "--static-dir",
+        static_dir.to_str().unwrap(),
+    ]);
+    let err = crate::api::generate_to_disk(&cli)
+        .expect_err("a missing --static-dir must yield Err, never panic")
+        .to_string();
+    assert!(
+        err.contains("--static-dir") && err.contains(static_dir.to_str().unwrap()),
+        "the error should name the flag and the missing path, got: {err}"
+    );
+    assert!(!out.exists(), "nothing may be written before the check");
+    let _ = std::fs::remove_dir_all(&scratch);
+}
+
 /// Open struct-map (rest row) front end: recognition, every supported row-local occurrence carrier,
 /// the directive-attachment traps (the entry-trailing slot vs the marker-slot trap), and the
 /// table-detection no-drift boundary. Source-shape pins prove construction and decode re-enter each

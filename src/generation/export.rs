@@ -1016,8 +1016,14 @@ impl GenerationScope {
         // Before ANY write: a WIT strong-uniqueness collision is a refusal, and a refusal that had
         // already scattered half a tree across the output directory would be worse than useless.
         self.component_collision_check()?;
-        // check it exists here to get clearer error message
-        assert!(std::path::Path::exists(&cli.static_dir));
+        // Checked here, before any write, so a mistyped `--static-dir` is one clear error rather
+        // than a failed read of whichever static file happens to be composed first.
+        if !cli.static_dir.exists() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("--static-dir {} does not exist", cli.static_dir.display()),
+            ));
+        }
 
         // The output root, created before anything is copied INTO it. Every other artifact reaches
         // disk through a write that creates its own parent, so the tree scaffolds itself on the way
