@@ -2804,21 +2804,6 @@ pub(crate) fn valid_value(types: &IntermediateTypes, ty: &RustType) -> Option<Mi
 fn valid_value_at(types: &IntermediateTypes, ty: &RustType, depth: u8) -> Option<MintValue> {
     match ty.resolve_alias_shallow() {
         ConceptualRustType::Optional(_) => Some(MintValue::None),
-        ConceptualRustType::Primitive(Primitive::Bool) => Some(MintValue::Bool),
-        // A minted float must be a MEMBER of its CDDL class (serializing a non-member fails loudly
-        // by design) and, when bounded, must also sit IN-WINDOW — a default `0.0` satisfies neither
-        // in general. `float` alone admits every value, so it keeps the `0.0` baseline.
-        ConceptualRustType::Primitive(p) if p.is_float() => match &ty.config.float_bounds {
-            Some(window) => Some(MintValue::FloatLit {
-                value: valid_float_in_window_of_class(window, Some(*p)),
-                is_f32: float_is_f32(ty),
-            }),
-            None if *p == Primitive::Float => Some(MintValue::Float),
-            None => Some(MintValue::FloatLit {
-                value: float_class_baseline(*p)?,
-                is_f32: float_is_f32(ty),
-            }),
-        },
         // nint can't be an OOB *target* (stored/wire direction is inverted), but a valid baseline
         // value is mintable: new()'s check uses the nint-transformed bounds, so the transformed
         // min (or 0 when unbounded) is in range.
@@ -2838,6 +2823,8 @@ fn valid_value_at(types: &IntermediateTypes, ty: &RustType, depth: u8) -> Option
         // rendered constructor calls go through the `__AnyCborMint` import-glued alias, so this is
         // mode-agnostic (both preserve/non-preserve build the same via mode-paired `new_*` ctors).
         ConceptualRustType::Any => Some(MintValue::Any),
+        // bool and the float classes land here too: `materialize_at` mints them without reading
+        // the measure.
         _ => {
             let bounds = ty.config.bounds.unwrap_or((None, None));
             // A length-measured type (array/map/text/bytes) minted at length 0 never serializes or
@@ -3216,6 +3203,10 @@ fn materialize_at(
             Primitive::Str => Some(MintValue::Str { len: measure }),
             Primitive::Bytes => Some(MintValue::Bytes { len: measure }),
             Primitive::Bool => Some(MintValue::Bool),
+            // A minted float must be a MEMBER of its CDDL class (serializing a non-member fails
+            // loudly by design) and, when bounded, must also sit IN-WINDOW — a default `0.0`
+            // satisfies neither in general. `float` alone admits every value, so it keeps the `0.0`
+            // baseline. The measure is ignored: float bounds live in `float_bounds`.
             Primitive::Float
             | Primitive::F16
             | Primitive::F32
