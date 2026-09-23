@@ -7516,8 +7516,7 @@ impl ReservedScope {
 /// they are deliberately NOT reserved. This list exists for the LOCKSTEP test, not for the parser:
 /// it is the "probed non-colliding" verdict that lets the test tell a name we have judged apart from
 /// a name a new emitter just introduced.
-// Consumed only by the bin-only LOCKSTEP test (`src/tests/` is not in the library's module tree),
-// so every non-bin build sees it as dead.
+#[cfg(test)]
 #[allow(dead_code)]
 pub(crate) const GENERATED_LOCAL_PROBED_SAFE: &[&str] = &[
     "_depth_guard",
