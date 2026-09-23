@@ -1,7 +1,5 @@
 use crate::log::Verbosity;
 use clap::Parser;
-// TODO: make non-annotation generate different DeserializeError that is simpler
-//       and works with From<cbor_event:Error> only
 
 /// Feature names the generated rust crate's `[features]` table already owns, so the
 /// `--rust-wasm-feature` flag may not claim one. See [`parse_rust_wasm_feature`].
@@ -356,7 +354,7 @@ pub struct Cli {
     #[clap(long, value_parser, action = clap::ArgAction::Set, default_value_t = true)]
     pub to_from_bytes_methods: bool,
 
-    /// Generate byte string definitions as new rust types (TODO: look into this or remove it)
+    /// Generate named Rust wrapper types for byte string definitions instead of treating aliases to `bytes`/`bstr` as the primitive byte type
     #[clap(long, value_parser, action = clap::ArgAction::Set, default_value_t = false)]
     pub binary_wrappers: bool,
 
