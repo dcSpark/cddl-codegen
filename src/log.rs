@@ -28,14 +28,16 @@ use std::sync::atomic::{AtomicU8, Ordering};
 /// lives here rather than in `cli.rs` because all three consumers need it: `cli::Cli`,
 /// `config::Settings`, and the macros below.
 #[derive(
-    Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum, serde::Deserialize,
+    Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum, serde::Deserialize,
 )]
 #[serde(rename_all = "lowercase")]
 pub enum Verbosity {
     /// Nothing beyond fatal errors — which are the exit path rather than logging, so they are
     /// printed unconditionally.
     Error,
-    /// Warnings, behaviour-change notices, and run output. The default.
+    /// Warnings, behaviour-change notices, and run output. The default, which is also
+    /// `Cli::default().verbosity`.
+    #[default]
     Warn,
     /// Per-file / per-scope / per-phase progress.
     Info,
@@ -43,15 +45,6 @@ pub enum Verbosity {
     Debug,
     /// The full IR dump.
     Trace,
-}
-
-/// Hand-written rather than `#[derive(Default)]`, which would take the FIRST variant: the default is
-/// `Warn`, and `Error` is first because the variants are ordered by how much they print. `Cli`
-/// derives `Default`, so this is what `Cli::default().verbosity` is.
-impl Default for Verbosity {
-    fn default() -> Self {
-        Verbosity::Warn
-    }
 }
 
 impl Verbosity {
