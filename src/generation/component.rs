@@ -179,8 +179,9 @@ fn rep_name(ident: &RustIdent) -> String {
     format!("Wit{ident}")
 }
 
-/// Whether the interface declares anything the guest must implement — resources of either kind, or
-/// free functions. See [`interface_has_guest`] for why both halves are load-bearing.
+/// Whether the interface declares a resource the guest must implement — of either kind: a spec
+/// resource or an accumulator. Free functions are the other half of [`interface_has_guest`], which
+/// says why both halves are load-bearing.
 fn declares_resource(iface: &WitInterface) -> bool {
     iface
         .types
@@ -468,7 +469,7 @@ impl Emitter<'_, '_> {
                 if !param {
                     return format!("{alias}::{camel}");
                 }
-                // C-P4: `borrow<t>` lowers to two different rust shapes. An EXPORTED resource gets a
+                // `borrow<t>` lowers to two different rust shapes. An EXPORTED resource gets a
                 // `TBorrow<'_>` newtype (the guest owns the rep, so the borrow carries a door onto
                 // it); an IMPORTED one is a plain `&T`, because the guest owns nothing to look into
                 // — the handle is the whole value. One template cannot serve both.
@@ -728,7 +729,7 @@ impl Emitter<'_, '_> {
             // DEPENDENCY's component instance, and the only thing that crosses is bytes. So the
             // conversion is the CBOR seam — one serialize on the far side, one deserialize here —
             // and it is fallible because the far side's encoding and this crate's linked dependency
-            // can disagree (§7 precondition 2). Costs one serialize + copy + deserialize per value
+            // can disagree. Costs one serialize + copy + deserialize per value
             // per crossing, which is the price of sharing one dependency instance across consumers.
             WitType::Handle(r) if self.imported(r).is_some() => Conv {
                 expr: format!(
@@ -1039,7 +1040,7 @@ impl Emitter<'_, '_> {
         // `path` is resolved against CARGO_MANIFEST_DIR, i.e. the component crate root — NOT against
         // the file holding the macro. So the literal is the bare `wit` tail even though this file
         // sits two directories below it.
-        // C-P1: a materialized `wit/deps` tree is NECESSARY but not SUFFICIENT. With the dep
+        // A materialized `wit/deps` tree is NECESSARY but not SUFFICIENT. With the dep
         // package present the WIT resolves, encodes and validates, and the macro still panics with
         // ``missing `with` mapping for the key `<dep-package>/<iface>@<ver>` `` — `wit_bindgen`
         // refuses to decide silently whether a foreign package's bindings are generated here or
@@ -1499,10 +1500,10 @@ impl Emitter<'_, '_> {
             // `TryFrom` does not contribute a unique expected type to a preceding `collect()`:
             // core's blanket `TryFrom<T> for T` is another viable implementation.  Wrapper
             // resources have exactly the one `inner` parameter, so pin the value to the native
-            // construction type before crossing B5-404's checked door.  This is deliberately at
-            // the component boundary rather than a `Vec<u8>` special case in `wit_to_rust_typed`:
-            // the WIT projection may spell a scalar's input differently, while `for_rust_move`
-            // remains the rust constructor's authoritative input contract.
+            // construction type before crossing the bounded scalar carrier's checked door.  This is
+            // deliberately at the component boundary rather than a `Vec<u8>` special case in
+            // `wit_to_rust_typed`: the WIT projection may spell a scalar's input differently, while
+            // `for_rust_move` remains the rust constructor's authoritative input contract.
             let inner = ctor
                 .params
                 .first()

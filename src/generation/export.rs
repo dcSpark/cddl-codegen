@@ -1867,7 +1867,7 @@ impl GenerationScope {
                 &self.wasm_scopes,
                 "mod.rs",
             )?;
-            // W2 (`--wrapper-requests`): the synthetic `requested_collections` scope has no
+            // `--wrapper-requests`: the synthetic `requested_collections` scope has no
             // submodules, so materialize it as the flat `generated/requested_collections.rs` the
             // cross-crate contract names (its `pub mod requested_collections;` decl and the index's
             // `crate::generated::requested_collections::…` re-exports resolve to either layout). Every
@@ -1914,8 +1914,8 @@ impl GenerationScope {
                 } else {
                     // Non-exported (extern-dep) scopes are never written to a file by
                     // `merge_scopes_to_strings`, so a wrapper there is not part of THIS crate's
-                    // output and must not appear in its index. Defensive — post-W1 no wrapper the
-                    // crate mints lands in a non-exported scope.
+                    // output and must not appear in its index. Defensive — no wrapper the crate
+                    // mints lands in a non-exported scope.
                     continue;
                 };
                 collections.push_str(&format!("pub use {path};\n"));

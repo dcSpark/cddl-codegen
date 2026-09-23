@@ -233,7 +233,7 @@ impl std::fmt::Display for WitPackageId {
 // =================================================================================================
 
 /// A reason the phase-1 projection keeps a type OUT of the WIT. Never surfaced to the user as an
-/// error: the walk converts it to an EXCLUSION record (R5), so a spec carrying such a type generates
+/// error: the walk converts it to an EXCLUSION record, so a spec carrying such a type generates
 /// a WIT WITHOUT it rather than failing.
 #[derive(Clone, Debug)]
 pub(crate) enum WitError {
@@ -586,7 +586,7 @@ pub(crate) enum WitMemberOp {
     ///
     /// `rust_can_fail` is the rust ctor's OWN fallibility, which is not the member's: the member is
     /// also fallible when a despecialized parameter has to be re-validated at the boundary, and the
-    /// rust ctor knows nothing about that. Carried rather than re-derived (R3) — the emitter would
+    /// rust ctor knows nothing about that. Carried rather than re-derived — the emitter would
     /// otherwise have to re-walk the variant's fields to decide whether to `?`.
     NewVariant {
         rust_ctor: String,
@@ -622,7 +622,7 @@ pub(crate) struct WitParam {
     /// check). `validates` is the union of those and of CDDL `any`, so routing on it conflates them;
     /// bounded arrays and maps now deliberately take the despecialization path because their rust
     /// types are `BoundedVec` and `Bounded{,Pair}Map`; the guest restores each through its checked
-    /// `TryFrom<Vec<_>>` door. R3: the projection carries the rust fact rather than the emitter
+    /// `TryFrom<Vec<_>>` door. The projection carries the rust fact rather than the emitter
     /// re-deriving it.
     ///
     /// WHERE the window is checked stays a per-SITE decision the emitter owns rather than a property
@@ -831,7 +831,7 @@ fn wit_bindgen_resource_ident_hazard(ident: &RustIdent, defs: &[WitTypeDef]) -> 
     ))
 }
 
-/// Walk the FINALIZED IR into a [`WitPackage`]. INFALLIBLE by construction (R5): a type whose shape
+/// Walk the FINALIZED IR into a [`WitPackage`]. INFALLIBLE by construction: a type whose shape
 /// has no phase-1 projection — or which references one — is EXCLUDED AND RECORDED, and the package
 /// still renders.
 ///
@@ -863,7 +863,7 @@ pub(crate) fn project(
             continue;
         }
         // The reserved `int` prelude extern is not a type of its own here: it projects to the `int`
-        // VARIANT at each use site (B3a), so listing it as an unexported extern would be a false
+        // VARIANT at each use site, so listing it as an unexported extern would be a false
         // record of a type the WIT actually carries.
         if ident.as_ref() == RESERVED_INT_IDENT {
             continue;
@@ -980,7 +980,7 @@ pub(crate) fn project(
     }
 
     // Assemble the interfaces. Every exported scope carrying a staged OR excluded type gets one; an
-    // interface with nothing in it is still legal WIT and is still emitted (R6).
+    // interface with nothing in it is still legal WIT and is still emitted.
     let mut interfaces: BTreeMap<ModuleScope, WitInterface> = BTreeMap::new();
     for st in staged.values() {
         ensure_interface(&mut interfaces, &st.scope);
@@ -1205,7 +1205,7 @@ fn resolve_imported_types(
             many => {
                 // Two interfaces of one package may each declare a `foo`; the consumer's own scope
                 // tree says which one this type came from, so it is the tiebreak — and only the
-                // tiebreak, never the primary lookup (§W3: read names out of the WIT).
+                // tiebreak, never the primary lookup (names are read out of the WIT).
                 let expected = dep_interface_name(scope);
                 match many.iter().find(|name| **name == expected) {
                     Some(found) => (*found).to_owned(),
@@ -1399,10 +1399,7 @@ fn first_imported<'a>(
     }
 }
 
-/// Whether a type definition is one of the fixed, per-interface SYNTHESIZED ones (`int`,
-/// `any-cbor`, `any-cbor-kind`) — the only ones that may legitimately be staged more than once and
-/// therefore the only ones deduplication may collapse. A repeated USER type name is a collision the
-/// detector reports, never something to silently drop.
+/// The interface for `scope`, created empty on first use.
 fn ensure_interface(interfaces: &mut BTreeMap<ModuleScope, WitInterface>, scope: &ModuleScope) {
     interfaces
         .entry(scope.clone())
@@ -1415,6 +1412,10 @@ fn ensure_interface(interfaces: &mut BTreeMap<ModuleScope, WitInterface>, scope:
         });
 }
 
+/// Whether a type definition is one of the fixed, per-interface SYNTHESIZED ones (`int`,
+/// `any-cbor`, `any-cbor-kind`) — the only ones that may legitimately be staged more than once and
+/// therefore the only ones deduplication may collapse. A repeated USER type name is a collision the
+/// detector reports, never something to silently drop.
 fn synthesized_type(def: &WitTypeDef) -> bool {
     matches!(
         def,
@@ -2257,7 +2258,7 @@ fn variant_ctor_can_fail(
 
 /// The bytes seam every class-backed type carries. The `to-` half is emitted unconditionally — NOT
 /// gated on `--to-from-bytes-methods` — because the cross-crate seam and the extern bridging rows
-/// both depend on it (a per-face flag-semantics delta, plan §3).
+/// both depend on it (a per-face flag-semantics delta).
 ///
 /// The `from-` half is gated on `deserializable`, mirroring the wasm face's own
 /// `if gen_scope.deserialize_generated(ident)` fork. A spec CAN reach a type the rust face declines
@@ -2381,7 +2382,7 @@ fn map_conceptual(ty: &ConceptualRustType, ctx: &mut TypeCtx) -> ProjectResult<W
         }
         ConceptualRustType::Rust(ident) => map_named(ident, ctx),
         ConceptualRustType::Alias(AliasIdent::Rust(ident), base) => {
-            // A CDDL type alias is RESOLVED THROUGH — never surfaced (plan §4). The exception is an
+            // A CDDL type alias is RESOLVED THROUGH — never surfaced. The exception is an
             // alias whose ident also names a projected struct (a named collection registers both),
             // which resolves through the STRUCT so the two paths agree.
             if ctx.types.rust_structs().contains_key(ident) {
@@ -2424,7 +2425,7 @@ fn map_named(ident: &RustIdent, ctx: &mut TypeCtx) -> ProjectResult<WitType> {
             ident: ident.clone(),
         }));
     }
-    // W7: a signature naming a dependency type the dependency's own WIT cannot satisfy. Recorded as
+    // A signature naming a dependency type the dependency's own WIT cannot satisfy. Recorded as
     // a hard error (quoting the dependency's recorded reason verbatim) AND excluded, so the run
     // fails with the reason rather than emitting a `use` of a type that is not there.
     if let Some(reason) = ctx.unresolvable.get(ident) {
@@ -2867,9 +2868,9 @@ fn render_type(ty: &WitType, param: bool) -> String {
 
 /// The emitted `.wit` files for a spec, keyed by path relative to `<output>`.
 ///
-/// INFALLIBLE, exactly like `extern_interface_files`: everything unrenderable is excluded-with-record
-/// (R5), so a spec carrying a phase-2 type class still regenerates cleanly and the gap is visible in
-/// the emitted file rather than as a generation failure.
+/// INFALLIBLE, exactly like `extern_interface_files`: everything unrenderable is
+/// excluded-with-record, so a spec carrying a phase-2 type class still regenerates cleanly and the
+/// gap is visible in the emitted file rather than as a generation failure.
 ///
 /// `no_deserialize` is the set of idents the rust face declined to give a `Deserialize` impl — a
 /// GENERATION-time verdict, so it arrives from the caller rather than being re-derived here (see

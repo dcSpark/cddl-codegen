@@ -1,6 +1,6 @@
-//! IR → CDDL renderer for the dep-side extern-interface export (commit 3 of the export series).
+//! IR → CDDL renderer for the dep-side extern-interface export.
 //!
-//! The export emitter (commit 4) spells one CDDL rule per exported name. **Class-backed** rows
+//! The export emitter spells one CDDL rule per exported name. **Class-backed** rows
 //! (records, wrappers, type/group choices, externs, raw-bytes) export as opaque markers and need no
 //! renderer. **Transparent** rows — transparent aliases, c-style enums, and named collections (whose
 //! rust surface is a `pub type`) — must be spelled truthfully, as the real CDDL shape a consumer's
@@ -690,7 +690,7 @@ fn render_f64(f: f64) -> String {
 
 // --- The projection walk (the export emitter) --------------------------------------------------
 
-/// The strict per-file header opting a machine-generated export into strict parsing (§2). Every
+/// The strict per-file header opting a machine-generated export into strict parsing. Every
 /// emitted file begins with this exact line; a physically-copied single file therefore still
 /// carries its seam.
 pub(crate) const EXTERN_INTERFACE_HEADER: &str = "; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1";
@@ -709,7 +709,7 @@ pub(crate) const EXTERN_INTERFACE_HEADER_V2: &str = "; _CDDL_CODEGEN_EXTERN_INTE
 /// strict scan in `api::scan_extern_import_seam`.
 pub(crate) const EXTERN_INTERFACE_HEADER_PREFIX: &str = "; _CDDL_CODEGEN_EXTERN_INTERFACE_";
 
-/// The dep-side compiled self-check's assertion for an included row (commit 5). Derived from the
+/// The dep-side compiled self-check's assertion for an included row. Derived from the
 /// SAME projection the export emits, so the export and its self-check cannot drift.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ExternCheckKind {
@@ -744,7 +744,7 @@ pub(crate) enum ExternCheckKind {
 /// for prelude/fixed refs — those render self-contained by prelude name). The reference set drives
 /// reference-closure: if any referenced rule ends up excluded (or was never exported), this rule
 /// dangles for every consumer and is excluded too. `check` is the dep-side self-check assertion this
-/// row projects to (commit 5) — carried alongside the CDDL text so both consumers share the walk.
+/// row projects to — carried alongside the CDDL text so both consumers share the walk.
 struct IncludedRule {
     components: Vec<String>,
     source: String,
@@ -785,7 +785,7 @@ pub(crate) fn extern_interface_files(
     render_export_files(&dep_key, &included, &excluded, types.uses_any_cbor())
 }
 
-/// One entry of the dep-side compiled self-check (commit 5): the exported name, its scope-path
+/// One entry of the dep-side compiled self-check: the exported name, its scope-path
 /// components, and the assertion kind — sorted deterministically by `RustIdent` (`BTreeMap`
 /// iteration). Produced from the SAME projection walk `extern_interface_files` uses, so the export
 /// and its self-check share one membership computation and cannot drift. The row's source CDDL
@@ -866,7 +866,7 @@ fn project_extern_interface(
         // heterogeneous body, an Array/Table/Wrapper for a homogeneous/newtype one). They are NOT an
         // opaque cross-crate class surface, so they never take the class-backed variant match below —
         // a materialized Record exports transparently as a group-body row, every other materialized
-        // shape leaves a `; unexported:` record (Ask 0).
+        // shape leaves a `; unexported:` record (excluded-with-record).
         if types.is_plain_group(ident) {
             let (projected, kind) = project_plain_group(source, rust_struct, &md, types);
             stage_rule(
@@ -1219,8 +1219,8 @@ type RuleProjection = Result<(String, Vec<String>, BTreeSet<RustIdent>), ExternI
 /// delegates the wire code to the dep's class through the whole-value + embedded-group surfaces);
 /// every OTHER materialized shape (a homogeneous `Array`/`Table`, a `@newtype` `Wrapper`, and the
 /// shapes a plain group can never actually take — probe-verified) has no embedded-group surface and
-/// leaves a `; unexported:` record (Ask 0). The match over `RustStructType` is EXHAUSTIVE (module
-/// discipline).
+/// leaves a `; unexported:` record (excluded-with-record). The match over `RustStructType` is
+/// EXHAUSTIVE (module discipline).
 fn project_plain_group(
     source: &str,
     rust_struct: &RustStruct,
