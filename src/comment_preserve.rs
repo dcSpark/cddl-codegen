@@ -410,8 +410,7 @@ fn try_prefixed_string(b: &[u8], i: usize) -> Result<Option<usize>, PreserveErro
     }
 }
 
-/// True for the byte after the multi-byte-safe advance in [`lex`]'s number branch etc. Adjusts the
-/// running delimiter depth by one token's contribution.
+/// Net delimiter-depth contribution of one token: +1 opener, -1 closer.
 fn delim_delta(text: &str) -> i32 {
     match text {
         "{" | "(" | "[" => 1,
@@ -438,6 +437,12 @@ fn lex(src: &str) -> Result<Lexed<'_>, PreserveError> {
     let mut i = 0;
     let mut code: Vec<CodeTok> = Vec::new();
     let mut comments: Vec<Comment> = Vec::new();
+    let tok = |kind, start, end| CodeTok {
+        kind,
+        text: &src[start..end],
+        start,
+        end,
+    };
 
     while i < n {
         let c = b[i];
@@ -499,12 +504,7 @@ fn lex(src: &str) -> Result<Lexed<'_>, PreserveError> {
         // identifier (or a letter-prefixed string literal)
         if is_ident_start(c) {
             if let Some(end) = try_prefixed_string(b, i)? {
-                code.push(CodeTok {
-                    kind: TokKind::Literal,
-                    text: &src[i..end],
-                    start: i,
-                    end,
-                });
+                code.push(tok(TokKind::Literal, i, end));
                 i = end;
                 continue;
             }
@@ -513,23 +513,13 @@ fn lex(src: &str) -> Result<Lexed<'_>, PreserveError> {
             while i < n && is_ident_cont(b[i]) {
                 i += 1;
             }
-            code.push(CodeTok {
-                kind: TokKind::Ident,
-                text: &src[start..i],
-                start,
-                end: i,
-            });
+            code.push(tok(TokKind::Ident, start, i));
             continue;
         }
         // plain string
         if c == b'"' {
             let end = scan_string(b, i)?;
-            code.push(CodeTok {
-                kind: TokKind::Literal,
-                text: &src[i..end],
-                start: i,
-                end,
-            });
+            code.push(tok(TokKind::Literal, i, end));
             i = end;
             continue;
         }
@@ -542,22 +532,12 @@ fn lex(src: &str) -> Result<Lexed<'_>, PreserveError> {
                 while j < n && is_ident_cont(b[j]) {
                     j += 1;
                 }
-                code.push(CodeTok {
-                    kind: TokKind::Lifetime,
-                    text: &src[start..j],
-                    start,
-                    end: j,
-                });
+                code.push(tok(TokKind::Lifetime, start, j));
                 i = j;
                 continue;
             }
             let end = scan_char(b, i)?;
-            code.push(CodeTok {
-                kind: TokKind::Literal,
-                text: &src[i..end],
-                start: i,
-                end,
-            });
+            code.push(tok(TokKind::Literal, i, end));
             i = end;
             continue;
         }
@@ -574,40 +554,24 @@ fn lex(src: &str) -> Result<Lexed<'_>, PreserveError> {
                     i += 1;
                 }
             }
-            code.push(CodeTok {
-                kind: TokKind::Literal,
-                text: &src[start..i],
-                start,
-                end: i,
-            });
+            code.push(tok(TokKind::Literal, start, i));
             continue;
         }
         // punctuation: merge `::` (needed to tell a `use` group brace from a body brace); every other
         // operator is a single-char token — consistent on both sides, which is all token equality needs.
         if c == b':' && i + 1 < n && b[i + 1] == b':' {
-            code.push(CodeTok {
-                kind: TokKind::Punct,
-                text: &src[i..i + 2],
-                start: i,
-                end: i + 2,
-            });
+            code.push(tok(TokKind::Punct, i, i + 2));
             i += 2;
             continue;
         }
-        code.push(CodeTok {
-            kind: TokKind::Punct,
-            text: &src[i..i + 1],
-            start: i,
-            end: i + 1,
-        });
+        code.push(tok(TokKind::Punct, i, i + 1));
         i += 1;
     }
 
     // Own-line classification: only whitespace before the comment on its line AND only whitespace
     // after it up to the next newline (the latter matters for a block comment sharing a code line).
     for cm in &mut comments {
-        let line_start = src[..cm.start].rfind('\n').map(|p| p + 1).unwrap_or(0);
-        let before_ws = src[line_start..cm.start].trim().is_empty();
+        let before_ws = src[line_start(src, cm.start)..cm.start].trim().is_empty();
         let after_end = src[cm.end..]
             .find('\n')
             .map(|p| cm.end + p)
@@ -810,18 +774,14 @@ fn code_eq(a: &[CodeTok], b: &[CodeTok]) -> bool {
 
 /// All start offsets (into `hay`) where `needle` occurs as a contiguous token subsequence.
 fn find_subsequence(hay: &[CodeTok], needle: &[CodeTok]) -> Vec<usize> {
-    let mut res = Vec::new();
-    if needle.is_empty() || needle.len() > hay.len() {
-        return res;
+    if needle.is_empty() {
+        return Vec::new();
     }
-    for i in 0..=(hay.len() - needle.len()) {
-        if (0..needle.len())
-            .all(|k| hay[i + k].kind == needle[k].kind && hay[i + k].text == needle[k].text)
-        {
-            res.push(i);
-        }
-    }
-    res
+    hay.windows(needle.len())
+        .enumerate()
+        .filter(|(_, w)| code_eq(w, needle))
+        .map(|(i, _)| i)
+        .collect()
 }
 
 /// The token run from `rel` to the end of its statement within `toks`: through the `;` (or the `,`
@@ -1628,10 +1588,7 @@ pub(crate) fn comments_sharing_a_code_row(
         .comments
         .iter()
         .filter(|c| !c.own_line)
-        .map(|c| {
-            let line = src[..c.start].bytes().filter(|b| *b == b'\n').count() + 1;
-            (line, c.text.to_owned())
-        })
+        .map(|c| (line_of(src, c.start), c.text.to_owned()))
         .collect())
 }
 
