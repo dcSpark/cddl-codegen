@@ -15,10 +15,7 @@ use crate::generation::GenerationScope;
 use crate::intermediate::{CDDLIdent, IntermediateTypes, PlainGroupInfo, ROOT_SCOPE, RustIdent};
 use crate::parsing::{self, parse_rule, rule_ident, rule_is_scope_marker};
 
-fn cddl_paths(
-    output: &mut Vec<std::path::PathBuf>,
-    cd: &std::path::PathBuf,
-) -> std::io::Result<()> {
+fn cddl_paths(output: &mut Vec<std::path::PathBuf>, cd: &std::path::Path) -> std::io::Result<()> {
     // read_dir order is filesystem-dependent, and file order decides the rule order fed to the
     // topological sort (and thus naming/emission tie-breaks) — sort so the same spec directory
     // generates byte-identical output on every machine (the reproducibility invariant).
@@ -33,7 +30,7 @@ fn cddl_paths(
             output.push(path);
         } else {
             // extensionless files (README, LICENSE, dotfiles) land here too instead of panicking
-            crate::info!("Skipping file: {}", path.as_path().to_str().unwrap());
+            crate::info!("Skipping file: {}", path.display());
         }
     }
     Ok(())
@@ -261,6 +258,33 @@ fn append_extern_imports(
     Ok(raw_bytes_marker_seen)
 }
 
+/// The scope components of an input file, from its path relative to the input root: each normal
+/// component's file stem (so the `.cddl` extension is stripped), with a trailing `mod` stem dropped
+/// so `sub/module/mod.cddl` and `sub/module.cddl` land in the same scope. Callers `::`-join them.
+fn scope_components(relative: &std::path::Path) -> Vec<String> {
+    use std::path::Component;
+    let mut components = relative
+        .components()
+        .filter_map(|p| match p {
+            Component::Normal(part) => Some(
+                std::path::Path::new(part)
+                    .file_stem()
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_owned(),
+            ),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if let Some(c) = components.last()
+        && *c == "mod"
+    {
+        components.pop();
+    }
+    components
+}
+
 /// The EXTERN_DEPS_DIR scope-marker string for a file pulled in via `--extern-import`, in the marker
 /// channel's `::`-joined form: `_CDDL_CODEGEN_EXTERN_DEPS_DIR_::<dep>::<subpath>`. Subpath components
 /// apply the established pathdiff conventions (strip the `.cddl` extension, drop a trailing `mod`
@@ -272,31 +296,11 @@ fn extern_import_scope(
     import_root: &std::path::Path,
     import_file: &std::path::Path,
 ) -> String {
-    use std::path::Component;
     let mut components = vec![parsing::EXTERN_DEPS_DIR.to_string(), dep.to_string()];
     if import_root.is_dir()
         && let Some(relative) = pathdiff::diff_paths(import_file, import_root)
     {
-        let mut sub = relative
-            .components()
-            .filter_map(|p| match p {
-                Component::Normal(part) => Some(
-                    std::path::Path::new(part)
-                        .file_stem()
-                        .unwrap()
-                        .to_str()
-                        .unwrap()
-                        .to_owned(),
-                ),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        if let Some(c) = sub.last()
-            && *c == "mod"
-        {
-            sub.pop();
-        }
-        components.extend(sub);
+        components.extend(scope_components(&relative));
     }
     components.join("::")
 }
@@ -363,26 +367,14 @@ fn scan_extern_import_seam(
 /// `@custom_deserialize`), so a records-carrying export passes.
 fn first_unknown_annotation_token(content: &str) -> Option<String> {
     let known = crate::comment_ast::KNOWN_RULE_METADATA_TAGS;
-    let mut chars = content.chars().peekable();
-    while let Some(&c) = chars.peek() {
-        if c != '@' {
-            chars.next();
-            continue;
-        }
-        let mut token = String::from('@');
-        chars.next();
-        while let Some(&next) = chars.peek() {
-            if next.is_whitespace() || next == '@' {
-                break;
-            }
-            token.push(next);
-            chars.next();
-        }
-        if !known.iter().any(|tag| token.starts_with(tag)) {
-            return Some(token);
-        }
-    }
-    None
+    content
+        .split('@')
+        .skip(1)
+        .map(|rest| {
+            let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+            format!("@{}", &rest[..end])
+        })
+        .find(|token| !known.iter().any(|tag| token.starts_with(tag)))
 }
 
 /// Augment (never swallow) a checked-parse failure with the `--extern-import` staleness hint: the
@@ -425,18 +417,6 @@ fn extern_import_staleness_error(
     )
 }
 
-/// Every rule that rejects a COMBINATION of flags, as a pure function of the `Cli`.
-///
-/// Extracted from [`with_types`] — which still calls it, in the same position, so a single-crate
-/// command line behaves byte for byte as it did — because the multi-crate `--config` front end needs
-/// to run these rules for EVERY crate before ANY crate generates. Inside the generation loop, a
-/// shared key that trips one of them leaves the crates before it fully regenerated on disk and
-/// reports a bare flag message naming neither the crate nor the config key that produced it.
-///
-/// Every rule here reads `cli` alone. That is the property that makes the hoist possible at all, and
-/// it is a constraint on what may be added: a rule needing the parsed spec (`--workspace-dep`'s
-/// "names a configured extern dependency", say) cannot live here, because there is no spec to
-/// consult before generation starts.
 /// Whether a physical `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>/` stub tree in the input declares this
 /// dependency — the alternative to `--extern-import` for a dep that has no export to consume.
 ///
@@ -447,6 +427,19 @@ fn stub_dir_declares(cli: &Cli, dep: &str) -> bool {
     cli.input.is_dir() && cli.input.join(parsing::EXTERN_DEPS_DIR).join(dep).is_dir()
 }
 
+/// Every rule that rejects a COMBINATION of flags, as a function of the `Cli`.
+///
+/// Extracted from [`with_types`] — which still calls it, in the same position, so a single-crate
+/// command line behaves byte for byte as it did — because the multi-crate `--config` front end needs
+/// to run these rules for EVERY crate before ANY crate generates. Inside the generation loop, a
+/// shared key that trips one of them leaves the crates before it fully regenerated on disk and
+/// reports a bare flag message naming neither the crate nor the config key that produced it.
+///
+/// Every rule here reads `cli` alone, apart from `stub_dir_declares`' existence check on the input
+/// directory `cli` names; none reads the parsed spec. That is the property that makes the hoist
+/// possible at all, and it is a constraint on what may be added: a rule needing the parsed spec
+/// (`--workspace-dep`'s "names a configured extern dependency", say) cannot live here, because there
+/// is no spec to consult before generation starts.
 pub fn validate_flag_combinations(cli: &Cli) -> Result<(), String> {
     // The companion is an explicit cross-crate input for the runtime named by the override. Without
     // that override there is no runtime to compare against, so accepting a path would silently do
@@ -810,28 +803,8 @@ pub fn with_types<R>(
         .enumerate()
         .map(|(i, input_file)| {
             let scope = if input_files.len() > 1 {
-                use std::path::Component;
                 let relative = pathdiff::diff_paths(input_file, &cli.input).unwrap();
-                let mut components = relative
-                    .components()
-                    .filter_map(|p| match p {
-                        Component::Normal(part) => Some(
-                            std::path::Path::new(part)
-                                .file_stem()
-                                .unwrap()
-                                .to_str()
-                                .unwrap()
-                                .to_owned(),
-                        ),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>();
-                if let Some(c) = components.last()
-                    && *c == "mod"
-                {
-                    components.pop();
-                }
-                components.join("::")
+                scope_components(&relative).join("::")
             } else {
                 ROOT_SCOPE.to_string()
             };
@@ -1125,6 +1098,19 @@ pub fn with_types<R>(
     Ok(f(&types, export_raw_bytes_encoding_trait))
 }
 
+/// The pipeline-boundary rejection-drain assertion, run at both generation exits
+/// ([`generate_to_disk`] and `generated_strings`). `finalize` short-circuits on pending rejections
+/// before the generation closure runs, then drains again on exit, so a rejection seen here was
+/// recorded after the last drain. Every snapshot-corpus fixture exercises this seam.
+fn assert_rejections_drained(types: &IntermediateTypes) {
+    assert!(
+        !types.has_rejections(),
+        "pipeline-boundary rejection-drain invariant violated: a rejection was recorded after \
+         finalize's drains and would be silently swallowed; move the record site before \
+         finalize or add a new drain"
+    );
+}
+
 /// Run the full pipeline and write the generated crate(s) to `cli.output` (the CLI behaviour).
 pub fn generate_to_disk(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
     // This crate's own verbosity, installed for the duration of its generation and restored on exit.
@@ -1138,15 +1124,9 @@ pub fn generate_to_disk(cli: &Cli) -> Result<(), Box<dyn std::error::Error>> {
         );
         let mut gen_scope = GenerationScope::new();
         gen_scope.generate(types, cli)?;
-        // `finalize` short-circuits on pending rejections before this closure runs, then drains
-        // again on exit. Per tests/README.md § "Design rules", keep this emission-site assertion
-        // outside guarded branches; every snapshot-corpus fixture exercises this seam.
-        assert!(
-            !types.has_rejections(),
-            "pipeline-boundary rejection-drain invariant violated: a rejection was recorded after \
-             finalize's drains and would be silently swallowed; move the record site before \
-             finalize or add a new drain"
-        );
+        // Per tests/README.md § "Design rules", keep this emission-site assertion outside guarded
+        // branches.
+        assert_rejections_drained(types);
         gen_scope.export(types, export_raw_bytes_encoding_trait, cli)?;
         // Guarded HERE rather than inside `print_info`, because the cost being avoided is the `{:?}`
         // formatting of every registered struct (215 KB on a 501-line spec), not the writes: the
@@ -1172,15 +1152,9 @@ pub fn generated_strings(
         gen_scope
             .generate(types, cli)
             .map_err(std::io::Error::other)?;
-        // `finalize` short-circuits on pending rejections before this closure runs, then drains
-        // again on exit. Per tests/README.md § "Design rules", keep this emission-site assertion
-        // outside guarded branches; every snapshot-corpus fixture exercises this seam.
-        assert!(
-            !types.has_rejections(),
-            "pipeline-boundary rejection-drain invariant violated: a rejection was recorded after \
-             finalize's drains and would be silently swallowed; move the record site before \
-             finalize or add a new drain"
-        );
+        // Per tests/README.md § "Design rules", keep this emission-site assertion outside guarded
+        // branches.
+        assert_rejections_drained(types);
         gen_scope.generated_files(types, raw_bytes, cli)
     })?
     .map_err(Into::into)
