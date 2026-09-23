@@ -73,9 +73,9 @@
 use crate::cli::Cli;
 use crate::comment_ast::DuplicatesPolicy;
 use crate::emit_tests::{
-    self, MintValue, arg_can_fail, bound_cases, map_key_expr, map_key_literal, measure_kind,
-    mint_struct, multi_array_occurrence_ctor_arg_slots, record_ctor_arg_types,
-    record_wasm_ctor_can_fail, valid_value, variant_arg_fields,
+    self, MintValue, arg_can_fail, bound_cases, map_key_literal, measure_kind, mint_struct,
+    multi_array_occurrence_ctor_arg_slots, record_ctor_arg_types, record_wasm_ctor_can_fail,
+    valid_value, variant_arg_fields,
 };
 use crate::generation::rust_crate_struct_from_wasm;
 use crate::intermediate::{
@@ -242,98 +242,11 @@ fn rust_scoped(mv: &MintValue, scoped: &ScopeMap) -> String {
         MintValue::Str { len } => format!("\"a\".repeat({len})"),
         MintValue::StrLit { content } => format!("\"{content}\".to_owned()"),
         MintValue::Bytes { len } => format!("vec![0u8; {len}]"),
-        MintValue::Array {
-            elem: Some(e),
-            count,
-            non_empty,
-            bounded,
-            reject,
-            unique_elems,
-        } => {
-            if *reject {
-                let vec = unique_elems.as_ref().map_or_else(
-                    || format!("vec![{}; {count}]", rust_scoped(e, scoped)),
-                    |elems| {
-                        format!(
-                            "vec![{}]",
-                            elems
-                                .iter()
-                                .map(|e| rust_scoped(e, scoped))
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        )
-                    },
-                );
-                let twin = if let Some((min, max)) = bounded {
-                    return format!(
-                        "BoundedOrderedSet::<_, {min}, {max}>::try_from({vec}).unwrap()"
-                    );
-                } else if *non_empty {
-                    "NonEmptyOrderedSet"
-                } else {
-                    "OrderedSet"
-                };
-                format!("{twin}::try_from({vec}).unwrap()")
-            } else {
-                let vec = format!("vec![{}; {count}]", rust_scoped(e, scoped));
-                if let Some((min, max)) = bounded {
-                    format!("BoundedVec::<_, {min}, {max}>::try_from({vec}).unwrap()")
-                } else if *non_empty {
-                    format!("NonEmptyVec::try_from({vec}).unwrap()")
-                } else {
-                    vec
-                }
-            }
+        mv @ MintValue::Array { .. } => {
+            emit_tests::render_rust_array(mv, &|e| rust_scoped(e, scoped))
         }
-        MintValue::Array {
-            elem: None,
-            reject: true,
-            bounded: Some((min, max)),
-            ..
-        } => format!("BoundedOrderedSet::<_, {min}, {max}>::try_from(vec![]).unwrap()"),
-        MintValue::Array {
-            elem: None,
-            reject: true,
-            ..
-        } => "OrderedSet::try_from(vec![]).unwrap()".to_owned(),
-        MintValue::Array { elem: None, .. } => "vec![]".to_owned(),
-        MintValue::Map {
-            key,
-            key_base,
-            val,
-            count,
-            non_empty,
-            bounded,
-            preserve,
-        } => {
-            let k = map_key_expr(key, *key_base);
-            let v = rust_scoped(val, scoped);
-            if let Some((min, max)) = bounded {
-                let carrier = if *preserve {
-                    "BoundedPairMap"
-                } else {
-                    "BoundedMap"
-                };
-                let k = if *preserve { k.replace("__i", "0") } else { k };
-                let index = if *preserve { "_i" } else { "__i" };
-                format!(
-                    "{carrier}::<_, _, {min}, {max}>::try_from((0u64..{count}).map(|{index}| ({k}, {v})).collect::<Vec<_>>()).unwrap()"
-                )
-            } else if *non_empty {
-                // build via new(first_key, first_value) + insert (flavor-agnostic; a bare
-                // `try_from(collect())` can't infer the inner map type — see emit_tests.rs). The
-                // preserve flavor routes through `NonEmptyPairMap`.
-                let ctor = if *preserve {
-                    "NonEmptyPairMap"
-                } else {
-                    "NonEmptyMap"
-                };
-                format!(
-                    "{{ let mut __m = {{ let __i = 0u64; {ctor}::new({k}, {v}) }}; for __i in 1u64..{count} {{ __m.insert({k}, {v}); }} __m }}"
-                )
-            } else {
-                format!("(0u64..{count}).map(|__i| ({k}, {v})).collect()")
-            }
+        mv @ MintValue::Map { .. } => {
+            emit_tests::render_rust_map(mv, &|k| k, &|v| rust_scoped(v, scoped))
         }
         MintValue::DefaultMap => "Default::default()".to_owned(),
         MintValue::Record {
