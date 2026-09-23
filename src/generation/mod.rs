@@ -1296,18 +1296,15 @@ impl GenerationScope {
         {
             // we can ignore types already handled by the alias
             // otherwise wasm_wrappers_generated may cause us to pointlessly create aliases to aliases
-            let mut existing_aliases = types.type_aliases().iter().fold(
-                BTreeSet::<RustIdent>::new(),
-                |mut acc, (alias, _)| {
-                    match alias {
-                        AliasIdent::Reserved(_) => {}
-                        AliasIdent::Rust(ident) => {
-                            acc.insert(ident.clone());
-                        }
-                    };
-                    acc
-                },
-            );
+            let mut existing_aliases = types
+                .type_aliases()
+                .keys()
+                .filter_map(|alias| match alias {
+                    AliasIdent::Reserved(_) => None,
+                    AliasIdent::Rust(ident) => Some(ident),
+                })
+                .cloned()
+                .collect::<BTreeSet<RustIdent>>();
 
             // Shapes owned by EXACTLY ONE named table rule: their embedded/resolved uses share the
             // rule-named class (a real `#[wasm_bindgen]` class under the CDDL identifier), and the
@@ -1386,7 +1383,6 @@ impl GenerationScope {
                             for rest in record
                                 .captured_dynamic_rows()
                                 .filter(|r| !r.is_array_tail() && !record.is_typed_row(r))
-                                .collect::<Vec<_>>()
                             {
                                 let rest_map = rest.container_type();
                                 if rest_map.is_non_empty_map() || rest_map.is_bounded_map() {
@@ -1448,10 +1444,7 @@ impl GenerationScope {
                             // the tail field's getter returns it — via the SAME path a list field's
                             // wrapper takes. An `@ignore` tail has no field/getter, so nothing is minted
                             // (its wasm class is a closed struct's).
-                            for rest in record
-                                .captured_dynamic_rows()
-                                .filter(|r| r.is_array_tail())
-                                .collect::<Vec<_>>()
+                            for rest in record.captured_dynamic_rows().filter(|r| r.is_array_tail())
                             {
                                 let rest_list = rest.container_type();
                                 mint_wasm_wrapper_for_visited_type(
@@ -1566,12 +1559,11 @@ impl GenerationScope {
                         } else if cli.wasm
                             && !anon
                             && let Some((min, max)) = {
-                                let table: crate::intermediate::RustType =
-                                    crate::intermediate::ConceptualRustType::Map(
-                                        Box::new(domain.clone()),
-                                        Box::new(range.clone()),
-                                    )
-                                    .into();
+                                let table: RustType = ConceptualRustType::Map(
+                                    Box::new(domain.clone()),
+                                    Box::new(range.clone()),
+                                )
+                                .into();
                                 bounds.and_then(|bounds| {
                                     table.with_bounds(bounds).bounded_map_u64_bounds()
                                 })
@@ -1635,9 +1627,6 @@ impl GenerationScope {
                                 );
                             }
                         }
-                        //self
-                        //    .rust()
-                        //    .push_type_alias(TypeAlias::new(rust_struct.ident(), ConceptualRustType::name_for_rust_map(domain, range, false)));
                     }
                     RustStructType::Array {
                         element_type,
@@ -1664,11 +1653,10 @@ impl GenerationScope {
                                     rust_ident,
                                     non_empty,
                                     bounds.and_then(|bounds| {
-                                        let ty: crate::intermediate::RustType =
-                                            crate::intermediate::ConceptualRustType::Array(
-                                                Box::new(element_type.clone()),
-                                            )
-                                            .into();
+                                        let ty: RustType = ConceptualRustType::Array(Box::new(
+                                            element_type.clone(),
+                                        ))
+                                        .into();
                                         // Preserve the rule's uniqueness policy while reconstructing
                                         // its occurrence carrier. Without it, an exact `0*0` reject
                                         // set looks like an ordinary static array and disappears
@@ -1703,11 +1691,9 @@ impl GenerationScope {
                                     cli,
                                 );
                             } else if let Some((min, max)) = {
-                                let ty: crate::intermediate::RustType =
-                                    crate::intermediate::ConceptualRustType::Array(Box::new(
-                                        element_type.clone(),
-                                    ))
-                                    .into();
+                                let ty: RustType =
+                                    ConceptualRustType::Array(Box::new(element_type.clone()))
+                                        .into();
                                 bounds.and_then(|bounds| {
                                     let ty = ty.with_bounds(bounds);
                                     ty.exact_homogeneous_array_u64_bounds()
@@ -1736,9 +1722,6 @@ impl GenerationScope {
                                 );
                             }
                         }
-                        //self
-                        //    .rust()
-                        //    .push_type_alias(TypeAlias::new(rust_struct.ident(), element_type.name_as_rust_array(false)));
                     }
                     RustStructType::TypeChoice { variants } => {
                         self.generate_type_choices_from_variants(
@@ -1764,52 +1747,41 @@ impl GenerationScope {
                         wrapped,
                         min_max,
                         float_min_max,
-                    } => match rust_struct.tag() {
+                    } => {
                         // A nominalized two-arm set idiom carries an OPTIONAL tag: attach
                         // `OptionallyTagged` (a `TagPresenceEncoding` record) rather than the mandatory
                         // `Tagged`, so either wire arm round-trips byte-exact — grammar decides the tag
                         // record. Every other tagged wrapper (single-arm mandatory-tag set, bare
                         // `@newtype` over a tag) keeps `Tagged`.
-                        Some(tag) => generate_wrapper_struct(
-                            self,
-                            types,
-                            rust_ident,
-                            &if rust_struct.tag_optional() {
-                                wrapped.clone().optionally_tag(tag)
-                            } else {
-                                wrapped.clone().tag(tag)
-                            },
-                            *min_max,
-                            *float_min_max,
-                            rust_struct.config(),
-                            cli,
-                        ),
-                        None => generate_wrapper_struct(
-                            self,
-                            types,
-                            rust_ident,
-                            wrapped,
-                            *min_max,
-                            *float_min_max,
-                            rust_struct.config(),
-                            cli,
-                        ),
-                    },
-                    RustStructType::Extern => {
-                        #[allow(clippy::single_match)]
-                        match rust_ident.to_string().as_ref() {
-                            // Emit `Int` when the spec references it, OR when a `--key-requests` row
-                            // demanded it used-as-key (a dep whose own spec never references `int` but
-                            // whose consumer keys a map on `int` under `--common-import-override`): the
-                            // demand alone must force key-flavored emission, since `is_referenced`'s
-                            // reference walk would otherwise skip it.
-                            "Int"
-                                if types.is_referenced(rust_ident)
-                                    || types.used_as_key(rust_ident) =>
-                            {
-                                generate_int(self, types, cli)
+                        let wrapped: Cow<RustType> = match rust_struct.tag() {
+                            Some(tag) if rust_struct.tag_optional() => {
+                                Cow::Owned(wrapped.clone().optionally_tag(tag))
                             }
-                            _ => (), /* user-specified external types */
+                            Some(tag) => Cow::Owned(wrapped.clone().tag(tag)),
+                            None => Cow::Borrowed(wrapped),
+                        };
+                        generate_wrapper_struct(
+                            self,
+                            types,
+                            rust_ident,
+                            &wrapped,
+                            *min_max,
+                            *float_min_max,
+                            rust_struct.config(),
+                            cli,
+                        );
+                    }
+                    RustStructType::Extern => {
+                        // Emit `Int` when the spec references it, OR when a `--key-requests` row
+                        // demanded it used-as-key (a dep whose own spec never references `int` but
+                        // whose consumer keys a map on `int` under `--common-import-override`): the
+                        // demand alone must force key-flavored emission, since `is_referenced`'s
+                        // reference walk would otherwise skip it. Any other extern is a
+                        // user-specified external type with nothing to emit.
+                        if rust_ident.to_string() == "Int"
+                            && (types.is_referenced(rust_ident) || types.used_as_key(rust_ident))
+                        {
+                            generate_int(self, types, cli);
                         }
                     }
                     RustStructType::CStyleEnum { variants } => {
@@ -2902,18 +2874,9 @@ impl GenerationScope {
             // fails only at binary validation, which is why the tool catches it rather than leaving
             // it to a downstream one. Recorded rather than returned: `generate` populates state and
             // has no error channel; the two producers below it do.
-            self.component_name_collisions = super::generation::wit::wit_name_collisions(
-                types,
-                cli,
-                &no_deserialize,
-                &self.component_dep_wits,
-            );
-            let package = super::generation::wit::project(
-                types,
-                cli,
-                &no_deserialize,
-                &self.component_dep_wits,
-            );
+            self.component_name_collisions =
+                wit::wit_name_collisions(types, cli, &no_deserialize, &self.component_dep_wits);
+            let package = wit::project(types, cli, &no_deserialize, &self.component_dep_wits);
             self.component_import_errors
                 .extend(package.import_errors.iter().cloned());
             let glue =
@@ -3274,7 +3237,7 @@ fn create_base_rust_struct(
     // demand (`bare/hash/ord`) so their encodings-ignored `PartialEq/Eq/PartialOrd/Ord/Hash` are
     // always-on — parity with `OrderedSet`'s unconditional derives (rethink fact 5), never dependent
     // on whether the rule is used as a map key. `None` everywhere else (byte-identical).
-    force_demand: Option<crate::comment_ast::DemandSet>,
+    force_demand: Option<DemandSet>,
     cli: &Cli,
 ) -> (codegen::Struct, codegen::Impl) {
     let name = &ident.to_string();
@@ -3754,7 +3717,7 @@ impl<'a> WasmWrapper<'a> {
         // (For a standalone invocation with no impl to attach to — the --wasm-list-macro case — the
         // equivalent is Scope::raw_sorted, which sorts the text where a struct of that name would.)
         for (full_name, params) in self.macros {
-            let macro_name = full_name.split("::").last().unwrap();
+            let macro_name = full_name.rsplit("::").next().unwrap();
             self.s_impl
                 .r#macro(format!("{}!({});\n", macro_name, params.join(", ")));
         }
@@ -4664,7 +4627,7 @@ fn encoding_fields_impl(
                 decls,
             )
         }
-        SerializingRustType::Root(ConceptualRustType::Rust(rust_ident), _cfg) => {
+        SerializingRustType::Root(ConceptualRustType::Rust(rust_ident), cfg) => {
             match &types.rust_struct(rust_ident).unwrap().variant() {
                 // for c-style enums we push those up to where they are used instead of self-containing
                 RustStructType::CStyleEnum { variants } => {
@@ -4693,7 +4656,7 @@ fn encoding_fields_impl(
                 RustStructType::Table { domain, range, .. } => {
                     let structural =
                         ConceptualRustType::Map(Box::new(domain.clone()), Box::new(range.clone()));
-                    let cfg = nominal_collection_cfg(types, rust_ident, &_cfg);
+                    let cfg = nominal_collection_cfg(types, rust_ident, &cfg);
                     encoding_fields_impl(
                         types,
                         name,
@@ -4706,7 +4669,7 @@ fn encoding_fields_impl(
                 }
                 RustStructType::Array { element_type, .. } => {
                     let structural = ConceptualRustType::Array(Box::new(element_type.clone()));
-                    let cfg = nominal_collection_cfg(types, rust_ident, &_cfg);
+                    let cfg = nominal_collection_cfg(types, rust_ident, &cfg);
                     encoding_fields_impl(
                         types,
                         name,
@@ -4823,12 +4786,7 @@ fn encoding_var_names_str_for_field(
     {
         var_names.push(enc.field_name);
     }
-
-    if var_names.len() > 1 {
-        format!("({})", var_names.join(", "))
-    } else {
-        var_names.join(", ")
-    }
+    tuple_str(var_names)
 }
 
 // Value-level twin of `tuple_type_name`: joins encoding VAR names into a parenthesized tuple.
