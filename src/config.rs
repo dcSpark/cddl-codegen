@@ -765,14 +765,11 @@ pub fn parse_str(text: &str, base_dir: &Path) -> Result<Config, String> {
         None => None,
     };
 
-    let crate_tables = doc.get("crates").ok_or_else(|| {
-        "no `[crates.<name>]` tables; a config generates at least one crate".to_owned()
-    })?;
+    const NO_CRATES: &str = "no `[crates.<name>]` tables; a config generates at least one crate";
+    let crate_tables = doc.get("crates").ok_or_else(|| NO_CRATES.to_owned())?;
     let crate_tables = as_table(crate_tables, "crates")?;
     if crate_tables.is_empty() {
-        return Err(
-            "no `[crates.<name>]` tables; a config generates at least one crate".to_owned(),
-        );
+        return Err(NO_CRATES.to_owned());
     }
 
     let mut crates = BTreeMap::new();
@@ -789,24 +786,12 @@ pub fn parse_str(text: &str, base_dir: &Path) -> Result<Config, String> {
                 .to_owned(),
             None => name.clone(),
         };
-        let profiles = match table.get("profiles") {
-            Some(v) => string_array(v, &format!("{label}.profiles"))?,
-            None => Vec::new(),
-        };
-        let deps = match table.get("deps") {
-            Some(v) => string_array(v, &format!("{label}.deps"))?,
-            None => Vec::new(),
-        };
-        let wasm_reexports = match table.get("wasm-reexports") {
-            Some(v) => string_array(v, &format!("{label}.wasm-reexports"))?,
-            None => Vec::new(),
-        };
-        // `Option`, unlike its two neighbours: an ABSENT key derives while an EMPTY array threads
+        let profiles = opt_string_array(table, "profiles", &label)?.unwrap_or_default();
+        let deps = opt_string_array(table, "deps", &label)?.unwrap_or_default();
+        let wasm_reexports = opt_string_array(table, "wasm-reexports", &label)?.unwrap_or_default();
+        // `Option`, unlike its neighbours: an ABSENT key derives while an EMPTY array threads
         // nothing, and those are different requests. `Vec::new()` cannot tell them apart.
-        let json_schema_deps = match table.get("json-schema-deps") {
-            Some(v) => Some(string_array(v, &format!("{label}.json-schema-deps"))?),
-            None => None,
-        };
+        let json_schema_deps = opt_string_array(table, "json-schema-deps", &label)?;
         crates.insert(
             name.clone(),
             CrateEntry {
@@ -866,6 +851,19 @@ fn required_string(table: &toml::Table, key: &str, label: &str) -> Result<String
         }
         None => Err(format!("{label} has no `{key}`; it is required")),
     }
+}
+
+/// An optional string-array key of `table`: `None` when absent, else [`string_array`] under the
+/// `<label>.<key>` label.
+fn opt_string_array(
+    table: &toml::Table,
+    key: &str,
+    label: &str,
+) -> Result<Option<Vec<String>>, String> {
+    table
+        .get(key)
+        .map(|v| string_array(v, &format!("{label}.{key}")))
+        .transpose()
 }
 
 fn string_array(value: &toml::Value, label: &str) -> Result<Vec<String>, String> {
