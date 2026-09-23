@@ -8,11 +8,11 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use crate::intermediate::{
-    AliasIdent, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant, EnumVariantData,
-    FixedValue, IntermediateTypes, ModuleScope, Primitive, ROOT_SCOPE, Representation, RestKind,
-    RestRow, RestSemantics, RustField, RustIdent, RustRecord, RustStructCBORLen, RustStructConfig,
-    RustStructType, RustType, RustTypeSerializeConfig, ToWasmBoundaryOperations, VariantIdent,
-    escape_rust_str,
+    AliasIdent, AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant,
+    EnumVariantData, FixedValue, IntermediateTypes, ModuleScope, Primitive, ROOT_SCOPE,
+    Representation, RestKind, RestRow, RestSemantics, RustField, RustIdent, RustRecord,
+    RustStructCBORLen, RustStructConfig, RustStructType, RustType, RustTypeSerializeConfig,
+    ToWasmBoundaryOperations, VariantIdent, escape_rust_str,
 };
 use crate::utils::{
     cbor_type_code_str, convert_to_camel_case, convert_to_snake_case, is_valid_rust_ident,
@@ -993,188 +993,7 @@ impl GenerationScope {
                     // `rule_metadata`, while authored collection rules (`foo_list = [* foo]`)
                     // register their alias via `new_manual` (metadata `None`) but carry the rule's
                     // `@doc` on their RustStruct config.
-                    let mut doc_lines: Vec<String> = Vec::new();
-                    // Provenance marker for a SYNTHESIZED anonymous generic-collection/table instance
-                    // alias (`GcollFoo`/`GcollU64`/`GtblU64Text`, never a user rule like `gcn`): read
-                    // by `wasm_api_parity` to skip its legitimate, documented rust→wasm asymmetry (the
-                    // instance has no CDDL rule name; it crosses as its inline equivalent's structural
-                    // class). Leads the doc so the provenance is the first thing a reader sees.
-                    if types.is_anonymous_collection_instance(ident) {
-                        doc_lines.push(SYNTHESIZED_INSTANCE_ALIAS_DOC.to_owned());
-                    }
-                    if let Some(comment) = alias_info
-                        .rule_metadata
-                        .as_ref()
-                        .and_then(|m| m.comment.as_deref())
-                        .or_else(|| {
-                            types
-                                .rust_struct(ident)
-                                .and_then(|rs| rs.config().doc.as_deref())
-                        })
-                        // A named binding to a generic SET NOMINAL has neither: its alias is
-                        // registered through `AliasInfo::new_manual` (metadata `None`) and the only
-                        // `RustStruct` in play is the shared nominal, whose config belongs to the
-                        // generic definition. The IR's per-ident record is the binding rule's own.
-                        .or_else(|| types.rule_doc(ident))
-                    {
-                        doc_lines.push(comment.to_owned());
-                    }
-                    // Decision 11 (two-type design doc): a named `[+ T]` rule's alias quotes the
-                    // originating occurrence — the type name, doc comment, and TryFrom signature
-                    // are three redundant discovery signals for the constraint.
-                    if alias_info.base_type.is_non_empty_array()
-                        && let ConceptualRustType::Array(elem) =
-                            &alias_info.base_type.conceptual_type
-                    {
-                        // The min-1 door is `NonEmptyOrderedSet` under `@duplicates reject` (it
-                        // composes uniqueness with the bound), else `NonEmptyVec`.
-                        let door = if alias_info.base_type.is_reject_ordered_set() {
-                            "NonEmptyOrderedSet"
-                        } else {
-                            "NonEmptyVec"
-                        };
-                        doc_lines.push(format!(
-                            "`[+ {}]`: at least one element, enforced at the `{door}` \
-                             `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same \
-                             door, so wire-side and API-side rejection are identical).",
-                            elem.for_rust_member(types, false, cli)
-                        ));
-                    }
-                    // The finite/zero-minimum array sibling carries its complete occurrence window
-                    // in the chosen bounded carrier's const arguments. Quote the canonical sidecar grammar here
-                    // so a named alias is discoverable without following the generated type alias.
-                    if alias_info.base_type.is_bounded_array() {
-                        let shape = render_wrapper_shape(&alias_info.base_type);
-                        let door = if alias_info.base_type.is_bounded_reject_ordered_set() {
-                            "BoundedOrderedSet"
-                        } else {
-                            "BoundedVec"
-                        };
-                        doc_lines.push(format!(
-                            "`{shape}`: inclusive length window enforced at the `{door}` \
-                             `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same \
-                             door, so wire-side and API-side rejection are identical)."
-                        ));
-                    }
-                    // Exact ordinary/preserve arrays are their own native `[T; N]` carrier rather
-                    // than a `BoundedVec`. They keep the established list-shaped wasm class and
-                    // cross its `try_from` door from the loose `Vec<T>` builder, where the one
-                    // checked Vec-to-array handover enforces the exact cardinality.
-                    if alias_info
-                        .base_type
-                        .is_type_enforced_exact_homogeneous_array()
-                        && !alias_info.base_type.is_reject_ordered_set()
-                    {
-                        let shape = render_wrapper_shape(&alias_info.base_type);
-                        doc_lines.push(format!(
-                            "`{shape}`: exact static `[T; N]` carrier; the list wrapper's \
-                             `TryFrom<Vec<_>>` door performs the checked Vec-to-array handover \
-                             (and the CBOR decoder crosses that same door)."
-                        ));
-                    }
-                    // map-side twin: a named `{+ k => v}` rule's alias quotes the occurrence too.
-                    if alias_info.base_type.is_non_empty_map()
-                        && let ConceptualRustType::Map(k, v) = &alias_info.base_type.conceptual_type
-                    {
-                        doc_lines.push(format!(
-                            "`{{+ {} => {}}}`: at least one entry, enforced at the `NonEmptyMap` \
-                             `TryFrom` door (the CBOR decoder routes through the same door, so \
-                             wire-side and API-side rejection are identical).",
-                            k.for_rust_member(types, false, cli),
-                            v.for_rust_member(types, false, cli)
-                        ));
-                    }
-                    // Self-describing doc for the transparent tag-N set idiom (`x = #6.N([* a]) / [* a]`):
-                    // the tag is an encoding detail, and the per-rule duplicates policy is spelled out
-                    // for BOTH stances so a reader never has to know the default.
-                    let set_tag = alias_info.base_type.encodings.iter().find_map(|e| match e {
-                        CBOREncodingOperation::OptionallyTagged(n) => Some(*n),
-                        _ => None,
-                    });
-                    if let Some(n) = set_tag {
-                        doc_lines.push(format!(
-                            "The tag-{n} set idiom: the tag is an encoding detail — both the \
-                             `#6.{n}(...)` and the bare-array wire forms are accepted (serialization \
-                             defaults to tagged), so either round-trips byte-exactly."
-                        ));
-                    }
-                    // The reject doc is scoped to ARRAY (set) aliases via `is_reject_ordered_set`
-                    // (conceptual `Array`): a table carrying `@duplicates reject` is a pure no-op
-                    // (today's default), so it must stay byte-identical to the no-directive table.
-                    if alias_info.base_type.is_reject_ordered_set() {
-                        doc_lines.push(
-                            "`@duplicates reject`: a repeated element is refused (a \
-                             `DuplicateKey` error) on both the wire and the API; accepted \
-                             (duplicate-free) input re-emits byte-exactly in wire order (the set is \
-                             order-preserving, never sorted)."
-                                .to_owned(),
-                        );
-                    } else if set_tag.is_some() {
-                        doc_lines.push(
-                            "Duplicate elements are preserved and re-emitted byte-exactly in wire \
-                             order (the default for a set idiom; opt into rejection with \
-                             `@duplicates reject`)."
-                                .to_owned(),
-                        );
-                    }
-                    // An alias BINDING a generic set-nominal instantiation
-                    // (`required_signers = nonempty_set<ed25519_key_hash>` →
-                    // `pub type RequiredSigners = NonemptySetEd25519KeyHash;`) carries a bare
-                    // `Rust(<nominal>)` base_type — the array/tag/policy predicates above see an
-                    // opaque reference and fire nothing. Resolve the bound nominal's REGISTERED
-                    // policy and emit the same self-describing door/tag/reject lines the
-                    // transparent set alias gets: the rule name hides the nominal's name, so
-                    // without this the one decode-time breaking change (uniqueness) goes
-                    // undocumented on exactly the rule a consumer reads first. A set nominal is
-                    // ALWAYS the uniqueness (`reject`) twin — a `preserve` set stays a transparent
-                    // `Vec` alias, never a nominal — so the policy line is always the reject blurb.
-                    if let ConceptualRustType::Rust(bound_ident) =
-                        &alias_info.base_type.conceptual_type
-                        && let Some(bound_struct) = types.rust_struct(bound_ident)
-                        && bound_struct.config().set_nominal
-                        && let RustStructType::Wrapper { wrapped, .. } = bound_struct.variant()
-                        && let ConceptualRustType::Array(elem) = &wrapped.conceptual_type
-                    {
-                        // The min-1 (`[+]`) nominal's door is `NonEmptyOrderedSet`; a min-0 (`[*]`)
-                        // nominal has no non-emptiness to enforce, so it emits no door line (the
-                        // same convention as the transparent-alias block above).
-                        if wrapped.is_non_empty_array() {
-                            doc_lines.push(format!(
-                                "`[+ {}]`: at least one element, enforced at the \
-                                 `NonEmptyOrderedSet` `TryFrom<Vec<_>>` door (the CBOR decoder \
-                                 routes through the same door, so wire-side and API-side rejection \
-                                 are identical).",
-                                elem.for_rust_member(types, false, cli)
-                            ));
-                        }
-                        if let Some(n) = bound_struct.tag() {
-                            doc_lines.push(format!(
-                                "The tag-{n} set idiom: the tag is an encoding detail — both the \
-                                 `#6.{n}(...)` and the bare-array wire forms are accepted \
-                                 (serialization defaults to tagged), so either round-trips \
-                                 byte-exactly."
-                            ));
-                        }
-                        doc_lines.push(
-                            "`@duplicates reject`: a repeated element is refused (a \
-                             `DuplicateKey` error) on both the wire and the API; accepted \
-                             (duplicate-free) input re-emits byte-exactly in wire order (the set is \
-                             order-preserving, never sorted)."
-                                .to_owned(),
-                        );
-                        if cli.wasm {
-                            // wasm-bindgen exports no type aliases, so the rule-name class collapses:
-                            // JS/TS callers re-key from the rule name to the nominal class name. A
-                            // generated `.d.ts` `export type` keeps TS type positions compiling; JS
-                            // value positions (`new`, static methods) must use the nominal class.
-                            doc_lines.push(format!(
-                                "wasm/JS: this rule has no class of its own — the wasm surface is the \
-                                 nominal class `{bound_ident}`. TypeScript keeps `{ident}` as a \
-                                 generated type alias (`export type {ident} = {bound_ident};`), but JS \
-                                 call sites re-key to `{bound_ident}`."
-                            ));
-                        }
-                    }
+                    let doc_lines = rust_alias_doc_lines(types, ident, alias_info, cli);
                     if !doc_lines.is_empty() {
                         type_alias.doc(doc_lines.join("\n"));
                     }
@@ -3006,6 +2825,195 @@ impl GenerationScope {
         self.cbor_encodings_scopes.entry(scope).or_default()
     }
 }
+
+/// The rustdoc lines of a user-facing rust `pub type` alias, in emission order: the synthesized
+/// provenance marker, the user's rule-level `@doc`, then the mechanical bound/tag/policy notes.
+fn rust_alias_doc_lines(
+    types: &IntermediateTypes,
+    ident: &RustIdent,
+    alias_info: &AliasInfo,
+    cli: &Cli,
+) -> Vec<String> {
+    let mut doc_lines: Vec<String> = Vec::new();
+    // Provenance marker for a SYNTHESIZED anonymous generic-collection/table instance
+    // alias (`GcollFoo`/`GcollU64`/`GtblU64Text`, never a user rule like `gcn`): read
+    // by `wasm_api_parity` to skip its legitimate, documented rust→wasm asymmetry (the
+    // instance has no CDDL rule name; it crosses as its inline equivalent's structural
+    // class). Leads the doc so the provenance is the first thing a reader sees.
+    if types.is_anonymous_collection_instance(ident) {
+        doc_lines.push(SYNTHESIZED_INSTANCE_ALIAS_DOC.to_owned());
+    }
+    if let Some(comment) = alias_info
+        .rule_metadata
+        .as_ref()
+        .and_then(|m| m.comment.as_deref())
+        .or_else(|| {
+            types
+                .rust_struct(ident)
+                .and_then(|rs| rs.config().doc.as_deref())
+        })
+        // A named binding to a generic SET NOMINAL has neither: its alias is
+        // registered through `AliasInfo::new_manual` (metadata `None`) and the only
+        // `RustStruct` in play is the shared nominal, whose config belongs to the
+        // generic definition. The IR's per-ident record is the binding rule's own.
+        .or_else(|| types.rule_doc(ident))
+    {
+        doc_lines.push(comment.to_owned());
+    }
+    // Decision 11 (two-type design doc): a named `[+ T]` rule's alias quotes the
+    // originating occurrence — the type name, doc comment, and TryFrom signature
+    // are three redundant discovery signals for the constraint.
+    if alias_info.base_type.is_non_empty_array()
+        && let ConceptualRustType::Array(elem) = &alias_info.base_type.conceptual_type
+    {
+        // The min-1 door is `NonEmptyOrderedSet` under `@duplicates reject` (it
+        // composes uniqueness with the bound), else `NonEmptyVec`.
+        let door = if alias_info.base_type.is_reject_ordered_set() {
+            "NonEmptyOrderedSet"
+        } else {
+            "NonEmptyVec"
+        };
+        doc_lines.push(non_empty_array_door_doc(
+            &elem.for_rust_member(types, false, cli),
+            door,
+        ));
+    }
+    // The finite/zero-minimum array sibling carries its complete occurrence window
+    // in the chosen bounded carrier's const arguments. Quote the canonical sidecar grammar here
+    // so a named alias is discoverable without following the generated type alias.
+    if alias_info.base_type.is_bounded_array() {
+        let shape = render_wrapper_shape(&alias_info.base_type);
+        let door = if alias_info.base_type.is_bounded_reject_ordered_set() {
+            "BoundedOrderedSet"
+        } else {
+            "BoundedVec"
+        };
+        doc_lines.push(format!(
+            "`{shape}`: inclusive length window enforced at the `{door}` \
+             `TryFrom<Vec<_>>` door (the CBOR decoder routes through the same \
+             door, so wire-side and API-side rejection are identical)."
+        ));
+    }
+    // Exact ordinary/preserve arrays are their own native `[T; N]` carrier rather
+    // than a `BoundedVec`. They keep the established list-shaped wasm class and
+    // cross its `try_from` door from the loose `Vec<T>` builder, where the one
+    // checked Vec-to-array handover enforces the exact cardinality.
+    if alias_info
+        .base_type
+        .is_type_enforced_exact_homogeneous_array()
+        && !alias_info.base_type.is_reject_ordered_set()
+    {
+        let shape = render_wrapper_shape(&alias_info.base_type);
+        doc_lines.push(format!(
+            "`{shape}`: exact static `[T; N]` carrier; the list wrapper's \
+             `TryFrom<Vec<_>>` door performs the checked Vec-to-array handover \
+             (and the CBOR decoder crosses that same door)."
+        ));
+    }
+    // map-side twin: a named `{+ k => v}` rule's alias quotes the occurrence too.
+    if alias_info.base_type.is_non_empty_map()
+        && let ConceptualRustType::Map(k, v) = &alias_info.base_type.conceptual_type
+    {
+        doc_lines.push(format!(
+            "`{{+ {} => {}}}`: at least one entry, enforced at the `NonEmptyMap` \
+             `TryFrom` door (the CBOR decoder routes through the same door, so \
+             wire-side and API-side rejection are identical).",
+            k.for_rust_member(types, false, cli),
+            v.for_rust_member(types, false, cli)
+        ));
+    }
+    // Self-describing doc for the transparent tag-N set idiom (`x = #6.N([* a]) / [* a]`):
+    // the tag is an encoding detail, and the per-rule duplicates policy is spelled out
+    // for BOTH stances so a reader never has to know the default.
+    let set_tag = alias_info.base_type.encodings.iter().find_map(|e| match e {
+        CBOREncodingOperation::OptionallyTagged(n) => Some(*n),
+        _ => None,
+    });
+    if let Some(n) = set_tag {
+        doc_lines.push(set_tag_idiom_doc(n));
+    }
+    // The reject doc is scoped to ARRAY (set) aliases via `is_reject_ordered_set`
+    // (conceptual `Array`): a table carrying `@duplicates reject` is a pure no-op
+    // (today's default), so it must stay byte-identical to the no-directive table.
+    if alias_info.base_type.is_reject_ordered_set() {
+        doc_lines.push(REJECT_SET_DOC.to_owned());
+    } else if set_tag.is_some() {
+        doc_lines.push(
+            "Duplicate elements are preserved and re-emitted byte-exactly in wire \
+             order (the default for a set idiom; opt into rejection with \
+             `@duplicates reject`)."
+                .to_owned(),
+        );
+    }
+    // An alias BINDING a generic set-nominal instantiation
+    // (`required_signers = nonempty_set<ed25519_key_hash>` →
+    // `pub type RequiredSigners = NonemptySetEd25519KeyHash;`) carries a bare
+    // `Rust(<nominal>)` base_type — the array/tag/policy predicates above see an
+    // opaque reference and fire nothing. Resolve the bound nominal's REGISTERED
+    // policy and emit the same self-describing door/tag/reject lines the
+    // transparent set alias gets: the rule name hides the nominal's name, so
+    // without this the one decode-time breaking change (uniqueness) goes
+    // undocumented on exactly the rule a consumer reads first. A set nominal is
+    // ALWAYS the uniqueness (`reject`) twin — a `preserve` set stays a transparent
+    // `Vec` alias, never a nominal — so the policy line is always the reject blurb.
+    if let ConceptualRustType::Rust(bound_ident) = &alias_info.base_type.conceptual_type
+        && let Some(bound_struct) = types.rust_struct(bound_ident)
+        && bound_struct.config().set_nominal
+        && let RustStructType::Wrapper { wrapped, .. } = bound_struct.variant()
+        && let ConceptualRustType::Array(elem) = &wrapped.conceptual_type
+    {
+        // The min-1 (`[+]`) nominal's door is `NonEmptyOrderedSet`; a min-0 (`[*]`)
+        // nominal has no non-emptiness to enforce, so it emits no door line (the
+        // same convention as the transparent-alias block above).
+        if wrapped.is_non_empty_array() {
+            doc_lines.push(non_empty_array_door_doc(
+                &elem.for_rust_member(types, false, cli),
+                "NonEmptyOrderedSet",
+            ));
+        }
+        if let Some(n) = bound_struct.tag() {
+            doc_lines.push(set_tag_idiom_doc(n));
+        }
+        doc_lines.push(REJECT_SET_DOC.to_owned());
+        if cli.wasm {
+            // wasm-bindgen exports no type aliases, so the rule-name class collapses:
+            // JS/TS callers re-key from the rule name to the nominal class name. A
+            // generated `.d.ts` `export type` keeps TS type positions compiling; JS
+            // value positions (`new`, static methods) must use the nominal class.
+            doc_lines.push(format!(
+                "wasm/JS: this rule has no class of its own — the wasm surface is the \
+                 nominal class `{bound_ident}`. TypeScript keeps `{ident}` as a \
+                 generated type alias (`export type {ident} = {bound_ident};`), but JS \
+                 call sites re-key to `{bound_ident}`."
+            ));
+        }
+    }
+    doc_lines
+}
+
+/// The door line of a min-1 array (`[+ T]`) alias, shared by the transparent alias and the
+/// set-nominal binding.
+fn non_empty_array_door_doc(elem: &str, door: &str) -> String {
+    format!(
+        "`[+ {elem}]`: at least one element, enforced at the `{door}` `TryFrom<Vec<_>>` door (the \
+         CBOR decoder routes through the same door, so wire-side and API-side rejection are \
+         identical)."
+    )
+}
+
+/// The self-describing line of a tag-`n` set idiom alias.
+fn set_tag_idiom_doc(n: usize) -> String {
+    format!(
+        "The tag-{n} set idiom: the tag is an encoding detail — both the `#6.{n}(...)` and the \
+         bare-array wire forms are accepted (serialization defaults to tagged), so either \
+         round-trips byte-exactly."
+    )
+}
+
+/// The policy line of an `@duplicates reject` set alias.
+const REJECT_SET_DOC: &str = "`@duplicates reject`: a repeated element is refused (a \
+    `DuplicateKey` error) on both the wire and the API; accepted (duplicate-free) input re-emits \
+    byte-exactly in wire order (the set is order-preserving, never sorted).";
 
 /// Pushes into `content` the imports `scope` needs for idents it references from other scopes.
 fn add_imports_from_scope_refs(
