@@ -23,6 +23,13 @@ pub struct DemandSet {
 }
 
 impl DemandSet {
+    /// The demand of a bare `@used_as_key` tag.
+    pub const BARE: DemandSet = DemandSet {
+        bare: true,
+        hash: false,
+        ord: false,
+    };
+
     pub fn union(self, other: DemandSet) -> DemandSet {
         DemandSet {
             bare: self.bare || other.bare,

@@ -375,47 +375,16 @@ fn skip_trivia(chars: &[char], mut i: usize) -> usize {
 }
 
 /// Parse a Rust string literal starting at `chars[start]` (which must be `"`), returning the
-/// unescaped contents and the index just past the closing quote. Handles the escapes the emitter's
-/// `{:?}` formatting can produce (`\"`, `\\`, `\n`, `\t`, `\r`, `\0`); an unterminated literal is a
-/// hard error.
+/// unescaped contents and the index just past the closing quote. The strict form of
+/// [`read_str_lenient`], with the same escape handling: an unterminated literal is a hard error.
 fn parse_string_literal(
     chars: &[char],
     start: usize,
     file: &str,
 ) -> Result<(String, usize), String> {
     debug_assert_eq!(chars[start], '"');
-    let mut i = start + 1;
-    let mut s = String::new();
-    while i < chars.len() {
-        let c = chars[i];
-        if c == '"' {
-            return Ok((s, i + 1));
-        }
-        if c == '\\' {
-            i += 1;
-            if i >= chars.len() {
-                break;
-            }
-            match chars[i] {
-                '"' => s.push('"'),
-                '\\' => s.push('\\'),
-                'n' => s.push('\n'),
-                't' => s.push('\t'),
-                'r' => s.push('\r'),
-                '0' => s.push('\0'),
-                other => s.push(other),
-            }
-            i += 1;
-            continue;
-        }
-        s.push(c);
-        i += 1;
-    }
-    Err(hard_error(
-        file,
-        "unterminated string literal in BORROWED_SHAPES",
-        "",
-    ))
+    read_str_lenient(chars, start)
+        .ok_or_else(|| hard_error(file, "unterminated string literal in BORROWED_SHAPES", ""))
 }
 
 /// A short forward snippet of the remaining input, for error messages.
@@ -486,14 +455,7 @@ pub fn seed_used_as_key_from_wrapper_requests(types: &mut IntermediateTypes, cli
     for ident in to_mark {
         // A wrapper-requested map shape is an internal CBOR map key: it demands today's `bare` internal
         // bundle, exactly as an in-spec `{* k => v}` key would.
-        types.mark_key_demand(
-            ident,
-            crate::comment_ast::DemandSet {
-                bare: true,
-                hash: false,
-                ord: false,
-            },
-        );
+        types.mark_key_demand(ident, crate::comment_ast::DemandSet::BARE);
     }
 }
 
@@ -1013,11 +975,7 @@ fn parse_key_const_body(body: &str, file: &str) -> Result<Vec<KeyTypeEntry>, Str
         let demand = if fields.len() == 3 {
             parse_key_flavor(&fields[2], file)?
         } else {
-            DemandSet {
-                bare: true,
-                hash: false,
-                ord: false,
-            }
+            DemandSet::BARE
         };
         entries.push(KeyTypeEntry {
             dep: fields[0].clone(),
@@ -1673,20 +1631,12 @@ pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] = &[];
                 KeyTypeEntry {
                     dep: "wr_dep".into(),
                     ident: "idx_bar".into(),
-                    demand: DemandSet {
-                        bare: true,
-                        hash: false,
-                        ord: false
-                    },
+                    demand: DemandSet::BARE,
                 },
                 KeyTypeEntry {
                     dep: "wr_dep".into(),
                     ident: "idx_foo".into(),
-                    demand: DemandSet {
-                        bare: true,
-                        hash: false,
-                        ord: false
-                    },
+                    demand: DemandSet::BARE,
                 },
             ]
         );
@@ -1767,20 +1717,12 @@ pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] =
                 KeyTypeEntry {
                     dep: "wr_dep".into(),
                     ident: "root_key".into(),
-                    demand: DemandSet {
-                        bare: true,
-                        hash: false,
-                        ord: false
-                    },
+                    demand: DemandSet::BARE,
                 },
                 KeyTypeEntry {
                     dep: "wr_dep".into(),
                     ident: "scoped_key".into(),
-                    demand: DemandSet {
-                        bare: true,
-                        hash: false,
-                        ord: false
-                    },
+                    demand: DemandSet::BARE,
                 },
             ]
         );
