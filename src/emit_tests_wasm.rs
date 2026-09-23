@@ -968,26 +968,11 @@ fn wasm_record_roundtrip(
     let rust_build = rust_scoped_for_named(types, &entry_mv, ident, scoped);
 
     // §3 accessor read-back: primitive/c-enum ctor getters against the emit-time literal.
-    let ctor_fields = record_ctor_fields(record);
+    // `record_wasm_ctor_args` (which `wasm_named` just accepted) yields the constructor fields
+    // first, in `record_ctor_fields` order, so its leading entries pair each field with its mint.
+    let ctor_args = record_wasm_ctor_args(types, record, args)?;
     let mut readbacks = Vec::new();
-    let native_by_source: BTreeMap<usize, &MintValue> =
-        multi_array_occurrence_ctor_arg_slots(record)
-            .map(|slots| {
-                slots
-                    .iter()
-                    .zip(args)
-                    .map(|((source_index, _), value)| (*source_index, value))
-                    .collect()
-            })
-            .unwrap_or_default();
-    for (index, f) in ctor_fields.iter().enumerate() {
-        let amv = native_by_source
-            .get(&f.source_index)
-            .copied()
-            .unwrap_or_else(|| {
-                args.get(index)
-                    .expect("record mint matches constructor fields")
-            });
+    for (f, (_, amv)) in record_ctor_fields(record).iter().zip(&ctor_args) {
         if let Some(expected) = scalar_readback(&f.rust_type, amv) {
             // read back on the freshly-BUILT value (not the post-wire `back`): a getter reads
             // `self.0` through its `to_wasm_boundary` conversion, so a broken conversion still
@@ -1084,7 +1069,8 @@ fn wasm_choice_roundtrip(
                 // no self-readback: the getter is lossy for this arm (see above).
             } else if primitive_payload
                 && let [(ty, _)] = arg_fields.as_slice()
-                && let Some(expected) = scalar_readback(ty, &choice_variant_first_arg(&choice_mv)?)
+                && let MintValue::Choice { args, .. } = &choice_mv
+                && let Some(expected) = scalar_readback(ty, args.first()?)
             {
                 readbacks.push(format!(
                     "        assert_eq!(wasm_v.as_{var}(), Some({expected}), \"{name}.as_{var}() must read back the minted payload\");"
@@ -1394,13 +1380,4 @@ fn variant_is_fixed(types: &IntermediateTypes, variant: &EnumVariant, group_choi
     variant_arg_fields(types, variant, group_choice)
         .map(|a| a.is_empty())
         .unwrap_or(true)
-}
-
-/// The first arg of a `Choice` mint value (for a single-payload variant read-back).
-fn choice_variant_first_arg(mv: &MintValue) -> Option<MintValue> {
-    if let MintValue::Choice { args, .. } = mv {
-        args.first().cloned()
-    } else {
-        None
-    }
 }
