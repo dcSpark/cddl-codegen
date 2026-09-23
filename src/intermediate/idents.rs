@@ -153,7 +153,7 @@ pub enum AliasIdent {
 
 impl AliasIdent {
     pub fn new(ident: CDDLIdent) -> Self {
-        if ident.0 == "int" || super::is_identifier_user_defined(&ident.0) {
+        if ident.0 == "int" || !is_identifier_reserved(&ident.0) {
             AliasIdent::Rust(RustIdent::new(ident))
         } else {
             AliasIdent::Reserved(ident.0)

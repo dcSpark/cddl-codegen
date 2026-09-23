@@ -8,7 +8,7 @@ use crate::comment_ast::{DemandSet, DuplicatesPolicy, RuleMetadata};
 use crate::parsing::EXTERN_MARKER;
 use crate::utils::{
     cddl_prelude, convert_to_camel_case, convert_to_snake_case, is_identifier_reserved,
-    is_identifier_user_defined, is_valid_rust_ident,
+    is_valid_rust_ident,
 };
 
 mod idents;

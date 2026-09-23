@@ -266,10 +266,6 @@ pub fn is_identifier_reserved(name: &str) -> bool {
     RESERVED_IDENTS.contains(&name)
 }
 
-pub fn is_identifier_user_defined(name: &str) -> bool {
-    !is_identifier_reserved(name)
-}
-
 pub fn append_number_if_duplicate(used_names: &mut BTreeMap<String, u32>, name: String) -> String {
     let entry = used_names.entry(name.clone()).or_default();
     *entry += 1;

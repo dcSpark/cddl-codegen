@@ -13,7 +13,7 @@ use crate::intermediate::{
 };
 use crate::utils::{
     append_number_if_duplicate, convert_to_camel_case, convert_to_snake_case,
-    is_identifier_user_defined,
+    is_identifier_reserved,
 };
 
 #[derive(Clone, Debug)]
@@ -6047,7 +6047,7 @@ fn group_entry_to_field_name(
             trailing_comments,
             ge: TypeGroupnameEntry { name, .. },
             ..
-        } => match !is_identifier_user_defined(&name.to_string()) {
+        } => match is_identifier_reserved(&name.to_string()) {
             true => explicit_name(trailing_comments).unwrap_or_else(|| format!("index_{index}")),
             false => name.to_string(),
         },
@@ -6077,7 +6077,7 @@ fn group_entry_to_raw_field_name(entry: &GroupEntry) -> Option<String> {
         GroupEntry::TypeGroupname {
             ge: TypeGroupnameEntry { name, .. },
             ..
-        } => match !is_identifier_user_defined(&name.to_string()) {
+        } => match is_identifier_reserved(&name.to_string()) {
             true => None,
             false => Some(name.to_string()),
         },
