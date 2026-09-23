@@ -895,6 +895,31 @@ pub fn rustfmt_generated_string(source: &str) -> std::io::Result<Cow<'_, str>> {
     rustfmt_source_with(&rustfmt_path()?, source)
 }
 
+/// The import post-pass over a whole file map, in its fixed order: the usage-derived prune, rustfmt
+/// of every file it changed, alloc-import injection, rustfmt of every file THAT changed.
+///
+/// Injection runs AFTER the prune: the injector is a pure function of the FINAL content, and running
+/// it last means the prune never sees injector-owned lines (their conditions are disjoint either way
+/// — see the injector's module docs — so this is about keeping each pass's input obvious, not about
+/// avoiding a fight). It must see the rustfmt'd prune output, so the two formatting rounds stay
+/// separate. Each round re-formats because the prune splices raw text and the injector places its
+/// block in source order, not in rustfmt's `use`-sort order, and EVERY surface the tool writes must
+/// be rustfmt-stable or the overlay traps comments on the next unchanged regeneration.
+pub(crate) fn finalize_generated_imports(
+    files: &mut BTreeMap<String, String>,
+    prune_config: &crate::import_prune::PruneConfig,
+) -> std::io::Result<()> {
+    for (path, pruned) in crate::import_prune::prune_generated_files(files, prune_config) {
+        let formatted = rustfmt_generated_string(&pruned)?.into_owned();
+        files.insert(path, formatted);
+    }
+    for path in crate::alloc_import_inject::inject_generated_files(files) {
+        let formatted = rustfmt_generated_string(&files[&path])?.into_owned();
+        files.insert(path, formatted);
+    }
+    Ok(())
+}
+
 /// [`rustfmt_generated_string`] with the formatter binary supplied explicitly.
 ///
 /// Split out so the error legs can be driven by a STUB binary in tests WITHOUT mutating `RUSTFMT`
@@ -1092,18 +1117,11 @@ impl GenerationScope {
             // decides `super::*` against real usage (dropped when nothing names a root-module item,
             // kept where the prelude/impls do). Every other file is already a prune fixed point, so
             // only serialization.rs can change here.
-            let prune_config = self.build_prune_config(cli);
-            for (path, pruned) in crate::import_prune::prune_generated_files(&files, &prune_config)
-            {
-                files.insert(path, rustfmt_generated_string(&pruned)?.into_owned());
-            }
+            //
             // The rebuild REPLACED `generated_files`' already-injected serialization.rs with a
             // version carrying the static prelude, so its alloc imports have to be recomputed
             // against that content (the prelude is most of what needs them).
-            for path in crate::alloc_import_inject::inject_generated_files(&mut files) {
-                let formatted = rustfmt_generated_string(&files[&path])?.into_owned();
-                files.insert(path, formatted);
-            }
+            finalize_generated_imports(&mut files, &self.build_prune_config(cli))?;
         }
 
         // The manifest changesets this run asserts, one per generated crate. Derived HERE (they are
@@ -2254,23 +2272,9 @@ impl GenerationScope {
         // generated type ident `scope_references` over-imported. The configured wasm macros MUST be
         // written fully-qualified (they must not assume `JsError`/`JsValue`/`wasm_bindgen` in scope) —
         // the contract documented next to those flags in `command_line_flags.mdx`.
-        let prune_config = self.build_prune_config(cli);
-        for (path, pruned) in crate::import_prune::prune_generated_files(&out, &prune_config) {
-            let formatted = rustfmt_generated_string(&pruned)?.into_owned();
-            out.insert(path, formatted);
-        }
-
-        // Alloc-import injection, AFTER the prune: the injector is a pure function of the FINAL
-        // content, and running it last means the prune never sees injector-owned lines (their
-        // conditions are disjoint either way — see the injector's module docs — so this is about
-        // keeping each pass's input obvious, not about avoiding a fight).
-        // rustfmt every file it changed: the injector places its block in source order, not in
-        // rustfmt's `use`-sort order, and EVERY surface the tool writes must be rustfmt-stable or
-        // the overlay traps comments on the next unchanged regeneration.
-        for path in crate::alloc_import_inject::inject_generated_files(&mut out) {
-            let formatted = rustfmt_generated_string(&out[&path])?.into_owned();
-            out.insert(path, formatted);
-        }
+        //
+        // Alloc-import injection follows the prune (see `finalize_generated_imports`).
+        finalize_generated_imports(&mut out, &self.build_prune_config(cli))?;
 
         Ok(out)
     }

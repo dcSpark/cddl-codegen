@@ -23,8 +23,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use super::export::{
-    is_preservable_generated_path, missing_reexports, new_static_file_notice,
-    rustfmt_generated_string,
+    finalize_generated_imports, is_preservable_generated_path, missing_reexports,
+    new_static_file_notice, rustfmt_generated_string,
 };
 
 /// The `--export-static-crate` target's writes: the composed runtime files and the standalone
@@ -194,19 +194,12 @@ impl WriteTailPlan {
         // Only re-prune when the overlay actually rewrote something: otherwise the fresh map is still
         // the `generated_files` prune fixed point and a second pass would change nothing.
         if overlay_changed_any {
-            for (path, pruned) in crate::import_prune::prune_generated_files(&files, &prune_config)
-            {
-                files.insert(path, rustfmt_generated_string(&pruned)?.into_owned());
-            }
-            // Recompute the alloc imports too: a `cddl-codegen:replace` block can remove the last
-            // user of a name (orphaning an import — an unused-import warning) or introduce a new one
-            // (a missing import — an error). The injector's lines are exact known strings, so this
-            // recompute both ADDS and REMOVES soundly, which is what lets it cover the trait
-            // imports the pruner must never touch.
-            for path in crate::alloc_import_inject::inject_generated_files(&mut files) {
-                let formatted = rustfmt_generated_string(&files[&path])?.into_owned();
-                files.insert(path, formatted);
-            }
+            // Re-prune, and recompute the alloc imports too: a `cddl-codegen:replace` block can
+            // remove the last user of a name (orphaning an import — an unused-import warning) or
+            // introduce a new one (a missing import — an error). The injector's lines are exact
+            // known strings, so this recompute both ADDS and REMOVES soundly, which is what lets it
+            // cover the trait imports the pruner must never touch.
+            finalize_generated_imports(&mut files, &prune_config)?;
         }
 
         // The emitted WIT package is DELETE-AND-RECREATED, on exactly the terms the
