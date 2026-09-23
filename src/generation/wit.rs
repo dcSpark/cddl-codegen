@@ -690,6 +690,36 @@ pub(crate) enum WitType {
     AnyCborKind,
 }
 
+impl WitType {
+    /// The WIT spelling of a primitive, or `None` for a composite or named type. The one primitive
+    /// table both the name-fragment and the use-site renderers read.
+    pub(crate) fn wit_primitive_name(&self) -> Option<&'static str> {
+        match self {
+            WitType::Bool => Some("bool"),
+            WitType::U8 => Some("u8"),
+            WitType::U16 => Some("u16"),
+            WitType::U32 => Some("u32"),
+            WitType::U64 => Some("u64"),
+            WitType::S8 => Some("s8"),
+            WitType::S16 => Some("s16"),
+            WitType::S32 => Some("s32"),
+            WitType::S64 => Some("s64"),
+            WitType::F32 => Some("f32"),
+            WitType::F64 => Some("f64"),
+            WitType::Str => Some("string"),
+            WitType::List(_)
+            | WitType::Tuple(_)
+            | WitType::Option(_)
+            | WitType::Handle(_)
+            | WitType::Accumulator(_)
+            | WitType::Enum(_)
+            | WitType::Int
+            | WitType::AnyCbor
+            | WitType::AnyCborKind => None,
+        }
+    }
+}
+
 /// A reference to a named type, carrying the scope that DEFINES it so the `use` graph is computable
 /// without a second IR walk.
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -1345,18 +1375,6 @@ fn accumulator_name(element: &WitType) -> String {
 /// type's is a collision [`wit_name_collisions`] reports.
 fn type_word(ty: &WitType) -> String {
     match ty {
-        WitType::Bool => "bool".to_owned(),
-        WitType::U8 => "u8".to_owned(),
-        WitType::U16 => "u16".to_owned(),
-        WitType::U32 => "u32".to_owned(),
-        WitType::U64 => "u64".to_owned(),
-        WitType::S8 => "s8".to_owned(),
-        WitType::S16 => "s16".to_owned(),
-        WitType::S32 => "s32".to_owned(),
-        WitType::S64 => "s64".to_owned(),
-        WitType::F32 => "f32".to_owned(),
-        WitType::F64 => "f64".to_owned(),
-        WitType::Str => "string".to_owned(),
         WitType::List(inner) => format!("list-{}", type_word(inner)),
         WitType::Tuple(parts) => format!(
             "tuple-{}",
@@ -1369,6 +1387,10 @@ fn type_word(ty: &WitType) -> String {
         WitType::Int => INT_TYPE_NAME.to_owned(),
         WitType::AnyCbor => ANY_CBOR_TYPE_NAME.to_owned(),
         WitType::AnyCborKind => ANY_CBOR_KIND_TYPE_NAME.to_owned(),
+        primitive => primitive
+            .wit_primitive_name()
+            .expect("every other WitType is a primitive")
+            .to_owned(),
     }
 }
 
@@ -2814,18 +2836,6 @@ fn render_arrow(ok: Option<String>, fallible: bool) -> String {
 /// so the mirrored mistake fails the validity gate loudly.
 fn render_type(ty: &WitType, param: bool) -> String {
     match ty {
-        WitType::Bool => "bool".to_owned(),
-        WitType::U8 => "u8".to_owned(),
-        WitType::U16 => "u16".to_owned(),
-        WitType::U32 => "u32".to_owned(),
-        WitType::U64 => "u64".to_owned(),
-        WitType::S8 => "s8".to_owned(),
-        WitType::S16 => "s16".to_owned(),
-        WitType::S32 => "s32".to_owned(),
-        WitType::S64 => "s64".to_owned(),
-        WitType::F32 => "f32".to_owned(),
-        WitType::F64 => "f64".to_owned(),
-        WitType::Str => "string".to_owned(),
         WitType::List(inner) => format!("list<{}>", render_type(inner, param)),
         WitType::Tuple(inner) => format!(
             "tuple<{}>",
@@ -2856,6 +2866,10 @@ fn render_type(ty: &WitType, param: bool) -> String {
         WitType::Int => INT_TYPE_NAME.to_owned(),
         WitType::AnyCbor => ANY_CBOR_TYPE_NAME.to_owned(),
         WitType::AnyCborKind => ANY_CBOR_KIND_TYPE_NAME.to_owned(),
+        primitive => primitive
+            .wit_primitive_name()
+            .expect("every other WitType is a primitive")
+            .to_owned(),
     }
 }
 

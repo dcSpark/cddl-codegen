@@ -219,6 +219,34 @@ impl Conv {
     }
 }
 
+/// The rust spelling of a WIT primitive — identical on both sides of `wit_bindgen` — or `None` for
+/// a composite or named type.
+fn rust_primitive_name(ty: &WitType) -> Option<&'static str> {
+    match ty {
+        WitType::Bool => Some("bool"),
+        WitType::U8 => Some("u8"),
+        WitType::U16 => Some("u16"),
+        WitType::U32 => Some("u32"),
+        WitType::U64 => Some("u64"),
+        WitType::S8 => Some("i8"),
+        WitType::S16 => Some("i16"),
+        WitType::S32 => Some("i32"),
+        WitType::S64 => Some("i64"),
+        WitType::F32 => Some("f32"),
+        WitType::F64 => Some("f64"),
+        WitType::Str => Some("String"),
+        WitType::List(_)
+        | WitType::Tuple(_)
+        | WitType::Option(_)
+        | WitType::Handle(_)
+        | WitType::Accumulator(_)
+        | WitType::Enum(_)
+        | WitType::Int
+        | WitType::AnyCbor
+        | WitType::AnyCborKind => None,
+    }
+}
+
 /// A rust tuple expression, type or pattern over already-rendered parts; a one-tuple keeps its
 /// trailing comma.
 fn rust_tuple(parts: &[String]) -> String {
@@ -369,18 +397,6 @@ impl Emitter<'_, '_> {
     /// the emitted crate, which the cross-crate wasip2 build gate exercises.
     fn native_rust_type(&self, ty: &WitType) -> String {
         match ty {
-            WitType::Bool => "bool".to_owned(),
-            WitType::U8 => "u8".to_owned(),
-            WitType::U16 => "u16".to_owned(),
-            WitType::U32 => "u32".to_owned(),
-            WitType::U64 => "u64".to_owned(),
-            WitType::S8 => "i8".to_owned(),
-            WitType::S16 => "i16".to_owned(),
-            WitType::S32 => "i32".to_owned(),
-            WitType::S64 => "i64".to_owned(),
-            WitType::F32 => "f32".to_owned(),
-            WitType::F64 => "f64".to_owned(),
-            WitType::Str => "String".to_owned(),
             WitType::Handle(r) => {
                 if self.imported(r).is_some() {
                     self.imported_rust_path(r)
@@ -404,6 +420,9 @@ impl Emitter<'_, '_> {
                 "Vec<{}>",
                 self.native_rust_type(&self.accumulator(a).element)
             ),
+            primitive => rust_primitive_name(primitive)
+                .expect("every other WitType is a primitive")
+                .to_owned(),
         }
     }
 
@@ -418,18 +437,6 @@ impl Emitter<'_, '_> {
     /// every interface that declares them.
     fn wit_rust_type(&self, ty: &WitType, iface: &str, param: bool) -> String {
         match ty {
-            WitType::Bool => "bool".to_owned(),
-            WitType::U8 => "u8".to_owned(),
-            WitType::U16 => "u16".to_owned(),
-            WitType::U32 => "u32".to_owned(),
-            WitType::U64 => "u64".to_owned(),
-            WitType::S8 => "i8".to_owned(),
-            WitType::S16 => "i16".to_owned(),
-            WitType::S32 => "i32".to_owned(),
-            WitType::S64 => "i64".to_owned(),
-            WitType::F32 => "f32".to_owned(),
-            WitType::F64 => "f64".to_owned(),
-            WitType::Str => "String".to_owned(),
             WitType::List(inner) => format!("Vec<{}>", self.wit_rust_type(inner, iface, param)),
             WitType::Tuple(inner) => {
                 let parts: Vec<String> = inner
@@ -477,6 +484,9 @@ impl Emitter<'_, '_> {
             // macro, so no alias spelling is needed and none is emitted.
             WitType::AnyCbor => "Vec<u8>".to_owned(),
             WitType::AnyCborKind => format!("{iface}::AnyCborKind"),
+            primitive => rust_primitive_name(primitive)
+                .expect("every other WitType is a primitive")
+                .to_owned(),
         }
     }
 
