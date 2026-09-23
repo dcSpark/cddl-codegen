@@ -202,13 +202,8 @@ impl GenerationScope {
                 // -shape collision hard-errors inside) and route the import exactly like the index
                 // branch does, so `scope_references` emits `use <dep_wasm>::collections::<Name>;`.
                 self.record_borrowed_wrapper(wrapper_ident, &dep, shape);
-                let dep_scope = ModuleScope::from(vec![
-                    crate::parsing::EXTERN_DEPS_DIR.to_owned(),
-                    dep,
-                    "collections".to_owned(),
-                ]);
                 self.wasm_collection_wrapper_registry
-                    .record_deferred(wrapper_ident.clone(), dep_scope);
+                    .record_deferred(wrapper_ident.clone(), dep_collections_scope(dep));
                 return true;
             }
         }
@@ -223,12 +218,7 @@ impl GenerationScope {
         let mut constituent_deps: Vec<Option<String>> = Vec::new();
         for c in constituents {
             for id in named_constituent_idents(c) {
-                let scope = types.scope(&id);
-                constituent_deps.push(if scope.export() {
-                    None
-                } else {
-                    scope.components().first().cloned()
-                });
+                constituent_deps.push(owning_dep(types, &id));
             }
         }
         let dep = if constituent_deps.is_empty() {
@@ -340,13 +330,8 @@ impl GenerationScope {
         // `add_imports_from_scope_refs` to `<dep_wasm>::collections` when `--extern-wasm-crate` maps
         // the dep, or left as `<dep>::collections` (the dep's rust crate name — the same fallback
         // unmapped extern types get) otherwise.
-        let dep_scope = ModuleScope::from(vec![
-            crate::parsing::EXTERN_DEPS_DIR.to_owned(),
-            dep,
-            "collections".to_owned(),
-        ]);
         self.wasm_collection_wrapper_registry
-            .record_deferred(wrapper_ident.clone(), dep_scope);
+            .record_deferred(wrapper_ident.clone(), dep_collections_scope(dep));
         true
     }
 
@@ -365,15 +350,7 @@ impl GenerationScope {
     /// Emits nothing when the index flag is unused, and never changes an emitted byte.
     pub(super) fn warn_rule_declared_table_shadows_index(&mut self, rust_ident: &RustIdent) {
         let name = rust_ident.as_ref();
-        // Several deps listing one name is already its own warned condition on the defer path; here
-        // the collision is the same whichever dep hosts it, so name the first (BTreeMap order, so
-        // the choice is deterministic) rather than reciting the set.
-        let Some(dep) = self
-            .extern_wrapper_index
-            .iter()
-            .find(|(_, names)| names.contains(name))
-            .map(|(dep, _)| dep.clone())
-        else {
+        let Some(dep) = self.first_index_dep_listing(name) else {
             return;
         };
         if !self.deferred_warned.insert(rust_ident.clone()) {
@@ -386,6 +363,17 @@ impl GenerationScope {
              when linked into one cdylib. Remedy: rename the rule, or give it a distinct @name, or \
              drop the rule and let {dep} own the type."
         );
+    }
+
+    /// The first `--extern-wrapper-index` dependency listing `name`, for the shadowing warnings.
+    /// Several deps listing one name is its own warned condition on the defer path; for a local
+    /// mint the collision is the same whichever dep hosts it, so name the first (BTreeMap order, so
+    /// the choice is deterministic) rather than reciting the set.
+    fn first_index_dep_listing(&self, name: &str) -> Option<String> {
+        self.extern_wrapper_index
+            .iter()
+            .find(|(_, names)| names.contains(name))
+            .map(|(dep, _)| dep.clone())
     }
 
     /// The uniform backstop for the same duplicate-`#[wasm_bindgen]`-symbol configuration
@@ -421,15 +409,7 @@ impl GenerationScope {
             return;
         }
         let name = ident.as_ref();
-        // Several deps listing one name is its own warned condition on the defer path; here the
-        // collision is the same whichever dep hosts it, so name the first (BTreeMap order, so the
-        // choice is deterministic) rather than reciting the set — as the table sibling does.
-        let Some(dep) = self
-            .extern_wrapper_index
-            .iter()
-            .find(|(_, names)| names.contains(name))
-            .map(|(dep, _)| dep.clone())
-        else {
+        let Some(dep) = self.first_index_dep_listing(name) else {
             return;
         };
         if !self.deferred_warned.insert(ident.clone()) {
@@ -2286,6 +2266,26 @@ fn sole_named_leaf(constituents: &[&ConceptualRustType]) -> Option<RustIdent> {
     sole
 }
 
+/// The dependency's `collections` module scope that a deferred wrapper is imported from.
+fn dep_collections_scope(dep: String) -> ModuleScope {
+    ModuleScope::from(vec![
+        crate::parsing::EXTERN_DEPS_DIR.to_owned(),
+        dep,
+        "collections".to_owned(),
+    ])
+}
+
+/// The dependency owning a named type: the leading component of its non-exported scope, or `None`
+/// for a consumer-owned (exported) type.
+fn owning_dep(types: &IntermediateTypes, id: &RustIdent) -> Option<String> {
+    let scope = types.scope(id);
+    if scope.export() {
+        None
+    } else {
+        scope.components().first().cloned()
+    }
+}
+
 /// The set of element OWNERS of a wrapper's constituents, computed transitively to the named leaves.
 /// Each leaf resolves to `Some(dep)` when it is an extern type (leading component of its non-exported
 /// scope) or `None` when it is a consumer-owned (exported) type. An empty set means "ownerless" (no
@@ -2298,12 +2298,7 @@ fn transitive_owner_set(
     let mut owners = BTreeSet::new();
     for c in constituents {
         for id in transitive_named_leaf_idents(c) {
-            let scope = types.scope(&id);
-            owners.insert(if scope.export() {
-                None
-            } else {
-                scope.components().first().cloned()
-            });
+            owners.insert(owning_dep(types, &id));
         }
     }
     owners
