@@ -2089,25 +2089,7 @@ impl GenerationScope {
         // `generated/<scope>/mod.rs` (the re-export glue) yet never declare `pub mod <scope>;`,
         // leaving the root's `use <scope>::…;` referring to an undeclared module (E0432). `rust_lib`
         // ordering is unchanged: nothing between the old and new positions writes `rust_lib`.
-        let scope_names = self
-            .rust_scopes
-            .keys()
-            .filter(|scope| **scope != *ROOT_SCOPE)
-            .cloned()
-            .collect::<Vec<_>>();
-        for scope in scope_names
-            .iter()
-            .filter_map(|s| {
-                if s.export() {
-                    s.components().first()
-                } else {
-                    None
-                }
-            })
-            .collect::<BTreeSet<_>>()
-        {
-            self.rust_lib().raw(format!("pub mod {scope};"));
-        }
+        let scope_names = declare_top_level_scope_mods(&mut self.rust_lib_scope, &self.rust_scopes);
 
         // The extern-interface compiled self-check module (materialized as
         // `generated/extern_interface_check.rs` in `generated_files`). UNCONDITIONAL — declared in
@@ -2145,22 +2127,13 @@ impl GenerationScope {
             content.push_import(format!("{}::error", cli.common_import_rust()), "*", None);
             // in case we store these in enums we're just going to dump them in everywhere
             if cli.preserve_encodings {
-                content
-                    .push_import(
+                for ty in PRESERVE_ENCODING_TYPES {
+                    content.push_import(
                         format!("{}::serialization", cli.common_import_rust()),
-                        "LenEncoding",
-                        None,
-                    )
-                    .push_import(
-                        format!("{}::serialization", cli.common_import_rust()),
-                        "StringEncoding",
-                        None,
-                    )
-                    .push_import(
-                        format!("{}::serialization", cli.common_import_rust()),
-                        "TagPresenceEncoding",
+                        ty,
                         None,
                     );
+                }
             }
         }
 
@@ -2178,22 +2151,14 @@ impl GenerationScope {
                     // covers cross-scope keys, since a child glob re-imports the parent struct
                     // file's `use` bindings (the scope_references imports pushed above)
                     .push_import("super", "*", None)
-                    .push_import("alloc::collections", "BTreeMap", None)
-                    .push_import(
+                    .push_import("alloc::collections", "BTreeMap", None);
+                for ty in PRESERVE_ENCODING_TYPES {
+                    content.push_import(
                         format!("{}::serialization", cli.common_import_rust()),
-                        "LenEncoding",
-                        None,
-                    )
-                    .push_import(
-                        format!("{}::serialization", cli.common_import_rust()),
-                        "StringEncoding",
-                        None,
-                    )
-                    .push_import(
-                        format!("{}::serialization", cli.common_import_rust()),
-                        "TagPresenceEncoding",
+                        ty,
                         None,
                     );
+                }
             }
         }
 
@@ -2628,25 +2593,8 @@ impl GenerationScope {
             // snapshotted before the glue would materialize that scope's `generated/<scope>/mod.rs` yet
             // never declare `pub mod <scope>;` in the root (E0432). `wasm_lib` ordering is unchanged:
             // nothing between the old and new positions writes `wasm_lib`.
-            let wasm_scope_names = self
-                .wasm_scopes
-                .keys()
-                .filter(|scope| **scope != *ROOT_SCOPE)
-                .cloned()
-                .collect::<Vec<_>>();
-            for scope in wasm_scope_names
-                .iter()
-                .filter_map(|s| {
-                    if s.export() {
-                        s.components().first()
-                    } else {
-                        None
-                    }
-                })
-                .collect::<BTreeSet<_>>()
-            {
-                self.wasm_lib().raw(format!("pub mod {scope};"));
-            }
+            let wasm_scope_names =
+                declare_top_level_scope_mods(&mut self.wasm_lib_scope, &self.wasm_scopes);
             // The collection-wrapper index module (materialized as `generated/collections.rs` in
             // `generated_files`). Declared unconditionally for every wasm run — even one that mints
             // zero wrappers — from the always-regenerated generated root, never the seed-once
@@ -3014,6 +2962,33 @@ fn set_tag_idiom_doc(n: usize) -> String {
 const REJECT_SET_DOC: &str = "`@duplicates reject`: a repeated element is refused (a \
     `DuplicateKey` error) on both the wire and the API; accepted (duplicate-free) input re-emits \
     byte-exactly in wire order (the set is order-preserving, never sorted).";
+
+/// The common-crate `serialization` encoding types every preserve-encodings struct and
+/// cbor_encodings file imports, in import order.
+const PRESERVE_ENCODING_TYPES: [&str; 3] = ["LenEncoding", "StringEncoding", "TagPresenceEncoding"];
+
+/// Declares `pub mod <scope>;` in `lib` for the leading component of every exported non-root
+/// scope in `scopes`, deduplicated and in sorted order, and returns the non-root scopes as of this
+/// call (the snapshot the caller later passes to `declare_modules`).
+fn declare_top_level_scope_mods(
+    lib: &mut codegen::Scope,
+    scopes: &BTreeMap<ModuleScope, codegen::Scope>,
+) -> Vec<ModuleScope> {
+    let scope_names = scopes
+        .keys()
+        .filter(|scope| **scope != *ROOT_SCOPE)
+        .cloned()
+        .collect::<Vec<_>>();
+    for scope in scope_names
+        .iter()
+        .filter(|scope| scope.export())
+        .filter_map(|scope| scope.components().first())
+        .collect::<BTreeSet<_>>()
+    {
+        lib.raw(format!("pub mod {scope};"));
+    }
+    scope_names
+}
 
 /// Pushes into `content` the imports `scope` needs for idents it references from other scopes.
 fn add_imports_from_scope_refs(
