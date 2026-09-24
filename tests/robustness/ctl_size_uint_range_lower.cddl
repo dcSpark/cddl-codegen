@@ -1,6 +1,5 @@
-; `uint .size (l..h)` with a NONZERO lower size. RFC 8610 §3.8.1 defines `.size` on `uint` only as
-; a maximum byte count, so the lower bound has two readings (0, or 256**(l-1)) and neither oracle
-; implements the ranged form; refused gracefully. It once generated `256..65535` (a `2**(8*l)`
-; lower bound matching neither reading). The zero-lower-size form maps onto the plain window and
-; is pinned by `robustness_tests::uint_size_range_lower_bound`.
+; `uint .size (l..h)` with a NONZERO lower size. RFC 8610 §3.8.1: each admitted size N is a
+; maximum (`uint .size N` is `0...256**N`), so the ranged form is the `uint .size h` window and
+; generates `u16` here. It once generated `256..65535` (a `2**(8*l)` lower bound that rejected the
+; one-byte values). Pinned by `robustness_tests::uint_size_range_lower_bound`.
 x = uint .size (1..2)

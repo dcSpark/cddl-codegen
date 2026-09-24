@@ -1063,34 +1063,45 @@ fn uint_size_at_least_eight_bytes_is_plain_u64() {
     );
 }
 
-/// `uint .size (l..h)`: RFC 8610 §3.8.1 defines `.size` on `uint` only as a MAXIMUM byte count
-/// (`uint .size N` is `0...256**N`), so a zero lower size is the plain `uint .size h` window —
-/// both readings of the ranged form agree there — while a nonzero lower size has two readings
-/// (0, or `256**(l-1)` for "needs at least l bytes") and neither the ruby nor the rust oracle
-/// implements it. The arm once used `2**(8*l)` for the lower bound, which matches neither
-/// reading: `uint .size (1..2)` rejected the one-byte values 1..255 and `uint .size (0..2)`
-/// rejected 0. Zero maps onto the window; nonzero refuses gracefully.
+/// `uint .size (l..h)`: RFC 8610 §3.8.1 makes the controller a type of admitted sizes, and on
+/// `uint` each size N is a MAXIMUM (`uint .size N` is `0...256**N`). A value matches when it fits
+/// in some N of `l..h`, so the ranged form is exactly `uint .size h` and the lower size never
+/// raises the lower bound. The arm once used `2**(8*l)` for the lower bound: `uint .size (1..2)`
+/// rejected the one-byte values 1..255 and `uint .size (0..2)` rejected 0.
 #[test]
 fn uint_size_range_lower_bound() {
-    for (tag, spec) in [
-        ("uint_size_range_zero_inclusive", "x = uint .size (0..2)\n"),
-        ("uint_size_range_zero_exclusive", "x = uint .size (0...3)\n"),
+    for (tag, spec, expected) in [
+        (
+            "uint_size_range_zero_inclusive",
+            "x = uint .size (0..2)\n",
+            "pub type X = u16;",
+        ),
+        (
+            "uint_size_range_zero_exclusive",
+            "x = uint .size (0...3)\n",
+            "pub type X = u16;",
+        ),
+        (
+            "uint_size_range_one",
+            "x = uint .size (1..2)\n",
+            "pub type X = u16;",
+        ),
+        (
+            "uint_size_range_exact",
+            "x = uint .size (2..2)\n",
+            "pub type X = u16;",
+        ),
+        (
+            "uint_size_range_member",
+            "x = [a: uint .size (2..4)]\n",
+            "pub a: u32,",
+        ),
     ] {
         let files = expect_generates(tag, spec, &["--wasm=false"]);
         let src = &files["rust/src/generated/mod.rs"];
         assert!(
-            src.contains("pub type X = u16;"),
-            "{tag}: a zero lower size must be the plain two-byte window, got:\n{src}"
-        );
-    }
-    for (tag, spec) in [
-        ("uint_size_range_one", "x = uint .size (1..2)\n"),
-        ("uint_size_range_member", "x = [a: uint .size (2..4)]\n"),
-    ] {
-        let msg = expect_graceful_rejection(tag, spec, &["--wasm=false"]);
-        assert!(
-            msg.contains("uint .size") && msg.contains("lower size"),
-            "{tag} must refuse the nonzero lower size, got: {msg}"
+            src.contains(expected),
+            "{tag}: a ranged uint size must be the `uint .size h` window ({expected}), got:\n{src}"
         );
     }
 }
