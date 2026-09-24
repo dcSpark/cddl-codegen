@@ -1787,10 +1787,6 @@ impl Config {
         )))
     }
 
-    /// "You named a crate this config does not have", written once.
-    ///
-    /// Every selector answers it identically because it IS the same question — a typo on the command
-    /// line does not become a different mistake depending on which selector carried it.
     /// The RUN level: the command-line `--verbosity` if given, else `[defaults].verbosity`, else the
     /// built-in default. Shared by [`generate`] and [`print_flags`].
     fn run_verbosity(&self) -> Verbosity {
@@ -1809,6 +1805,10 @@ impl Config {
         Ok(())
     }
 
+    /// "You named a crate this config does not have", written once.
+    ///
+    /// Every selector answers it identically because it IS the same question — a typo on the command
+    /// line does not become a different mistake depending on which selector carried it.
     fn unknown_crate(&self, name: &str) -> String {
         format!(
             "`{name}` is not a crate in this config. Configured crates: {}",

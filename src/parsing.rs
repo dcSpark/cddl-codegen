@@ -3712,14 +3712,14 @@ fn parse_type(
         &type1.type2,
         Type2::Typename { ident, .. } if ident.ident == RAW_BYTES_MARKER
     );
-    // A rule whose whole body is a generic INSTANTIATION (`foo = base<uint>`) — including a named
-    // binding to a generic set nominal. Its type is minted during finalize's generic resolution,
-    // from the DEFINITION's config, so a directive whose only carrier is that config is written on
-    // one rule and read from another.
     // The marker the rule spells, for the "invalid HERE" rejections that name it.
     let marker = is_extern_marker
         .then_some(EXTERN_MARKER)
         .or(is_raw_bytes_marker.then_some(RAW_BYTES_MARKER));
+    // A rule whose whole body is a generic INSTANTIATION (`foo = base<uint>`) — including a named
+    // binding to a generic set nominal. Its type is minted during finalize's generic resolution,
+    // from the DEFINITION's config, so a directive whose only carrier is that config is written on
+    // one rule and read from another.
     let is_generic_instantiation = matches!(
         &type1.type2,
         Type2::Typename {
@@ -5011,23 +5011,6 @@ fn normalized_dynamic_sequence_occurrence_window(
     ((min, max) != (0, u64::MAX)).then_some((min, max))
 }
 
-/// Whether a single-choice inline group carrying this occurrence marker may be spliced into the
-/// parent entry list (pure grouping) rather than kept unflattened for downstream rejection.
-///
-/// Splicing DISCARDS the marker, narrowing the group to exactly-once. That is only sound when the
-/// marker already means exactly-once — `None` or `1*1` (any representation) — OR, on the MAP side,
-/// when the lower bound is ≥ 1: under unique map keys `+` / `n*m` collapse to exactly-one, so a
-/// mandatory field is the honored semantics (the f18d764 boundary). Every zero-permitting marker
-/// (`*`, `?`, `0*n`) and every array marker admitting 2+ reps (`+`, `2*5`) is kept unflattened so
-/// the caller can reject it instead of silently generating a decoder that rejects valid CBOR.
-///
-/// SECOND CONSUMER, asking the identical question:
-/// `reject_occurrence_on_single_entry_arm`. A single-entry group-choice arm has nowhere to put a
-/// repetition count either — the entry's TYPE goes straight into the enum variant, and a variant
-/// holds exactly one value — so "is dropping this marker sound?" is the same question there, and
-/// it asks it HERE rather than restating the boundary. One predicate is what stops the two seams
-/// from disagreeing about `{ x: uint // + kv }`: honored-as-mandatory on both, because a second
-/// repetition would duplicate `kv`'s fixed keys.
 /// The `(min, max)` window an occurrence marker admits: `*` is `(None, None)`, `+` is
 /// `(Some(1), None)`, `?` is `(None, Some(1))`, and `n*m` keeps its bounds with a zero lower bound
 /// dropped.
@@ -5069,6 +5052,23 @@ fn occurrence_permits_count(entry: &GroupEntry) -> bool {
     })
 }
 
+/// Whether a single-choice inline group carrying this occurrence marker may be spliced into the
+/// parent entry list (pure grouping) rather than kept unflattened for downstream rejection.
+///
+/// Splicing DISCARDS the marker, narrowing the group to exactly-once. That is only sound when the
+/// marker already means exactly-once — `None` or `1*1` (any representation) — OR, on the MAP side,
+/// when the lower bound is ≥ 1: under unique map keys `+` / `n*m` collapse to exactly-one, so a
+/// mandatory field is the honored semantics (the f18d764 boundary). Every zero-permitting marker
+/// (`*`, `?`, `0*n`) and every array marker admitting 2+ reps (`+`, `2*5`) is kept unflattened so
+/// the caller can reject it instead of silently generating a decoder that rejects valid CBOR.
+///
+/// SECOND CONSUMER, asking the identical question:
+/// `reject_occurrence_on_single_entry_arm`. A single-entry group-choice arm has nowhere to put a
+/// repetition count either — the entry's TYPE goes straight into the enum variant, and a variant
+/// holds exactly one value — so "is dropping this marker sound?" is the same question there, and
+/// it asks it HERE rather than restating the boundary. One predicate is what stops the two seams
+/// from disagreeing about `{ x: uint // + kv }`: honored-as-mandatory on both, because a second
+/// repetition would duplicate `kv`'s fixed keys.
 fn inline_group_occurrence_flattens(occur: Option<&Occur>, rep: Representation) -> bool {
     match occur {
         // no marker, or an explicit exactly-once bound: splicing preserves the semantics.
@@ -5908,7 +5908,6 @@ fn parse_group_type<'a>(
     GroupParsingType::Heterogenous
 }
 
-// would use rust_type_from_type1 but that requires IntermediateTypes which we shouldn't
 /// The non-null arm of a two-arm `T / null` (or `null / T`) type choice, which collapses to
 /// `Option<T>`; `None` for any other choice.
 fn null_collapse_inner<'a, 'b>(type_choices: &'b [TypeChoice<'a>]) -> Option<&'b Type1<'a>> {
@@ -5924,6 +5923,7 @@ fn null_collapse_inner<'a, 'b>(type_choices: &'b [TypeChoice<'a>]) -> Option<&'b
     }
 }
 
+// would use rust_type_from_type1 but that requires IntermediateTypes which we shouldn't
 fn type2_is_null(t2: &Type2) -> bool {
     match t2 {
         Type2::Typename { ident, .. } => ident.ident == "null" || ident.ident == "nil",
@@ -5962,8 +5962,8 @@ fn type_to_field_name(t: &Type) -> Option<String> {
     match t.type_choices.len() {
         1 => type2_to_field_name(&t.type_choices.first().unwrap().type1.type2),
         2 => {
-            // special case for T / null -> maps to Option<T> so field name should be same as just T
-            // neither are null - we do not support type choices here
+            // special case for T / null -> maps to Option<T> so field name should be same as just T;
+            // any other two-arm type choice is unsupported here
             null_collapse_inner(&t.type_choices).and_then(|inner| type2_to_field_name(&inner.type2))
         }
         // no type choice support here
