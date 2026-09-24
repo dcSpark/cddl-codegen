@@ -208,13 +208,17 @@ pub fn emit_generated_wasm_tests(
     // decodes the rust twin's bytes, and that twin's shared `MintValue::Any` renderer uses the
     // same `__AnyCborMint` alias as the rust generated-test module. Keep this conditional so an
     // any-free wasm test module remains byte-identical.
+    // Both imports reach the rust crate through the same prefix every other wasm-side runtime path
+    // uses (`--common-import-override`, else the `--lib-name` code form), not a literal `cddl_lib`
+    // (E0433 under any non-default lib name).
+    let common = cli.common_import_wasm();
     let any_import = if types.uses_any_cbor() {
-        "    use cddl_lib::any_cbor::AnyCbor as __AnyCborMint;\n"
+        format!("    use {common}::any_cbor::AnyCbor as __AnyCborMint;\n")
     } else {
-        ""
+        String::new()
     };
     Some(format!(
-        "#[cfg(test)]\n#[allow(clippy::all)]\n#[allow(unused_imports)]\nmod cddl_generated_wasm_tests {{\n    use super::*;\n{scope_globs}    use cddl_lib::serialization::*;\n{any_import}{}\n}}\n",
+        "#[cfg(test)]\n#[allow(clippy::all)]\n#[allow(unused_imports)]\nmod cddl_generated_wasm_tests {{\n    use super::*;\n{scope_globs}    use {common}::serialization::*;\n{any_import}{}\n}}\n",
         fns.join("\n")
     ))
 }

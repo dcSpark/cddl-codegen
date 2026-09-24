@@ -5446,6 +5446,79 @@ fn emit_tests_multifile_scope_imports() {
     );
 }
 
+/// The emitted `cddl_generated_wasm_tests` module reaches the rust crate's runtime (`serialization`,
+/// `any_cbor`) through the same prefix as every other wasm-side path — `--common-import-override`,
+/// else the `--lib-name` code form — never a literal `cddl_lib` (E0433 in the generated wasm crate
+/// under any non-default lib name). The default lib name keeps the `cddl_lib::` spelling unchanged.
+#[test]
+fn emit_tests_wasm_module_imports_follow_lib_name() {
+    use clap::Parser;
+
+    // `any` pulls in the `__AnyCborMint` import. The override cell drops it: `any` under
+    // `--common-import-override` additionally requires a `--common-import-flavor` record, which is
+    // orthogonal to the import prefix under test.
+    const WITH_ANY: &str = "foo = [uint, text]\nbar = #6.24(any)\nbaz = { a: foo, b: bar }\n";
+    const NO_ANY: &str = "foo = [uint, text]\nbaz = { a: foo }\n";
+    let spec_path = std::env::temp_dir().join(format!(
+        "cddl_codegen_emit_tests_wasm_lib_name_{:016x}.cddl",
+        checkout_hash()
+    ));
+    let input = format!("--input={}", spec_path.to_str().unwrap());
+    let mut results = Vec::new();
+    for (spec, extra, prefix) in [
+        (WITH_ANY, vec![], "cddl_lib"),
+        (WITH_ANY, vec!["--lib-name=foo-lib"], "foo_lib"),
+        (
+            NO_ANY,
+            vec!["--lib-name=foo-lib", "--common-import-override=shared_core"],
+            "shared_core",
+        ),
+    ] {
+        std::fs::write(&spec_path, spec).unwrap();
+        let mut args = vec![
+            "cddl-codegen",
+            input.as_str(),
+            "--output=unused_in_memory_generation",
+            "--wasm=true",
+            "--emit-tests=true",
+        ];
+        args.extend(extra.iter().copied());
+        let cli = crate::cli::Cli::parse_from(args);
+        let files = crate::api::generated_strings(&cli).unwrap();
+        let module = files
+            .get("wasm/src/generated/mod.rs")
+            .expect("wasm/src/generated/mod.rs is generated")
+            .clone();
+        results.push((spec == WITH_ANY, extra, prefix, module));
+    }
+    let _ = std::fs::remove_file(&spec_path);
+    for (with_any, extra, prefix, module) in results {
+        assert!(
+            module.contains("mod cddl_generated_wasm_tests"),
+            "{extra:?}: expected the wasm test module\n{module}"
+        );
+        let mut imports = vec![format!("    use {prefix}::serialization::*;\n")];
+        if with_any {
+            imports.push(format!(
+                "    use {prefix}::any_cbor::AnyCbor as __AnyCborMint;\n"
+            ));
+        }
+        for import in imports {
+            assert!(
+                module.contains(&import),
+                "{extra:?}: the wasm test module must import `{import}` through the wasm crate's \
+                 runtime prefix\n{module}"
+            );
+        }
+        if prefix != "cddl_lib" {
+            assert!(
+                !module.contains("cddl_lib::"),
+                "{extra:?}: `cddl_lib::` does not exist under a non-default lib name\n{module}"
+            );
+        }
+    }
+}
+
 /// The wasm-ABI matrix ROUND-TRIP gate — the behavioural upgrade of `wasm_matrix_compiles`. Same cell
 /// enumeration (`tests/matrix_wasm/*.cddl`), but each cell is generated with `--wasm=true
 /// --emit-tests=true` and `cargo test`ed (not `cargo check`ed): this compiles AND RUNS the emitted
