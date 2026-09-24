@@ -1029,6 +1029,40 @@ fn size_window_on_bytes_or_text_keeps_its_carrier() {
     }
 }
 
+/// A CBOR uint is at most 8 bytes, so `uint .size N` for any `N >= 8` admits every uint and lowers
+/// exactly like `uint .size 8` (the plain `u64`). The arm once scaled `2**(8*N)` directly: `N >= 16`
+/// overflowed i128 (a panic) and `N` in 9..=15 compared a `u64` against a literal above
+/// `u64::MAX`, which does not compile. The ranged `uint .size (0..h)` form shares the bound.
+#[test]
+fn uint_size_at_least_eight_bytes_is_plain_u64() {
+    for (tag, spec) in [
+        ("uint_size_8", "x = uint .size 8\n"),
+        ("uint_size_9", "x = uint .size 9\n"),
+        ("uint_size_15", "x = uint .size 15\n"),
+        ("uint_size_16", "x = uint .size 16\n"),
+        ("uint_size_huge", "x = uint .size 4294967296\n"),
+        ("uint_size_range_9", "x = uint .size (0..9)\n"),
+        ("uint_size_range_exclusive_17", "x = uint .size (0...17)\n"),
+    ] {
+        let files = expect_generates(tag, spec, &["--wasm=false"]);
+        let src = &files["rust/src/generated/mod.rs"];
+        assert!(
+            src.contains("pub type X = u64;"),
+            "{tag}: a size of 8 or more bytes must be the plain u64, got:\n{src}"
+        );
+    }
+    let member = expect_generates(
+        "uint_size_member_16",
+        "x = [a: uint .size 16]\n",
+        &["--wasm=false"],
+    );
+    let member_src = &member["rust/src/generated/mod.rs"];
+    assert!(
+        member_src.contains("pub a: u64,") && !member_src.contains("a > "),
+        "a member `uint .size 16` must be the plain u64, got:\n{member_src}"
+    );
+}
+
 /// `uint .size (l..h)`: RFC 8610 §3.8.1 defines `.size` on `uint` only as a MAXIMUM byte count
 /// (`uint .size N` is `0...256**N`), so a zero lower size is the plain `uint .size h` window —
 /// both readings of the ranged form agree there — while a nonzero lower size has two readings

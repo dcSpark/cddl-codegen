@@ -3037,10 +3037,9 @@ fn parse_control_operator(
                             // window under every reading of the ranged form; a nonzero one reads
                             // as 0 or as `256**(l-1)` ("needs at least l bytes"), and neither
                             // oracle implements it, so it is refused rather than guessed.
-                            ControlOperator::Range((Some(0), Some(h))) => ControlOperator::Range((
-                                Some(0),
-                                Some(i128::pow(2, 8 * *h as u32) - 1),
-                            )),
+                            ControlOperator::Range((Some(0), Some(h))) => {
+                                ControlOperator::Range((Some(0), Some(uint_size_max(*h))))
+                            }
                             ControlOperator::Range((Some(l), Some(_))) => {
                                 types.record_rejection(format!(
                                     "{}`uint .size` range with nonzero lower size `{l}` is unsupported — RFC 8610 defines `.size` on `uint` only as a maximum byte count, so the lower bound is ambiguous (0, or 256**({l}-1) for \"needs at least {l} bytes\"); use `uint .size (0..h)` / `uint .size h`, or an explicit value range",
@@ -3048,10 +3047,9 @@ fn parse_control_operator(
                                 ));
                                 ControlOperator::Range((None, None))
                             }
-                            ControlOperator::Range((None, Some(h))) => ControlOperator::Range((
-                                Some(0),
-                                Some(i128::pow(2, 8 * *h as u32) - 1),
-                            )),
+                            ControlOperator::Range((None, Some(h))) => {
+                                ControlOperator::Range((Some(0), Some(uint_size_max(*h))))
+                            }
                             _ => panic!(
                                 "unexpected partial range in size control operator: {:?}",
                                 operator
@@ -3089,6 +3087,18 @@ fn parse_control_operator(
                 ctrl
             ),
         },
+    }
+}
+
+/// The largest uint of at most `bytes` bytes (`256**bytes - 1`). A CBOR uint is at most 8 bytes,
+/// so any `bytes >= 8` admits every uint: `u64::MAX`, the window `uint .size 8` collapses onto.
+/// Scaling `2**(8*bytes)` directly overflowed i128 from 16 bytes on and, from 9, emitted a bound
+/// above `u64::MAX`. `bytes` is non-negative: the `.size` arm refuses negative operands first.
+fn uint_size_max(bytes: i128) -> i128 {
+    if bytes >= 8 {
+        u64::MAX as i128
+    } else {
+        (1i128 << (8 * bytes)) - 1
     }
 }
 
