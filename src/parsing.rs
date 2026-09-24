@@ -2575,6 +2575,38 @@ fn type2_to_number_literal(type2: &Type2) -> i128 {
     }
 }
 
+/// The value of an INTEGER literal `Type2` (uint/int) as i128, or `None` for anything else — float
+/// literals included, which the `.size` arm refuses (`size_operand_float_literal`) before it
+/// reads any bound, so no float is ever truncated into an integer window here.
+fn int_literal_to_i128(type2: &Type2) -> Option<i128> {
+    match type2 {
+        Type2::UintValue { value, .. } => Some(*value as i128),
+        Type2::IntValue { value, .. } => Some(*value as i128),
+        _ => None,
+    }
+}
+
+/// The first float literal a `.size` operand spells: the bare operand (`.size 2.5`) or either bound
+/// of its parenthesized form (`.size (1.5..2)`, `.size (1.5)`).
+fn size_operand_float_literal(operand: &Type2) -> Option<f64> {
+    let float = |t: &Type2| match t {
+        Type2::FloatValue { value, .. } => Some(*value),
+        _ => None,
+    };
+    match operand {
+        Type2::ParenthesizedType { pt, .. } => pt.type_choices.iter().find_map(|choice| {
+            float(&choice.type1.type2).or_else(|| {
+                choice
+                    .type1
+                    .operator
+                    .as_ref()
+                    .and_then(|op| float(&op.type2))
+            })
+        }),
+        other => float(other),
+    }
+}
+
 /// The numeric value of a literal `Type2` (uint/int/float) as f64, or `None` if it isn't a number
 /// literal. Used to build float windows without truncation (ints promote to f64 losslessly here).
 fn type2_to_f64(type2: &Type2) -> Option<f64> {
@@ -2916,24 +2948,26 @@ fn parse_control_operator(
                 ControlOperator::Range((Some(type2_to_number_literal(&operator.type2) + 1), None))
             }
             token::ControlOperator::SIZE => {
+                // A size counts whole bytes. A float operand is refused rather than cast through a
+                // saturating `as i128`, which truncated `2.5` to 2 and turned `(-1.0e300..1.0e300)`
+                // into the full-i128 window `range_to_primitive` mapped onto `f32`. The operand
+                // class decides, not its value: an integral `2.0` refuses too.
+                if let Some(float) = size_operand_float_literal(&operator.type2) {
+                    // `{:?}` keeps the float spelling (`2.0`, `-1e300`); `Type2`'s Display prints
+                    // `2` and expands `1.0e300` to 301 digits.
+                    types.record_rejection(format!(
+                        "{}float `.size` operand `{float:?}` is unsupported — a size counts whole bytes, so a float has no exact meaning; spell the size as an integer literal (`.size 4`, `.size (1..63)`)",
+                        reject_rule_prefix(rule_name),
+                    ));
+                    return ControlOperator::Range((None, None));
+                }
                 let base_range = match &operator.type2 {
-                    Type2::UintValue { value, .. } => {
-                        ControlOperator::Range((None, Some(*value as i128)))
-                    }
-                    Type2::IntValue { value, .. } => {
-                        ControlOperator::Range((None, Some(*value as i128)))
-                    }
-                    Type2::FloatValue { value, .. } => {
-                        ControlOperator::Range((None, Some(*value as i128)))
-                    }
                     Type2::ParenthesizedType { pt, .. } => {
                         assert_eq!(pt.type_choices.len(), 1);
                         let inner_type = &pt.type_choices.first().unwrap().type1;
-                        let min = match inner_type.type2 {
-                            Type2::UintValue { value, .. } => Some(value as i128),
-                            Type2::IntValue { value, .. } => Some(value as i128),
-                            Type2::FloatValue { value, .. } => Some(value as i128),
-                            _ => unimplemented!(
+                        let min = match int_literal_to_i128(&inner_type.type2) {
+                            Some(value) => Some(value),
+                            None => unimplemented!(
                                 "unsupported type in range control operator: {:?}",
                                 operator
                             ),
@@ -2944,11 +2978,9 @@ fn parse_control_operator(
                             None => ControlOperator::Range((None, min)),
                             Some(op) => match op.operator {
                                 RangeCtlOp::RangeOp { is_inclusive, .. } => {
-                                    let value = match op.type2 {
-                                        Type2::UintValue { value, .. } => value as i128,
-                                        Type2::IntValue { value, .. } => value as i128,
-                                        Type2::FloatValue { value, .. } => value as i128,
-                                        _ => unimplemented!(
+                                    let value = match int_literal_to_i128(&op.type2) {
+                                        Some(value) => value,
+                                        None => unimplemented!(
                                             "unsupported type in range control operator: {:?}",
                                             operator
                                         ),
@@ -2960,9 +2992,13 @@ fn parse_control_operator(
                             },
                         }
                     }
-                    _ => {
-                        unimplemented!("unsupported type in range control operator: {:?}", operator)
-                    }
+                    operand => match int_literal_to_i128(operand) {
+                        Some(value) => ControlOperator::Range((None, Some(value))),
+                        None => unimplemented!(
+                            "unsupported type in range control operator: {:?}",
+                            operator
+                        ),
+                    },
                 };
                 match type2 {
                     Type2::Typename { ident, .. } if ident.to_string() == "uint" => {

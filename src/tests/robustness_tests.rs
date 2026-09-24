@@ -839,6 +839,34 @@ fn exact_byte_array_lengths_refuse_negative_and_above_wasm32_floor() {
     }
 }
 
+/// `.size` counts whole bytes, so a FLOAT operand is refused gracefully instead of being cast
+/// through a saturating `as i128` — which truncated `2.5` to an exact 2-byte array and turned
+/// `(-1.0e300..1.0e300)` into `pub type X = f32;`. Integral floats (`2.0`) refuse too: the
+/// operand class, not its value, decides. Both the bare operand and each bound of the
+/// parenthesized range are covered, on the rule and member routes.
+#[test]
+fn size_float_operand_rejects_gracefully() {
+    for (tag, spec) in [
+        ("size_float_range_start", "x = bytes .size (1.5..2)\n"),
+        (
+            "size_float_range_saturating",
+            "x = bytes .size (-1.0e300..1.0e300)\n",
+        ),
+        ("size_float_whole_uint", "x = uint .size 2.0\n"),
+        ("size_float_exact_bytes", "x = bytes .size 2.5\n"),
+        (
+            "size_float_range_end_member",
+            "x = [a: tstr .size (2..2.9)]\n",
+        ),
+    ] {
+        let msg = expect_graceful_rejection(tag, spec, &["--wasm=false"]);
+        assert!(
+            msg.contains("`.size") && msg.contains("whole bytes"),
+            "{tag} must refuse the float `.size` operand, got: {msg}"
+        );
+    }
+}
+
 /// Exact homogeneous arrays have the same portable object-size floor as exact bytes, but their
 /// top-level group-rule path bypasses the member Type1 walker. Exercise rule, member, and nested
 /// array routes so none can emit a host-only `[T; N]`; the ordinary zero/one/N shapes remain the

@@ -1,0 +1,5 @@
+; A FLOAT `.size` operand. A size counts whole bytes, so the operand is refused gracefully rather
+; than cast through a saturating `as i128` (which once truncated `1.5` to 1 here, and turned
+; `(-1.0e300..1.0e300)` into `pub type X = f32;`). The integral-float and member-route siblings
+; are pinned by `robustness_tests::size_float_operand_rejects_gracefully`.
+x = bytes .size (1.5..2)
