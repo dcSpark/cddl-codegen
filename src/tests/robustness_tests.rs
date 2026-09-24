@@ -929,6 +929,38 @@ fn size_empty_or_negative_window_rejects_gracefully() {
     }
 }
 
+/// `uint .size (l..h)`: RFC 8610 §3.8.1 defines `.size` on `uint` only as a MAXIMUM byte count
+/// (`uint .size N` is `0...256**N`), so a zero lower size is the plain `uint .size h` window —
+/// both readings of the ranged form agree there — while a nonzero lower size has two readings
+/// (0, or `256**(l-1)` for "needs at least l bytes") and neither the ruby nor the rust oracle
+/// implements it. The arm once used `2**(8*l)` for the lower bound, which matches neither
+/// reading: `uint .size (1..2)` rejected the one-byte values 1..255 and `uint .size (0..2)`
+/// rejected 0. Zero maps onto the window; nonzero refuses gracefully.
+#[test]
+fn uint_size_range_lower_bound() {
+    for (tag, spec) in [
+        ("uint_size_range_zero_inclusive", "x = uint .size (0..2)\n"),
+        ("uint_size_range_zero_exclusive", "x = uint .size (0...3)\n"),
+    ] {
+        let files = expect_generates(tag, spec, &["--wasm=false"]);
+        let src = &files["rust/src/generated/mod.rs"];
+        assert!(
+            src.contains("pub type X = u16;"),
+            "{tag}: a zero lower size must be the plain two-byte window, got:\n{src}"
+        );
+    }
+    for (tag, spec) in [
+        ("uint_size_range_one", "x = uint .size (1..2)\n"),
+        ("uint_size_range_member", "x = [a: uint .size (2..4)]\n"),
+    ] {
+        let msg = expect_graceful_rejection(tag, spec, &["--wasm=false"]);
+        assert!(
+            msg.contains("uint .size") && msg.contains("lower size"),
+            "{tag} must refuse the nonzero lower size, got: {msg}"
+        );
+    }
+}
+
 /// Exact homogeneous arrays have the same portable object-size floor as exact bytes, but their
 /// top-level group-rule path bypasses the member Type1 walker. Exercise rule, member, and nested
 /// array routes so none can emit a host-only `[T; N]`; the ordinary zero/one/N shapes remain the

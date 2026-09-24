@@ -3032,10 +3032,22 @@ fn parse_control_operator(
                     Type2::Typename { ident, .. } if ident.to_string() == "uint" => {
                         // .size 3 means 24 bits
                         match &base_range {
-                            ControlOperator::Range((Some(l), Some(h))) => ControlOperator::Range((
-                                Some(i128::pow(2, 8 * *l as u32)),
+                            // RFC 8610 §3.8.1 defines `.size` on `uint` only as a MAXIMUM byte
+                            // count (`uint .size N` is `0...256**N`). A zero lower size is that
+                            // window under every reading of the ranged form; a nonzero one reads
+                            // as 0 or as `256**(l-1)` ("needs at least l bytes"), and neither
+                            // oracle implements it, so it is refused rather than guessed.
+                            ControlOperator::Range((Some(0), Some(h))) => ControlOperator::Range((
+                                Some(0),
                                 Some(i128::pow(2, 8 * *h as u32) - 1),
                             )),
+                            ControlOperator::Range((Some(l), Some(_))) => {
+                                types.record_rejection(format!(
+                                    "{}`uint .size` range with nonzero lower size `{l}` is unsupported — RFC 8610 defines `.size` on `uint` only as a maximum byte count, so the lower bound is ambiguous (0, or 256**({l}-1) for \"needs at least {l} bytes\"); use `uint .size (0..h)` / `uint .size h`, or an explicit value range",
+                                    reject_rule_prefix(rule_name)
+                                ));
+                                ControlOperator::Range((None, None))
+                            }
                             ControlOperator::Range((None, Some(h))) => ControlOperator::Range((
                                 Some(0),
                                 Some(i128::pow(2, 8 * *h as u32) - 1),
