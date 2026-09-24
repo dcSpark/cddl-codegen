@@ -3100,7 +3100,35 @@ fn with_optional_bounds(ty: RustType, bounds: Option<(Option<i128>, Option<i128>
     }
 }
 
+/// Builds the ranged `RustType` for an integer window on `primitive`. Only an INTEGER head whose
+/// window is exactly a rust integer's range collapses onto that integer primitive; any other head
+/// (a `bytes`/`tstr` `.size` length window) keeps its own carrier with the window as its bounds,
+/// or none when the window is the unconstrained one (`0..u64::MAX`: a CBOR length never exceeds
+/// it). Collapsing by bounds alone turned `bytes .size (0..255)` into `u8`.
 fn range_to_primitive(low: Option<i128>, high: Option<i128>, primitive: Primitive) -> RustType {
+    let integer_head = matches!(
+        primitive,
+        Primitive::U8
+            | Primitive::I8
+            | Primitive::U16
+            | Primitive::I16
+            | Primitive::U32
+            | Primitive::I32
+            | Primitive::U64
+            | Primitive::I64
+            | Primitive::N64
+    );
+    if !integer_head {
+        let unconstrained_length = matches!(primitive, Primitive::Bytes | Primitive::Str)
+            && matches!(low, None | Some(0))
+            && high == Some(u64::MAX as i128);
+        let bounds = if unconstrained_length {
+            (None, None)
+        } else {
+            (low, high)
+        };
+        return RustType::from(ConceptualRustType::Primitive(primitive)).with_bounds(bounds);
+    }
     match (low, high) {
         (Some(l), Some(h)) if l == u8::MIN as i128 && h == u8::MAX as i128 => {
             ConceptualRustType::Primitive(Primitive::U8).into()

@@ -929,6 +929,106 @@ fn size_empty_or_negative_window_rejects_gracefully() {
     }
 }
 
+/// A byte or text `.size` window keeps its byte/text carrier even when its bounds coincide with an
+/// integer primitive's range. `range_to_primitive` once collapsed any window by bounds alone, so
+/// `bytes .size (0..255)` became `pub type X = u8;` and `tstr .size (0..65535)` became `u16` — a
+/// string typed as an integer. Only integer heads collapse; the integer twins pin that.
+#[test]
+fn size_window_on_bytes_or_text_keeps_its_carrier() {
+    for (tag, spec, field) in [
+        (
+            "size_bytes_u8_window_rule",
+            "x = bytes .size (0..255)\n",
+            None,
+        ),
+        (
+            "size_text_u16_window_rule",
+            "x = tstr .size (0..65535)\n",
+            None,
+        ),
+        (
+            "size_bytes_u8_window_exclusive_rule",
+            "x = bytes .size (0...256)\n",
+            None,
+        ),
+        (
+            "size_bytes_u8_window_member",
+            "x = [a: bytes .size (0..255)]\n",
+            Some("pub a: Vec<u8>"),
+        ),
+        (
+            "size_text_u32_window_member",
+            "x = [a: tstr .size (0..4294967295)]\n",
+            Some("pub a: String"),
+        ),
+    ] {
+        let files = expect_generates(tag, spec, &["--wasm=false"]);
+        let src = &files["rust/src/generated/mod.rs"];
+        for int in ["u8", "u16", "u32", "u64"] {
+            assert!(
+                !src.contains(&format!("pub type X = {int};"))
+                    && !src.contains(&format!("pub a: {int},")),
+                "{tag}: a byte/text size window must not become `{int}`, got:\n{src}"
+            );
+        }
+        match field {
+            Some(field) => assert!(
+                src.contains(field),
+                "{tag}: expected `{field}`, got:\n{src}"
+            ),
+            None => assert!(
+                src.contains("pub struct X(Vec<u8>);") || src.contains("pub struct X(String);"),
+                "{tag}: expected a length-bounded byte/text wrapper, got:\n{src}"
+            ),
+        }
+    }
+    // The full CBOR length window is no constraint at all: the plain carrier, with no length
+    // guard (whose `usize` literal would also overflow on wasm32).
+    for (tag, spec, expected) in [
+        (
+            "size_bytes_full_length_window",
+            "x = bytes .size (0..18446744073709551615)\n",
+            "pub type X = Vec<u8>;",
+        ),
+        (
+            "size_text_full_length_member",
+            "x = [a: tstr .size (0..18446744073709551615)]\n",
+            "pub a: String,",
+        ),
+    ] {
+        let files = expect_generates(tag, spec, &["--wasm=false"]);
+        let src = &files["rust/src/generated/mod.rs"];
+        assert!(
+            src.contains(expected) && !src.contains("18446744073709551615"),
+            "{tag}: the full length window must be the unbounded carrier `{expected}`, got:\n{src}"
+        );
+    }
+    for (tag, spec, expected) in [
+        (
+            "size_uint_u8_window_rule",
+            "x = 0..255\n",
+            "pub type X = u8;",
+        ),
+        (
+            "size_uint_u16_size_rule",
+            "x = uint .size 2\n",
+            "pub type X = u16;",
+        ),
+        (
+            "size_uint_u8_window_member",
+            "x = [a: 0..255]\n",
+            "pub a: u8,",
+        ),
+    ] {
+        let files = expect_generates(tag, spec, &["--wasm=false"]);
+        let src = &files["rust/src/generated/mod.rs"];
+        assert!(
+            src.contains(expected),
+            "{tag}: an integer head must still collapse to `{expected}`, got:\n{src}"
+        );
+    }
+}
+
 /// `uint .size (l..h)`: RFC 8610 §3.8.1 defines `.size` on `uint` only as a MAXIMUM byte count
 /// (`uint .size N` is `0...256**N`), so a zero lower size is the plain `uint .size h` window —
 /// both readings of the ranged form agree there — while a nonzero lower size has two readings
