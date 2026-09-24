@@ -2961,7 +2961,9 @@ fn parse_control_operator(
                     ));
                     return ControlOperator::Range((None, None));
                 }
-                let base_range = match &operator.type2 {
+                // `spelled` keeps the authored bounds: the exclusive form derives its max as
+                // `b - 1`, so `(0...0)` is empty (max -1 < min 0) without spelling a negative.
+                let (base_range, spelled) = match &operator.type2 {
                     Type2::ParenthesizedType { pt, .. } => {
                         assert_eq!(pt.type_choices.len(), 1);
                         let inner_type = &pt.type_choices.first().unwrap().type1;
@@ -2975,7 +2977,7 @@ fn parse_control_operator(
                         match &inner_type.operator {
                             // if there was only one value instead of a range, we take that value to be the max
                             // ex: uint .size (1)
-                            None => ControlOperator::Range((None, min)),
+                            None => (ControlOperator::Range((None, min)), [min, None]),
                             Some(op) => match op.operator {
                                 RangeCtlOp::RangeOp { is_inclusive, .. } => {
                                     let value = match int_literal_to_i128(&op.type2) {
@@ -2985,21 +2987,47 @@ fn parse_control_operator(
                                             operator
                                         ),
                                     };
-                                    let max = Some(if is_inclusive { value } else { value + 1 });
-                                    ControlOperator::Range((min, max))
+                                    // `(a...b)` EXCLUDES b (RFC 8610 §3.2), as in the value
+                                    // range arm above: the largest admitted size is b-1.
+                                    let max = Some(if is_inclusive { value } else { value - 1 });
+                                    (ControlOperator::Range((min, max)), [min, Some(value)])
                                 }
                                 RangeCtlOp::CtlOp { .. } => panic!(""),
                             },
                         }
                     }
                     operand => match int_literal_to_i128(operand) {
-                        Some(value) => ControlOperator::Range((None, Some(value))),
+                        Some(value) => (
+                            ControlOperator::Range((None, Some(value))),
+                            [Some(value), None],
+                        ),
                         None => unimplemented!(
                             "unsupported type in range control operator: {:?}",
                             operator
                         ),
                     },
                 };
+                // A size counts bytes (or characters), so a negative authored bound has no
+                // meaning, and a window with no admitted size (`(0...0)`, `(3..1)`) describes no
+                // value. Both refuse here, for every head, before any head arm scales the window:
+                // the `uint` arm's `2**(8*h)` overflowed on the `-1` max of `(0...0)`.
+                if let Some(negative) = spelled.into_iter().flatten().find(|v| *v < 0) {
+                    types.record_rejection(format!(
+                        "{}negative `.size` operand `{negative}` is unsupported — a size counts bytes or characters, so it is never negative",
+                        reject_rule_prefix(rule_name),
+                    ));
+                    return ControlOperator::Range((None, None));
+                }
+                if let ControlOperator::Range((Some(min), Some(max))) = base_range
+                    && max < min
+                {
+                    types.record_rejection(format!(
+                        "{}empty `.size` window `{}` is unsupported — it admits no size (the largest admitted size {max} is below the smallest {min}), so no value matches",
+                        reject_rule_prefix(rule_name),
+                        operator.type2,
+                    ));
+                    return ControlOperator::Range((None, None));
+                }
                 match type2 {
                     Type2::Typename { ident, .. } if ident.to_string() == "uint" => {
                         // .size 3 means 24 bits

@@ -813,13 +813,13 @@ fn expect_graceful_rejection(tag: &str, spec: &str, extra: &[&str]) -> String {
 }
 
 /// Exact byte `.size` becomes a Rust array length, whose portability floor is wasm32's
-/// `isize::MAX`.  Rule and member parsing use different walkers, so pin both graceful refusals
-/// (including a negative equal window that must not cast to a huge usize).
+/// `isize::MAX`.  Rule and member parsing use different walkers, so pin both graceful refusals.
+/// A negative exact window (`bytes .size -1`, which must not cast to a huge usize) refuses earlier,
+/// in the `.size` arm; `size_empty_or_negative_window_rejects_gracefully` pins it.
 #[test]
-fn exact_byte_array_lengths_refuse_negative_and_above_wasm32_floor() {
+fn exact_byte_array_lengths_refuse_above_wasm32_floor() {
     let expected = "cannot be represented as a Rust array length on every supported target";
     for (tag, spec, spelling) in [
-        ("exact_bytes_negative_rule", "x = bytes .size -1\n", "-1"),
         (
             "exact_bytes_above_wasm_rule",
             "x = bytes .size 2147483648\n",
@@ -863,6 +863,68 @@ fn size_float_operand_rejects_gracefully() {
         assert!(
             msg.contains("`.size") && msg.contains("whole bytes"),
             "{tag} must refuse the float `.size` operand, got: {msg}"
+        );
+    }
+}
+
+/// `.size (a...b)` EXCLUDES `b` (RFC 8610 §3.2), exactly as a value range does, so the largest
+/// admitted size is `b - 1`. The arm once read the exclusive form as `b + 1`, admitting two sizes
+/// the spec forbids. Rule and member routes both pass through the one `.size` arm; the `uint` form
+/// is pinned with the lower-bound vectors in `uint_size_range_lower_bound`.
+#[test]
+fn size_exclusive_range_excludes_its_upper_bound() {
+    let bytes = expect_generates(
+        "size_exclusive_bytes",
+        "x = bytes .size (1...3)\n",
+        &["--wasm=false"],
+    );
+    let bytes_src = &bytes["rust/src/generated/mod.rs"];
+    assert!(
+        bytes_src.contains("inner.len() < 1 || inner.len() > 2"),
+        "`bytes .size (1...3)` must admit lengths 1..=2 only, got:\n{bytes_src}"
+    );
+    let text = expect_generates(
+        "size_exclusive_member_text",
+        "x = [a: tstr .size (0...4)]\n",
+        &["--wasm=false"],
+    );
+    let text_src = &text["rust/src/generated/mod.rs"];
+    assert!(
+        text_src.contains("max: Some(3)") && !text_src.contains("max: Some(5)"),
+        "`tstr .size (0...4)` must admit lengths 0..=3 only, got:\n{text_src}"
+    );
+}
+
+/// A `.size` window that admits no size, or that spells a negative size, refuses gracefully for
+/// every head and position. The exclusive form derives `b - 1`, so `uint .size (0...0)` produced
+/// a `-1` maximum that the `uint` arm's `2**(8*h)` scaling overflowed on (a panic), and
+/// `bytes .size (2...2)` produced an impossible min-2/max-1 wrapper. A negative operand gets its
+/// own message rather than the `uint` lower-size or array-length text.
+#[test]
+fn size_empty_or_negative_window_rejects_gracefully() {
+    for (tag, spec) in [
+        ("size_empty_uint_exclusive", "x = uint .size (0...0)\n"),
+        ("size_empty_uint_member", "x = [a: uint .size (0...0)]\n"),
+        ("size_empty_bytes_exclusive", "x = bytes .size (2...2)\n"),
+        ("size_empty_bytes_reversed", "x = bytes .size (3..1)\n"),
+        ("size_empty_text_member", "x = [a: tstr .size (1...0)]\n"),
+    ] {
+        let msg = expect_graceful_rejection(tag, spec, &["--wasm=false"]);
+        assert!(
+            msg.contains("empty `.size` window"),
+            "{tag} must refuse the empty window, got: {msg}"
+        );
+    }
+    for (tag, spec) in [
+        ("size_negative_uint_lower", "x = uint .size (-1..2)\n"),
+        ("size_negative_bytes_bare", "x = bytes .size -1\n"),
+        ("size_negative_text_member", "x = [a: tstr .size (-2..3)]\n"),
+        ("size_negative_uint_upper", "x = uint .size (0..-1)\n"),
+    ] {
+        let msg = expect_graceful_rejection(tag, spec, &["--wasm=false"]);
+        assert!(
+            msg.contains("negative `.size` operand") && !msg.contains("256**"),
+            "{tag} must refuse the negative size with its own message, got: {msg}"
         );
     }
 }
