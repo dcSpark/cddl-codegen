@@ -930,6 +930,46 @@ fn wasm_emitted_test_rust_twin_tightens_nested_exact_bytes() {
     );
 }
 
+/// A record with an exact-zero forbidden key and a protected LOOSE rest row takes the complete
+/// checked rest map as a native and wasm constructor argument. The wasm emitted-test projection must
+/// admit that same row, or it reports false constructor drift and silently drops both the round trip
+/// and the bounds probe. `integration_tests::forbidden_key_checked_rest_wasm_emit_tests_execute`
+/// compiles and runs them.
+#[test]
+fn wasm_emitted_tests_follow_forbidden_key_checked_rest_abi() {
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_forbidden_rest_emit_probe_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let input = root.join("input.cddl");
+    std::fs::write(
+        &input,
+        crate::tests::integration_tests::FORBIDDEN_KEY_CHECKED_REST_CDDL,
+    )
+    .unwrap();
+    let files =
+        crate::api::generated_strings(&cli_for(&input, &["--wasm=true", "--emit-tests=true"]))
+            .expect("forbidden-key checked-rest wasm emitted-test spec must generate");
+    let wasm = files
+        .get("wasm/src/generated/mod.rs")
+        .expect("wasm emitted-test module must be emitted");
+    for test in [
+        "fn wasm_roundtrip_forbidden_text_rest()",
+        "fn wasm_roundtrip_forbidden_uint_rest()",
+        "fn wasm_roundtrip_forbidden_pair_rest()",
+        "fn wasm_roundtrip_forbidden_bounded_field_rest()",
+        "fn wasm_bounds_forbidden_bounded_field_rest()",
+    ] {
+        assert!(
+            wasm.contains(test),
+            "the forbidden-key checked-rest record must keep `{test}` in the wasm emitted tests:\n{wasm}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(root);
+}
+
 /// Near-constant generated files skipped by the per-feature corpus (they don't vary by construct).
 fn is_per_feature_noise(path: &str) -> bool {
     path.ends_with("Cargo.toml") || path == "wasm/json-gen/src/main.rs"

@@ -9298,6 +9298,83 @@ fn zero_permitting_keyed_map_fields() {
     );
 }
 
+/// Exact-zero forbidden keys beside a protected LOOSE rest row (`* tstr => uint` next to text
+/// keys, `* uint => text` next to uint keys, and the duplicate-preserving carrier) make the rest a
+/// complete checked constructor argument at both the native and wasm `new`. The wasm `--emit-tests`
+/// projection must mint that argument too: before it did, it reported constructor drift and
+/// dropped every such round trip plus the value-bounded record's bounds probe. `cargo test` on the
+/// generated wasm crate is the only thing that compiles AND runs those emitted tests; the emission
+/// floor itself is `snapshot_tests::wasm_emitted_tests_follow_forbidden_key_checked_rest_abi`.
+#[test]
+fn forbidden_key_checked_rest_wasm_emit_tests_execute() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_forbidden_rest_wasm_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let input = root.join("input.cddl");
+    std::fs::write(&input, FORBIDDEN_KEY_CHECKED_REST_CDDL).unwrap();
+    let out = root.join("crate");
+    let generate = codegen_cmd()
+        .arg(format!("--input={}", input.to_str().unwrap()))
+        .arg(format!("--output={}", out.to_str().unwrap()))
+        .arg("--wasm=true")
+        .arg("--emit-tests=true")
+        .output()
+        .unwrap();
+    let gen_stderr = String::from_utf8_lossy(&generate.stderr);
+    assert!(
+        generate.status.success(),
+        "generation failed:\n{gen_stderr}"
+    );
+    assert!(
+        !gen_stderr.contains("drift from the record API"),
+        "the wasm projection must follow the native checked-rest ABI:\n{gen_stderr}"
+    );
+    let wasm = std::fs::read_to_string(out.join("wasm/src/generated/mod.rs"))
+        .expect("generated wasm mod.rs");
+    for test in [
+        "fn wasm_roundtrip_forbidden_text_rest()",
+        "fn wasm_roundtrip_forbidden_uint_rest()",
+        "fn wasm_roundtrip_forbidden_pair_rest()",
+        "fn wasm_roundtrip_forbidden_bounded_field_rest()",
+        "fn wasm_bounds_forbidden_bounded_field_rest()",
+    ] {
+        assert!(
+            wasm.contains(test),
+            "the forbidden-key checked-rest wasm emit-tests module must retain `{test}`:\n{wasm}"
+        );
+    }
+    let wasm_test = tool_cmd("cargo")
+        .arg("test")
+        .current_dir(out.join("wasm"))
+        .output()
+        .unwrap();
+    assert!(
+        wasm_test.status.success(),
+        "emitted wasm tests failed:\n{}\n{}",
+        String::from_utf8_lossy(&wasm_test.stdout),
+        String::from_utf8_lossy(&wasm_test.stderr)
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// Shared by the emission floor in `snapshot_tests` and the execution gate above.
+pub(crate) const FORBIDDEN_KEY_CHECKED_REST_CDDL: &str = "\
+forbidden_text_rest = { required: uint, 0*0 forbidden: uint, * tstr => uint }
+forbidden_uint_rest = { 1: uint, 0*0 2: text, * uint => text }
+forbidden_pair_rest = {
+  required: uint,
+  0*0 forbidden: uint,
+  * tstr => uint ; @duplicates preserve
+}
+forbidden_bounded_field_rest = { required: uint .le 10, 0*0 forbidden: uint, * tstr => uint }
+";
+
 /// The default/json exact-zero fixture above proves checked parent mutation. This preserve-only
 /// fixture reaches the other half of the contract: a decoded parent grows through `insert_rest`,
 /// invalidating its old replay length and rebuilding the order without losing pre-existing entry

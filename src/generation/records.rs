@@ -3829,10 +3829,7 @@ pub(super) fn codegen_struct(
         // build on this face.  Pass its complete checked structural wrapper through to the native
         // constructor.  The typed row is deliberately excluded: it remains flattened above.
         for rest in record.captured_dynamic_rows().filter(|row| {
-            !record.is_typed_row(row)
-                && !row.is_array_tail()
-                && (row.is_restricted()
-                    || (record.has_forbidden_fields() && record.has_protected_rest_keys(types)))
+            !record.is_typed_row(row) && record.ctor_takes_complete_map_row(row, types)
         }) {
             let rest_ty = rest_member_type(rest);
             wasm_new.arg(
@@ -4529,10 +4526,7 @@ pub(super) fn codegen_struct(
             if let Some(line) = value_bounds_check_line(rest.range(), &value_arg, true) {
                 native_new.line(&line);
             }
-        } else if !rest.is_array_tail()
-            && (rest.is_restricted()
-                || (record.has_forbidden_fields() && record.has_protected_rest_keys(types)))
-        {
+        } else if record.ctor_takes_complete_map_row(rest, types) {
             let rest_ty = rest_member_type(rest).for_rust_move(types, cli);
             native_new.arg(&rest.field_name, &rest_ty);
             new_arg_count += 1;

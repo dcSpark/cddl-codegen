@@ -1422,6 +1422,20 @@ impl RustRecord {
                     .is_some_and(|row| !row.is_array_tail() && row.is_restricted()))
     }
 
+    /// Whether constructor `new` takes this captured MAP row as its complete checked carrier: a
+    /// restricted row (its occurrence window is enforced by the carrier), or any map row of a record
+    /// whose forbidden fixed keys fall in the row's key space (its keys must be validated against
+    /// them, so it cannot default empty and be filled through an unchecked door). The one predicate
+    /// the native and wasm constructors and both emitted-test ABIs share, so they cannot disagree
+    /// on arity. Callers still route the open-table typed row through its own door: NonEmpty takes
+    /// first key/value and a bounded one a loose wasm builder. Parsing rejects an open table with
+    /// any fixed or forbidden key, so its typed row is admitted here exactly when it is restricted.
+    pub fn ctor_takes_complete_map_row(&self, row: &RestRow, types: &IntermediateTypes) -> bool {
+        !row.is_array_tail()
+            && (row.is_restricted()
+                || (self.has_forbidden_fields() && self.has_protected_rest_keys(types)))
+    }
+
     pub fn has_forbidden_fields(&self) -> bool {
         !self.forbidden_fields.is_empty()
     }

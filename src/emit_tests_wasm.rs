@@ -683,8 +683,7 @@ fn record_wasm_ctor_args<'a>(
         wasm.push((typed.range().clone(), value));
     }
     for row in record.captured_dynamic_rows().filter(|row| {
-        !row.is_array_tail()
-            && row.is_restricted()
+        record.ctor_takes_complete_map_row(row, types)
             && !(record.is_typed_row(row) && record.is_non_empty_open_table())
     }) {
         let (_, value) = native.next()?;

@@ -1314,9 +1314,7 @@ pub(crate) fn record_ctor_arg_types(
         record
             .captured_dynamic_rows()
             .filter(|row| {
-                !row.is_array_tail()
-                    && (row.is_restricted()
-                        || (record.has_forbidden_fields() && record.has_protected_rest_keys(types)))
+                record.ctor_takes_complete_map_row(row, types)
                     && !(record.is_typed_row(row) && record.is_non_empty_open_table())
             })
             .map(|row| row.container_type()),
@@ -1546,9 +1544,7 @@ fn record_roundtrip(
     // `MintValue::Map` crosses Bounded*/NonEmpty*'s one TryFrom door, so the baseline is valid by
     // construction and actually exercises the row rather than emitting an arity-invalid `new()`.
     for rest in record.captured_dynamic_rows().filter(|row| {
-        !row.is_array_tail()
-            && (row.is_restricted()
-                || (record.has_forbidden_fields() && record.has_protected_rest_keys(types)))
+        record.ctor_takes_complete_map_row(row, types)
             && !(record.is_typed_row(row) && record.is_non_empty_open_table())
     }) {
         match mint_dynamic_map_row(types, record, rest, 0) {
@@ -2969,9 +2965,7 @@ pub(crate) fn mint_struct(
             // as at the top-level round-trip mint. This is needed for nested records too: leaving
             // one out produces an arity-invalid `new()` only after the enclosing test is emitted.
             for rest in record.captured_dynamic_rows().filter(|row| {
-                !row.is_array_tail()
-                    && (row.is_restricted()
-                        || (record.has_forbidden_fields() && record.has_protected_rest_keys(types)))
+                record.ctor_takes_complete_map_row(row, types)
                     && !(record.is_typed_row(row) && record.is_non_empty_open_table())
             }) {
                 args.push(mint_dynamic_map_row(types, record, rest, depth + 1)?);

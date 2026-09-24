@@ -2141,6 +2141,11 @@ forbidden-key constraints rather than rest-row carriers:
   non-minimal text key); `@ignore` ordering; bounded, non-empty and duplicate-preserving carriers;
   JSON property rejection/schema omission; and the wasm optional/forbidden-accessor boundary plus
   its checked parent insertion door.
+- **Emitted wasm tests** — `integration_tests::forbidden_key_checked_rest_wasm_emit_tests_execute`
+  compiles and runs the wasm `--emit-tests` round trips and bounds probe for forbidden keys beside a
+  protected loose rest row, whose complete checked rest map is a constructor argument on both faces
+  (`RustRecord::ctor_takes_complete_map_row`); `snapshot_tests::wasm_emitted_tests_follow_forbidden_key_checked_rest_abi`
+  is its fast-tier emission floor.
 - **Preserve modes** —
   `integration_tests::exact_zero_typed_key_comparison_executes_in_both_preserve_modes` executes the
   typed comparator at decode, complete-construction and insertion doors under preserve and
