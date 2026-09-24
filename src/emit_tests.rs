@@ -1411,6 +1411,7 @@ fn mint_dynamic_map_row(
 /// forward from the domain's baseline coordinate; other key kinds keep their generic mint.
 fn mint_checked_rest_entry_key(
     types: &IntermediateTypes,
+    name: &str,
     record: &RustRecord,
     row: &RestRow,
     baseline: &[MintValue],
@@ -1469,7 +1470,7 @@ fn mint_checked_rest_entry_key(
         return Some(MintValue::Int { value: candidate });
     }
     crate::warn!(
-        "cddl-codegen --emit-tests: dynamic map row {} has no cheaply minted entry key that avoids this record's fixed and baseline keys — its checked insertion is unexercised",
+        "cddl-codegen --emit-tests: {name} dynamic map row {} has no cheaply minted entry key that avoids this record's fixed and baseline keys — its checked insertion is unexercised",
         row.field_name
     );
     None
@@ -1812,7 +1813,7 @@ fn record_roundtrip(
                 }
                 let protected = record.has_protected_rest_keys(types) && !rest.is_array_tail();
                 let key = if protected {
-                    mint_checked_rest_entry_key(types, record, rest, &valid_args)
+                    mint_checked_rest_entry_key(types, name, record, rest, &valid_args)
                 } else {
                     valid_value(types, domain)
                 };
