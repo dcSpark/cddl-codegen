@@ -90,6 +90,7 @@ entries = [
   "testing.persistent-fixture-lock-offline-warmup",
   "testing.wasm-duplicate-link-controls-current-toolchain",
   "testing.rust-oracle-tag-leniency-optional-segment-roundtrip",
+  "testing.full-tier-command-oracles-unavailable",
 ]
 
 [[section]]
@@ -2138,6 +2139,27 @@ action_on_fire_md = '''Create only the specifically demanded work without wideni
 [record.payload.reopening_signal.predicate]
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.full-n-flag-powerset-pict-pairwise's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
+'''
+
+[[record]]
+id = "testing.full-tier-command-oracles-unavailable"
+title = "The full tier lacks the Ruby and Rust CDDL command oracles."
+
+[record.payload]
+kind = "work"
+body_md = '''Provision the reviewed Ruby `cddl` gem and Rust `cddl` command oracles so `ir_conformance_corpus` and `verify` can execute their intended oracle legs on this host.
+On 2026-09-25, `bun run check.ts full --keep-going` at `master` `2f3970b3` finished with `ir_conformance_corpus` failing because the Ruby gem was absent and `verify` failing its startup preflight because both command oracles were absent.
+The separate `rust_oracle_fingerprint` and `ir_conformance_multifile` gates passed against the pinned Rust crate dependency; those passes do not supply either missing command.
+After provisioning, rerun the affected gates with their normal oracle settings, then run the full tier before claiming it green.
+The Rust oracle's known tag-leniency defect is tracked separately by `testing.rust-oracle-tag-leniency-optional-segment-roundtrip` and may still make `ir_conformance_corpus` fail.
+
+'''
+work_state = "pending_review"
+work_intent = "build_system"
+work_kind = "missing_system"
+risk = "false_pass_or_red"
+uncertainty_md = '''The command-oracle versions and host packaging path have not been selected.
+The two failing gates were not rerun with either oracle present, so their remaining verdicts are unknown.
 '''
 
 [[record]]
