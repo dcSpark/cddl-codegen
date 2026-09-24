@@ -112,13 +112,13 @@ impl WriteTailPlan {
         // the bounded exceptions where output depends on prior directory contents (the others: the
         // seed-once crate roots below, and the comment-preservation overlay in the write loop), and
         // only as the changeset contract allows: keys no op mentions pass through, `SeedOnce` checks
-        // existence. An unparseable
-        // existing manifest is a hard error naming the file (see `cargo_manifest::apply`) — never a
-        // silent clobber. `generated_files` above produced these same manifests against an empty
-        // document; here we re-derive them against the on-disk file before the common write loop.
+        // existence. An unparseable or unreadable existing manifest is a hard error naming the file
+        // (see `cargo_manifest::apply` and `read_existing_manifest`) — never a silent clobber.
+        // `generated_files` above produced these same manifests against an empty document; here we
+        // re-derive them against the on-disk file before the common write loop.
         for (rel_path, ops) in &manifest_ops {
             if files.contains_key(*rel_path) {
-                let existing = std::fs::read_to_string(rust_dir.join(rel_path)).ok();
+                let existing = read_existing_manifest(&rust_dir.join(rel_path), rel_path)?;
                 let merged = crate::cargo_manifest::apply(ops, existing.as_deref(), rel_path)
                     .map_err(std::io::Error::other)?;
                 files.insert((*rel_path).to_owned(), merged);
@@ -397,14 +397,15 @@ impl WriteTailPlan {
             // tool never writes one without the other (the pre-crate-shaped flag left the manifest
             // untouched, and a cbor_event bump in the exported source silently skewed against the
             // target crate's pin). Same declarative-merge contract as the generated crates' three
-            // manifests: hand keys the changeset doesn't mention pass through, an unparseable
-            // existing manifest is a hard error naming the file.
+            // manifests: hand keys the changeset doesn't mention pass through, an unparseable or
+            // unreadable existing manifest is a hard error naming the file.
             let manifest_path = static_crate.dir.join("Cargo.toml");
-            let existing = std::fs::read_to_string(&manifest_path).ok();
+            let manifest_name = manifest_path.display().to_string();
+            let existing = read_existing_manifest(&manifest_path, &manifest_name)?;
             let merged = crate::cargo_manifest::apply(
                 &static_crate.manifest_ops,
                 existing.as_deref(),
-                &manifest_path.display().to_string(),
+                &manifest_name,
             )
             .map_err(std::io::Error::other)?;
             std::fs::write(&manifest_path, merged)?;
@@ -474,6 +475,23 @@ impl WriteTailPlan {
         warn_on_workspace_package_name_collisions(&rust_dir, &generated_packages);
 
         Ok(())
+    }
+}
+
+/// The on-disk manifest a changeset merges onto: `None` ONLY when the file is absent. Any other read
+/// failure (unreadable, not UTF-8) is a hard error naming the file, like an unparseable manifest —
+/// treating it as absent would rebuild the manifest from an empty document and silently clobber the
+/// user's hand-edited keys.
+fn read_existing_manifest(
+    path: &std::path::Path,
+    display_name: &str,
+) -> std::io::Result<Option<String>> {
+    match std::fs::read_to_string(path) {
+        Ok(text) => Ok(Some(text)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(std::io::Error::other(format!(
+            "{display_name}: cannot read the existing manifest: {e}. Fix or delete the file."
+        ))),
     }
 }
 

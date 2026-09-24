@@ -10,7 +10,7 @@
 //!
 //! What that buys, stated as the contract each test pins:
 //!   * seed-once is an existence check and nothing more (W1);
-//!   * the manifest changeset merges, and an unparseable manifest is a hard error (W2);
+//!   * the manifest changeset merges, and an unparseable or unreadable manifest is a hard error (W2);
 //!   * the comment/code-preservation overlay's re-prune is FAMILY-WIDE — a replace block in a
 //!     descendant prunes an import out of the parent's WRITTEN bytes (W3);
 //!   * an unplaceable comment fails loudly, never silently (W4);
@@ -327,6 +327,56 @@ fn write_tail_manifest_changeset_merges_and_refuses_unparseable() {
         "the error must name the manifest that failed to parse, got: {err}"
     );
     assert_eq!(read(&dir, "rust/Cargo.toml"), "this is not ) toml [[[\n");
+}
+
+/// W2b. An existing manifest that cannot be READ (here: not UTF-8) is a hard error naming the file,
+/// exactly like an unparseable one. Only an absent manifest may merge onto an empty document; any
+/// other read failure treated as "absent" would rebuild the manifest from scratch and silently
+/// clobber the user's hand-edited keys. Covers both merge sites: the generated crates' manifests
+/// and the `--export-static-crate` target's manifest.
+#[test]
+fn write_tail_manifest_merge_refuses_an_unreadable_existing_manifest() {
+    let unreadable: &[u8] = b"[package]\nname = \"hand\"\nauthors = [\"\xff\xfe\"]\n";
+
+    let dir = scratch("manifest_unreadable");
+    let files = finalize(&[
+        ("rust/Cargo.toml", "[package]\nname = \"placeholder\"\n"),
+        ("rust/src/generated/mod.rs", "pub struct A;\n"),
+    ]);
+    std::fs::create_dir_all(dir.join("rust")).unwrap();
+    std::fs::write(dir.join("rust/Cargo.toml"), unreadable).unwrap();
+    let mut p = plan(&dir, files);
+    p.manifest_ops = vec![(
+        "rust/Cargo.toml",
+        vec![set_op(&["package", "name"], "generated-lib")],
+    )];
+    let err = p.run().unwrap_err();
+    assert!(
+        err.to_string().contains("rust/Cargo.toml"),
+        "the error must name the manifest that could not be read, got: {err}"
+    );
+    assert_eq!(
+        std::fs::read(dir.join("rust/Cargo.toml")).unwrap(),
+        unreadable,
+        "the unreadable manifest is left byte-identical"
+    );
+
+    let dir = scratch("static_manifest_unreadable");
+    let target = dir.join("static-target");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::write(target.join("Cargo.toml"), unreadable).unwrap();
+    let err = static_crate_plan(&dir.join("generated-output"), &target)
+        .run()
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("Cargo.toml"),
+        "the error must name the static crate's manifest, got: {err}"
+    );
+    assert_eq!(
+        std::fs::read(target.join("Cargo.toml")).unwrap(),
+        unreadable,
+        "the static crate's unreadable manifest is left byte-identical"
+    );
 }
 
 /// W3a. A user comment declared with `cddl-codegen:keep` is carried onto the fresh content.
