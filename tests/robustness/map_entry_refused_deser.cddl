@@ -1,0 +1,12 @@
+; A map whose KEY or VALUE names a type with no generated `Deserialize` (`refused` is refused by
+; `array_record_deser_refusals`: its optional `a` is ambiguous with the following `b`). The verdict
+; pre-pass (`seed_no_deserialize_verdicts`) already propagates the refusal through the map to every
+; enclosing record and enum, whose impl is then dropped, but the map decode arm still reached a
+; `todo!()` while building the discarded body and aborted generation with `not yet implemented`.
+; Covers the key and value slots, an array- and a map-representation record, a group-choice arm,
+; and a type-choice arm. Must generate (`ok`), with each enclosing type's deserialize refused.
+refused = [? a: uint, b: uint]
+key_holder = [m: { * refused => uint }]
+value_holder = { 0: { * uint => refused } }
+gc = [ 0, m: { * uint => refused } // 1, t: tstr ]
+tc = { * refused => uint } / tstr

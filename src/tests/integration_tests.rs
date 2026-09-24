@@ -7196,6 +7196,8 @@ fn generated_code_clippy_clean() {
 ///   `Gc0` — the group-choice enum's own Deserialize called its arm's never-emitted embedded fn.
 /// - `ch = foo / tstr`: E0599 `deserialize` for `Foo` from the type-choice brute-force dispatch.
 ///   BOTH enum flavors were defective, and the transitive `ch2 = ch / bytes` with them.
+/// - `map_key_holder` / `map_value_holder` / `map_gc` / `map_tc` (`foo` as a map key or value in a
+///   record or enum): generation itself aborted with `not yet implemented` in the map decode arm.
 ///
 /// Tier: a plain `#[test]`, so `local` and later — `fast` runs only `snapshot_tests`, and CI runs
 /// only `fast`. This gate will not be seen by CI.
@@ -7276,7 +7278,11 @@ fn deserialize_refusal_propagates_through_enums_and_emitted_tests() {
         "foo = [? f0: uint, f1: uint]\n\
          gc = [ f0: uint, ? f1: uint, f2: uint // tstr ]\n\
          ch = foo / tstr\n\
-         ch2 = ch / bytes\n",
+         ch2 = ch / bytes\n\
+         map_key_holder = [m: { * foo => uint }]\n\
+         map_value_holder = { 0: { * uint => foo } }\n\
+         map_gc = [ 0, m: { * uint => foo } // 1, t: tstr ]\n\
+         map_tc = { * foo => uint } / tstr\n",
     )
     .unwrap();
     let enum_out = scratch.join("enums");
@@ -7306,6 +7312,14 @@ fn deserialize_refusal_propagates_through_enums_and_emitted_tests() {
         assert!(
             enum_stderr.contains(arm),
             "{ty}'s refusal must name the arm that caused it ({arm}), got stderr:\n{enum_stderr}"
+        );
+    }
+    // A refused type in a map's KEY or VALUE slot refuses the enclosing record or enum through the
+    // same propagation (the map decode arm used to abort generation with `not yet implemented`).
+    for ty in ["MapKeyHolder", "MapValueHolder", "MapGc", "MapTc"] {
+        assert!(
+            enum_stderr.contains(&format!("Not generating {ty}::deserialize()")),
+            "{ty} must lose its deserialize, got stderr:\n{enum_stderr}"
         );
     }
     let enum_check = tool_cmd("cargo")
