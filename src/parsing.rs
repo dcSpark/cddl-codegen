@@ -3126,12 +3126,6 @@ fn range_to_primitive(low: Option<i128>, high: Option<i128>, primitive: Primitiv
         (Some(l), Some(h)) if l == i64::MIN as i128 && h == i64::MAX as i128 => {
             ConceptualRustType::Primitive(Primitive::I64).into()
         }
-        (Some(l), Some(h)) if l == f32::MIN as i128 && h == f32::MAX as i128 => {
-            ConceptualRustType::Primitive(Primitive::F32).into()
-        }
-        (Some(l), Some(h)) if l == f64::MIN as i128 && h == f64::MAX as i128 => {
-            ConceptualRustType::Primitive(Primitive::F64).into()
-        }
         // TODO: use minimal primitive or check here? e.g. uint .le 8 -> U8 instead of U64
         bounds => RustType::from(ConceptualRustType::Primitive(primitive)).with_bounds(bounds),
     }
