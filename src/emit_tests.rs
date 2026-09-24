@@ -74,7 +74,7 @@ type Bounds = (Option<i128>, Option<i128>);
 // ============================================================================================
 
 /// The synthesized-key kind for a minted map (distinct keys `key_base..key_base+count`).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum MapKey {
     /// integer key cast to the map's key primitive: `__i as <prim>`
     Int(Primitive),
@@ -1403,6 +1403,78 @@ fn mint_dynamic_map_row(
     None
 }
 
+/// The one extra entry a round-trip mutation adds through a protected row's checked `insert_<row>`
+/// door must avoid the same keys `mint_dynamic_map_row` avoids: declared and forbidden fixed keys
+/// (the door rejects both — `{ 1: uint, 0*0 0: text, * uint => text }` minted `insert_rest(0, ..)`,
+/// whose `.unwrap()` panicked in the generated crate), plus the keys the baseline already placed in
+/// any map row of the same key kind, so the insertion is a genuine new entry. Integer keys search
+/// forward from the domain's baseline coordinate; other key kinds keep their generic mint.
+fn mint_checked_rest_entry_key(
+    types: &IntermediateTypes,
+    record: &RustRecord,
+    row: &RestRow,
+    baseline: &[MintValue],
+) -> Option<MintValue> {
+    let domain = row.domain();
+    let initial = valid_value(types, domain)?;
+    let MintValue::Int { value: start } = initial else {
+        return Some(initial);
+    };
+    let Some(MintValue::Map {
+        key: key @ MapKey::Int(_),
+        ..
+    }) = valid_value(types, &row.container_type())
+    else {
+        return Some(initial);
+    };
+    let fixed_keys: Vec<&FixedValue> = record
+        .fields
+        .iter()
+        .filter_map(|field| field.key.as_ref())
+        .chain(record.forbidden_fields.iter().map(|field| &field.key))
+        .collect();
+    let occupied: Vec<(i128, i128)> = baseline
+        .iter()
+        .filter_map(|value| match value {
+            MintValue::Map {
+                key: run_key,
+                key_base,
+                count,
+                ..
+            } if *run_key == key => Some((*key_base, *count)),
+            _ => None,
+        })
+        .collect();
+    // Each fixed key or occupied coordinate rules out at most one candidate, so this bound
+    // reaches the first free coordinate whenever the domain has one within cheap reach.
+    let max_offset = occupied
+        .iter()
+        .try_fold(fixed_keys.len() as i128, |sum, (_, count)| {
+            sum.checked_add(*count)
+        })?;
+    for offset in 0..=max_offset {
+        let Some(candidate) = start.checked_add(offset) else {
+            break;
+        };
+        if !map_key_run_is_accepted(&key, domain, 1, candidate)
+            || fixed_keys
+                .iter()
+                .any(|fixed| map_minted_key_equals_fixed(&key, candidate, 0, fixed))
+            || occupied
+                .iter()
+                .any(|(base, count)| candidate >= *base && candidate - *base < *count)
+        {
+            continue;
+        }
+        return Some(MintValue::Int { value: candidate });
+    }
+    crate::warn!(
+        "cddl-codegen --emit-tests: dynamic map row {} has no cheaply minted entry key that avoids this record's fixed and baseline keys — its checked insertion is unexercised",
+        row.field_name
+    );
+    None
+}
+
 /// The canonical CDDL value denoted by one storage-space coordinate of a minted map key.
 ///
 /// `MintValue::Map::{key_base,count}` remain storage coordinates because both renderers emit their
@@ -1738,10 +1810,15 @@ fn record_roundtrip(
                     );
                     continue;
                 }
-                match (valid_value(types, domain), valid_value(types, range)) {
+                let protected = record.has_protected_rest_keys(types) && !rest.is_array_tail();
+                let key = if protected {
+                    mint_checked_rest_entry_key(types, record, rest, &valid_args)
+                } else {
+                    valid_value(types, domain)
+                };
+                match (key, valid_value(types, range)) {
                     (Some(k), Some(v)) => {
-                        let mint = if record.has_protected_rest_keys(types) && !rest.is_array_tail()
-                        {
+                        let mint = if protected {
                             // A possible fixed/rest collision makes the carrier private. Re-enter
                             // the record's checked insertion door, which composes declared/forbidden
                             // validation with the carrier's own cardinality/duplicate semantics.

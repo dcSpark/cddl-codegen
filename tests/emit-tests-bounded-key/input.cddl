@@ -40,3 +40,8 @@ holder_dynamic_uint_uint_zero = { 0: uint, 1*1 uint => uint }
 ; has no way to steer. The minter must SKIP it loudly (the map mints empty and says why), never
 ; mint a violating key and let the emitted vector go red against a correct decoder.
 holder_str_size = [m: {* tstr .size 3 => uint}]
+
+; A protected open struct whose FORBIDDEN key 0 sits at the rest domain's baseline coordinate. The
+; round-trip's extra rest entry enters through the checked `insert_rest` door, which rejects
+; declared and forbidden keys; the entry key must also skip the baseline's own rest key (2).
+holder_forbidden_rest_zero = { 1: uint, 0*0 0: text, * uint => text }

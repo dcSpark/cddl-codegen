@@ -14585,6 +14585,7 @@ fn emit_tests_bounded_map_key_execute() {
         "roundtrip_holder_dynamic_nint_uint_zero",
         "roundtrip_holder_dynamic_uint_uint_zero",
         "roundtrip_holder_str_size",
+        "roundtrip_holder_forbidden_rest_zero",
     ] {
         assert!(
             src.contains(&format!("fn {ty}(")),
@@ -14630,6 +14631,13 @@ fn emit_tests_bounded_map_key_execute() {
     assert!(
         flat.contains("HolderDynamicUintUintZero::new(0,BoundedMap::<_,_,1,1>::try_from((0u64..1).map(|__i|((1+__iasi128)asu64,0)).collect::<Vec<_>>(),)"),
         "a dynamic uint row beside fixed uint 0 must shift from base 0 to 1\n{src}"
+    );
+    // The mutation case's extra rest entry goes through the checked `insert_rest` door: key 0 is
+    // forbidden, 1 is declared, and the baseline run already holds 2, so the first valid new key
+    // is 3. `insert_rest(0, ..).unwrap()` panicked in the generated crate's `cargo test`.
+    assert!(
+        flat.contains("v.insert_rest(3,\"a\".repeat(1)).unwrap();"),
+        "a protected rest entry must skip forbidden, declared, and baseline keys\n{src}"
     );
     // Vacuity guard: the `.ne 0` table's keys must actually START above the excluded value. Without
     // this the gate could pass by minting the map EMPTY (or by the table vanishing from the
