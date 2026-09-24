@@ -872,7 +872,63 @@ impl Default for GenerationScope {
     }
 }
 
+/// Which usage-gated collection runtimes (`static/*.rs` modules) this crate provisions. Computed
+/// once by [`GenerationScope::runtime_usage`] so the `pub mod` declarations, the rust and wasm
+/// per-scope imports and the exported runtime files all read the SAME gate: each field is the
+/// dep's own-spec usage ORed with the `--wrapper-requests` flag for a requested wrapper that needs
+/// the runtime. Separate spellings drifted (the import gates once omitted four requested terms).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RuntimeUsage {
+    pub non_empty_vec: bool,
+    pub bounded_vec: bool,
+    pub bounded_map: bool,
+    pub non_empty_map: bool,
+    pub ordered_set: bool,
+    pub pair_map: bool,
+    /// `BoundedPairMap` import gate; its runtime ships inside the `pair_map` module.
+    pub bounded_pair_map: bool,
+}
+
+/// Push the collection-runtime type imports gated by `usage`, rooted at `prefix` (the rust or wasm
+/// common-import path). Dumb-push: the usage-derived prune pass
+/// (`import_prune::prune_generated_files`) drops any a file's module family doesn't name.
+fn push_runtime_type_imports(content: &mut codegen::Scope, prefix: &str, usage: &RuntimeUsage) {
+    let table: [(bool, &str, &[&str]); 7] = [
+        (usage.non_empty_vec, "non_empty", &["NonEmptyVec"]),
+        (usage.bounded_vec, "bounded", &["BoundedVec"]),
+        (usage.bounded_map, "bounded_map", &["BoundedMap"]),
+        (usage.non_empty_map, "non_empty_map", &["NonEmptyMap"]),
+        (
+            usage.ordered_set,
+            "ordered_set",
+            &["OrderedSet", "NonEmptyOrderedSet", "BoundedOrderedSet"],
+        ),
+        (usage.pair_map, "pair_map", &["PairMap", "NonEmptyPairMap"]),
+        (usage.bounded_pair_map, "pair_map", &["BoundedPairMap"]),
+    ];
+    for (gate, module, names) in table {
+        if gate {
+            for name in names {
+                content.push_import(format!("{prefix}::{module}"), *name, None);
+            }
+        }
+    }
+}
+
 impl GenerationScope {
+    /// The single runtime-provisioning gate; see [`RuntimeUsage`].
+    pub(crate) fn runtime_usage(&self, types: &IntermediateTypes) -> RuntimeUsage {
+        RuntimeUsage {
+            non_empty_vec: types.uses_non_empty_vec() || self.requested_non_empty_vec,
+            bounded_vec: types.uses_bounded_vec() || self.requested_bounded_vec,
+            bounded_map: types.uses_bounded_map() || self.requested_bounded_map,
+            non_empty_map: types.uses_non_empty_map() || self.requested_non_empty_map,
+            ordered_set: types.uses_ordered_set() || self.requested_ordered_set,
+            pair_map: types.uses_pair_map() || self.requested_pair_map,
+            bounded_pair_map: types.uses_bounded_pair_map() || self.requested_pair_map,
+        }
+    }
+
     pub fn new() -> Self {
         Self {
             rust_lib_scope: codegen::Scope::new(),
@@ -1891,6 +1947,7 @@ impl GenerationScope {
         );
 
         // declare modules (root lib specific)
+        let runtime_usage = self.runtime_usage(types);
         if cli.export_static_files() {
             self.rust_lib().raw("pub mod error;");
             if cli.preserve_encodings {
@@ -1899,25 +1956,25 @@ impl GenerationScope {
             // only crates that actually use `[+ T]` pull in the NonEmptyVec runtime — keeps every
             // non-`+` crate's output byte-identical. `--wrapper-requests`: a dep hosting a requested
             // NonEmpty wrapper needs the runtime module even when its own spec has no `[+ …]`.
-            if types.uses_non_empty_vec() || self.requested_non_empty_vec {
+            if runtime_usage.non_empty_vec {
                 self.rust_lib().raw("pub mod non_empty;");
             }
-            if types.uses_bounded_vec() || self.requested_bounded_vec {
+            if runtime_usage.bounded_vec {
                 self.rust_lib().raw("pub mod bounded;");
             }
-            if types.uses_bounded_map() || self.requested_bounded_map {
+            if runtime_usage.bounded_map {
                 self.rust_lib().raw("pub mod bounded_map;");
             }
             // only crates that actually use `{+ k => v}` pull in the NonEmptyMap runtime
-            if types.uses_non_empty_map() || self.requested_non_empty_map {
+            if runtime_usage.non_empty_map {
                 self.rust_lib().raw("pub mod non_empty_map;");
             }
             // only crates that actually use `@duplicates reject` sets pull in the OrderedSet runtime
-            if types.uses_ordered_set() || self.requested_ordered_set {
+            if runtime_usage.ordered_set {
                 self.rust_lib().raw("pub mod ordered_set;");
             }
             // only crates that actually use `@duplicates preserve` tables pull in the PairMap runtime
-            if types.uses_pair_map() || self.requested_pair_map {
+            if runtime_usage.pair_map {
                 self.rust_lib().raw("pub mod pair_map;");
             }
             // only crates that actually use CDDL `any` pull in the AnyCbor runtime — keeps every
@@ -2218,70 +2275,7 @@ impl GenerationScope {
                     None,
                 );
             }
-            if types.uses_non_empty_vec() {
-                content.push_import(
-                    format!("{}::non_empty", cli.common_import_rust()),
-                    "NonEmptyVec",
-                    None,
-                );
-            }
-            if types.uses_bounded_vec() || self.requested_bounded_vec {
-                content.push_import(
-                    format!("{}::bounded", cli.common_import_rust()),
-                    "BoundedVec",
-                    None,
-                );
-            }
-            if types.uses_bounded_map() || self.requested_bounded_map {
-                content.push_import(
-                    format!("{}::bounded_map", cli.common_import_rust()),
-                    "BoundedMap",
-                    None,
-                );
-            }
-            if types.uses_non_empty_map() {
-                content.push_import(
-                    format!("{}::non_empty_map", cli.common_import_rust()),
-                    "NonEmptyMap",
-                    None,
-                );
-            }
-            if types.uses_ordered_set() {
-                content.push_import(
-                    format!("{}::ordered_set", cli.common_import_rust()),
-                    "OrderedSet",
-                    None,
-                );
-                content.push_import(
-                    format!("{}::ordered_set", cli.common_import_rust()),
-                    "NonEmptyOrderedSet",
-                    None,
-                );
-                content.push_import(
-                    format!("{}::ordered_set", cli.common_import_rust()),
-                    "BoundedOrderedSet",
-                    None,
-                );
-            }
-            if types.uses_pair_map() {
-                content.push_import(
-                    format!("{}::pair_map", cli.common_import_rust()),
-                    "PairMap",
-                    None,
-                );
-                content.push_import(
-                    format!("{}::pair_map", cli.common_import_rust()),
-                    "NonEmptyPairMap",
-                    None,
-                );
-            }
-            if types.uses_bounded_pair_map() {
-                content.push_import(
-                    format!("{}::pair_map", cli.common_import_rust()),
-                    "BoundedPairMap",
-                    None,
-                );
-            }
+            push_runtime_type_imports(content, cli.common_import_rust(), &runtime_usage);
         }
 
         // serialization
@@ -2442,70 +2436,7 @@ impl GenerationScope {
                 } else {
                     content.push_import("std::collections", "BTreeMap", None);
                 }
-                if types.uses_non_empty_vec() {
-                    content.push_import(
-                        format!("{}::non_empty", cli.common_import_wasm()),
-                        "NonEmptyVec",
-                        None,
-                    );
-                }
-                if types.uses_bounded_vec() || self.requested_bounded_vec {
-                    content.push_import(
-                        format!("{}::bounded", cli.common_import_wasm()),
-                        "BoundedVec",
-                        None,
-                    );
-                }
-                if types.uses_bounded_map() || self.requested_bounded_map {
-                    content.push_import(
-                        format!("{}::bounded_map", cli.common_import_wasm()),
-                        "BoundedMap",
-                        None,
-                    );
-                }
-                if types.uses_non_empty_map() {
-                    content.push_import(
-                        format!("{}::non_empty_map", cli.common_import_wasm()),
-                        "NonEmptyMap",
-                        None,
-                    );
-                }
-                if types.uses_ordered_set() {
-                    content.push_import(
-                        format!("{}::ordered_set", cli.common_import_wasm()),
-                        "OrderedSet",
-                        None,
-                    );
-                    content.push_import(
-                        format!("{}::ordered_set", cli.common_import_wasm()),
-                        "NonEmptyOrderedSet",
-                        None,
-                    );
-                    content.push_import(
-                        format!("{}::ordered_set", cli.common_import_wasm()),
-                        "BoundedOrderedSet",
-                        None,
-                    );
-                }
-                if types.uses_pair_map() {
-                    content.push_import(
-                        format!("{}::pair_map", cli.common_import_wasm()),
-                        "PairMap",
-                        None,
-                    );
-                    content.push_import(
-                        format!("{}::pair_map", cli.common_import_wasm()),
-                        "NonEmptyPairMap",
-                        None,
-                    );
-                }
-                if types.uses_bounded_pair_map() {
-                    content.push_import(
-                        format!("{}::pair_map", cli.common_import_wasm()),
-                        "BoundedPairMap",
-                        None,
-                    );
-                }
+                push_runtime_type_imports(content, &cli.common_import_wasm(), &runtime_usage);
                 // external macros
                 if let Some(cbor_json_macro) = &cli.wasm_cbor_json_api_macro
                     && let Some((path, m)) = cbor_json_macro.rsplit_once("::")

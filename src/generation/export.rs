@@ -1169,14 +1169,15 @@ impl GenerationScope {
         // the documented limit for this write path.
         let mut composed_runtime_files = Vec::new();
         if cli.export_static_files() {
+            let usage = self.runtime_usage(types);
             let runtime_files = composed_runtime_static_files(
                 cli,
-                types.uses_non_empty_vec() || self.requested_non_empty_vec,
-                types.uses_bounded_vec() || self.requested_bounded_vec,
-                types.uses_bounded_map() || self.requested_bounded_map,
-                types.uses_non_empty_map() || self.requested_non_empty_map,
-                types.uses_ordered_set() || self.requested_ordered_set,
-                types.uses_pair_map() || self.requested_pair_map,
+                usage.non_empty_vec,
+                usage.bounded_vec,
+                usage.bounded_map,
+                usage.non_empty_map,
+                usage.ordered_set,
+                usage.pair_map,
                 types.uses_any_cbor(),
                 types.uses_static_exact_array(),
                 types.uses_open_struct_rest(),
