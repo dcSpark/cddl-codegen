@@ -1454,18 +1454,23 @@ fn generate_enum(
                         field.name.clone()
                     })
                     .collect();
-                let can_fail = record.fields.iter().any(|field| {
-                    let can_fail = field.rust_type.needs_bounds_check_if_inlined(types);
+                // An explicit loop, not `any()`: every fallible field must emit its check line, and
+                // a short-circuiting `any()` would stop after the first. `can_embed_fields` keeps at
+                // most one non-fixed field in an inlined arm today, so this guards the emission
+                // against that gate widening rather than changing current output.
+                let mut can_fail = false;
+                for field in &record.fields {
+                    let field_can_fail = field.rust_type.needs_bounds_check_if_inlined(types);
                     // a bounded named Rust wrapper checks at its own ctor (no inline check line, but
                     // still fallible via `?`); a primitive int/float field emits its check here.
                     let embedded = field.to_embedded_rust_type();
-                    if can_fail
+                    if field_can_fail
                         && let Some(line) = value_bounds_check_line(&embedded, &field.name, true)
                     {
                         new_func.line(&line);
                     }
-                    can_fail
-                });
+                    can_fail |= field_can_fail;
+                }
                 (init_fields, can_fail)
             }
         };
