@@ -2103,25 +2103,33 @@ fn type_enforced_bounded_array_ctor_probes(
         let Some(bounds) = arg_ty.config.bounds else {
             continue;
         };
+        let mut sibling_skip_announced = false;
         for (mv, accept, label) in bound_cases(types, arg_ty, bounds, true) {
             let Some(door) = render_bounded_array_try_from(types, &mv, arg_ty) else {
                 continue;
             };
             if accept {
-                if let Some(args) = render_args_with(types, arg_types, target, "__bounded_arg") {
-                    let call = format!("{ctor}({})", args.join(", "));
-                    let call = if ctor_can_fail {
-                        format!("{call}.expect(\"{ctor} {label} must be accepted\")")
-                    } else {
-                        call
-                    };
-                    blocks.push(format!(
-                        "    {{
+                let Some(args) = render_args_with(types, arg_types, target, "__bounded_arg") else {
+                    if !sibling_skip_announced {
+                        sibling_skip_announced = true;
+                        crate::warn!(
+                            "cddl-codegen --emit-tests: {ctor} argument {target} accept probes skipped (another constructor argument not cheaply mintable)"
+                        );
+                    }
+                    continue;
+                };
+                let call = format!("{ctor}({})", args.join(", "));
+                let call = if ctor_can_fail {
+                    format!("{call}.expect(\"{ctor} {label} must be accepted\")")
+                } else {
+                    call
+                };
+                blocks.push(format!(
+                    "    {{
         let __bounded_arg = {door}.expect(\"{ctor} argument {label} must be accepted\");
         let _ = {call};
     }}"
-                    ));
-                }
+                ));
             } else {
                 blocks.push(format!(
                     "    assert!(matches!({door}.unwrap_err().failure(), __CddlTestDeserializeFailure::RangeCheck {{ .. }}), \"{ctor} argument {label} must be rejected as RangeCheck\");"
@@ -2191,7 +2199,12 @@ fn exact_byte_array_ctor_probes(
             // Other arguments follow their public constructor spelling. In particular a second
             // exact-byte leaf stays loose, while a collection carrier is tight.
             let Some(args) = render_args_with(types, arg_types, target, &target_expr) else {
-                continue;
+                // The sibling arguments do not depend on the case, so every case for this target
+                // fails the same way: announce once and move on to the next target.
+                crate::warn!(
+                    "cddl-codegen --emit-tests: {ctor} argument {target} boundary probes skipped (another constructor argument not cheaply mintable)"
+                );
+                break;
             };
             let call = format!("{ctor}({})", args.join(", "));
             if accept {
@@ -2301,12 +2314,15 @@ fn record_deser_reject(
         // float window vs integer window: different case generator + reject failure variant. A NaN
         // reject exercises the accept-form (NaN-safe) check that a reject-form check would let slip.
         let (cases, failure) = if let Some(window) = &target.rust_type.config.float_bounds {
+            // Drop only this field's probes, never the probes already built for the type.
+            let Some(class) = float_class_of(&target.rust_type) else {
+                crate::warn!(
+                    "cddl-codegen --emit-tests: {name}.{field} float window on a non-float type — no reject test"
+                );
+                continue;
+            };
             (
-                float_bound_cases(
-                    window,
-                    float_is_f32(&target.rust_type),
-                    float_class_of(&target.rust_type)?,
-                ),
+                float_bound_cases(window, float_is_f32(&target.rust_type), class),
                 "RangeCheckFloat",
             )
         } else {
@@ -2395,8 +2411,15 @@ fn choice_construct_reject(
                 continue;
             }
             let (cases, failure) = if let Some(window) = &arg_ty.config.float_bounds {
+                // Drop only this argument's probes, never the probes already built for the type.
+                let Some(class) = float_class_of(arg_ty) else {
+                    crate::warn!(
+                        "cddl-codegen --emit-tests: {name}::{ctor} argument {i} float window on a non-float type — no reject cases"
+                    );
+                    continue;
+                };
                 (
-                    float_bound_cases(window, float_is_f32(arg_ty), float_class_of(arg_ty)?),
+                    float_bound_cases(window, float_is_f32(arg_ty), class),
                     "RangeCheckFloat",
                 )
             } else {
@@ -2429,14 +2452,19 @@ fn choice_construct_reject(
             for (expr, accept, label) in cases {
                 // build the call: this arg = boundary/beyond value, valid for the rest
                 let target_expr = render_rust_for_constructor_arg(types, &expr, arg_ty);
-                if let Some(call_args) = render_args_with(types, &arg_types, i, &target_expr) {
-                    let args = call_args.join(", ");
-                    lines.push(if accept {
-                        format!("    assert!({name}::{ctor}({args}).is_ok(), \"{name}::{ctor} {label} arg must be accepted\");")
-                    } else {
-                        format!("    assert!(matches!({name}::{ctor}({args}).unwrap_err().failure(), DeserializeFailure::{failure} {{ .. }}), \"{name}::{ctor} {label} arg must be rejected as {failure}\");")
-                    });
-                }
+                let Some(call_args) = render_args_with(types, &arg_types, i, &target_expr) else {
+                    // The sibling arguments do not depend on the case: announce once per argument.
+                    crate::warn!(
+                        "cddl-codegen --emit-tests: {name}::{ctor} argument {i} boundary probes skipped (another constructor argument not cheaply mintable)"
+                    );
+                    break;
+                };
+                let args = call_args.join(", ");
+                lines.push(if accept {
+                    format!("    assert!({name}::{ctor}({args}).is_ok(), \"{name}::{ctor} {label} arg must be accepted\");")
+                } else {
+                    format!("    assert!(matches!({name}::{ctor}({args}).unwrap_err().failure(), DeserializeFailure::{failure} {{ .. }}), \"{name}::{ctor} {label} arg must be rejected as {failure}\");")
+                });
             }
         }
     }

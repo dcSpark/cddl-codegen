@@ -382,6 +382,74 @@ fn single_element_type_choice_warning_reports_once() {
     );
 }
 
+/// Child half of the emit-tests sibling-skip regression (see the parent below).
+#[test]
+fn emit_tests_ctor_probe_sibling_skips_are_loud_child() {
+    if std::env::var_os("CDDL_EMIT_SKIPS_WARNING_CHILD").is_none() {
+        return;
+    }
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_emit_skips_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        "ext = _CDDL_CODEGEN_EXTERN_TYPE_\n\
+         c = [ 0, a: uint .le 5, e: ext // 1, b: tstr ]\n\
+         r = [a: bytes .size 4, e: ext]\n",
+    )
+    .unwrap();
+    let cli = Cli::parse_from([
+        "cddl-codegen",
+        "--input",
+        path.to_str().unwrap(),
+        "--output",
+        "emit_skips_warning_unused",
+        "--wasm=false",
+        "--emit-tests=true",
+    ]);
+    let result = crate::api::generated_strings(&cli);
+    std::fs::remove_file(&path).ok();
+    result.expect("the emit-tests sibling-skip fixture must generate");
+}
+
+/// A bounded constructor argument whose SIBLING argument cannot be minted (an extern here) loses
+/// its boundary probes: the call cannot be spelled. That drop must be announced like every other
+/// `--emit-tests` skip, once per argument, for both the choice-variant constructor probes and the
+/// exact-byte record constructor probes. A silent drop reads as a covered bound that is not.
+#[test]
+fn emit_tests_ctor_probe_sibling_skips_are_loud() {
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "tests::robustness_tests::emit_tests_ctor_probe_sibling_skips_are_loud_child",
+            "--nocapture",
+        ])
+        .env("CDDL_EMIT_SKIPS_WARNING_CHILD", "1")
+        .output()
+        .expect("must run the warning-capture child");
+    assert!(
+        output.status.success(),
+        "warning-capture child failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let output = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    for warning in [
+        "cddl-codegen --emit-tests: C::new_c0 argument 0 boundary probes skipped (another constructor argument not cheaply mintable)",
+        "cddl-codegen --emit-tests: R::new argument 0 boundary probes skipped (another constructor argument not cheaply mintable)",
+    ] {
+        assert_eq!(
+            output.matches(warning).count(),
+            1,
+            "the sibling skip must be announced exactly once: {warning}\n{output}"
+        );
+    }
+}
+
 /// A revisited rejected arm still carries the inert placeholder, but it must never be admitted to
 /// the dedup set. Otherwise the nested anonymous array in `[[int] / null / uint]` makes the real
 /// `null` arm look like a duplicate placeholder and emits a false "Dropping arm 2" warning.
