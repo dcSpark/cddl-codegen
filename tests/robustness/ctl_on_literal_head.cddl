@@ -1,0 +1,3 @@
+; control_on_literal_head_rejects_gracefully pins the refusal of a control operator on a literal value.
+; A literal rule body once dropped the control silently, or built a window that ignored the literal.
+x = 5 .lt 3

@@ -2146,17 +2146,10 @@ pub(crate) fn unsizable_size_head_rejections(cddl_rule: &cddl::ast::Rule) -> Vec
 /// syntactically classifiable) head. `uint`, `int` (refused by its own `.size` arm message),
 /// `bytes`/`tstr` and every non-prelude name are `None`.
 fn unsizable_size_head(head: &Type2) -> Option<String> {
+    if let Some(literal) = literal_head_spelling(head) {
+        return Some(literal);
+    }
     match head {
-        Type2::FloatValue { value, .. } => Some(format!("{value:?}")),
-        Type2::UintValue { .. }
-        | Type2::IntValue { .. }
-        | Type2::TextValue { .. }
-        | Type2::UTF8ByteString { .. } => Some(head.to_string()),
-        // Display writes the decoded bytes raw; spell them as the hex literal instead.
-        Type2::B16ByteString { value, .. } | Type2::B64ByteString { value, .. } => Some(format!(
-            "h'{}'",
-            value.iter().map(|b| format!("{b:02X}")).collect::<String>()
-        )),
         // `(float64) .size 3` is `float64 .size 3`: look through a bare single-type parenthesis.
         Type2::ParenthesizedType { pt, .. } => match pt.type_choices.as_slice() {
             [only] if only.type1.operator.is_none() => unsizable_size_head(&only.type1.type2),
@@ -2169,6 +2162,28 @@ fn unsizable_size_head(head: &Type2) -> Option<String> {
                 _ => None,
             }
         }
+        _ => None,
+    }
+}
+
+/// The spelling of a literal VALUE head (`3`, `-1`, `1.5`, `"a"`, `h'00'`), looking through bare
+/// single-type parentheses (`(3)`), or `None` for any other head.
+fn literal_head_spelling(head: &Type2) -> Option<String> {
+    match head {
+        Type2::FloatValue { value, .. } => Some(format!("{value:?}")),
+        Type2::UintValue { .. }
+        | Type2::IntValue { .. }
+        | Type2::TextValue { .. }
+        | Type2::UTF8ByteString { .. } => Some(head.to_string()),
+        // Display writes the decoded bytes raw; spell them as the hex literal instead.
+        Type2::B16ByteString { value, .. } | Type2::B64ByteString { value, .. } => Some(format!(
+            "h'{}'",
+            value.iter().map(|b| format!("{b:02X}")).collect::<String>()
+        )),
+        Type2::ParenthesizedType { pt, .. } => match pt.type_choices.as_slice() {
+            [only] if only.type1.operator.is_none() => literal_head_spelling(&only.type1.type2),
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -3056,6 +3071,24 @@ fn parse_control_operator(
     rule_name: Option<&RustIdent>,
     cli: &Cli,
 ) -> ControlOperator {
+    // A control on a literal VALUE (`5 .lt 3`, `"a" .regexp "b"`, `h'00' .cbor uint`) is refused
+    // before any arm reads it: a literal denotes exactly one value, so the control either always
+    // holds or never does, and every arm below would lower it onto a type the literal is not (the
+    // value comparisons built a window that ignored the literal). A RANGE between literals
+    // (`0..255`) is the one operator a literal head takes. `.size` on a literal never arrives: the
+    // pre-scan refuses it (`unsizable_size_head_rejections`).
+    if let RangeCtlOp::CtlOp { ctrl, .. } = operator.operator
+        && let Some(literal) = literal_head_spelling(type2)
+    {
+        types.record_rejection(format!(
+            "{}the `{ctrl}` control operator on the literal value `{literal}` is unsupported — a \
+             literal already denotes exactly one value, so the control either always holds or \
+             never does. Remove the control, or apply it to a type (`uint .lt 3`, `bytes .cbor \
+             uint`).",
+            reject_rule_prefix(rule_name)
+        ));
+        return ControlOperator::Range((None, None));
+    }
     // Float windows and graceful rejections (`.ne` over float, decimal bound on an int head) are
     // decided first, so the integer arms below only ever see genuine integer operands.
     if let Some(result) = try_float_or_reject(types, type2, operator, rule_name) {
@@ -5024,6 +5057,18 @@ fn parse_type(
             }
         }
         Type2::TextValue { value, .. } => {
+            // A text literal takes no operator; record a control refusal or a non-numeric
+            // range bound while registering the singleton for sibling references.
+            if let Some(op) = &type1.operator {
+                parse_control_operator(
+                    types,
+                    parent_visitor,
+                    &type1.type2,
+                    op,
+                    Some(type_name),
+                    cli,
+                );
+            }
             register_fixed_singleton(
                 types,
                 parent_visitor,
@@ -5041,6 +5086,17 @@ fn parse_type(
         Type2::B16ByteString { value, .. }
         | Type2::B64ByteString { value, .. }
         | Type2::UTF8ByteString { value, .. } => {
+            // Same as the text literal arm above.
+            if let Some(op) = &type1.operator {
+                parse_control_operator(
+                    types,
+                    parent_visitor,
+                    &type1.type2,
+                    op,
+                    Some(type_name),
+                    cli,
+                );
+            }
             register_fixed_singleton(
                 types,
                 parent_visitor,

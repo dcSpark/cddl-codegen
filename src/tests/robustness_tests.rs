@@ -1060,6 +1060,54 @@ fn vacuous_ne_exclusion_constrains_nothing() {
     }
 }
 
+#[test]
+fn control_on_literal_head_rejects_gracefully() {
+    for (tag, spec, literal, op) in [
+        ("lit_cbor", "x = 5 .cbor uint\n", "5", ".cbor"),
+        ("lit_default", "x = 5 .default 3\n", "5", ".default"),
+        ("float_default", "x = 1.5 .default 2.5\n", "1.5", ".default"),
+        (
+            "text_default",
+            "x = \"a\" .default \"b\"\n",
+            "\"a\"",
+            ".default",
+        ),
+        ("text_lt", "x = \"a\" .lt 3\n", "\"a\"", ".lt"),
+        ("bytes_cbor", "x = h'00' .cbor uint\n", "h'00'", ".cbor"),
+        (
+            "text_regexp",
+            "x = \"a\" .regexp \"a\"\n",
+            "\"a\"",
+            ".regexp",
+        ),
+        ("lit_lt", "x = 5 .lt 3\n", "5", ".lt"),
+        ("tag_lit_lt", "x = #6.5(5 .lt 3)\n", "5", ".lt"),
+        ("float_lt", "x = 1.5 .lt 3\n", "1.5", ".lt"),
+        ("member_lit_lt", "x = [a: 5 .lt 3]\n", "5", ".lt"),
+        ("member_paren_lit", "x = [a: (5) .lt 3]\n", "5", ".lt"),
+    ] {
+        let msg = expect_graceful_rejection(tag, spec, &["--wasm=false"]);
+        let needle =
+            format!("the `{op}` control operator on the literal value `{literal}` is unsupported");
+        assert_eq!(msg.matches(&needle).count(), 1, "{tag}: {msg}");
+    }
+    let msg = expect_graceful_rejection("text_range", "x = \"a\" .. \"b\"\n", &["--wasm=false"]);
+    assert!(
+        msg.contains("the range start bound `\"a\"` is not a numeric literal"),
+        "{msg}"
+    );
+    for (tag, spec) in [
+        ("uint_range", "x = 0..255\n"),
+        ("nint_range", "x = -10..-3\n"),
+        ("tagged_range", "x = #6.5(3..10)\n"),
+        ("float_range", "x = 0.5..10.5\n"),
+        ("uint_literal", "x = 5\n"),
+        ("text_literal", "x = \"a\"\n"),
+    ] {
+        expect_generates(tag, spec, &["--wasm=false"]);
+    }
+}
+
 /// Child half of the warning-capture regression. `warn!` writes directly to stderr, so an
 /// in-process assertion cannot observe it without changing the production logging seam.
 #[test]
