@@ -1572,6 +1572,18 @@ fn inline_array_group_choice_member_rejects_gracefully() {
     );
 }
 
+/// A temp `.cddl` path unique per call. Tags alone are not unique across tests (several use
+/// `"text"`), and tests share a pid, so parallel tests keyed only by tag and pid overwrite each
+/// other's input and read back a different spec's result.
+fn unique_temp_cddl(tag: &str) -> std::path::PathBuf {
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    std::env::temp_dir().join(format!(
+        "cddl_codegen_{tag}_{}_{n}.cddl",
+        std::process::id()
+    ))
+}
+
 /// Put the default profile coordinate in an argv only when its caller did not provide one.
 fn append_default_wasm_coordinate<'a>(argv: &mut Vec<&'a str>, extra: &[&'a str]) {
     if !extra
@@ -1586,7 +1598,7 @@ fn append_default_wasm_coordinate<'a>(argv: &mut Vec<&'a str>, extra: &[&'a str]
 /// nor panicked. `tag` names the temp file (tests share a pid, so it must be unique per vector) and
 /// `extra` carries the profile flags.
 fn expect_graceful_rejection(tag: &str, spec: &str, extra: &[&str]) -> String {
-    let path = std::env::temp_dir().join(format!("cddl_codegen_{tag}_{}.cddl", std::process::id()));
+    let path = unique_temp_cddl(tag);
     std::fs::write(&path, spec).unwrap();
     let mut argv = vec![
         "cddl-codegen",
@@ -6776,7 +6788,7 @@ fn duplicates_directive_on_field_rejects_gracefully() {
 /// Helper for the CDDL-module-directive and dotted-ident vectors: write `spec` to a temp file, run
 /// the pipeline, and return the `Result` so the caller can assert success or inspect the `Err`.
 fn run_spec(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, String>, String> {
-    let path = std::env::temp_dir().join(format!("cddl_codegen_{tag}_{}.cddl", std::process::id()));
+    let path = unique_temp_cddl(tag);
     std::fs::write(&path, spec).unwrap();
     let cli = Cli::parse_from([
         "cddl-codegen",
@@ -9959,8 +9971,7 @@ fn alias_to_plain_group_in_array_positions_matches_the_direct_reference() {
             "as its VALUE domain",
         ),
     ] {
-        let path =
-            std::env::temp_dir().join(format!("cddl_codegen_{tag}_{}.cddl", std::process::id()));
+        let path = unique_temp_cddl(tag);
         std::fs::write(&path, &spec).unwrap();
         let err = crate::api::generated_strings(&Cli::parse_from(vec![
             "cddl-codegen",
@@ -13437,8 +13448,7 @@ fn generated_local_field_name_rejects_gracefully() {
         ("text_key_array", "a = [pre: uint, text_key: bytes]\n"),
     ] {
         for extra in [&[][..], &["--preserve-encodings", "true"][..]] {
-            let path = std::env::temp_dir()
-                .join(format!("cddl_codegen_{tag}_{}.cddl", std::process::id()));
+            let path = unique_temp_cddl(tag);
             std::fs::write(&path, spec).unwrap();
             let mut argv = vec![
                 "cddl-codegen",
@@ -13546,8 +13556,7 @@ fn encoding_companion_field_collision_rejects_gracefully() {
         ("array_key_pair", "a = [foo: bytes, foo_key: uint]\n"),
         ("array_keyenc", "a = [foo: bytes, foo_key_encoding: uint]\n"),
     ] {
-        let path =
-            std::env::temp_dir().join(format!("cddl_codegen_{tag}_{}.cddl", std::process::id()));
+        let path = unique_temp_cddl(tag);
         std::fs::write(&path, spec).unwrap();
         let cli = Cli::parse_from([
             "cddl-codegen",
@@ -13734,7 +13743,7 @@ fn expect_generates(
     spec: &str,
     extra: &[&str],
 ) -> std::collections::BTreeMap<String, String> {
-    let path = std::env::temp_dir().join(format!("cddl_codegen_{tag}_{}.cddl", std::process::id()));
+    let path = unique_temp_cddl(tag);
     std::fs::write(&path, spec).unwrap();
     let mut argv = vec![
         "cddl-codegen",
@@ -17201,7 +17210,7 @@ fn derived_group_choice_arm_variant_names_deduplicate() {
 /// a rejection is only attributable to the PLACEMENT if the same directives in their honored
 /// position still generate their call sites.
 fn expect_custom_codec_source(tag: &str, spec: &str) -> String {
-    let path = std::env::temp_dir().join(format!("cddl_codegen_{tag}_{}.cddl", std::process::id()));
+    let path = unique_temp_cddl(tag);
     std::fs::write(&path, spec).unwrap();
     let out = crate::api::generated_strings(&Cli::parse_from([
         "cddl-codegen",
@@ -18283,8 +18292,7 @@ fn option_collapse_reads_rule_position_directives() {
     // registered alias. Asserted by effect on the emitted source, so a regression to the dead slot
     // fails here rather than passing as "no rejection".
     let src = |spec: &str, tag: &str| -> String {
-        let path =
-            std::env::temp_dir().join(format!("cddl_codegen_{tag}_{}.cddl", std::process::id()));
+        let path = unique_temp_cddl(tag);
         std::fs::write(&path, spec).unwrap();
         let cli = Cli::parse_from([
             "cddl-codegen",
@@ -18399,8 +18407,7 @@ fn generic_raw_bytes_base_rejects_gracefully() {
             "foo<T> = _CDDL_CODEGEN_EXTERN_TYPE_\nbar = [x: uint]\n",
         ),
     ] {
-        let path =
-            std::env::temp_dir().join(format!("cddl_codegen_{tag}_{}.cddl", std::process::id()));
+        let path = unique_temp_cddl(tag);
         std::fs::write(&path, spec).unwrap();
         let cli = Cli::parse_from([
             "cddl-codegen",
