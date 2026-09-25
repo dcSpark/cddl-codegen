@@ -8767,6 +8767,47 @@ mod registration_tests {
     }
 
     #[test]
+    fn structural_identity_ignores_only_debug_omitted_provenance() {
+        let ident = RustIdent::new(CDDLIdent::new("choice"));
+        let u64_ty = RustType::new(ConceptualRustType::Primitive(Primitive::U64));
+        let make = |ty: RustType, derived: bool, tag: Option<usize>| {
+            let variant = EnumVariant::new(VariantIdent::new_custom("U64"), ty, false, None);
+            RustStruct::new_type_choice(
+                ident.clone(),
+                tag,
+                None,
+                vec![if derived {
+                    variant.with_derived_name()
+                } else {
+                    variant
+                }],
+                &cli(),
+            )
+        };
+        let base = make(u64_ty.clone(), false, None);
+        assert!(
+            base.structurally_equivalent(&make(
+                u64_ty
+                    .clone()
+                    .with_generic_param_binding(GenericParamBinding::new(0)),
+                false,
+                None,
+            ))
+        );
+        assert!(base.structurally_equivalent(&make(u64_ty, true, None)));
+        assert!(!base.structurally_equivalent(&make(
+            RustType::new(ConceptualRustType::Primitive(Primitive::Str)),
+            false,
+            None,
+        )));
+        assert!(!base.structurally_equivalent(&make(
+            RustType::new(ConceptualRustType::Primitive(Primitive::U64)),
+            false,
+            Some(7),
+        )));
+    }
+
+    #[test]
     fn nominal_mint_claims_reject_pre_registration_loss_in_both_orders() {
         for bare_first in [true, false] {
             let cddl = cddl::parser::cddl_from_str("anchor = uint\n", true).unwrap();
