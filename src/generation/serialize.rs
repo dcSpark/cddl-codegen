@@ -616,14 +616,63 @@ pub(super) fn create_serialize_impls(
 }
 
 pub(super) fn make_serialization_function(name: &str, cli: &Cli) -> codegen::Function {
+    let mut f = serialization_function_head(name);
+    if cli.preserve_encodings && cli.canonical_form {
+        f.arg("force_canonical", "bool");
+    }
+    f
+}
+
+/// [`make_serialization_function`] for a body built in full up front. The canonical profile's
+/// signature binds `force_canonical`, but a body that writes only width-less values (a
+/// `bool`/`null`/`undefined` special, e.g. `false_value = false` or `nb = bool ; @newtype`) never
+/// forwards it; such a body binds `_force_canonical`, or every consumer crate warns
+/// `unused_variables`.
+pub(super) fn make_serialization_function_over(
+    name: &str,
+    body: BlocksOrLines,
+    cli: &Cli,
+) -> codegen::Function {
+    let mut f = serialization_function_head(name);
+    if cli.preserve_encodings && cli.canonical_form {
+        if mentions_ident(&body, "force_canonical") {
+            f.arg("force_canonical", "bool");
+        } else {
+            f.arg("_force_canonical", "bool");
+        }
+    }
+    f.push_all(body);
+    f
+}
+
+/// Whether any line `body` emits mentions `ident` as a whole identifier.
+fn mentions_ident(body: &BlocksOrLines, ident: &str) -> bool {
+    let is_ident_char = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    body.0.iter().any(|content| {
+        let mut rendered = String::new();
+        let text = match content {
+            BlockOrLine::Line(line) => line.as_str(),
+            BlockOrLine::Block(block) => {
+                block
+                    .fmt(&mut codegen::Formatter::new(&mut rendered))
+                    .expect("formatting an in-memory generated block must not fail");
+                rendered.as_str()
+            }
+        };
+        text.match_indices(ident).any(|(at, _)| {
+            !text[..at].ends_with(is_ident_char)
+                && !text[at + ident.len()..].starts_with(is_ident_char)
+        })
+    })
+}
+
+/// The `serialize`-shaped signature up to (not including) the canonical profile's parameter.
+fn serialization_function_head(name: &str) -> codegen::Function {
     let mut f = codegen::Function::new(name);
     f.generic("'se")
         .ret("cbor_event::Result<&'se mut Serializer>")
         .arg_ref_self()
         .arg("serializer", "&'se mut Serializer");
-    if cli.preserve_encodings && cli.canonical_form {
-        f.arg("force_canonical", "bool");
-    }
     f
 }
 

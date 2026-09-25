@@ -1209,13 +1209,13 @@ fn generate_enum(
         cli,
     );
     let mut ser_impl = make_serialization_impl(name.as_ref(), cli);
-    let mut ser_func = make_serialization_function("serialize", cli);
+    let mut ser_body = BlocksOrLines::default();
     if let Some(tag) = tag
         && !cli.preserve_encodings
     {
         // Preserve writes below, inside every variant arm: Rust enums have no enum-level
         // instance field, so the rule-owned width is physically repeated on each variant.
-        ser_func.line(format!("serializer.write_tag({tag}u64)?;"));
+        ser_body.line(&format!("serializer.write_tag({tag}u64)?;"));
     }
     let mut ser_array_match_block = Block::new("match self");
     let mut deser_func = make_deserialization_function("deserialize", cli);
@@ -1883,8 +1883,12 @@ fn generate_enum(
             }
         }
     }
-    ser_func.push_block(ser_array_match_block);
-    ser_impl.push_fn(ser_func);
+    ser_body.push_block(ser_array_match_block);
+    ser_impl.push_fn(super::serialize::make_serialization_function_over(
+        "serialize",
+        ser_body,
+        cli,
+    ));
     match non_overlapping_types_match {
         Some((mut deser_type_match, deser_covers_all_types)) => {
             if !deser_covers_all_types {

@@ -12301,7 +12301,9 @@ fn fixed_singletons_execute_across_default_preserve_and_canonical_profiles() {
                         byte_choice_holder = [x: byte_choice]\n\
                         mixed_text_bytes_choice = \"a\" / h'61'\n\
                         mixed_text_bytes_choice_holder = [x: mixed_text_bytes_choice]\n\
-                        bytes_default = [ ? payload: bytes .default h'CAFE', end: uint ]\n";
+                        bytes_default = [ ? payload: bytes .default h'CAFE', end: uint ]\n\
+                        bool_or_undefined = bool / undefined\n\
+                        wrapped_bool = bool ; @newtype\n";
 
     const COMMON: &str = r#"
 #[test]
@@ -12546,6 +12548,15 @@ fn assert_decode_reject_reason<T: Deserialize + core::fmt::Debug>(bytes: &[u8], 
             test.status.success(),
             "{label}: generated fixed singleton crate failed behavior tests\n{}\n{}",
             String::from_utf8_lossy(&test.stdout),
+            String::from_utf8_lossy(&test.stderr)
+        );
+        // A width-less body (a `bool`/`null`/`undefined` special) never forwards the canonical
+        // profile's `force_canonical`; the generator must not leave that binding unused.
+        let unused_vars = unused_generated_variable_lines(&String::from_utf8_lossy(&test.stderr));
+        assert!(
+            unused_vars.is_empty(),
+            "{label}: generated fixed singleton crate binds variables it never uses\n{}\n{}",
+            unused_vars.join("\n"),
             String::from_utf8_lossy(&test.stderr)
         );
     }

@@ -950,10 +950,10 @@ pub(super) fn generate_wrapper_struct(
     // references may walk that map structurally: both trait shells call the same free functions.
     // Like the record precedent, the nominal value itself crosses the custom boundary under
     // --preserve-encodings; no inferred key/value/length tuple leaks out.
-    let mut ser_func = make_serialization_function("serialize", cli);
+    let mut ser_body = BlocksOrLines::default();
     let mut ser_impl = make_serialization_impl(type_name.as_ref(), cli);
     if let Some((custom_serialize, _)) = custom_pair {
-        ser_func.line(format!(
+        ser_body.line(&format!(
             "{}(serializer, self{})",
             custom_serialize,
             canonical_param(cli)
@@ -975,12 +975,16 @@ pub(super) fn generate_wrapper_struct(
         gen_scope.generate_serialize(
             types,
             field_type.into(),
-            &mut ser_func,
+            &mut ser_body,
             serialize_config,
             cli,
         );
     }
-    ser_impl.push_fn(ser_func);
+    ser_impl.push_fn(super::serialize::make_serialization_function_over(
+        "serialize",
+        ser_body,
+        cli,
+    ));
     let mut deser_func = make_deserialization_function("deserialize", cli);
     let mut deser_impl = codegen::Impl::new(type_name.to_string());
     deser_impl.impl_trait("Deserialize");

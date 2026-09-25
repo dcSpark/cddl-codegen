@@ -145,6 +145,7 @@ entries = [
   "testing.armed-idle-harness-arms-empty-head-ledgers-zero",
   "testing.emitted-shape-lint-classes-outside-clippy-all-beyond",
   "testing.unused-imports-generated-crates-trait-import-class-name",
+  "testing.canonical-corpus-warning-scan",
   "testing.mechanical-layers-two-review-owned-design-rules-tests",
   "testing.name-keyed-ir-registration-claim-matrix",
   "testing.add-profile-wrapper-participation-grid-participation-differs-across",
@@ -466,6 +467,37 @@ action_on_fire_md = '''Set testing.armed-idle-harness-arms-empty-head-ledgers-ze
 [record.payload.promotion_trigger.predicate]
 predicate_kind = "manual"
 review_procedure_md = '''Compare fresh, durable evidence with the exact trigger and explicit non-trigger exclusions in testing.armed-idle-harness-arms-empty-head-ledgers-zero's payload prose. Record the observer, scope, commit or consumer, date, and unprobed remainder. A source read alone cannot decide the event.
+'''
+
+[[record]]
+id = "testing.canonical-corpus-warning-scan"
+title = "The corpus warning scan does not compile the canonical profile."
+
+[record.payload]
+kind = "work"
+body_md = '''The corpus warning scans do not compile the canonical profile: `feature_corpus_compiles` uses `ALL_PROFILES`, which deliberately excludes canonical (`tests/mod.rs`).
+The canonical leg of `fixed_singletons_execute_across_default_preserve_and_canonical_profiles` now scans generated unused-variable warnings, including width-less enum and wrapper serializers.
+Keep the focused vector while this is the only known canonical-only warning class; a canonical corpus leg would add roughly 100 generated-crate compiles to a local run.
+'''
+signal_md = '''Reopen the corpus-wide canonical leg when a second distinct canonical-only warning or compile failure appears in a generated corpus shape outside the fixed-singletons vector.
+The maintainer running the generated crate or a consumer sees the warning or failure directly.
+'''
+work_state = "armed"
+work_intent = "add_regression"
+work_kind = "coverage_cell"
+risk = "compile_failure"
+control_ids = ["testing.guard.canonical-corpus-warning-scan"]
+
+[record.payload.promotion_trigger]
+observer = "maintainer or consumer compiling a canonical generated corpus shape"
+dimension = "Distinct canonical-only warning or compile classes outside the fixed-singletons vector"
+observable = "A second distinct canonical-only warning or compile failure appears in a generated corpus shape outside the fixed-singletons vector."
+action_on_fire_md = '''Add a canonical leg to `feature_corpus_compiles` and scan its generated crate's warnings.
+'''
+
+[record.payload.promotion_trigger.predicate]
+predicate_kind = "manual"
+review_procedure_md = '''Reproduce the new class under `--preserve-encodings=true --canonical-form=true --wasm=false`; verify that the same shape lacks it without canonical form and that the fixed-singletons vector does not cover it.
 '''
 
 [[record]]
@@ -2570,6 +2602,20 @@ reference_ids = ["gate-lint-doc-citations"]
 claim_md = '''The current controls, proven instance, and standing rule are the exact claims in testing.armed-idle-harness-arms-empty-head-ledgers-zero's preserved detail.
 '''
 boundary_md = '''This control owns current containment only. It does not claim the deferred mechanical layer exists, that the authored trigger is unmet, or that an unprobed consumer and repository universe is empty.
+'''
+
+[[record]]
+id = "testing.guard.canonical-corpus-warning-scan"
+title = "The focused fixed-singletons integration vector scans canonical unused-variable warnings."
+
+[record.payload]
+kind = "control"
+control_kind = "test"
+control_state = "live"
+reference_ids = ["test-fixed-singletons-execute-across-default-preserve-and-canonical-profiles"]
+claim_md = '''The canonical leg of `fixed_singletons_execute_across_default_preserve_and_canonical_profiles` scans generated unused-variable warnings from width-less fixed singleton, enum, and wrapper serializers.
+'''
+boundary_md = '''The vector covers its authored shapes; it does not sweep every corpus shape under canonical form.
 '''
 
 [[record]]
@@ -7014,6 +7060,13 @@ id = "gate-lint-doc-citations"
 source = "testing.armed-idle-harness-arms-empty-head-ledgers-zero"
 kind = "gate"
 gate_id = "lint_doc_citations"
+
+[[reference]]
+id = "test-fixed-singletons-execute-across-default-preserve-and-canonical-profiles"
+source = "testing.canonical-corpus-warning-scan"
+kind = "test_symbol"
+test_id = "rust-test:cddl-codegen#tests::integration_tests::fixed_singletons_execute_across_default_preserve_and_canonical_profiles"
+symbol = "tests::integration_tests::fixed_singletons_execute_across_default_preserve_and_canonical_profiles"
 
 [[reference]]
 id = "test-json-arbitrary-precision"

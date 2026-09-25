@@ -7780,6 +7780,10 @@ impl ReservedScope {
 pub(crate) const GENERATED_LOCAL_PROBED_SAFE: &[&str] = &[
     "_depth_guard",
     "_e",
+    // The canonical profile's `force_canonical` parameter, renamed where the serialize body never
+    // forwards it (`make_serialization_function_over`): such a body writes only a width-less
+    // special and references no field, so no field name can collide with it.
+    "_force_canonical",
     "_k",
     "_rest_elem",
     "_rest_key",
