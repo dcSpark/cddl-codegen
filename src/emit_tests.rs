@@ -1403,71 +1403,246 @@ fn mint_dynamic_map_row(
     None
 }
 
+/// Whether this domain can supply a uint/text image without minting it. Composite choice arms
+/// cannot collide with fixed record keys, and probing them can print an unrelated mint warning.
+fn rest_entry_key_has_fixed_image(types: &IntermediateTypes, domain: &RustType, depth: u8) -> bool {
+    if type_uses_custom_ser(types, domain, &mut BTreeSet::new()) {
+        return false;
+    }
+    match domain.resolve_alias_shallow() {
+        ConceptualRustType::Primitive(p) => matches!(
+            p,
+            Primitive::U8
+                | Primitive::U16
+                | Primitive::U32
+                | Primitive::U64
+                | Primitive::I8
+                | Primitive::I16
+                | Primitive::I32
+                | Primitive::I64
+                | Primitive::N64
+                | Primitive::Str
+        ),
+        ConceptualRustType::Rust(ident) => match types.rust_struct(ident) {
+            Some(rust_struct) if rust_struct.tag().is_none() => match rust_struct.variant() {
+                RustStructType::Extern => ident.to_string() == "Int",
+                RustStructType::TypeChoice { variants } if depth < 2 => {
+                    variants.iter().any(|variant| {
+                        variant_arg_fields(types, variant, false).is_some_and(|fields| {
+                            fields.len() == 1
+                                && rest_entry_key_has_fixed_image(types, fields[0].0, depth + 1)
+                        })
+                    })
+                }
+                RustStructType::Wrapper {
+                    wrapped,
+                    min_max: None,
+                    float_min_max: None,
+                } if depth < 2 => rest_entry_key_has_fixed_image(types, wrapped, depth + 1),
+                _ => false,
+            },
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+/// Candidate entry keys for one dynamic map row, cheapest first, each paired with the CDDL value
+/// it denotes. `None` means its image cannot equal a uint/text fixed key or a minted baseline key,
+/// as with a composite `any`, bytes, or bool key. Each stream has at most `limit + 1` candidates;
+/// a domain without a typed image keeps its single generic mint.
+fn rest_entry_key_candidates(
+    types: &IntermediateTypes,
+    domain: &RustType,
+    initial: MintValue,
+    limit: usize,
+    depth: u8,
+) -> Vec<(MintValue, Option<FixedValue>)> {
+    if type_uses_custom_ser(types, domain, &mut BTreeSet::new()) {
+        return vec![(initial, None)];
+    }
+    match (domain.resolve_alias_shallow(), &initial) {
+        (ConceptualRustType::Primitive(p), MintValue::Int { value: start }) => {
+            let key = MapKey::Int(*p);
+            (0..=limit)
+                .filter_map(|offset| {
+                    let candidate = start.checked_add(i128::try_from(offset).ok()?)?;
+                    map_key_run_is_accepted(&key, domain, 1, candidate)
+                        .then(|| map_minted_key_fixed_value(&key, candidate))
+                        .flatten()
+                        .map(|image| (MintValue::Int { value: candidate }, Some(image)))
+                })
+                .collect()
+        }
+        (ConceptualRustType::Primitive(Primitive::Str), MintValue::Str { len }) => ('a'..='z')
+            .take(limit.saturating_add(1))
+            .map(|ch| {
+                let content = ch.to_string().repeat(*len as usize);
+                let mint = if ch == 'a' {
+                    initial.clone()
+                } else {
+                    MintValue::StrLit {
+                        content: content.clone(),
+                    }
+                };
+                (mint, Some(FixedValue::Text(content)))
+            })
+            .collect(),
+        (_, MintValue::IntExtern { ident, value: 0 }) => (0..=limit)
+            .filter_map(|offset| {
+                let value = u64::try_from(offset).ok()?;
+                Some((
+                    MintValue::IntExtern {
+                        ident: ident.clone(),
+                        value: value as i128,
+                    },
+                    Some(FixedValue::Uint(value)),
+                ))
+            })
+            .collect(),
+        (ConceptualRustType::Rust(ident), MintValue::Choice { .. }) if depth < 2 => {
+            let Some(rust_struct) = types.rust_struct(ident) else {
+                return vec![(initial, None)];
+            };
+            let RustStructType::TypeChoice { variants } = rust_struct.variant() else {
+                return vec![(initial, None)];
+            };
+            if rust_struct.tag().is_some() {
+                return vec![(initial, None)];
+            }
+            let mut candidates = Vec::new();
+            for variant in variants {
+                let Some(fields) = variant_arg_fields(types, variant, false) else {
+                    continue;
+                };
+                if fields.len() != 1 {
+                    continue;
+                }
+                let arg_ty = fields[0].0;
+                if !rest_entry_key_has_fixed_image(types, arg_ty, depth + 1) {
+                    continue;
+                }
+                let Some(arg_initial) = valid_value(types, arg_ty) else {
+                    continue;
+                };
+                for (mint, image) in
+                    rest_entry_key_candidates(types, arg_ty, arg_initial, limit, depth + 1)
+                {
+                    if image.is_some() {
+                        candidates.push((
+                            MintValue::Choice {
+                                ident: ident.to_string(),
+                                variant: variant.name_as_var(),
+                                args: vec![mint],
+                                can_fail: arg_can_fail(types, arg_ty),
+                            },
+                            image,
+                        ));
+                    }
+                }
+            }
+            if candidates.is_empty() {
+                vec![(initial, None)]
+            } else {
+                candidates
+            }
+        }
+        (ConceptualRustType::Rust(ident), MintValue::Wrapper { .. }) if depth < 2 => {
+            let Some(rust_struct) = types.rust_struct(ident) else {
+                return vec![(initial, None)];
+            };
+            let RustStructType::Wrapper {
+                wrapped,
+                min_max: None,
+                float_min_max: None,
+            } = rust_struct.variant()
+            else {
+                return vec![(initial, None)];
+            };
+            if rust_struct.tag().is_some() {
+                return vec![(initial, None)];
+            }
+            let Some(wrapped_initial) = valid_value(types, wrapped) else {
+                return Vec::new();
+            };
+            rest_entry_key_candidates(types, wrapped, wrapped_initial, limit, depth + 1)
+                .into_iter()
+                .filter_map(|(mint, image)| {
+                    image.map(|image| {
+                        let MintValue::Wrapper {
+                            ident,
+                            can_fail,
+                            checked_try_from,
+                            ..
+                        } = &initial
+                        else {
+                            unreachable!()
+                        };
+                        (
+                            MintValue::Wrapper {
+                                ident: ident.clone(),
+                                inner: Box::new(mint),
+                                can_fail: *can_fail,
+                                checked_try_from: *checked_try_from,
+                            },
+                            Some(image),
+                        )
+                    })
+                })
+                .collect()
+        }
+        _ => vec![(initial, None)],
+    }
+}
+
 /// The one extra entry a round-trip mutation adds through a protected row's checked `insert_<row>`
-/// door must avoid the same keys `mint_dynamic_map_row` avoids: declared and forbidden fixed keys
-/// (the door rejects both — `{ 1: uint, 0*0 0: text, * uint => text }` minted `insert_rest(0, ..)`,
-/// whose `.unwrap()` panicked in the generated crate), plus the keys the baseline already placed in
-/// any map row of the same key kind, so the insertion is a genuine new entry. Integer keys search
-/// forward from the domain's baseline coordinate; other key kinds keep their generic mint.
+/// door must avoid declared and forbidden fixed keys plus images already minted into baseline map
+/// rows. Integer, text, `int`, untagged choice, and unbounded wrapper keys search cheap streams.
+/// Bytes and bool keep their generic mint: record fixed keys are uint/text only, and a unique-map
+/// duplicate replaces an existing entry rather than failing.
 fn mint_checked_rest_entry_key(
     types: &IntermediateTypes,
     name: &str,
     record: &RustRecord,
     row: &RestRow,
     baseline: &[MintValue],
+    initial: Option<MintValue>,
 ) -> Option<MintValue> {
     let domain = row.domain();
-    let initial = valid_value(types, domain)?;
-    let MintValue::Int { value: start } = initial else {
-        return Some(initial);
-    };
-    let Some(MintValue::Map {
-        key: key @ MapKey::Int(_),
-        ..
-    }) = valid_value(types, &row.container_type())
-    else {
-        return Some(initial);
-    };
+    let initial = initial?;
     let fixed_keys: Vec<&FixedValue> = record
         .fields
         .iter()
         .filter_map(|field| field.key.as_ref())
         .chain(record.forbidden_fields.iter().map(|field| &field.key))
         .collect();
-    let occupied: Vec<(i128, i128)> = baseline
+    let occupied: Vec<FixedValue> = baseline
         .iter()
-        .filter_map(|value| match value {
+        .flat_map(|value| match value {
             MintValue::Map {
-                key: run_key,
+                key,
                 key_base,
                 count,
                 ..
-            } if *run_key == key => Some((*key_base, *count)),
-            _ => None,
+            } => (0..*count)
+                .filter_map(|i| {
+                    key_base
+                        .checked_add(i)
+                        .and_then(|c| map_minted_key_fixed_value(key, c))
+                })
+                .collect::<Vec<_>>(),
+            _ => Vec::new(),
         })
         .collect();
     // Each fixed key or occupied coordinate rules out at most one candidate, so this bound
     // reaches the first free coordinate whenever the domain has one within cheap reach.
-    let max_offset = occupied
-        .iter()
-        .try_fold(fixed_keys.len() as i128, |sum, (_, count)| {
-            sum.checked_add(*count)
-        })?;
-    for offset in 0..=max_offset {
-        let Some(candidate) = start.checked_add(offset) else {
-            break;
-        };
-        if !map_key_run_is_accepted(&key, domain, 1, candidate)
-            || fixed_keys
-                .iter()
-                .any(|fixed| map_minted_key_equals_fixed(&key, candidate, 0, fixed))
-            || occupied
-                .iter()
-                .any(|(base, count)| candidate >= *base && candidate - *base < *count)
-        {
-            continue;
+    let limit = fixed_keys.len().saturating_add(occupied.len());
+    for (candidate, image) in rest_entry_key_candidates(types, domain, initial, limit, 0) {
+        if image.as_ref().is_none_or(|image| {
+            !fixed_keys.iter().any(|fixed| **fixed == *image) && !occupied.contains(image)
+        }) {
+            return Some(candidate);
         }
-        return Some(MintValue::Int { value: candidate });
     }
     crate::warn!(
         "cddl-codegen --emit-tests: {name} dynamic map row {} has no cheaply minted entry key that avoids this record's fixed and baseline keys — its checked insertion is unexercised",
@@ -1813,7 +1988,14 @@ fn record_roundtrip(
                 }
                 let protected = record.has_protected_rest_keys(types) && !rest.is_array_tail();
                 let key = if protected {
-                    mint_checked_rest_entry_key(types, name, record, rest, &valid_args)
+                    let initial = valid_value(types, domain);
+                    if matches!(&initial, Some(MintValue::Int { .. })) {
+                        // The former integer search also minted the row carrier to identify its
+                        // key kind. Retain that existing diagnostic for an unmintable range; the
+                        // candidate search itself must not probe composite choice arms.
+                        let _ = valid_value(types, &rest.container_type());
+                    }
+                    mint_checked_rest_entry_key(types, name, record, rest, &valid_args, initial)
                 } else {
                     valid_value(types, domain)
                 };

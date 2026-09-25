@@ -45,3 +45,15 @@ holder_str_size = [m: {* tstr .size 3 => uint}]
 ; round-trip's extra rest entry enters through the checked `insert_rest` door, which rejects
 ; declared and forbidden keys; the entry key must also skip the baseline's own rest key (2).
 holder_forbidden_rest_zero = { 1: uint, 0*0 0: text, * uint => text }
+
+; Each checked rest insertion must move past a colliding forbidden or declared key.
+holder_forbidden_union_rest = { 1: uint, 0*0 0: text, 0*0 "a": text, * (uint / tstr) => text }
+holder_forbidden_text_rest = { 1: uint, 0*0 "a": text, * tstr => text }
+holder_declared_text_rest = { a: uint, * tstr => uint }
+holder_declared_int_rest = { 0: uint, * int => text }
+holder_declared_sized_text_rest = { "aa": uint, * tstr .size 2 => text }
+rest_key_newtype = uint ; @newtype
+holder_declared_newtype_rest = { 0: uint, * rest_key_newtype => text }
+
+; A union with only composite key variants keeps its valid bytes mint for checked insertion.
+holder_composite_choice_rest = { a: uint, * (bytes / [* uint]) => text }

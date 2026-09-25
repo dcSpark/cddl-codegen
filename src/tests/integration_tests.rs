@@ -14724,6 +14724,13 @@ fn emit_tests_bounded_map_key_execute() {
         "roundtrip_holder_dynamic_uint_uint_zero",
         "roundtrip_holder_str_size",
         "roundtrip_holder_forbidden_rest_zero",
+        "roundtrip_holder_forbidden_union_rest",
+        "roundtrip_holder_forbidden_text_rest",
+        "roundtrip_holder_declared_text_rest",
+        "roundtrip_holder_declared_int_rest",
+        "roundtrip_holder_declared_sized_text_rest",
+        "roundtrip_holder_declared_newtype_rest",
+        "roundtrip_holder_composite_choice_rest",
     ] {
         assert!(
             src.contains(&format!("fn {ty}(")),
@@ -14777,6 +14784,41 @@ fn emit_tests_bounded_map_key_execute() {
         flat.contains("v.insert_rest(3,\"a\".repeat(1)).unwrap();"),
         "a protected rest entry must skip forbidden, declared, and baseline keys\n{src}"
     );
+    for (needle, collision) in [
+        (
+            "v.insert_rest(U64OrText::new_uint(2),\"a\".repeat(1)).unwrap();",
+            "union forbidden and baseline keys",
+        ),
+        (
+            "v.insert_rest(\"b\".to_owned(),\"a\".repeat(1)).unwrap();",
+            "forbidden text key",
+        ),
+        (
+            "v.insert_rest(\"b\".to_owned(),0).unwrap();",
+            "declared text key",
+        ),
+        (
+            "v.insert_rest(Int::new_uint(1),\"a\".repeat(1)).unwrap();",
+            "declared int key",
+        ),
+        (
+            "v.insert_rest(\"bb\".to_owned(),\"a\".repeat(1)).unwrap();",
+            "declared sized text key",
+        ),
+        (
+            "v.insert_rest(RestKeyNewtype::new(1),\"a\".repeat(1)).unwrap();",
+            "declared newtype key",
+        ),
+        (
+            "v.insert_rest(BytesOrArrU64::new_bytes(vec![0u8;1]),\"a\".repeat(1)).unwrap();",
+            "composite choice key",
+        ),
+    ] {
+        assert!(
+            flat.contains(needle),
+            "checked rest insertion must skip {collision}\n{src}"
+        );
+    }
     // Vacuity guard: the `.ne 0` table's keys must actually START above the excluded value. Without
     // this the gate could pass by minting the map EMPTY (or by the table vanishing from the
     // fixture) — a green that asserts nothing about the key window.
