@@ -139,7 +139,7 @@ use enums::{
 };
 
 mod wrappers;
-pub(crate) use wrappers::generate_tag_check;
+pub(crate) use wrappers::{TagCheckForm, generate_tag_check};
 use wrappers::{generate_any_cbor_wasm, generate_int, generate_wrapper_struct};
 
 mod collections;

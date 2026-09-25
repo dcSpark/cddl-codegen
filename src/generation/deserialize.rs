@@ -623,6 +623,17 @@ pub(super) fn add_deserialize_final_len_check(
     }
 }
 
+/// The container head read that opens a record/enum `deserialize()`: `let len = raw.array()?;` or
+/// `raw.map()?`, through the `_sz` reader under preserve-encodings.
+fn container_len_read(rep: Representation, cli: &Cli) -> String {
+    let reader = match rep {
+        Representation::Array => "array",
+        Representation::Map => "map",
+    };
+    let sz = if cli.preserve_encodings { "_sz" } else { "" };
+    format!("let len = raw.{reader}{sz}()?;")
+}
+
 // CASE 1 - generate_deserialize_embedded = true:
 //     Returns (Deserialize impl, Some(DeserializeEmbeddedGroup impl))
 //     The caller should create and push their own deserialize_as_embedded_group to the
@@ -685,32 +696,19 @@ pub(super) fn create_deserialize_impls(
         // Pre-delegation scaffolding, built into a closure returning the bindings later code needs.
         let mut pre = BlocksOrLines::default();
         if let Some(tag) = tag {
-            if cli.preserve_encodings {
-                pre.line("let (tag, tag_encoding) = raw.tag_sz()?;");
-            } else {
-                pre.line("let tag = raw.tag()?;");
-            }
             // Inside the annotate closure, so the locationless form (the closure supplies the name).
-            let mut tag_check = Block::new(format!("if tag != {tag}"));
-            tag_check.line(format!("return Err(DeserializeFailure::TagMismatch{{ found: tag, expected: {tag} }}.into());"));
-            pre.push_block(tag_check);
+            generate_tag_check(
+                &mut pre,
+                ident,
+                tag,
+                TagCheckForm {
+                    sized: cli.preserve_encodings,
+                    name_read_error: false,
+                    name_mismatch_error: false,
+                },
+            );
         }
-        match rep {
-            Representation::Array => {
-                pre.line(if cli.preserve_encodings {
-                    "let len = raw.array_sz()?;"
-                } else {
-                    "let len = raw.array()?;"
-                });
-            }
-            Representation::Map => {
-                pre.line(if cli.preserve_encodings {
-                    "let len = raw.map_sz()?;"
-                } else {
-                    "let len = raw.map()?;"
-                });
-            }
-        }
+        pre.line(&container_len_read(rep, cli));
         // Inline the read_len construction + initial checks instead of calling
         // add_deserialize_initial_len_check: here the delegation's `&mut read_len` use lives OUTSIDE
         // the closure, so `read_len` is only mutated inside the closure when a `read_elems` is
@@ -760,61 +758,30 @@ pub(super) fn create_deserialize_impls(
         return (deser_impl, Some(embedded_impl));
     }
     if let Some(tag) = tag {
-        if cli.preserve_encodings {
-            deser_body.line("let (tag, tag_encoding) = raw.tag_sz()?;");
-        } else {
-            deser_body.line("let tag = raw.tag()?;");
-        }
-        let mut tag_check = Block::new(format!("if tag != {tag}"));
-        if annotated {
-            tag_check.line(format!("return Err(DeserializeFailure::TagMismatch{{ found: tag, expected: {tag} }}.into());"));
-        } else {
-            tag_check.line(format!("return Err(DeserializeError::new(\"{name}\", DeserializeFailure::TagMismatch{{ found: tag, expected: {tag} }}));"));
-        }
-        deser_body.push_block(tag_check);
+        // The read itself is never named here, even without a closure: kept as emitted.
+        generate_tag_check(
+            deser_body,
+            ident,
+            tag,
+            TagCheckForm {
+                sized: cli.preserve_encodings,
+                name_read_error: false,
+                name_mismatch_error: !annotated,
+            },
+        );
     }
-    match rep {
-        Representation::Array => {
-            if cli.preserve_encodings {
-                deser_body.line("let len = raw.array_sz()?;");
-            } else {
-                deser_body.line("let len = raw.array()?;");
-            }
-            if !generate_deserialize_embedded && let Some(encoding_var_name) = store_encoding {
-                deser_body.line(&format!(
-                    "let {encoding_var_name}: LenEncoding = len.into();"
-                ));
-            }
-            if let Some(len_info) = len_info {
-                add_deserialize_initial_len_check(deser_body, len_info, cli);
-            }
-            if generate_deserialize_embedded {
-                deser_body.line(
-                    "let ret = Self::deserialize_as_embedded_group(raw, &mut read_len, len);",
-                );
-            }
-        }
-        Representation::Map => {
-            if cli.preserve_encodings {
-                deser_body.line("let len = raw.map_sz()?;");
-            } else {
-                deser_body.line("let len = raw.map()?;");
-            }
-            if !generate_deserialize_embedded && let Some(encoding_var_name) = store_encoding {
-                deser_body.line(&format!(
-                    "let {encoding_var_name}: LenEncoding = len.into();"
-                ));
-            }
-            if let Some(len_info) = len_info {
-                add_deserialize_initial_len_check(deser_body, len_info, cli);
-            }
-            if generate_deserialize_embedded {
-                deser_body.line(
-                    "let ret = Self::deserialize_as_embedded_group(raw, &mut read_len, len);",
-                );
-            }
-        }
-    };
+    deser_body.line(&container_len_read(rep, cli));
+    if !generate_deserialize_embedded && let Some(encoding_var_name) = store_encoding {
+        deser_body.line(&format!(
+            "let {encoding_var_name}: LenEncoding = len.into();"
+        ));
+    }
+    if let Some(len_info) = len_info {
+        add_deserialize_initial_len_check(deser_body, len_info, cli);
+    }
+    if generate_deserialize_embedded {
+        deser_body.line("let ret = Self::deserialize_as_embedded_group(raw, &mut read_len, len);");
+    }
     let deser_embedded_impl = if generate_deserialize_embedded {
         if let Some(len_info) = len_info {
             add_deserialize_final_len_check(deser_body, Some(rep), len_info, cli);

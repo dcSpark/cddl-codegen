@@ -3513,13 +3513,13 @@ impl Foo {
 ///   no closure will add the location.
 #[test]
 fn generate_tag_check_arms() {
-    use crate::generation::generate_tag_check;
+    use crate::generation::{TagCheckForm, generate_tag_check};
     use crate::intermediate::{CDDLIdent, RustIdent};
 
     let ident = RustIdent::new(CDDLIdent::new("Ident"));
     let render = |annotated: bool| {
         let mut f = codegen::Function::new("deserialize");
-        generate_tag_check(&mut f, &ident, Some(11), annotated);
+        generate_tag_check(&mut f, &ident, 11, TagCheckForm::closure(false, annotated));
         let mut scope = codegen::Scope::new();
         scope.push_fn(f);
         scope.to_string()

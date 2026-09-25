@@ -150,32 +150,59 @@ fn emit_checked_scalar_json_schema_bounds(
     }
 }
 
-// `annotated` - true iff deser_func is the body of an `.annotate(ident)` error closure: emit
-// locationless errors and let the closure supply the name (the per-error annotate/named forms
-// would get the name prepended AGAIN by the closure, reading "Name.Name"). When false, each error
-// carries the name itself, as no closure will add it.
+/// How [`generate_tag_check`] spells a mandatory tag's read and its mismatch error.
+///
+/// Inside an `.annotate(name)` error closure both errors must be the locationless form: the closure
+/// supplies the name, and a named error would get it prepended AGAIN ("Name.Name"). Without a
+/// closure a named error carries the name itself. [`Self::closure`] is that rule for both errors.
+#[derive(Clone, Copy)]
+pub(crate) struct TagCheckForm {
+    /// Read with `tag_sz()`, binding `(tag, tag_encoding)` (preserve-encodings), else `tag()`.
+    pub(crate) sized: bool,
+    /// The read's own error names the type (`.map_err(.. .annotate(name))`).
+    pub(crate) name_read_error: bool,
+    /// The mismatch is `DeserializeError::new(name, ..)` rather than the locationless `.into()`.
+    pub(crate) name_mismatch_error: bool,
+}
+
+impl TagCheckForm {
+    /// Both errors named exactly when `annotated` is false, i.e. no enclosing closure names them.
+    pub(crate) fn closure(sized: bool, annotated: bool) -> Self {
+        Self {
+            sized,
+            name_read_error: !annotated,
+            name_mismatch_error: !annotated,
+        }
+    }
+}
+
+/// Read a mandatory tag from `raw` and reject any tag other than `tag` with `TagMismatch`.
 pub(crate) fn generate_tag_check(
     deser_func: &mut dyn CodeBlock,
     ident: &RustIdent,
-    tag: Option<usize>,
-    annotated: bool,
+    tag: usize,
+    form: TagCheckForm,
 ) {
-    if let Some(tag) = tag {
-        if annotated {
-            deser_func.line("let tag = raw.tag()?;");
-        } else {
-            deser_func.line(&format!(
-                "let tag = raw.tag().map_err(|e| DeserializeError::from(e).annotate(\"{ident}\"))?;"
-            ));
-        }
-        let mut tag_check = Block::new(format!("if tag != {tag}"));
-        if annotated {
-            tag_check.line(format!("return Err(DeserializeFailure::TagMismatch{{ found: tag, expected: {tag} }}.into());"));
-        } else {
-            tag_check.line(format!("return Err(DeserializeError::new(\"{ident}\", DeserializeFailure::TagMismatch{{ found: tag, expected: {tag} }}));"));
-        }
-        deser_func.push_block(tag_check);
+    let read = if form.sized {
+        "let (tag, tag_encoding) = raw.tag_sz()"
+    } else {
+        "let tag = raw.tag()"
+    };
+    let read_error = if form.name_read_error {
+        format!(".map_err(|e| DeserializeError::from(e).annotate(\"{ident}\"))")
+    } else {
+        String::new()
+    };
+    deser_func.line(&format!("{read}{read_error}?;"));
+    let mut tag_check = Block::new(format!("if tag != {tag}"));
+    if form.name_mismatch_error {
+        tag_check.line(format!("return Err(DeserializeError::new(\"{ident}\", DeserializeFailure::TagMismatch{{ found: tag, expected: {tag} }}));"));
+    } else {
+        tag_check.line(format!(
+            "return Err(DeserializeFailure::TagMismatch{{ found: tag, expected: {tag} }}.into());"
+        ));
     }
+    deser_func.push_block(tag_check);
 }
 
 // This is used mostly for when thing are tagged have specific ranges.

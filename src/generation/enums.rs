@@ -1229,27 +1229,17 @@ fn generate_enum(
         // this is handled in create_deseriaize_impls in the other case, and it MUST be handled there to ensure that
         // the tag check is done BEFORE reading the array/map CBOR
         if let Some(tag) = tag {
+            generate_tag_check(
+                deser_body,
+                name,
+                tag,
+                TagCheckForm::closure(cli.preserve_encodings, cli.annotate_fields),
+            );
             if cli.preserve_encodings {
                 let rule_tag_encoding = rule_tag_encoding.as_ref().expect(
                     "a preserve-tagged enum chooses one shared rule-tag field before deserializing",
                 );
-                if cli.annotate_fields {
-                    deser_body.line("let (tag, tag_encoding) = raw.tag_sz()?;");
-                } else {
-                    deser_body.line(&format!(
-                        "let (tag, tag_encoding) = raw.tag_sz().map_err(|e| DeserializeError::from(e).annotate(\"{name}\"))?;"
-                    ));
-                }
-                let mut tag_check = Block::new(format!("if tag != {tag}"));
-                if cli.annotate_fields {
-                    tag_check.line(format!("return Err(DeserializeFailure::TagMismatch{{ found: tag, expected: {tag} }}.into());"));
-                } else {
-                    tag_check.line(format!("return Err(DeserializeError::new(\"{name}\", DeserializeFailure::TagMismatch{{ found: tag, expected: {tag} }}));"));
-                }
-                deser_body.push_block(tag_check);
                 deser_body.line(&format!("let {rule_tag_encoding} = Some(tag_encoding);"));
-            } else {
-                generate_tag_check(deser_body, name, Some(tag), cli.annotate_fields);
             }
         }
         let mut deser_impl = codegen::Impl::new(name.to_string());
