@@ -8802,6 +8802,63 @@ mod registration_tests {
     }
 
     #[test]
+    fn nominal_mint_sites_render_registration_and_semantic_provenance() {
+        let cddl = cddl::parser::cddl_from_str("anchor = uint\n", true).unwrap();
+        let parent_visitor = ParentVisitor::new(&cddl).unwrap();
+        let ident = RustIdent::new(CDDLIdent::new("contested"));
+        let mut types = IntermediateTypes::new();
+        types.register_rust_struct(
+            &parent_visitor,
+            RustStruct::new_extern(ident.clone()),
+            &cli(),
+        );
+        types.claim_nominal_mint(&RustStruct::new_raw_bytes(ident.clone()), "semantic probe");
+        let err = types
+            .finalize(&parent_visitor, &cli())
+            .expect_err("different semantic and registration claims must reject")
+            .to_string();
+        assert!(
+            err.contains("generated Rust type `Contested` has incompatible mint claims: `RustStruct registration for `Contested`` first claimed; `semantic probe` later claimed"),
+            "{err}"
+        );
+
+        let mut types = IntermediateTypes::new();
+        types.register_rust_struct(
+            &parent_visitor,
+            RustStruct::new_extern(ident.clone()),
+            &cli(),
+        );
+        types.register_rust_struct(
+            &parent_visitor,
+            RustStruct::new_raw_bytes(ident.clone()),
+            &cli(),
+        );
+        let err = types
+            .finalize(&parent_visitor, &cli())
+            .expect_err("duplicate registrations must use the legacy guard")
+            .to_string();
+        assert!(err.contains("has incompatible registrations"), "{err}");
+        assert!(!err.contains("incompatible mint claims"), "{err}");
+
+        let mut types = IntermediateTypes::new();
+        types.register_rust_struct(
+            &parent_visitor,
+            RustStruct::new_extern(ident.clone()),
+            &cli(),
+        );
+        types.remove_rust_struct(&ident);
+        assert!(!types.nominal_mint_claims.contains_key(&ident));
+        types.claim_nominal_mint(&RustStruct::new_extern(ident.clone()), "semantic probe");
+        types.register_rust_struct(
+            &parent_visitor,
+            RustStruct::new_extern(ident.clone()),
+            &cli(),
+        );
+        types.remove_rust_struct(&ident);
+        assert!(types.nominal_mint_claims.contains_key(&ident));
+    }
+
+    #[test]
     fn finalized_emitted_name_floor_reports_bad_names_and_duplicate_namespaces() {
         let mut types = IntermediateTypes::new();
         let bad_nominal = RustIdent::new_unchecked_for_emitted_name_test("Bad.Name");
