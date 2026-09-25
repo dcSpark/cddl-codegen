@@ -3561,6 +3561,9 @@ fn unique_array_elems(
     if count == 0 {
         return Some(Some(Vec::new()));
     }
+    if let Some(bounds) = elem.config.bounds {
+        return bounded_unique_array_elems(types, elem, bounds, count, depth).map(Some);
+    }
     let mut elems = Vec::new();
     let mut rendered = Vec::new();
     for candidate in 0..(count.saturating_mul(8).saturating_add(16)) {
@@ -3573,6 +3576,93 @@ fn unique_array_elems(
         elems.push(value);
         if elems.len() == count as usize {
             return Some(Some(elems));
+        }
+    }
+    None
+}
+
+/// Distinct members for a reject set whose element carries its own value or length window. Every
+/// member must satisfy that window: a run of consecutive measures from 0 mints `.ge 5` integers
+/// below 5 and exact arrays of the wrong length. Scalars and non-array collections walk the valid
+/// measures of the window. An array element keeps one valid length and varies its repeated inner
+/// value instead, because every exact-array member has the same length.
+fn bounded_unique_array_elems(
+    types: &IntermediateTypes,
+    elem: &RustType,
+    bounds: Bounds,
+    count: i128,
+    depth: u8,
+) -> Option<Vec<MintValue>> {
+    let mut candidates = Vec::new();
+    if let Some(first) = valid_value_at(types, elem, depth + 1) {
+        candidates.push(first);
+    }
+    match elem.resolve_alias_shallow() {
+        ConceptualRustType::Array(inner) => {
+            let len = valid_measure(bounds);
+            let repeats_distinct_members =
+                elem.config.duplicates == Some(DuplicatesPolicy::Reject) && len > 1;
+            if len > 0
+                && !repeats_distinct_members
+                && let Some(Some(inner_values)) = unique_array_elems(types, inner, count, depth + 1)
+                && let Some(MintValue::Array {
+                    count: len,
+                    non_empty,
+                    bounded,
+                    reject,
+                    ..
+                }) = materialize_at(types, elem, len, depth + 1)
+            {
+                candidates.extend(
+                    inner_values
+                        .into_iter()
+                        .map(|inner_value| MintValue::Array {
+                            elem: Some(Box::new(inner_value)),
+                            count: len,
+                            non_empty,
+                            bounded,
+                            reject,
+                            unique_elems: None,
+                        }),
+                );
+            }
+        }
+        _ => {
+            let is_nint = matches!(
+                elem.resolve_alias_shallow(),
+                ConceptualRustType::Primitive(Primitive::N64)
+            );
+            let search_bounds = if is_nint {
+                nint_bounds_to_u64(bounds)
+            } else {
+                bounds
+            };
+            let start = valid_measure(search_bounds);
+            for offset in 0..(count.saturating_mul(8).saturating_add(16)) {
+                let Some(measure) = start.checked_add(offset) else {
+                    break;
+                };
+                let value = if is_nint { -1 - measure } else { measure };
+                if crate::generation::bounds_reject_value(&bounds, value) {
+                    continue;
+                }
+                if let Some(candidate) = materialize_at(types, elem, measure, depth + 1) {
+                    candidates.push(candidate);
+                }
+            }
+        }
+    }
+    let mut elems: Vec<MintValue> = Vec::new();
+    let mut rendered = Vec::new();
+    for candidate in candidates {
+        let spelling = render_rust(&candidate);
+        if rendered.contains(&spelling) {
+            continue;
+        }
+        rendered.push(spelling);
+        elems.push(candidate);
+        if elems.len() == count as usize {
+            return Some(elems);
         }
     }
     None

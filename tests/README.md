@@ -3897,6 +3897,7 @@ the same-class wrapper-entry ctor differential, and the whole module under any
 crates to prove that exact carriers of exact elements build their elements tight in the native twin.
 `integration_tests::wasm_from_core_collection_emit_tests_execute` runs the generated wasm tests for
 exact, bounded and bounded-map collections whose elements have no direct wasm build.
+`integration_tests::reject_set_bounded_element_emit_tests_execute` runs both generated crates to prove that `@duplicates reject` sets whose element has a value or length window mint distinct members inside that window (an exact-array element varies its repeated inner value, not its length).
 
 The tagged-`any` fallback still renders its independently minted rust twin through the private
 `__AnyCborMint` spelling. The module therefore imports

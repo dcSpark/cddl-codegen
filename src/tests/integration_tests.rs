@@ -9757,6 +9757,90 @@ fn wasm_from_core_collection_emit_tests_execute() {
     let _ = std::fs::remove_dir_all(root);
 }
 
+/// Shared by the emission pin in `snapshot_tests` and the execution gate below: reject sets whose
+/// element carries its own value or length window must mint members inside that window.
+pub(crate) const REJECT_SET_BOUNDED_ELEMENT_CDDL: &str = "\
+min_value_set = [* uint .ge 5] ; @duplicates reject
+min_value_set_holder = [xs: min_value_set]
+nint_set = [2*2 nint .le -5] ; @duplicates reject
+nint_set_holder = [xs: nint_set]
+sized_text_set = [* tstr .size 2] ; @duplicates reject
+sized_text_set_holder = [xs: sized_text_set]
+sized_bytes_set = [* bytes .size 3] ; @duplicates reject
+sized_bytes_set_holder = [xs: sized_bytes_set]
+exact_array_set = [2*2 [2*2 uint]] ; @duplicates reject
+exact_array_set_holder = [xs: exact_array_set]
+exact_any_array_set = [* [2*2 any]] ; @duplicates reject
+exact_any_array_set_holder = [xs: exact_any_array_set]
+bounded_array_set = [* [1*3 uint]] ; @duplicates reject
+bounded_array_set_holder = [xs: bounded_array_set]
+loose_array_set = [2*2 [* uint]] ; @duplicates reject
+loose_array_set_holder = [xs: loose_array_set]
+";
+
+#[test]
+fn reject_set_bounded_element_emit_tests_execute() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_reject_set_elem_emit_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let input = root.join("input.cddl");
+    std::fs::write(&input, REJECT_SET_BOUNDED_ELEMENT_CDDL).unwrap();
+    let out = root.join("crate");
+    let generate = codegen_cmd()
+        .arg(format!("--input={}", input.display()))
+        .arg(format!("--output={}", out.display()))
+        .arg("--wasm=true")
+        .arg("--emit-tests=true")
+        .output()
+        .unwrap();
+    assert!(
+        generate.status.success(),
+        "generation failed:\n{}",
+        String::from_utf8_lossy(&generate.stderr)
+    );
+    for face in ["rust", "wasm"] {
+        let test = tool_cmd("cargo")
+            .arg("test")
+            .current_dir(out.join(face))
+            .output()
+            .unwrap();
+        assert!(
+            test.status.success(),
+            "emitted {face} tests failed:\n{}\n{}",
+            String::from_utf8_lossy(&test.stdout),
+            String::from_utf8_lossy(&test.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&test.stdout);
+        let prefix = if face == "rust" {
+            "test generated::cddl_generated_tests::roundtrip_"
+        } else {
+            "test generated::cddl_generated_wasm_tests::wasm_roundtrip_"
+        };
+        for holder in [
+            "min_value_set_holder",
+            "nint_set_holder",
+            "sized_text_set_holder",
+            "sized_bytes_set_holder",
+            "exact_array_set_holder",
+            "exact_any_array_set_holder",
+            "bounded_array_set_holder",
+            "loose_array_set_holder",
+        ] {
+            assert!(
+                stdout.contains(&format!("{prefix}{holder} ... ok")),
+                "missing executed {face} round-trip for {holder}:\n{stdout}"
+            );
+        }
+    }
+    let _ = std::fs::remove_dir_all(root);
+}
+
 /// The default/json exact-zero fixture above proves checked parent mutation. This preserve-only
 /// fixture reaches the other half of the contract: a decoded parent grows through `insert_rest`,
 /// invalidating its old replay length and rebuilding the order without losing pre-existing entry

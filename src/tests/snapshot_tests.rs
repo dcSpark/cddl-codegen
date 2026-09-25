@@ -1075,6 +1075,45 @@ fn wasm_emitted_tests_build_restricted_collections_of_unbuildable_elements_throu
     let _ = std::fs::remove_dir_all(root);
 }
 
+#[test]
+fn emitted_tests_mint_reject_set_members_inside_the_element_window() {
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_reject_set_elem_emit_pin_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let input = root.join("input.cddl");
+    std::fs::write(
+        &input,
+        crate::tests::integration_tests::REJECT_SET_BOUNDED_ELEMENT_CDDL,
+    )
+    .unwrap();
+    let files =
+        crate::api::generated_strings(&cli_for(&input, &["--wasm=true", "--emit-tests=true"]))
+            .expect("bounded reject-set emitted-test spec must generate");
+    let rust = files.get("rust/src/generated/mod.rs").unwrap();
+    let flat: String = rust.split_whitespace().collect();
+    for needle in [
+        "MinValueSetHolder::new(OrderedSet::try_from(vec![5]).unwrap())",
+        "NintSetHolder::new(BoundedOrderedSet::<_,2,2>::try_from(vec![4,5]).unwrap())",
+        "SizedTextSetHolder::new(OrderedSet::try_from(vec![\"a\".repeat(2)]).unwrap())",
+        "SizedBytesSetHolder::new(OrderedSet::try_from(vec![<[_;3]>::try_from(vec![0u8;3]).unwrap()]).unwrap(),)",
+        "ExactArraySetHolder::new(BoundedOrderedSet::<_,2,2>::try_from(vec![<[_;2]>::try_from(vec![0;2]).unwrap(),<[_;2]>::try_from(vec![1;2]).unwrap(),]).unwrap(),)",
+        "LooseArraySetHolder::new(BoundedOrderedSet::<_,2,2>::try_from(vec![vec![0;0],vec![0;1]]).unwrap(),)",
+    ] {
+        assert!(
+            flat.contains(needle),
+            "missing {needle} in rust emitted tests:\n{rust}"
+        );
+    }
+    assert!(
+        !flat.contains("<[_;2]>::try_from(vec![0;0])"),
+        "exact-array member must have its own valid length:\n{rust}"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
 /// A record with an exact-zero forbidden key and a protected LOOSE rest row takes the complete
 /// checked rest map as a native and wasm constructor argument. The wasm emitted-test projection must
 /// admit that same row, or it reports false constructor drift and silently drops both the round trip
