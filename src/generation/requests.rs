@@ -858,8 +858,13 @@ fn parse_requested_shape(
 /// into an actionable hard error instead of a stack-overflow abort.
 const MAX_SHAPE_DEPTH: usize = 32;
 
-/// Read the occurrence grammar emitted by [`render_wrapper_shape`], advancing past it.
-fn read_occurrence(chars: &[char], pos: &mut usize) -> Option<(Option<i128>, Option<i128>)> {
+/// Read the occurrence grammar emitted by [`render_wrapper_shape`], advancing past it. Shared with
+/// the lenient key-seed scan (`wrapper_requests::map_key_cddl_idents`) so the two readers of the
+/// shape column cannot drift on which occurrences exist.
+pub(crate) fn read_occurrence(
+    chars: &[char],
+    pos: &mut usize,
+) -> Option<(Option<i128>, Option<i128>)> {
     match chars.get(*pos) {
         Some('+') => {
             *pos += 1;

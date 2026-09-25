@@ -149,7 +149,7 @@ use collections::{
 };
 
 mod requests;
-pub(crate) use requests::{REJECT_MARKER, render_wrapper_shape};
+pub(crate) use requests::{PRESERVE_MARKER, REJECT_MARKER, read_occurrence, render_wrapper_shape};
 use requests::{load_extern_wrapper_indices, load_workspace_deps};
 
 /// The contract comment emitted just above each scope's own-spec extern re-export glue group in the

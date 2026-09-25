@@ -1643,7 +1643,9 @@ facets, each with its own pins:
 
 The whole surface is pinned by three sibling gates plus the parser's unit suite
 (`src/wrapper_requests.rs` — both the strict sidecar grammars and the lenient shape-key
-extractor):
+extractor, which shares the strict reader's `read_occurrence` and is round-tripped against
+`render_wrapper_shape`) and by `wrapper_requests_seed_keys_of_bounded_and_marked_maps` (a dep
+whose sidecar lists only bounded/marked maps must derive key traits without `--key-requests`):
 
 - `workspace_dep_defers_to_dep` — consumer side over `tests/workspace-dep-wasm/`: unconditional
   all-one-dep deferral incl. NonEmpty and nested shapes, the byte-frozen `borrowed_collections.rs`

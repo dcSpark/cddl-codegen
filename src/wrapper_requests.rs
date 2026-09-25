@@ -660,31 +660,40 @@ fn parse_shape_node(chars: &[char], pos: &mut usize) -> Option<ShapeNode> {
             *pos += 1;
         }
     };
+    // A collection's trailing duplicate-policy marker (` @duplicates reject` after `]`,
+    // ` @duplicates preserve` after `}`), which `render_wrapper_shape` also writes on NESTED
+    // collections. Consumed when present so the enclosing collection's closer is still found.
+    let eat_marker = |pos: &mut usize, marker: &str| {
+        let mut at = *pos;
+        while at < chars.len() && chars[at].is_whitespace() {
+            at += 1;
+        }
+        let want: Vec<char> = marker.chars().collect();
+        if chars[at..].starts_with(&want) {
+            *pos = at + want.len();
+        }
+    };
     skip_ws(pos);
     match chars.get(*pos)? {
         '[' => {
             *pos += 1;
             skip_ws(pos);
-            // occurrence marker `*` / `+`
-            if !matches!(chars.get(*pos), Some('*') | Some('+')) {
-                return None;
-            }
-            *pos += 1;
+            // The full occurrence grammar the strict reader accepts (`*`, `+`, `?`, `*N`, `N*`,
+            // `N*M`): one owner, so a bounded shape seeds exactly like a loose one.
+            crate::generation::read_occurrence(chars, pos)?;
             let inner = parse_shape_node(chars, pos)?;
             skip_ws(pos);
             if chars.get(*pos) != Some(&']') {
                 return None;
             }
             *pos += 1;
+            eat_marker(pos, crate::generation::REJECT_MARKER);
             Some(ShapeNode::List(Box::new(inner)))
         }
         '{' => {
             *pos += 1;
             skip_ws(pos);
-            if !matches!(chars.get(*pos), Some('*') | Some('+')) {
-                return None;
-            }
-            *pos += 1;
+            crate::generation::read_occurrence(chars, pos)?;
             let key = parse_shape_node(chars, pos)?;
             skip_ws(pos);
             if chars.get(*pos) != Some(&'=') || chars.get(*pos + 1) != Some(&'>') {
@@ -697,6 +706,7 @@ fn parse_shape_node(chars: &[char], pos: &mut usize) -> Option<ShapeNode> {
                 return None;
             }
             *pos += 1;
+            eat_marker(pos, crate::generation::PRESERVE_MARKER);
             Some(ShapeNode::Map(Box::new(key), Box::new(value)))
         }
         _ => {
@@ -1445,6 +1455,76 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
         // Malformed shapes are lenient (no idents, no panic).
         assert!(map_key_cddl_idents("{* idx_foo =>").is_empty());
         assert!(map_key_cddl_idents("garbage((").is_empty());
+    }
+
+    /// The lenient key scan reads every shape `render_wrapper_shape` can write: each occurrence
+    /// form (`*N`, `?`, `N*M`, `N*`, `+`) and the duplicate-policy marker on a nested collection.
+    /// Before it shared `read_occurrence`, a bounded map (`{*5 idx_foo => uint}`) seeded no key and
+    /// the dep's requested wrapper failed `E0277 IdxFoo: Ord`.
+    #[test]
+    fn map_key_idents_read_every_rendered_shape() {
+        use crate::comment_ast::DuplicatesPolicy;
+        use crate::intermediate::{ConceptualRustType, Primitive, RustType};
+        let named =
+            |n: &str| RustType::new(ConceptualRustType::Rust(RustIdent::new(CDDLIdent::new(n))));
+        let uint = || RustType::new(ConceptualRustType::Primitive(Primitive::U64));
+        let map = |key: RustType,
+                   value: RustType,
+                   bounds: Option<(Option<i128>, Option<i128>)>,
+                   preserve: bool| {
+            let mut rt = RustType::new(ConceptualRustType::Map(Box::new(key), Box::new(value)));
+            if let Some(bounds) = bounds {
+                rt = rt.with_bounds(bounds);
+            }
+            if preserve {
+                rt.config.duplicates = Some(DuplicatesPolicy::Preserve);
+            }
+            rt
+        };
+        let list = |inner: RustType, bounds: Option<(Option<i128>, Option<i128>)>, reject: bool| {
+            let mut rt = RustType::new(ConceptualRustType::Array(Box::new(inner)));
+            if let Some(bounds) = bounds {
+                rt = rt.with_bounds(bounds);
+            }
+            if reject {
+                rt.config.duplicates = Some(DuplicatesPolicy::Reject);
+            }
+            rt
+        };
+        let windows = [
+            None,
+            Some((Some(1), None)),
+            Some((None, Some(1))),
+            Some((None, Some(5))),
+            Some((Some(2), None)),
+            Some((Some(1), Some(5))),
+        ];
+        for bounds in windows {
+            for preserve in [false, true] {
+                let keyed = map(named("idx_foo"), uint(), bounds, preserve);
+                let shape = crate::generation::render_wrapper_shape(&keyed);
+                assert_eq!(map_key_cddl_idents(&shape), vec!["idx_foo"], "{shape}");
+                // Nested inside a bounded reject list, and holding a marked collection as its value.
+                let outer = list(keyed.clone(), Some((Some(1), Some(3))), true);
+                let shape = crate::generation::render_wrapper_shape(&outer);
+                assert_eq!(map_key_cddl_idents(&shape), vec!["idx_foo"], "{shape}");
+                let holding = map(
+                    named("idx_foo"),
+                    list(named("idx_bar"), bounds, true),
+                    bounds,
+                    preserve,
+                );
+                let shape = crate::generation::render_wrapper_shape(&holding);
+                assert_eq!(map_key_cddl_idents(&shape), vec!["idx_foo"], "{shape}");
+                let holding = map(named("idx_foo"), keyed.clone(), None, false);
+                let shape = crate::generation::render_wrapper_shape(&holding);
+                assert_eq!(
+                    map_key_cddl_idents(&shape),
+                    vec!["idx_foo", "idx_foo"],
+                    "{shape}"
+                );
+            }
+        }
     }
 
     #[test]

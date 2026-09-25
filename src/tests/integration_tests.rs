@@ -21919,6 +21919,77 @@ fn workspace_requests_host_bounded_maps_preserve_window_checked_door_and_flavor(
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// A dependency must derive map-key traits from bounded and nested-marked wrapper requests even
+/// when no `--key-requests` sidecar is supplied.
+#[test]
+fn wrapper_requests_seed_keys_of_bounded_and_marked_maps() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch_name = format!("cddl_codegen_wr_key_seed_{:016x}", checkout_hash());
+    let _lock = acquire_scratch_lock(&scratch_name);
+    let root = std::env::temp_dir().join(&scratch_name);
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("dep")).unwrap();
+    std::fs::write(
+        root.join("dep/lib.cddl"),
+        "idx_foo = [x: uint]\nholder = [f: idx_foo]\n",
+    )
+    .unwrap();
+    let sidecar = root.join("borrowed_collections.rs");
+    std::fs::write(
+        &sidecar,
+        r#"// This file was code-generated using an experimental CDDL to rust tool:
+// https://github.com/dcSpark/cddl-codegen
+
+// This file records every collection wrapper this crate borrows from workspace deps.
+// It is machine-read by those deps' generation runs (--wrapper-requests) and compiled
+// here, so a wrapper a dep stops providing fails THIS crate's build, naming the type.
+// Rows are (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents).
+#[allow(unused_imports)]
+mod borrowed {}
+#[allow(dead_code)]
+pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
+    ("wr_dep", "MapIdxFooToPairMapU64ToU64", "{* idx_foo => {* uint => uint} @duplicates preserve}"),
+    ("wr_dep", "MapIdxFooToU64Max5", "{*5 idx_foo => uint}"),
+    ("wr_dep", "PairMapU64ToU64", "{* uint => uint} @duplicates preserve"),
+];
+"#,
+    )
+    .unwrap();
+    let static_dir = std::env::current_dir().unwrap().join("static");
+    for (flavor, preserve) in [("default", false), ("preserve", true)] {
+        let out = root.join(format!("dep-{flavor}"));
+        let run = codegen_cmd()
+            .arg(format!("--input={}", root.join("dep/lib.cddl").display()))
+            .arg(format!("--output={}", out.display()))
+            .arg(format!("--static-dir={}", static_dir.display()))
+            .arg("--lib-name=wr-dep")
+            .arg("--wasm=true")
+            .arg(format!("--preserve-encodings={preserve}"))
+            .arg(format!("--wrapper-requests=consumer={}", sidecar.display()))
+            .output()
+            .unwrap();
+        assert!(
+            run.status.success(),
+            "{flavor} generation failed:\n{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        let check = tool_cmd("cargo")
+            .arg("check")
+            .current_dir(out.join("wasm"))
+            .env("CARGO_TARGET_DIR", root.join(format!("target-{flavor}")))
+            .output()
+            .unwrap();
+        assert!(
+            check.status.success(),
+            "{flavor}: the wrapper-request key seed must derive Ord on a bounded/marked map key:\n{}",
+            String::from_utf8_lossy(&check.stderr)
+        );
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// The CONSUMER side of the reject-set deferral, and the round trip that closes it: a
 /// `--workspace-dep` consumer whose spec spells `@duplicates reject` sets over the dependency's
 /// elements borrows the dependency's uniqueness twins and WRITES the request rows itself, so the leg
