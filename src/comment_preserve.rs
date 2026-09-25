@@ -1151,6 +1151,41 @@ fn delimiters_balanced(toks: &[CodeTok]) -> bool {
     delim_deltas(toks) == Some((0, 0, 0))
 }
 
+/// Where [`find_closing`]'s forward scan for a block's closing tag stopped short of it.
+enum Closing<'a> {
+    /// Another reserved comment came first: its index into `lexed.comments` and its parsed form.
+    Unexpected {
+        comment: usize,
+        reserved: ReservedComment<'a>,
+    },
+    /// The input ended first.
+    Missing,
+}
+
+/// Scan own-line comments `own[from..]` for the `expected` closing tag, skipping ordinary
+/// (non-reserved) comments. Returns the `own` position of the closing tag; any OTHER reserved
+/// comment first is [`Closing::Unexpected`] (a malformed structure, never a silent truncation of
+/// the user section), and running out is [`Closing::Missing`]. Each caller words its own error.
+fn find_closing<'a>(
+    comments: &[Comment<'a>],
+    own: &[usize],
+    from: usize,
+    expected: ReservedTag<'static>,
+) -> Result<usize, Closing<'a>> {
+    for (q, &cj) in own.iter().enumerate().skip(from) {
+        if let Some(reserved) = ReservedComment::parse(comments[cj].text) {
+            if reserved.tag == expected {
+                return Ok(q);
+            }
+            return Err(Closing::Unexpected {
+                comment: cj,
+                reserved,
+            });
+        }
+    }
+    Err(Closing::Missing)
+}
+
 /// Recognize insert blocks and enforce the `cddl-codegen:` namespace reservation over `old`'s own-line
 /// comments (see the module docs). `sentinel_comment` marks comment indices already claimed by a valid
 /// fail-loudly block so their marker line is not re-flagged as a stray tag. Any own-line
@@ -1181,303 +1216,260 @@ fn scan_blocks(
             p += 1;
             continue;
         };
-        let tag = reserved.tag;
-        let inline_text = match tag {
-            ReservedTag::Keep { inline } => inline,
-            _ => "",
+        // Every error below reports the line of the block's opening (or orphaned) tag.
+        let at = |message: String| PreserveError {
+            message,
+            line: Some(line_of(lexed.src, comments[ci].start)),
         };
-        if tag == ReservedTag::ReplaceStart {
-            // Phase 1: from the user section, scan to `replaces`. Ordinary interior comments are
-            // allowed; any OTHER reserved tag before `replaces` is a malformed structure.
-            let mut q = p + 1;
-            let mut replaces_p = None;
-            while q < own.len() {
-                match ReservedComment::parse(comments[own[q]].text) {
-                    None => q += 1,
-                    Some(inner) => {
-                        let inner_text = inner.text;
-                        if inner.tag == ReservedTag::Replaces {
-                            replaces_p = Some(q);
-                            break;
-                        }
-                        return err_at(
-                            line_of(lexed.src, comments[ci].start),
-                            format!(
+        match reserved.tag {
+            ReservedTag::ReplaceStart => {
+                // Phase 1: from the user section, scan to `replaces`. Ordinary interior comments
+                // are allowed; any OTHER reserved tag before `replaces` is a malformed structure.
+                let replaces_p = match find_closing(comments, &own, p + 1, ReservedTag::Replaces) {
+                    Ok(q) => q,
+                    Err(Closing::Unexpected {
+                        reserved: inner, ..
+                    }) => {
+                        return Err(at(format!(
+                            "An `// cddl-codegen:replace-start` block reached \
+                             `// cddl-codegen:{}` before its `// cddl-codegen:replaces` marker.",
+                            inner.text
+                        )));
+                    }
+                    Err(Closing::Missing) => {
+                        return Err(at("An `// cddl-codegen:replace-start` block has no \
+                             `// cddl-codegen:replaces` marker (nothing separates the user code \
+                             from the recorded original)."
+                            .to_owned()));
+                    }
+                };
+                // Phase 2: from `replaces`, scan to `replace-end`. Every line between is a
+                // `//`-commented recorded-original line (an ordinary comment); the only reserved
+                // tag allowed is `replace-end`. Any other reserved tag is a malformed structure.
+                let end_p =
+                    match find_closing(comments, &own, replaces_p + 1, ReservedTag::ReplaceEnd) {
+                        Ok(r) => r,
+                        Err(Closing::Unexpected {
+                            reserved: inner, ..
+                        }) => {
+                            return Err(at(format!(
                                 "An `// cddl-codegen:replace-start` block reached \
-                                 `// cddl-codegen:{inner_text}` before its `// cddl-codegen:replaces` \
-                                 marker."
-                            ),
-                        );
-                    }
-                }
-            }
-            let replaces_p = match replaces_p {
-                Some(q) => q,
-                None => {
-                    return err_at(
-                        line_of(lexed.src, comments[ci].start),
-                        "An `// cddl-codegen:replace-start` block has no `// cddl-codegen:replaces` \
-                         marker (nothing separates the user code from the recorded original)."
-                            .to_owned(),
-                    );
-                }
-            };
-            // Phase 2: from `replaces`, scan to `replace-end`. Every line between is a `//`-commented
-            // recorded-original line (an ordinary comment); the only reserved tag allowed is
-            // `replace-end`. Any other reserved tag is a malformed structure.
-            let mut r = replaces_p + 1;
-            let mut end_p = None;
-            while r < own.len() {
-                match ReservedComment::parse(comments[own[r]].text) {
-                    None => r += 1,
-                    Some(inner) => {
-                        let inner_text = inner.text;
-                        if inner.tag == ReservedTag::ReplaceEnd {
-                            end_p = Some(r);
-                            break;
+                                 `// cddl-codegen:{}` before its `// cddl-codegen:replace-end` \
+                                 marker.",
+                                inner.text
+                            )));
                         }
-                        return err_at(
-                            line_of(lexed.src, comments[ci].start),
-                            format!(
-                                "An `// cddl-codegen:replace-start` block reached \
-                                 `// cddl-codegen:{inner_text}` before its `// cddl-codegen:replace-end` \
-                                 marker."
-                            ),
-                        );
-                    }
-                }
-            }
-            let end_p = match end_p {
-                Some(r) => r,
-                None => {
-                    return err_at(
-                        line_of(lexed.src, comments[ci].start),
-                        "An `// cddl-codegen:replace-start` block is not closed by a matching \
-                         `// cddl-codegen:replace-end`."
-                            .to_owned(),
-                    );
-                }
-            };
-            let start_ci = ci;
-            let replaces_ci = own[replaces_p];
-            let end_ci = own[end_p];
-            let user_code_start = comments[start_ci].anchor;
-            let user_code_end = comments[replaces_ci].anchor;
-            // Only comments may sit between `replaces` and `replace-end`; a code token there would
-            // desync the following-token anchor and means the recorded section is malformed.
-            if comments[end_ci].anchor != user_code_end {
-                return err_at(
-                    line_of(lexed.src, comments[ci].start),
-                    "An `// cddl-codegen:replaces` section contains code; every line under \
-                     `replaces` must be a `//`-commented copy of the replaced generated code."
-                        .to_owned(),
-                );
-            }
-            // Replace blocks use the equal-delta rule (not absolute balance): the user section need
-            // only be never-negative here (it must not close a delimiter it does not open); its net
-            // deltas are matched against the recorded original's in `preserve`, once the needle lexes.
-            if delim_deltas(&lexed.code[user_code_start..user_code_end]).is_none() {
-                return err_at(
-                    line_of(lexed.src, comments[start_ci].start),
-                    "The user section of the `// cddl-codegen:replace-start` block closes a \
-                     delimiter ({}, (), or []) it does not open; wrap a fragment that never dips \
-                     below its starting depth."
-                        .to_owned(),
-                );
-            }
-            // Uncomment the recorded-original lines (the own-line comments between `replaces` and
-            // `replace-end`) into the needle text. Emptiness / balance / lex validity are checked in
-            // `preserve` once the needle is lexed.
-            let mut needle_lines: Vec<&str> = Vec::new();
-            for cm in comments.iter() {
-                if cm.start >= comments[replaces_ci].end && cm.start < comments[end_ci].start {
-                    needle_lines.push(uncomment_line(cm.text));
-                }
-            }
-            let needle_text = needle_lines.join("\n");
-            let byte_start = line_start(lexed.src, comments[start_ci].start);
-            let byte_end = comments[end_ci].end;
-            replace_blocks.push(ReplaceBlock {
-                byte_start,
-                byte_end,
-                user_code_start,
-                user_code_end,
-                needle_text,
-            });
-            p = end_p + 1;
-        } else if tag == ReservedTag::Replaces {
-            return err_at(
-                line_of(lexed.src, comments[ci].start),
-                "Found `// cddl-codegen:replaces` without an enclosing \
-                 `// cddl-codegen:replace-start` block."
-                    .to_owned(),
-            );
-        } else if tag == ReservedTag::ReplaceEnd {
-            return err_at(
-                line_of(lexed.src, comments[ci].start),
-                "Found `// cddl-codegen:replace-end` without a matching \
-                 `// cddl-codegen:replace-start`."
-                    .to_owned(),
-            );
-        } else if tag == ReservedTag::InsertStart {
-            // Scan forward for the matching insert-end. Any OTHER reserved tag before it terminates
-            // the block prematurely — a hard error, not a silent truncation of the user section.
-            let mut q = p + 1;
-            let mut end_p = None;
-            while q < own.len() {
-                let cj = own[q];
-                match ReservedComment::parse(comments[cj].text) {
-                    None => q += 1, // ordinary interior comment line — allowed
-                    Some(inner) => {
-                        if inner.tag == ReservedTag::InsertEnd {
-                            end_p = Some(q);
-                            break;
+                        Err(Closing::Missing) => {
+                            return Err(at(
+                                "An `// cddl-codegen:replace-start` block is not closed by a \
+                                 matching `// cddl-codegen:replace-end`."
+                                    .to_owned(),
+                            ));
                         }
-                        return err_at(
-                            line_of(lexed.src, comments[ci].start),
-                            format!(
-                                "An `// cddl-codegen:insert-start` block contains an unexpected \
-                                 reserved tag before its `// cddl-codegen:insert-end` (line: `{}`).",
-                                comments[cj].text
-                            ),
-                        );
-                    }
-                }
-            }
-            let q = match end_p {
-                Some(q) => q,
-                None => {
-                    return err_at(
-                        line_of(lexed.src, comments[ci].start),
-                        "An `// cddl-codegen:insert-start` block is not closed by a matching \
-                         `// cddl-codegen:insert-end`."
+                    };
+                let start_ci = ci;
+                let replaces_ci = own[replaces_p];
+                let end_ci = own[end_p];
+                let user_code_start = comments[start_ci].anchor;
+                let user_code_end = comments[replaces_ci].anchor;
+                // Only comments may sit between `replaces` and `replace-end`; a code token there
+                // would desync the following-token anchor and means the recorded section is
+                // malformed.
+                if comments[end_ci].anchor != user_code_end {
+                    return Err(at(
+                        "An `// cddl-codegen:replaces` section contains code; every line under \
+                         `replaces` must be a `//`-commented copy of the replaced generated code."
                             .to_owned(),
-                    );
+                    ));
                 }
-            };
-            let start_ci = ci;
-            let end_ci = own[q];
-            let code_start = comments[start_ci].anchor;
-            let code_end = comments[end_ci].anchor;
-            if !delimiters_balanced(&lexed.code[code_start..code_end]) {
-                return err_at(
-                    line_of(lexed.src, comments[start_ci].start),
-                    "The user section of the `// cddl-codegen:insert-start` block has unbalanced \
-                     delimiters ({}, (), or []); wrap a complete, balanced fragment."
-                        .to_owned(),
-                );
+                // Replace blocks use the equal-delta rule (not absolute balance): the user section
+                // need only be never-negative here (it must not close a delimiter it does not
+                // open); its net deltas are matched against the recorded original's in `preserve`,
+                // once the needle lexes.
+                if delim_deltas(&lexed.code[user_code_start..user_code_end]).is_none() {
+                    return Err(at(
+                        "The user section of the `// cddl-codegen:replace-start` block closes a \
+                         delimiter ({}, (), or []) it does not open; wrap a fragment that never \
+                         dips below its starting depth."
+                            .to_owned(),
+                    ));
+                }
+                // Uncomment the recorded-original lines (the own-line comments between `replaces`
+                // and `replace-end`) into the needle text. Emptiness / balance / lex validity are
+                // checked in `preserve` once the needle is lexed.
+                let mut needle_lines: Vec<&str> = Vec::new();
+                for cm in comments.iter() {
+                    if cm.start >= comments[replaces_ci].end && cm.start < comments[end_ci].start {
+                        needle_lines.push(uncomment_line(cm.text));
+                    }
+                }
+                let needle_text = needle_lines.join("\n");
+                let byte_start = line_start(lexed.src, comments[start_ci].start);
+                let byte_end = comments[end_ci].end;
+                replace_blocks.push(ReplaceBlock {
+                    byte_start,
+                    byte_end,
+                    user_code_start,
+                    user_code_end,
+                    needle_text,
+                });
+                p = end_p + 1;
             }
-            let byte_start = line_start(lexed.src, comments[start_ci].start);
-            let byte_end = comments[end_ci].end;
-            blocks.push(InsertBlock {
-                byte_start,
-                byte_end,
-                code_start,
-                code_end,
-                noun: "code block",
-            });
-            p = q + 1;
-        } else if matches!(tag, ReservedTag::Keep { .. }) {
-            // A `keep` block wraps COMMENT TEXT only — it never contains code, so its interior code
-            // range is empty (`code_start == code_end`): nothing is removed from the virtual pristine
-            // stream, `delimiters_balanced` on the empty slice is vacuously true, and it anchors on
-            // `code_end` through the normal tiers exactly like an insert block above the same token.
-            let marker = &comments[ci];
-            let anchor = marker.anchor;
-            let (byte_end, last_p) = if !inline_text.is_empty() {
-                // Inline form: the whole marker line IS the user comment. It travels verbatim,
-                // marker included — an unmarked copy would be unclassified on the next run.
-                (marker.end, p)
-            } else {
-                // Claim-the-run form: take own-line comments below the marker while each is not a
-                // reserved tag (which covers a sentinel marker line — it parses as reserved),
-                // shares the marker's anchor, and starts on the line immediately after the previous
-                // claimed line. A blank line therefore terminates the run.
-                let mut claimed_end: Option<usize> = None;
-                let mut last = p;
-                let mut prev_end = marker.end;
-                let mut q = p + 1;
-                while q < own.len() {
-                    let cm = &comments[own[q]];
-                    if ReservedComment::parse(cm.text).is_some() || cm.anchor != anchor {
-                        break;
+            ReservedTag::Replaces => {
+                return Err(at("Found `// cddl-codegen:replaces` without an enclosing \
+                     `// cddl-codegen:replace-start` block."
+                    .to_owned()));
+            }
+            ReservedTag::ReplaceEnd => {
+                return Err(at(
+                    "Found `// cddl-codegen:replace-end` without a matching \
+                     `// cddl-codegen:replace-start`."
+                        .to_owned(),
+                ));
+            }
+            ReservedTag::InsertStart => {
+                // Scan forward for the matching insert-end. Any OTHER reserved tag before it
+                // terminates the block prematurely — a hard error, not a silent truncation of the
+                // user section.
+                let q = match find_closing(comments, &own, p + 1, ReservedTag::InsertEnd) {
+                    Ok(q) => q,
+                    Err(Closing::Unexpected { comment: cj, .. }) => {
+                        return Err(at(format!(
+                            "An `// cddl-codegen:insert-start` block contains an unexpected \
+                             reserved tag before its `// cddl-codegen:insert-end` (line: `{}`).",
+                            comments[cj].text
+                        )));
                     }
-                    // Exactly one newline of whitespace between the previous claimed line and this
-                    // one (CRLF included — `\r\n` carries a single `\n`).
-                    let gap = &lexed.src[prev_end..cm.start];
-                    if !gap.trim().is_empty() || gap.bytes().filter(|&b| b == b'\n').count() != 1 {
-                        break;
-                    }
-                    claimed_end = Some(cm.end);
-                    prev_end = cm.end;
-                    last = q;
-                    q += 1;
-                }
-                match claimed_end {
-                    Some(e) => (e, last),
-                    None => {
-                        return err_at(
-                            line_of(lexed.src, marker.start),
-                            "A bare `// cddl-codegen:keep` marker claims the comment run directly \
-                             below it, but the next line is not a comment. Put the comment text on \
-                             the marker line itself (`// cddl-codegen:keep <text>`), or move the \
-                             comment run directly under the marker with no blank line between them."
+                    Err(Closing::Missing) => {
+                        return Err(at(
+                            "An `// cddl-codegen:insert-start` block is not closed by \
+                             a matching `// cddl-codegen:insert-end`."
                                 .to_owned(),
-                        );
+                        ));
                     }
+                };
+                let start_ci = ci;
+                let end_ci = own[q];
+                let code_start = comments[start_ci].anchor;
+                let code_end = comments[end_ci].anchor;
+                if !delimiters_balanced(&lexed.code[code_start..code_end]) {
+                    return Err(at(
+                        "The user section of the `// cddl-codegen:insert-start` block has \
+                         unbalanced delimiters ({}, (), or []); wrap a complete, balanced fragment."
+                            .to_owned(),
+                    ));
                 }
-            };
-            blocks.push(InsertBlock {
-                byte_start: line_start(lexed.src, marker.start),
-                byte_end,
-                code_start: anchor,
-                code_end: anchor,
-                noun: "comment",
-            });
-            p = last_p + 1;
-        } else if tag == ReservedTag::InsertEnd {
-            return err_at(
-                line_of(lexed.src, comments[ci].start),
-                "Found `// cddl-codegen:insert-end` without a matching \
-                 `// cddl-codegen:insert-start`."
-                    .to_owned(),
-            );
-        } else {
-            // A bare `unpreserved-comment` marker not backed by the `compile_error!` shape (it was
-            // not claimed by `recognize_sentinels`), or any unknown tag: a malformed structure, not a
-            // user comment.
-            return err_at(
-                line_of(lexed.src, comments[ci].start),
-                format!(
+                let byte_start = line_start(lexed.src, comments[start_ci].start);
+                let byte_end = comments[end_ci].end;
+                blocks.push(InsertBlock {
+                    byte_start,
+                    byte_end,
+                    code_start,
+                    code_end,
+                    noun: "code block",
+                });
+                p = q + 1;
+            }
+            ReservedTag::Keep { inline } => {
+                // A `keep` block wraps COMMENT TEXT only — it never contains code, so its interior
+                // code range is empty (`code_start == code_end`): nothing is removed from the
+                // virtual pristine stream, `delimiters_balanced` on the empty slice is vacuously
+                // true, and it anchors on `code_end` through the normal tiers exactly like an
+                // insert block above the same token.
+                let marker = &comments[ci];
+                let anchor = marker.anchor;
+                let (byte_end, last_p) = if !inline.is_empty() {
+                    // Inline form: the whole marker line IS the user comment. It travels verbatim,
+                    // marker included — an unmarked copy would be unclassified on the next run.
+                    (marker.end, p)
+                } else {
+                    // Claim-the-run form: take own-line comments below the marker while each is
+                    // not a reserved tag (which covers a sentinel marker line — it parses as
+                    // reserved), shares the marker's anchor, and starts on the line immediately
+                    // after the previous claimed line. A blank line therefore terminates the run.
+                    let mut claimed_end: Option<usize> = None;
+                    let mut last = p;
+                    let mut prev_end = marker.end;
+                    let mut q = p + 1;
+                    while q < own.len() {
+                        let cm = &comments[own[q]];
+                        if ReservedComment::parse(cm.text).is_some() || cm.anchor != anchor {
+                            break;
+                        }
+                        // Exactly one newline of whitespace between the previous claimed line and
+                        // this one (CRLF included — `\r\n` carries a single `\n`).
+                        let gap = &lexed.src[prev_end..cm.start];
+                        if !gap.trim().is_empty()
+                            || gap.bytes().filter(|&b| b == b'\n').count() != 1
+                        {
+                            break;
+                        }
+                        claimed_end = Some(cm.end);
+                        prev_end = cm.end;
+                        last = q;
+                        q += 1;
+                    }
+                    match claimed_end {
+                        Some(e) => (e, last),
+                        None => {
+                            return Err(at(
+                                "A bare `// cddl-codegen:keep` marker claims the comment run \
+                                 directly below it, but the next line is not a comment. Put the \
+                                 comment text on the marker line itself \
+                                 (`// cddl-codegen:keep <text>`), or move the comment run directly \
+                                 under the marker with no blank line between them."
+                                    .to_owned(),
+                            ));
+                        }
+                    }
+                };
+                blocks.push(InsertBlock {
+                    byte_start: line_start(lexed.src, marker.start),
+                    byte_end,
+                    code_start: anchor,
+                    code_end: anchor,
+                    noun: "comment",
+                });
+                p = last_p + 1;
+            }
+            ReservedTag::InsertEnd => {
+                return Err(at("Found `// cddl-codegen:insert-end` without a matching \
+                     `// cddl-codegen:insert-start`."
+                    .to_owned()));
+            }
+            ReservedTag::UnpreservedComment | ReservedTag::Unknown => {
+                // A bare `unpreserved-comment` marker not backed by the `compile_error!` shape (it
+                // was not claimed by `recognize_sentinels`), or any unknown tag: a malformed
+                // structure, not a user comment.
+                return Err(at(format!(
                     "Unrecognized reserved comment in the `cddl-codegen:` namespace (line: `{}`).",
                     comments[ci].text
-                ),
-            );
+                )));
+            }
         }
     }
-    // A block's tag/interior comments (own-line AND trailing) and interior code tokens are excluded
-    // from the comment/code passes; recognize them by byte/index containment.
+    // A block's tag/interior comments (own-line AND trailing) are consumed — excluded from the
+    // comment pass — recognized by byte containment, for insert and replace blocks alike. Only an
+    // insert block's interior code tokens are removed; a replace block's user code is SUBSTITUTED
+    // by its needle during reconstruction.
+    let spans = blocks
+        .iter()
+        .map(|b| (b.byte_start, b.byte_end))
+        .chain(replace_blocks.iter().map(|rb| (rb.byte_start, rb.byte_end)));
     let mut consumed = BTreeSet::new();
-    let mut removed_code = BTreeSet::new();
-    for b in &blocks {
-        for (ci, cm) in comments.iter().enumerate() {
-            if cm.start >= b.byte_start && cm.start < b.byte_end {
-                consumed.insert(ci);
-            }
-        }
-        for k in b.code_start..b.code_end {
-            removed_code.insert(k);
-        }
+    for (start, end) in spans {
+        consumed.extend(
+            comments
+                .iter()
+                .enumerate()
+                .filter(|(_, cm)| cm.start >= start && cm.start < end)
+                .map(|(ci, _)| ci),
+        );
     }
-    // A replace block's comments (tags, interior user comments, recorded-original lines) are consumed
-    // too; its user-code tokens are NOT removed here — reconstruction substitutes them by the needle.
-    for rb in &replace_blocks {
-        for (ci, cm) in comments.iter().enumerate() {
-            if cm.start >= rb.byte_start && cm.start < rb.byte_end {
-                consumed.insert(ci);
-            }
-        }
-    }
+    let removed_code: BTreeSet<usize> = blocks
+        .iter()
+        .flat_map(|b| b.code_start..b.code_end)
+        .collect();
     Ok(BlockScan {
         blocks,
         replace_blocks,
@@ -1542,11 +1534,12 @@ fn reindent_block(old_src: &str, b: &InsertBlock, target_indent: &str) -> String
 /// rustfmt'd on-disk form is a stable fixed point.
 ///
 /// For every LINE comment that is NOT own-line but IS in the reserved `cddl-codegen:` namespace
-/// (`ReservedComment::parse` matches — block comments can never match, and a namespace lookalike inside a string
-/// literal is inert because the lexer is literal-aware), we insert a newline + the trailing line's
-/// leading indentation immediately before the marker, moving it onto its own line below the code it
-/// trailed. The `}` (or other tail code) it trailed stays on the line above, so it becomes part of the
-/// user section being closed — the same split as if the marker had been emitted own-line.
+/// (`ReservedComment::parse` matches — block comments can never match, and a namespace lookalike
+/// inside a string literal is inert because the lexer is literal-aware), we insert a newline +
+/// the trailing line's leading indentation immediately before the marker, moving it onto its own
+/// line below the code it trailed. The `}` (or other tail code) it trailed stays on the line above,
+/// so it becomes part of the user section being closed — the same split as if the marker had been
+/// emitted own-line.
 ///
 /// Returns the normalized text (a borrowed `Cow` when nothing folded — the dominant case) plus, for
 /// each inserted newline, the 1-based line it created in the normalized text, so a `PreserveError`'s
