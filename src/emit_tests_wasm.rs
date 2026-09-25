@@ -563,7 +563,8 @@ fn wasm_collection_build(
                 // the rest. `count` is >= 1 for a `[+ T]` shape.
                 let e = elem.as_ref()?;
                 let elem_expr = wasm_arg(types, e, elem_ty, scoped, cli)?;
-                let mut body = format!("let mut l = {wrapper}::new({elem_expr});");
+                let binding_mut = if *count > 1 { "mut " } else { "" };
+                let mut body = format!("let {binding_mut}l = {wrapper}::new({elem_expr});");
                 for _ in 1..*count {
                     body.push_str(&format!(" l.add({elem_expr});"));
                 }
@@ -607,7 +608,12 @@ fn wasm_collection_build(
                     )
                 ));
             }
-            let mut body = format!("let mut l = {wrapper}::new();");
+            let binding_mut = if elem.is_some() && *count > 0 {
+                "mut "
+            } else {
+                ""
+            };
+            let mut body = format!("let {binding_mut}l = {wrapper}::new();");
             if let Some(e) = elem {
                 let elem_expr = wasm_arg(types, e, elem_ty, scoped, cli)?;
                 for _ in 0..*count {
@@ -648,8 +654,9 @@ fn wasm_collection_build(
             if field_ty.is_type_enforced_non_empty() {
                 // restricted wrapper: `new(first_key, first_value)` seeds the first entry (no empty
                 // state), `insert` the rest. `count` is >= 1 for a `{+ k => v}` shape.
+                let binding_mut = if *count > 1 { "mut " } else { "" };
                 let mut body = format!(
-                    "let mut m = {wrapper}::new({}, {val_expr});",
+                    "let {binding_mut}m = {wrapper}::new({}, {val_expr});",
                     map_key_literal(key, *key_base, 0)
                 );
                 for i in 1..*count {
@@ -660,7 +667,8 @@ fn wasm_collection_build(
                 }
                 return Some(format!("{{ {body} m }}"));
             }
-            let mut body = format!("let mut m = {wrapper}::new();");
+            let binding_mut = if *count > 0 { "mut " } else { "" };
+            let mut body = format!("let {binding_mut}m = {wrapper}::new();");
             for i in 0..*count {
                 body.push_str(&format!(
                     " m.insert({}, {val_expr});",
