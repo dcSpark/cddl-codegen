@@ -948,6 +948,16 @@ impl<'a> IntermediateTypes<'a> {
         self.generic_defs.get(ident)
     }
 
+    /// The first authored (non-anonymous) rule, in `RustIdent` order, whose struct satisfies `owns`.
+    /// A SYNTHESIZED anonymous collection instance lowers to its structural wrapper and never owns
+    /// the named slot.
+    fn named_collection_owner(&self, owns: impl Fn(&RustStruct) -> bool) -> Option<&RustIdent> {
+        self.rust_structs
+            .iter()
+            .find(|(ident, rs)| !self.is_anonymous_collection_instance(ident) && owns(rs))
+            .map(|(ident, _)| ident)
+    }
+
     /// The NAMED `{+ k => v}` table rule that owns the wasm surface for an inline `{+ k => v}` of the
     /// same domain/range, if any — the design doc's inline-dedup-to-named rule (the spec author's
     /// chosen name wins over a synthesized `NonEmptyMapKToV`). Domain/range equality is alias-resolved
@@ -959,9 +969,8 @@ impl<'a> IntermediateTypes<'a> {
     ) -> Option<&RustIdent> {
         let key_resolved = key.clone().resolve_aliases();
         let value_resolved = value.clone().resolve_aliases();
-        self.rust_structs
-            .iter()
-            .find_map(|(ident, rs)| match rs.variant() {
+        self.named_collection_owner(|rs| {
+            matches!(rs.variant(),
                 // A SYNTHESIZED anonymous instance carries no author name worth surfacing — it lowers
                 // to the structural `NonEmpty<MapKToV>` wrapper (see the anonymous-collapse
                 // convergence), so it must NOT win the owner slot the way an authored `{+ …}` rule does.
@@ -978,14 +987,9 @@ impl<'a> IntermediateTypes<'a> {
                     // wrapper does not exist). The map-side of the reject-set guard in
                     // `non_empty_named_owner`: only a non-preserve named rule may own the loose inline.
                     && !rs.config().duplicates_preserve()
-                    && !self.is_anonymous_collection_instance(ident)
-                    && domain.clone().resolve_aliases() == key_resolved
-                    && range.clone().resolve_aliases() == value_resolved =>
-                {
-                    Some(ident)
-                }
-                _ => None,
-            })
+                    && domain.resolves_equal(&key_resolved)
+                    && range.resolves_equal(&value_resolved))
+        })
     }
 
     /// The NAMED `[+ elem]` rule that owns the wasm surface for an inline `[+ elem]` of the same
@@ -995,9 +999,8 @@ impl<'a> IntermediateTypes<'a> {
     /// lexicographically-first matching rule ident wins when several same-shape rules exist.
     pub fn non_empty_named_owner(&self, element: &RustType) -> Option<&RustIdent> {
         let resolved = element.clone().resolve_aliases();
-        self.rust_structs
-            .iter()
-            .find_map(|(ident, rs)| match rs.variant() {
+        self.named_collection_owner(|rs| {
+            matches!(rs.variant(),
                 // A SYNTHESIZED anonymous instance is excluded (see the map twin above): it lowers to
                 // the structural `NonEmpty<Elem>List`, so a `nonempty_set<key_hash>` instance never
                 // shadows the inline `[+ key_hash]`'s synthesized wrapper name with its own ident.
@@ -1012,13 +1015,8 @@ impl<'a> IntermediateTypes<'a> {
                     // the wrong core type — a loud-but-broken wasm crate (`From<NonEmptyVec>` for the
                     // reject wrapper does not exist). Only a preserve-policy named rule may own it.
                     && !rs.config().duplicates_reject()
-                    && !self.is_anonymous_collection_instance(ident)
-                    && element_type.clone().resolve_aliases() == resolved =>
-                {
-                    Some(ident)
-                }
-                _ => None,
-            })
+                    && element_type.resolves_equal(&resolved))
+        })
     }
 
     /// The authored bounded-array rule owning the wasm class for an inline occurrence with the
@@ -1031,9 +1029,8 @@ impl<'a> IntermediateTypes<'a> {
     ) -> Option<&RustIdent> {
         let normalized = Self::normalized_bounded_window(bounds)?;
         let resolved = element.clone().resolve_aliases();
-        self.rust_structs
-            .iter()
-            .find_map(|(ident, rs)| match rs.variant() {
+        self.named_collection_owner(|rs| {
+            matches!(rs.variant(),
                 RustStructType::Array {
                     element_type,
                     bounds: Some(candidate),
@@ -1042,13 +1039,8 @@ impl<'a> IntermediateTypes<'a> {
                     // BoundedVec wasm class an inline preserve-policy occurrence needs. It cannot
                     // be a dedup owner without crossing incompatible core representations.
                     && !rs.config().duplicates_reject()
-                    && !self.is_anonymous_collection_instance(ident)
-                    && element_type.clone().resolve_aliases() == resolved =>
-                {
-                    Some(ident)
-                }
-                _ => None,
-            })
+                    && element_type.resolves_equal(&resolved))
+        })
     }
 
     /// The authored bounded-table rule owning the wasm class for an inline occurrence with the
@@ -1064,23 +1056,17 @@ impl<'a> IntermediateTypes<'a> {
         let normalized = Self::normalized_bounded_window(bounds)?;
         let key_resolved = key.clone().resolve_aliases();
         let value_resolved = value.clone().resolve_aliases();
-        self.rust_structs
-            .iter()
-            .find_map(|(ident, rs)| match rs.variant() {
+        self.named_collection_owner(|rs| {
+            matches!(rs.variant(),
                 RustStructType::Table {
                     domain,
                     range,
                     bounds: Some(candidate),
                 } if Self::normalized_bounded_window(*candidate) == Some(normalized)
                     && rs.config().duplicates_preserve() == preserve
-                    && !self.is_anonymous_collection_instance(ident)
-                    && domain.clone().resolve_aliases() == key_resolved
-                    && range.clone().resolve_aliases() == value_resolved =>
-                {
-                    Some(ident)
-                }
-                _ => None,
-            })
+                    && domain.resolves_equal(&key_resolved)
+                    && range.resolves_equal(&value_resolved))
+        })
     }
 
     /// Canonicalize an array or table occurrence window before comparing ownership or rendering a
@@ -1352,7 +1338,7 @@ impl<'a> IntermediateTypes<'a> {
                     element_type,
                     bounds,
                 } if matches!(bounds, None | Some((None, None)))
-                    && element_type.clone().resolve_aliases() == *element_resolved
+                    && element_type.resolves_equal(element_resolved)
             ) && !rs.config().duplicates_reject()
         })
     }
@@ -1423,8 +1409,8 @@ impl<'a> IntermediateTypes<'a> {
                     range,
                     bounds,
                 }) if *bounds != Some((Some(1), None))
-                    && domain.clone().resolve_aliases() == *key_resolved
-                    && range.clone().resolve_aliases() == *value_resolved
+                    && domain.resolves_equal(key_resolved)
+                    && range.resolves_equal(value_resolved)
             )
     }
 

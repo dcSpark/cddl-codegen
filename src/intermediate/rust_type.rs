@@ -1046,6 +1046,15 @@ impl RustType {
         self
     }
 
+    /// Whether resolving this type's aliases would equal `resolved`, without cloning.
+    pub fn resolves_equal(&self, resolved: &RustType) -> bool {
+        self.conceptual_type
+            .resolves_equal(&resolved.conceptual_type)
+            && self.encodings == resolved.encodings
+            && self.config == resolved.config
+            && self.generic_param_binding == resolved.generic_param_binding
+    }
+
     pub fn with_bounds(mut self, mut bounds: (Option<i128>, Option<i128>)) -> Self {
         assert!(self.config.bounds.is_none());
         // remove redundant 0 for unsigned types
@@ -2330,6 +2339,28 @@ impl ConceptualRustType {
         }
     }
 
+    /// Whether resolving this conceptual type's aliases would equal `resolved`, without cloning.
+    /// Mirrors `resolve_aliases` arm-for-arm: aliases are looked through, arrays, optionals, and maps recurse into their `RustType` inners, and every other variant compares with `==`.
+    /// Inner RustType encodings, config, and generic bindings are compared verbatim.
+    /// The match is exhaustive so a future variant must specify its alias comparison explicitly.
+    pub fn resolves_equal(&self, resolved: &ConceptualRustType) -> bool {
+        match self {
+            Self::Alias(_, inner) => inner.resolves_equal(resolved),
+            Self::Array(inner) => {
+                matches!(resolved, Self::Array(other) if inner.resolves_equal(other))
+            }
+            Self::Optional(inner) => {
+                matches!(resolved, Self::Optional(other) if inner.resolves_equal(other))
+            }
+            Self::Map(key, value) => matches!(
+                resolved,
+                Self::Map(other_key, other_value)
+                    if key.resolves_equal(other_key) && value.resolves_equal(other_value)
+            ),
+            Self::Fixed(_) | Self::Primitive(_) | Self::Rust(_) | Self::Any => self == resolved,
+        }
+    }
+
     // shallow resolve aliases. use this when you only need to strip direct aliases
     // to check the type more easily e.g. to figure out if a ConceptualRustType
     // is a Rust, a Primitive, etc
@@ -3274,9 +3305,59 @@ impl std::fmt::Display for ToWasmBoundaryOperations {
 mod tests {
     use super::{ConceptualRustType, FixedValue, Primitive, RustType};
     use crate::comment_ast::DuplicatesPolicy;
-    use crate::intermediate::IntermediateTypes;
+    use crate::intermediate::{
+        AliasIdent, CDDLIdent, GenericParamBinding, IntermediateTypes, RustIdent,
+    };
     use crate::{parsing::RUST_KEYWORDS, utils::is_valid_rust_ident};
     use cbor_event::Sz;
+
+    #[test]
+    fn resolves_equal_matches_clone_resolve_then_eq() {
+        let a = RustIdent::new(CDDLIdent::new("a"));
+        let b = RustIdent::new(CDDLIdent::new("b"));
+        let u64_ty = RustType::new(ConceptualRustType::Primitive(Primitive::U64));
+        let alias = u64_ty.clone().as_alias(AliasIdent::Rust(a.clone()));
+        let array = |inner| RustType::new(ConceptualRustType::Array(Box::new(inner)));
+        let map =
+            |key, value| RustType::new(ConceptualRustType::Map(Box::new(key), Box::new(value)));
+        let optional = |inner| RustType::new(ConceptualRustType::Optional(Box::new(inner)));
+        let text = RustType::new(ConceptualRustType::Primitive(Primitive::Str));
+        let cases = vec![
+            u64_ty.clone(),
+            alias.clone(),
+            array(u64_ty.clone()),
+            array(alias.clone()),
+            array(u64_ty.clone()).with_bounds((Some(1), None)),
+            array(u64_ty.clone().tag(5)),
+            map(alias.clone(), text.clone()),
+            map(u64_ty.clone(), text),
+            optional(alias.clone()),
+            optional(u64_ty.clone()),
+            array(alias).as_alias(AliasIdent::Rust(b.clone())),
+            u64_ty
+                .clone()
+                .with_generic_param_binding(GenericParamBinding::new(0)),
+            RustType::new(ConceptualRustType::Rust(b)),
+            RustType::new(ConceptualRustType::Any),
+            RustType::new(ConceptualRustType::Fixed(FixedValue::Uint(1))),
+        ];
+        let mut true_count = 0;
+        let mut false_count = 0;
+        for x in &cases {
+            for y in &cases {
+                let actual = x.resolves_equal(y);
+                assert_eq!(actual, x.clone().resolve_aliases() == *y, "{x:?} vs {y:?}");
+                if actual {
+                    true_count += 1
+                } else {
+                    false_count += 1
+                }
+            }
+        }
+        assert!(cases[1].resolves_equal(&cases[0]));
+        assert!(true_count > 0);
+        assert!(false_count > 0);
+    }
 
     /// `FixedValue::to_bytes` for negative literals must produce canonical CBOR nint bytes across
     /// the full magnitude ladder, and — critically — for `i64::MIN`, the boundary where a
