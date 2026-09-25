@@ -1769,6 +1769,27 @@ fn with_deps_closes_the_selection_over_dependencies_only() {
     );
 }
 
+/// Dependency closure and flag listing use the loaded config after its file is removed.
+#[test]
+fn one_loaded_config_serves_the_selection_and_the_listing() {
+    let path = std::env::temp_dir().join(format!(
+        "cddl_config_one_load_{:016x}.toml",
+        crate::tests::integration_tests::checkout_hash()
+    ));
+    std::fs::write(
+        &path,
+        "[crates.core]\ninput = \"c.cddl\"\noutput = \"gc\"\n\n\
+         [crates.ledger]\ninput = \"l.cddl\"\noutput = \"gl\"\ndeps = [\"core\"]\n",
+    )
+    .unwrap();
+    let config = config::load_with(&path, None, None).unwrap();
+    std::fs::remove_file(&path).unwrap();
+
+    let selected = config::selection_with_deps(&config, &path, &["ledger".into()]).unwrap();
+    assert_eq!(selected, ["core", "ledger"]);
+    config::print_flags_loaded(&config, &path, &selected).unwrap();
+}
+
 /// `--with-deps` parses as a selection modifier: it reaches the config parser rather than the
 /// generation-flag rejection, and leaves the positional names alone.
 #[test]

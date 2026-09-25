@@ -66,33 +66,28 @@ fn main() {
 
 /// `cddl-codegen --config <file.toml> [CRATE...]`: the command-line half of config mode.
 ///
-/// Only the argv handling lives here — the run itself is `config::generate`, so the test suite drives
-/// exactly the sequence a real invocation does rather than a re-implementation of it.
+/// Only the argv handling lives here — the run itself is `config::generate_loaded`, shared with
+/// `config::generate`, so the test suite drives exactly the sequence a real invocation does rather
+/// than a re-implementation of it.
 fn generate_from_config(argv: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     config::reject_generation_flags(argv)?;
     let invocation = config::ConfigCli::parse_from(argv);
-    let static_dir = invocation.static_dir.as_deref();
+    let config = config::load_with(
+        &invocation.config,
+        invocation.static_dir.as_deref(),
+        invocation.verbosity,
+    )?;
     // `--with-deps` is resolved into the selection before anything else sees it, so the run, the
     // listing, and the diagnostics that quote the selection back all mean the same set of crates.
     let selected = if invocation.with_deps {
-        config::selection_with_deps(&invocation.config, &invocation.crates)?
+        config::selection_with_deps(&config, &invocation.config, &invocation.crates)?
     } else {
         invocation.crates.clone()
     };
     if invocation.print_flags {
-        return config::print_flags(
-            &invocation.config,
-            &selected,
-            static_dir,
-            invocation.verbosity,
-        );
+        return config::print_flags_loaded(&config, &invocation.config, &selected);
     }
-    config::generate(
-        &invocation.config,
-        &selected,
-        static_dir,
-        invocation.verbosity,
-    )
+    config::generate_loaded(&config, &invocation.config, &selected)
 }
 
 #[cfg(test)]
