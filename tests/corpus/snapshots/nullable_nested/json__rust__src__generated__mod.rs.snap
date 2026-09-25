@@ -21,6 +21,7 @@ mod extern_interface_check;
 pub mod json_schema_gen;
 pub mod json_value_ser;
 pub mod serialization;
+pub mod static_array;
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub enum DataEnum {
@@ -37,6 +38,9 @@ impl DataEnum {
         Self::Text(text)
     }
 }
+
+/// `[2*2 uint]`: exact static `[T; N]` carrier; the list wrapper's `TryFrom<Vec<_>>` door performs the checked Vec-to-array handover (and the CBOR decoder crosses that same door).
+pub type ExactPair = [u64; 2];
 
 pub type MaybeColl = Option<NumsArr>;
 
@@ -69,6 +73,43 @@ impl NullableDenumField {
 }
 
 pub type NullableMapValue = BTreeMap<u64, MaybeUint>;
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
+pub struct NullableOptionalComposite {
+    pub pre: u64,
+    #[serde(with = "crate::generated::double_option")]
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "Option<MaybeColl>")]
+    pub coll: Option<MaybeColl>,
+    #[serde(with = "crate::generated::double_option")]
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "Option<MaybeDenum>")]
+    pub denum: Option<MaybeDenum>,
+    #[serde(with = "crate::generated::double_option")]
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "Option<Option<NullableCollField>>")]
+    pub rec: Option<Option<NullableCollField>>,
+    #[serde(with = "crate::generated::double_option")]
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "Option<Option<ExactPair>>")]
+    pub exact: Option<Option<ExactPair>>,
+}
+
+impl NullableOptionalComposite {
+    pub fn new(pre: u64) -> Self {
+        Self {
+            pre,
+            coll: None,
+            denum: None,
+            rec: None,
+            exact: None,
+        }
+    }
+}
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 pub struct NullableOptionalField {

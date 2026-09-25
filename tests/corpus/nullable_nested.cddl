@@ -24,3 +24,16 @@ maybe_denum = data_enum / null
 nullable_coll_field = [c: maybe_coll]
 nullable_denum_field = [d: maybe_denum]
 nullable_coll_map = { * uint => maybe_coll }
+
+; An OPTIONAL map-record field whose nullable inner is composite is stored as Option<Option<Inner>>. The wasm
+; getter flattens it and must still convert the inner to its wasm wrapper (`.map(Into::into)`) —
+; the flatten alone returns the native carrier (E0308). Covers a named collection, a data-enum, a
+; record, and a restricted (exact-length) array inner.
+exact_pair = [2*2 uint]
+nullable_optional_composite = {
+  pre: uint,
+  ? coll: maybe_coll,
+  ? denum: maybe_denum,
+  ? rec: (nullable_coll_field / null),
+  ? exact: (exact_pair / null),
+}

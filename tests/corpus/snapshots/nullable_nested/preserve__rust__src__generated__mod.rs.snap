@@ -24,7 +24,8 @@ pub mod serialization;
 use crate::generated::ordered_hash_map::OrderedHashMap;
 use crate::generated::serialization::StringEncoding;
 use cbor_encodings::{
-    NullableCollFieldEncoding, NullableDenumFieldEncoding, NullableOptionalFieldEncoding,
+    NullableCollFieldEncoding, NullableDenumFieldEncoding, NullableOptionalCompositeEncoding,
+    NullableOptionalFieldEncoding,
 };
 
 #[derive(Clone, Debug)]
@@ -54,6 +55,9 @@ impl DataEnum {
         }
     }
 }
+
+/// `[2*2 uint]`: exact static `[T; N]` carrier; the list wrapper's `TryFrom<Vec<_>>` door performs the checked Vec-to-array handover (and the CBOR decoder crosses that same door).
+pub type ExactPair = [u64; 2];
 
 pub type MaybeColl = Option<NumsArr>;
 
@@ -88,6 +92,29 @@ impl NullableDenumField {
 }
 
 pub type NullableMapValue = OrderedHashMap<u64, MaybeUint>;
+
+#[derive(Clone, Debug)]
+pub struct NullableOptionalComposite {
+    pub pre: u64,
+    pub coll: Option<MaybeColl>,
+    pub denum: Option<MaybeDenum>,
+    pub rec: Option<Option<NullableCollField>>,
+    pub exact: Option<Option<ExactPair>>,
+    pub encodings: Option<NullableOptionalCompositeEncoding>,
+}
+
+impl NullableOptionalComposite {
+    pub fn new(pre: u64) -> Self {
+        Self {
+            pre,
+            coll: None,
+            denum: None,
+            rec: None,
+            exact: None,
+            encodings: None,
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct NullableOptionalField {

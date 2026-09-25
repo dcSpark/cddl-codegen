@@ -35,6 +35,9 @@ impl DataEnum {
     }
 }
 
+/// `[2*2 uint]`: exact static `[T; N]` carrier; the list wrapper's `TryFrom<Vec<_>>` door performs the checked Vec-to-array handover (and the CBOR decoder crosses that same door).
+pub type ExactPair = [u64; 2];
+
 pub type MaybeColl = Option<NumsArr>;
 
 pub type MaybeDenum = Option<DataEnum>;
@@ -66,6 +69,27 @@ impl NullableDenumField {
 }
 
 pub type NullableMapValue = BTreeMap<u64, MaybeUint>;
+
+#[derive(Clone, Debug)]
+pub struct NullableOptionalComposite {
+    pub pre: u64,
+    pub coll: Option<MaybeColl>,
+    pub denum: Option<MaybeDenum>,
+    pub rec: Option<Option<NullableCollField>>,
+    pub exact: Option<Option<ExactPair>>,
+}
+
+impl NullableOptionalComposite {
+    pub fn new(pre: u64) -> Self {
+        Self {
+            pre,
+            coll: None,
+            denum: None,
+            rec: None,
+            exact: None,
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct NullableOptionalField {

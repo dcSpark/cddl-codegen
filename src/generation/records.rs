@@ -3448,18 +3448,23 @@ pub(super) fn codegen_struct(
                                 ".clone()"
                             }
                         );
-                        // The direct `flatten()` spelling returns the native carrier. An exact
-                        // byte leaf is stored as `[u8; N]` but crosses the wasm ABI as `Vec<u8>`;
-                        // unlike ordinary optional getters this double-Option branch bypasses
-                        // RustType::to_wasm_boundary_optional, so loosen it explicitly here.
-                        let flattened = if matches!(
-                            field.rust_type.conceptual_type.resolve_alias_shallow(),
-                            ConceptualRustType::Optional(inner)
-                                if inner.exact_byte_array_len_checked().is_some()
-                        ) {
+                        // `flatten()` yields the native carrier `Option<Inner>`. This branch
+                        // bypasses RustType::to_wasm_boundary_optional, so convert the inner value
+                        // to its wasm face here: an exact byte leaf (`[u8; N]`) loosens to
+                        // `Vec<u8>`; any inner that is not directly wasm-exposable (a record, data
+                        // enum, named or restricted collection, `@copy` extern) crosses through its
+                        // wrapper's `From<native>` impl, exactly as the ordinary optional getter does.
+                        let ConceptualRustType::Optional(inner) =
+                            field.rust_type.conceptual_type.resolve_alias_shallow()
+                        else {
+                            unreachable!("is_double_option() requires an Optional field type")
+                        };
+                        let flattened = if inner.exact_byte_array_len_checked().is_some() {
                             format!("{flattened}.map(|bytes| bytes.to_vec())")
-                        } else {
+                        } else if inner.directly_wasm_exposable(types) {
                             flattened
+                        } else {
+                            format!("{flattened}.map(std::convert::Into::into)")
                         };
                         getter
                             .doc("Returns None if the field is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).")

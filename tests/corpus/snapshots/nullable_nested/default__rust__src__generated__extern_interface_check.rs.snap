@@ -22,6 +22,8 @@ fn _assert_serialize<T: cbor_event::se::Serialize>() {}
 #[allow(dead_code)]
 fn _assert_deserialize<T: crate::generated::serialization::Deserialize>() {}
 #[allow(unused_imports)]
+use crate::generated::ExactPair as _;
+#[allow(unused_imports)]
 use crate::generated::MaybeColl as _;
 #[allow(unused_imports)]
 use crate::generated::MaybeDenum as _;
@@ -41,6 +43,8 @@ fn _extern_interface_self_check() {
     _assert_deserialize::<crate::generated::NullableCollField>();
     _assert_serialize::<crate::generated::NullableDenumField>();
     _assert_deserialize::<crate::generated::NullableDenumField>();
+    _assert_serialize::<crate::generated::NullableOptionalComposite>();
+    _assert_deserialize::<crate::generated::NullableOptionalComposite>();
     _assert_serialize::<crate::generated::NullableOptionalField>();
     _assert_deserialize::<crate::generated::NullableOptionalField>();
 }

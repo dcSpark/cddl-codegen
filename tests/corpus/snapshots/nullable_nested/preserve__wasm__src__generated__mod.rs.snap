@@ -85,6 +85,46 @@ pub enum DataEnumKind {
     Text,
 }
 
+/// `[2*2 uint]`: inclusive length window enforced by the native static array. Loose input crosses the `Vec<T> -> [T; N]` conversion door; the stored static array makes wrong cardinality unrepresentable.
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
+pub struct ExactPair(pub(crate) [u64; 2]);
+
+#[wasm_bindgen]
+impl ExactPair {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn get(&self, index: usize) -> u64 {
+        self.0[index]
+    }
+
+    pub fn try_from(elements: Vec<u64>) -> Result<ExactPair, JsError> {
+        elements.try_into().map(Self).map_err(|elements: Vec<_>| {
+            JsError::from(cddl_lib::error::DeserializeError::from(
+                cddl_lib::error::DeserializeFailure::RangeCheck {
+                    found: elements.len() as i128,
+                    min: Some(2),
+                    max: Some(2),
+                },
+            ))
+        })
+    }
+}
+
+impl From<[u64; 2]> for ExactPair {
+    fn from(native: [u64; 2]) -> Self {
+        Self(native)
+    }
+}
+
+impl AsRef<[u64; 2]> for ExactPair {
+    fn as_ref(&self) -> &[u64; 2] {
+        &self.0
+    }
+}
+
 pub type MapU64ToMaybeColl = NullableCollMap;
 
 pub type MapU64ToMaybeUint = NullableMapValue;
@@ -293,6 +333,105 @@ impl AsRef<cddl_lib::NullableMapValue> for NullableMapValue {
 
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
+pub struct NullableOptionalComposite(pub(crate) cddl_lib::NullableOptionalComposite);
+
+#[wasm_bindgen]
+impl NullableOptionalComposite {
+    pub fn to_cbor_bytes(&self) -> Vec<u8> {
+        cddl_lib::serialization::ToCBORBytes::to_cbor_bytes(&self.0)
+    }
+
+    pub fn from_cbor_bytes(cbor_bytes: &[u8]) -> Result<NullableOptionalComposite, JsError> {
+        cddl_lib::serialization::Deserialize::from_cbor_bytes(cbor_bytes)
+            .map(Self)
+            .map_err(|e| JsError::new(&format!("from_bytes: {}", e)))
+    }
+
+    pub fn pre(&self) -> u64 {
+        self.0.pre
+    }
+
+    pub fn set_coll(&mut self, coll: Option<NumsArr>) {
+        self.0.coll = Some(coll.map(Into::into))
+    }
+
+    /// Returns None if the field is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).
+    pub fn coll(&self) -> MaybeColl {
+        self.0.coll.clone().flatten().map(std::convert::Into::into)
+    }
+
+    /// Returns whether the optional field is present (outer Some), distinguishing an absent field from a present-but-null one (both of which the getter reports as None).
+    pub fn has_coll(&self) -> bool {
+        self.0.coll.is_some()
+    }
+
+    pub fn set_denum(&mut self, denum: Option<DataEnum>) {
+        self.0.denum = Some(denum.map(Into::into))
+    }
+
+    /// Returns None if the field is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).
+    pub fn denum(&self) -> MaybeDenum {
+        self.0.denum.clone().flatten().map(std::convert::Into::into)
+    }
+
+    /// Returns whether the optional field is present (outer Some), distinguishing an absent field from a present-but-null one (both of which the getter reports as None).
+    pub fn has_denum(&self) -> bool {
+        self.0.denum.is_some()
+    }
+
+    pub fn set_rec(&mut self, rec: Option<NullableCollField>) {
+        self.0.rec = Some(rec.map(Into::into))
+    }
+
+    /// Returns None if the field is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).
+    pub fn rec(&self) -> Option<NullableCollField> {
+        self.0.rec.clone().flatten().map(std::convert::Into::into)
+    }
+
+    /// Returns whether the optional field is present (outer Some), distinguishing an absent field from a present-but-null one (both of which the getter reports as None).
+    pub fn has_rec(&self) -> bool {
+        self.0.rec.is_some()
+    }
+
+    pub fn set_exact(&mut self, exact: Option<ExactPair>) {
+        self.0.exact = Some(exact.map(Into::into))
+    }
+
+    /// Returns None if the field is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).
+    pub fn exact(&self) -> Option<ExactPair> {
+        self.0.exact.clone().flatten().map(std::convert::Into::into)
+    }
+
+    /// Returns whether the optional field is present (outer Some), distinguishing an absent field from a present-but-null one (both of which the getter reports as None).
+    pub fn has_exact(&self) -> bool {
+        self.0.exact.is_some()
+    }
+
+    pub fn new(pre: u64) -> Self {
+        Self(cddl_lib::NullableOptionalComposite::new(pre))
+    }
+}
+
+impl From<cddl_lib::NullableOptionalComposite> for NullableOptionalComposite {
+    fn from(native: cddl_lib::NullableOptionalComposite) -> Self {
+        Self(native)
+    }
+}
+
+impl From<NullableOptionalComposite> for cddl_lib::NullableOptionalComposite {
+    fn from(wasm: NullableOptionalComposite) -> Self {
+        wasm.0
+    }
+}
+
+impl AsRef<cddl_lib::NullableOptionalComposite> for NullableOptionalComposite {
+    fn as_ref(&self) -> &cddl_lib::NullableOptionalComposite {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug)]
+#[wasm_bindgen]
 pub struct NullableOptionalField(pub(crate) cddl_lib::NullableOptionalField);
 
 #[wasm_bindgen]
@@ -386,5 +525,11 @@ impl From<NumsArr> for Vec<u64> {
 impl AsRef<Vec<u64>> for NumsArr {
     fn as_ref(&self) -> &Vec<u64> {
         &self.0
+    }
+}
+
+impl From<ExactPair> for [u64; 2] {
+    fn from(wasm: ExactPair) -> Self {
+        wasm.0
     }
 }

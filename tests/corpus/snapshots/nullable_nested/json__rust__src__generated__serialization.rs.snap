@@ -6,6 +6,8 @@ expression: content
 // https://github.com/dcSpark/cddl-codegen
 
 extern crate alloc;
+use alloc::borrow::ToOwned;
+use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 #[allow(unused_imports)]
@@ -157,6 +159,305 @@ impl Deserialize for NullableDenumField {
             Ok(NullableDenumField { d })
         })()
         .map_err(|e| e.annotate("NullableDenumField"))
+    }
+}
+
+impl cbor_event::se::Serialize for NullableOptionalComposite {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map(cbor_event::Len::Len(
+            1 + match &self.coll {
+                Some(_) => 1,
+                None => 0,
+            } + match &self.denum {
+                Some(_) => 1,
+                None => 0,
+            } + match &self.rec {
+                Some(_) => 1,
+                None => 0,
+            } + match &self.exact {
+                Some(_) => 1,
+                None => 0,
+            },
+        ))?;
+        serializer.write_text("pre")?;
+        serializer.write_unsigned_integer(self.pre)?;
+        if let Some(field) = &self.rec {
+            serializer.write_text("rec")?;
+            match field {
+                Some(x) => {
+                    x.serialize(serializer)?;
+                }
+                None => {
+                    serializer.write_special(cbor_event::Special::Null)?;
+                }
+            };
+        }
+        if let Some(field) = &self.coll {
+            serializer.write_text("coll")?;
+            match field {
+                Some(x) => {
+                    serializer.write_array(cbor_event::Len::Len(x.len() as u64))?;
+                    for element in x.iter() {
+                        serializer.write_unsigned_integer(*element)?;
+                    }
+                }
+                None => {
+                    serializer.write_special(cbor_event::Special::Null)?;
+                }
+            };
+        }
+        if let Some(field) = &self.denum {
+            serializer.write_text("denum")?;
+            match field {
+                Some(x) => {
+                    x.serialize(serializer)?;
+                }
+                None => {
+                    serializer.write_special(cbor_event::Special::Null)?;
+                }
+            };
+        }
+        if let Some(field) = &self.exact {
+            serializer.write_text("exact")?;
+            match field {
+                Some(x) => {
+                    serializer.write_array(cbor_event::Len::Len(x.len() as u64))?;
+                    for element in x.iter() {
+                        serializer.write_unsigned_integer(*element)?;
+                    }
+                }
+                None => {
+                    serializer.write_special(cbor_event::Special::Null)?;
+                }
+            };
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for NullableOptionalComposite {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            let mut read_len = CBORReadLen::from(len);
+            read_len.read_elems(1)?;
+            let mut pre = None;
+            let mut rec = None;
+            let mut coll = None;
+            let mut denum = None;
+            let mut exact = None;
+            let mut read = 0;
+            while match len {
+                cbor_event::Len::Len(n) => read < n,
+                cbor_event::Len::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into());
+                    }
+                    cbor_event::Type::Text => match raw.text()?.as_str() {
+                        "pre" => {
+                            if pre.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "pre".into(),
+                                ))
+                                .into());
+                            }
+                            pre = Some(
+                                Ok(raw.unsigned_integer()?)
+                                    .map_err(|e: DeserializeError| e.annotate("pre"))?,
+                            );
+                        }
+                        "rec" => {
+                            if rec.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "rec".into(),
+                                ))
+                                .into());
+                            }
+                            rec = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    Ok(match raw.cbor_type()? != cbor_event::Type::Special {
+                                        true => {
+                                            read_len.read_elems(1)?;
+                                            Some(NullableCollField::deserialize(raw)?)
+                                        }
+                                        false => {
+                                            read_len.read_elems(1)?;
+                                            if raw.special()? != cbor_event::Special::Null {
+                                                return Err(DeserializeFailure::ExpectedNull.into());
+                                            }
+                                            None
+                                        }
+                                    })
+                                })()
+                                .map_err(|e| e.annotate("rec"))?,
+                            );
+                        }
+                        "coll" => {
+                            if coll.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "coll".into(),
+                                ))
+                                .into());
+                            }
+                            coll = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    Ok(match raw.cbor_type()? != cbor_event::Type::Special {
+                                        true => {
+                                            read_len.read_elems(1)?;
+                                            let mut coll_arr = Vec::new();
+                                            let len = raw.array()?;
+                                            while match len {
+                                                cbor_event::Len::Len(n) => {
+                                                    (coll_arr.len() as u64) < n
+                                                }
+                                                cbor_event::Len::Indefinite => true,
+                                            } {
+                                                if matches!(len, cbor_event::Len::Indefinite)
+                                                    && raw.cbor_type()? == cbor_event::Type::Special
+                                                    && raw.special_break()?
+                                                {
+                                                    break;
+                                                }
+                                                coll_arr.push(raw.unsigned_integer()?);
+                                            }
+                                            Some(coll_arr)
+                                        }
+                                        false => {
+                                            read_len.read_elems(1)?;
+                                            if raw.special()? != cbor_event::Special::Null {
+                                                return Err(DeserializeFailure::ExpectedNull.into());
+                                            }
+                                            None
+                                        }
+                                    })
+                                })()
+                                .map_err(|e| e.annotate("coll"))?,
+                            );
+                        }
+                        "denum" => {
+                            if denum.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "denum".into(),
+                                ))
+                                .into());
+                            }
+                            denum = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    Ok(match raw.cbor_type()? != cbor_event::Type::Special {
+                                        true => {
+                                            read_len.read_elems(1)?;
+                                            Some(DataEnum::deserialize(raw)?)
+                                        }
+                                        false => {
+                                            read_len.read_elems(1)?;
+                                            if raw.special()? != cbor_event::Special::Null {
+                                                return Err(DeserializeFailure::ExpectedNull.into());
+                                            }
+                                            None
+                                        }
+                                    })
+                                })()
+                                .map_err(|e| e.annotate("denum"))?,
+                            );
+                        }
+                        "exact" => {
+                            if exact.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                    "exact".into(),
+                                ))
+                                .into());
+                            }
+                            exact = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    Ok(match raw.cbor_type()? != cbor_event::Type::Special {
+                                        true => {
+                                            read_len.read_elems(1)?;
+                                            let mut exact_arr = Vec::new();
+                                            let len = raw.array()?;
+                                            while match len {
+                                                cbor_event::Len::Len(n) => {
+                                                    (exact_arr.len() as u64) < n
+                                                }
+                                                cbor_event::Len::Indefinite => true,
+                                            } {
+                                                if matches!(len, cbor_event::Len::Indefinite)
+                                                    && raw.cbor_type()? == cbor_event::Type::Special
+                                                    && raw.special_break()?
+                                                {
+                                                    break;
+                                                }
+                                                exact_arr.push(raw.unsigned_integer()?);
+                                            }
+                                            let exact_arr: [_; 2] = exact_arr.try_into().map_err(
+                                                |elements: Vec<_>| DeserializeFailure::RangeCheck {
+                                                    found: elements.len() as i128,
+                                                    min: Some(2),
+                                                    max: Some(2),
+                                                },
+                                            )?;
+                                            Some(exact_arr)
+                                        }
+                                        false => {
+                                            read_len.read_elems(1)?;
+                                            if raw.special()? != cbor_event::Special::Null {
+                                                return Err(DeserializeFailure::ExpectedNull.into());
+                                            }
+                                            None
+                                        }
+                                    })
+                                })()
+                                .map_err(|e| e.annotate("exact"))?,
+                            );
+                        }
+                        unknown_key => {
+                            return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                unknown_key.to_owned(),
+                            ))
+                            .into());
+                        }
+                    },
+                    cbor_event::Type::Special => match len {
+                        cbor_event::Len::Len(_) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                        }
+                        cbor_event::Len::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
+                    }
+                }
+                read += 1;
+            }
+            let pre = match pre {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("pre")))
+                            .into(),
+                    );
+                }
+            };
+            read_len.finish()?;
+            Ok(Self {
+                pre,
+                coll,
+                denum,
+                rec,
+                exact,
+            })
+        })()
+        .map_err(|e| e.annotate("NullableOptionalComposite"))
     }
 }
 

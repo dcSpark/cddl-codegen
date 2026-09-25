@@ -6,6 +6,8 @@ expression: content
 // https://github.com/dcSpark/cddl-codegen
 
 extern crate alloc;
+use alloc::borrow::ToOwned;
+use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 #[allow(unused_imports)]
@@ -237,6 +239,519 @@ impl Deserialize for NullableDenumField {
             })
         })()
         .map_err(|e| e.annotate("NullableDenumField"))
+    }
+}
+
+impl cbor_event::se::Serialize for NullableOptionalComposite {
+    fn serialize<'se>(
+        &self,
+        serializer: &'se mut Serializer,
+    ) -> cbor_event::Result<&'se mut Serializer> {
+        serializer.write_map_sz(
+            self.encodings
+                .as_ref()
+                .map(|encs| encs.len_encoding)
+                .unwrap_or_default()
+                .to_len_sz(
+                    1 + match &self.coll {
+                        Some(_) => 1,
+                        None => 0,
+                    } + match &self.denum {
+                        Some(_) => 1,
+                        None => 0,
+                    } + match &self.rec {
+                        Some(_) => 1,
+                        None => 0,
+                    } + match &self.exact {
+                        Some(_) => 1,
+                        None => 0,
+                    },
+                ),
+        )?;
+        let deser_order = self
+            .encodings
+            .as_ref()
+            .filter(|encs| {
+                encs.orig_deser_order.len()
+                    == 1 + match &self.coll {
+                        Some(_) => 1,
+                        None => 0,
+                    } + match &self.denum {
+                        Some(_) => 1,
+                        None => 0,
+                    } + match &self.rec {
+                        Some(_) => 1,
+                        None => 0,
+                    } + match &self.exact {
+                        Some(_) => 1,
+                        None => 0,
+                    }
+            })
+            .map(|encs| encs.orig_deser_order.clone())
+            .unwrap_or_else(|| (0..5).collect());
+        for field_index in deser_order {
+            match field_index {
+                0 => {
+                    serializer.write_text_sz(
+                        "pre",
+                        self.encodings
+                            .as_ref()
+                            .map(|encs| encs.pre_key_encoding.clone())
+                            .unwrap_or_default()
+                            .to_str_len_sz("pre".len() as u64),
+                    )?;
+                    serializer.write_unsigned_integer_sz(
+                        self.pre,
+                        fit_sz(
+                            self.pre,
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.pre_encoding)
+                                .unwrap_or_default(),
+                        ),
+                    )?;
+                }
+                3 => {
+                    if let Some(field) = &self.rec {
+                        serializer.write_text_sz(
+                            "rec",
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.rec_key_encoding.clone())
+                                .unwrap_or_default()
+                                .to_str_len_sz("rec".len() as u64),
+                        )?;
+                        match field {
+                            Some(x) => {
+                                x.serialize(serializer)?;
+                            }
+                            None => {
+                                serializer.write_special(cbor_event::Special::Null)?;
+                            }
+                        };
+                    }
+                }
+                1 => {
+                    if let Some(field) = &self.coll {
+                        serializer.write_text_sz(
+                            "coll",
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.coll_key_encoding.clone())
+                                .unwrap_or_default()
+                                .to_str_len_sz("coll".len() as u64),
+                        )?;
+                        match field {
+                            Some(x) => {
+                                serializer.write_array_sz(
+                                    self.encodings
+                                        .as_ref()
+                                        .map(|encs| encs.coll_encoding)
+                                        .unwrap_or_default()
+                                        .to_len_sz(x.len() as u64),
+                                )?;
+                                for (i, element) in x.iter().enumerate() {
+                                    let coll_elem_encoding = self
+                                        .encodings
+                                        .as_ref()
+                                        .and_then(|encs| encs.coll_elem_encodings.get(i))
+                                        .cloned()
+                                        .unwrap_or_default();
+                                    serializer.write_unsigned_integer_sz(
+                                        *element,
+                                        fit_sz(*element, coll_elem_encoding),
+                                    )?;
+                                }
+                                self.encodings
+                                    .as_ref()
+                                    .map(|encs| encs.coll_encoding)
+                                    .unwrap_or_default()
+                                    .end(serializer)?;
+                            }
+                            None => {
+                                serializer.write_special(cbor_event::Special::Null)?;
+                            }
+                        };
+                    }
+                }
+                2 => {
+                    if let Some(field) = &self.denum {
+                        serializer.write_text_sz(
+                            "denum",
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.denum_key_encoding.clone())
+                                .unwrap_or_default()
+                                .to_str_len_sz("denum".len() as u64),
+                        )?;
+                        match field {
+                            Some(x) => {
+                                x.serialize(serializer)?;
+                            }
+                            None => {
+                                serializer.write_special(cbor_event::Special::Null)?;
+                            }
+                        };
+                    }
+                }
+                4 => {
+                    if let Some(field) = &self.exact {
+                        serializer.write_text_sz(
+                            "exact",
+                            self.encodings
+                                .as_ref()
+                                .map(|encs| encs.exact_key_encoding.clone())
+                                .unwrap_or_default()
+                                .to_str_len_sz("exact".len() as u64),
+                        )?;
+                        match field {
+                            Some(x) => {
+                                serializer.write_array_sz(
+                                    self.encodings
+                                        .as_ref()
+                                        .map(|encs| encs.exact_encoding)
+                                        .unwrap_or_default()
+                                        .to_len_sz(x.len() as u64),
+                                )?;
+                                for (i, element) in x.iter().enumerate() {
+                                    let exact_elem_encoding = self
+                                        .encodings
+                                        .as_ref()
+                                        .and_then(|encs| encs.exact_elem_encodings.get(i))
+                                        .cloned()
+                                        .unwrap_or_default();
+                                    serializer.write_unsigned_integer_sz(
+                                        *element,
+                                        fit_sz(*element, exact_elem_encoding),
+                                    )?;
+                                }
+                                self.encodings
+                                    .as_ref()
+                                    .map(|encs| encs.exact_encoding)
+                                    .unwrap_or_default()
+                                    .end(serializer)?;
+                            }
+                            None => {
+                                serializer.write_special(cbor_event::Special::Null)?;
+                            }
+                        };
+                    }
+                }
+                _ => unreachable!(),
+            };
+        }
+        self.encodings
+            .as_ref()
+            .map(|encs| encs.len_encoding)
+            .unwrap_or_default()
+            .end(serializer)
+    }
+}
+
+impl Deserialize for NullableOptionalComposite {
+    fn deserialize(raw: &mut Deserializer) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map_sz()?;
+            let len_encoding: LenEncoding = len.into();
+            let mut read_len = CBORReadLen::new(len);
+            read_len.read_elems(1)?;
+            let mut orig_deser_order = Vec::new();
+            let mut pre_encoding = None;
+            let mut pre_key_encoding = StringEncoding::default();
+            let mut pre = None;
+            let mut rec_key_encoding = StringEncoding::default();
+            let mut rec = None;
+            let mut coll_encoding = LenEncoding::default();
+            let mut coll_elem_encodings = Vec::new();
+            let mut coll_key_encoding = StringEncoding::default();
+            let mut coll = None;
+            let mut denum_key_encoding = StringEncoding::default();
+            let mut denum = None;
+            let mut exact_encoding = LenEncoding::default();
+            let mut exact_elem_encodings = Vec::new();
+            let mut exact_key_encoding = StringEncoding::default();
+            let mut exact = None;
+            let mut read = 0;
+            while match len {
+                cbor_event::LenSz::Len(n, _) => read < n,
+                cbor_event::LenSz::Indefinite => true,
+            } {
+                match raw.cbor_type()? {
+                    cbor_event::Type::UnsignedInteger => {
+                        return Err(DeserializeFailure::UnknownKey(Key::Uint(
+                            raw.unsigned_integer()?,
+                        ))
+                        .into());
+                    }
+                    cbor_event::Type::Text => {
+                        let (text_key, key_enc) = raw.text_sz()?;
+                        match text_key.as_str() {
+                            "pre" => {
+                                if pre.is_some() {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        "pre".into(),
+                                    ))
+                                    .into());
+                                }
+                                let (tmp_pre, tmp_pre_encoding) = raw
+                                    .unsigned_integer_sz()
+                                    .map_err(Into::<DeserializeError>::into)
+                                    .map(|(x, enc)| (x, Some(enc)))
+                                    .map_err(|e: DeserializeError| e.annotate("pre"))?;
+                                pre = Some(tmp_pre);
+                                pre_encoding = tmp_pre_encoding;
+                                pre_key_encoding = StringEncoding::from(key_enc);
+                                orig_deser_order.push(0);
+                            }
+                            "rec" => {
+                                if rec.is_some() {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        "rec".into(),
+                                    ))
+                                    .into());
+                                }
+                                let tmp_rec = (|| -> Result<_, DeserializeError> {
+                                    Ok(match raw.cbor_type()? != cbor_event::Type::Special {
+                                        true => {
+                                            read_len.read_elems(1)?;
+                                            Some(NullableCollField::deserialize(raw)?)
+                                        }
+                                        false => {
+                                            read_len.read_elems(1)?;
+                                            if raw.special()? != cbor_event::Special::Null {
+                                                return Err(DeserializeFailure::ExpectedNull.into());
+                                            }
+                                            None
+                                        }
+                                    })
+                                })()
+                                .map_err(|e| e.annotate("rec"))?;
+                                rec = Some(tmp_rec);
+                                rec_key_encoding = StringEncoding::from(key_enc);
+                                orig_deser_order.push(3);
+                            }
+                            "coll" => {
+                                if coll.is_some() {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        "coll".into(),
+                                    ))
+                                    .into());
+                                }
+                                let (tmp_coll, tmp_coll_encoding, tmp_coll_elem_encodings) =
+                                    (|| -> Result<_, DeserializeError> {
+                                        Ok(match raw.cbor_type()? != cbor_event::Type::Special {
+                                            true => {
+                                                read_len.read_elems(1)?;
+                                                let mut coll_arr = Vec::new();
+                                                let len = raw.array_sz()?;
+                                                let coll_encoding = len.into();
+                                                let mut coll_elem_encodings = Vec::new();
+                                                while match len {
+                                                    cbor_event::LenSz::Len(n, _) => {
+                                                        (coll_arr.len() as u64) < n
+                                                    }
+                                                    cbor_event::LenSz::Indefinite => true,
+                                                } {
+                                                    if matches!(len, cbor_event::LenSz::Indefinite)
+                                                        && raw.cbor_type()?
+                                                            == cbor_event::Type::Special
+                                                        && raw.special_break()?
+                                                    {
+                                                        break;
+                                                    }
+                                                    let (coll_elem, coll_elem_encoding) = raw
+                                                        .unsigned_integer_sz()
+                                                        .map(|(x, enc)| (x, Some(enc)))?;
+                                                    coll_arr.push(coll_elem);
+                                                    coll_elem_encodings.push(coll_elem_encoding);
+                                                }
+                                                Result::<_, DeserializeError>::Ok((
+                                                    coll_arr,
+                                                    coll_encoding,
+                                                    coll_elem_encodings,
+                                                ))
+                                                .map(|(x, coll_encoding, coll_elem_encodings)| {
+                                                    (Some(x), coll_encoding, coll_elem_encodings)
+                                                })?
+                                            }
+                                            false => {
+                                                read_len.read_elems(1)?;
+                                                if raw.special()? != cbor_event::Special::Null {
+                                                    return Err(
+                                                        DeserializeFailure::ExpectedNull.into()
+                                                    );
+                                                }
+                                                (None, LenEncoding::default(), Vec::new())
+                                            }
+                                        })
+                                    })()
+                                    .map_err(|e| e.annotate("coll"))?;
+                                coll = Some(tmp_coll);
+                                coll_encoding = tmp_coll_encoding;
+                                coll_elem_encodings = tmp_coll_elem_encodings;
+                                coll_key_encoding = StringEncoding::from(key_enc);
+                                orig_deser_order.push(1);
+                            }
+                            "denum" => {
+                                if denum.is_some() {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        "denum".into(),
+                                    ))
+                                    .into());
+                                }
+                                let tmp_denum = (|| -> Result<_, DeserializeError> {
+                                    Ok(match raw.cbor_type()? != cbor_event::Type::Special {
+                                        true => {
+                                            read_len.read_elems(1)?;
+                                            Some(DataEnum::deserialize(raw)?)
+                                        }
+                                        false => {
+                                            read_len.read_elems(1)?;
+                                            if raw.special()? != cbor_event::Special::Null {
+                                                return Err(DeserializeFailure::ExpectedNull.into());
+                                            }
+                                            None
+                                        }
+                                    })
+                                })()
+                                .map_err(|e| e.annotate("denum"))?;
+                                denum = Some(tmp_denum);
+                                denum_key_encoding = StringEncoding::from(key_enc);
+                                orig_deser_order.push(2);
+                            }
+                            "exact" => {
+                                if exact.is_some() {
+                                    return Err(DeserializeFailure::DuplicateKey(Key::Str(
+                                        "exact".into(),
+                                    ))
+                                    .into());
+                                }
+                                let (tmp_exact, tmp_exact_encoding, tmp_exact_elem_encodings) =
+                                    (|| -> Result<_, DeserializeError> {
+                                        Ok(match raw.cbor_type()? != cbor_event::Type::Special {
+                                            true => {
+                                                read_len.read_elems(1)?;
+                                                let mut exact_arr = Vec::new();
+                                                let len = raw.array_sz()?;
+                                                let exact_encoding = len.into();
+                                                let mut exact_elem_encodings = Vec::new();
+                                                while match len {
+                                                    cbor_event::LenSz::Len(n, _) => {
+                                                        (exact_arr.len() as u64) < n
+                                                    }
+                                                    cbor_event::LenSz::Indefinite => true,
+                                                } {
+                                                    if matches!(len, cbor_event::LenSz::Indefinite)
+                                                        && raw.cbor_type()?
+                                                            == cbor_event::Type::Special
+                                                        && raw.special_break()?
+                                                    {
+                                                        break;
+                                                    }
+                                                    let (exact_elem, exact_elem_encoding) = raw
+                                                        .unsigned_integer_sz()
+                                                        .map(|(x, enc)| (x, Some(enc)))?;
+                                                    exact_arr.push(exact_elem);
+                                                    exact_elem_encodings.push(exact_elem_encoding);
+                                                }
+                                                let exact_arr: [_; 2] = exact_arr
+                                                    .try_into()
+                                                    .map_err(|elements: Vec<_>| {
+                                                        DeserializeFailure::RangeCheck {
+                                                            found: elements.len() as i128,
+                                                            min: Some(2),
+                                                            max: Some(2),
+                                                        }
+                                                    })?;
+                                                Result::<_, DeserializeError>::Ok((
+                                                    exact_arr,
+                                                    exact_encoding,
+                                                    exact_elem_encodings,
+                                                ))
+                                                .map(
+                                                    |(x, exact_encoding, exact_elem_encodings)| {
+                                                        (
+                                                            Some(x),
+                                                            exact_encoding,
+                                                            exact_elem_encodings,
+                                                        )
+                                                    },
+                                                )?
+                                            }
+                                            false => {
+                                                read_len.read_elems(1)?;
+                                                if raw.special()? != cbor_event::Special::Null {
+                                                    return Err(
+                                                        DeserializeFailure::ExpectedNull.into()
+                                                    );
+                                                }
+                                                (None, LenEncoding::default(), Vec::new())
+                                            }
+                                        })
+                                    })()
+                                    .map_err(|e| e.annotate("exact"))?;
+                                exact = Some(tmp_exact);
+                                exact_encoding = tmp_exact_encoding;
+                                exact_elem_encodings = tmp_exact_elem_encodings;
+                                exact_key_encoding = StringEncoding::from(key_enc);
+                                orig_deser_order.push(4);
+                            }
+                            unknown_key => {
+                                return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                    unknown_key.to_owned(),
+                                ))
+                                .into());
+                            }
+                        }
+                    }
+                    cbor_event::Type::Special => match len {
+                        cbor_event::LenSz::Len(_, _) => {
+                            return Err(DeserializeFailure::BreakInDefiniteLen.into());
+                        }
+                        cbor_event::LenSz::Indefinite => match raw.special()? {
+                            cbor_event::Special::Break => break,
+                            _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                        },
+                    },
+                    other_type => {
+                        return Err(DeserializeFailure::UnexpectedKeyType(other_type).into());
+                    }
+                }
+                read += 1;
+            }
+            let pre = match pre {
+                Some(x) => x,
+                None => {
+                    return Err(
+                        DeserializeFailure::MandatoryFieldMissing(Key::Str(String::from("pre")))
+                            .into(),
+                    );
+                }
+            };
+            read_len.finish()?;
+            Ok(Self {
+                pre,
+                coll,
+                denum,
+                rec,
+                exact,
+                encodings: Some(NullableOptionalCompositeEncoding {
+                    len_encoding,
+                    orig_deser_order,
+                    pre_key_encoding,
+                    pre_encoding,
+                    coll_key_encoding,
+                    coll_encoding,
+                    coll_elem_encodings,
+                    denum_key_encoding,
+                    rec_key_encoding,
+                    exact_key_encoding,
+                    exact_encoding,
+                    exact_elem_encodings,
+                }),
+            })
+        })()
+        .map_err(|e| e.annotate("NullableOptionalComposite"))
     }
 }
 

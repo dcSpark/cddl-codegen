@@ -7920,6 +7920,66 @@ source = "ruby-generate"
 expect = "accept"
 
 [[row]]
+id = "nullable_nested.exact_pair"
+axis = "corpus"
+example = "exact_pair = [2*2 uint]"
+fixture = "nullable_nested"
+rule = "exact_pair"
+spec = "__probe_holder = [0, exact_pair]\nexact_pair = [2*2 uint]"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200821903d91903f0"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190ada19031f"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190b1e190193"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190d7f190baf"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190de2190b89"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190df4190504"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190e4b19054b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "820082190e8a190bbd"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821910471889"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200821911bd19058b"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
 id = "nullable_nested.maybe_coll"
 axis = "corpus"
 example = "nums_arr = [* uint]\nmaybe_coll = nums_arr / null"
@@ -8082,10 +8142,10 @@ expect = "accept"
 [[row]]
 id = "nullable_nested.nullable_coll_map"
 axis = "corpus"
-example = "nums_arr = [* uint]\nmaybe_coll = nums_arr / null\nnullable_coll_map = { * uint => maybe_coll }"
+example = "nums_arr = [* uint]\nmaybe_coll = nums_arr / null\nnullable_coll_map = { * uint => maybe_coll }\n\n; An OPTIONAL map-record field whose nullable inner is composite is stored as Option<Option<Inner>>. The wasm\n; getter flattens it and must still convert the inner to its wasm wrapper (`.map(Into::into)`) —\n; the flatten alone returns the native carrier (E0308). Covers a named collection, a data-enum, a\n; record, and a restricted (exact-length) array inner."
 fixture = "nullable_nested"
 rule = "nullable_coll_map"
-spec = "__probe_holder = [0, nullable_coll_map]\nnums_arr = [* uint]\nmaybe_coll = nums_arr / null\nnullable_coll_map = { * uint => maybe_coll }"
+spec = "__probe_holder = [0, nullable_coll_map]\nnums_arr = [* uint]\nmaybe_coll = nums_arr / null\nnullable_coll_map = { * uint => maybe_coll }\n\n; An OPTIONAL map-record field whose nullable inner is composite is stored as Option<Option<Inner>>. The wasm\n; getter flattens it and must still convert the inner to its wasm wrapper (`.map(Into::into)`) —\n; the flatten alone returns the native carrier (E0308). Covers a named collection, a data-enum, a\n; record, and a restricted (exact-length) array inner."
 mode = "holder"
 type_name = "ProbeHolder"
 
@@ -8231,6 +8291,66 @@ expect = "accept"
 
 [[row.vector]]
 hex = "8200a41901fef6190ff2f6191037f6190c74190493"
+source = "ruby-generate"
+expect = "accept"
+
+[[row]]
+id = "nullable_nested.nullable_optional_composite"
+axis = "corpus"
+example = "nums_arr = [* uint]\ndata_enum = uint / text\nmaybe_coll = nums_arr / null\nmaybe_denum = data_enum / null\nnullable_coll_field = [c: maybe_coll]\nexact_pair = [2*2 uint]\nnullable_optional_composite = {\n  pre: uint,\n  ? coll: maybe_coll,\n  ? denum: maybe_denum,\n  ? rec: (nullable_coll_field / null),\n  ? exact: (exact_pair / null),\n}"
+fixture = "nullable_nested"
+rule = "nullable_optional_composite"
+spec = "__probe_holder = [0, nullable_optional_composite]\nnums_arr = [* uint]\ndata_enum = uint / text\nmaybe_coll = nums_arr / null\nmaybe_denum = data_enum / null\nnullable_coll_field = [c: maybe_coll]\nexact_pair = [2*2 uint]\nnullable_optional_composite = {\n  pre: uint,\n  ? coll: maybe_coll,\n  ? denum: maybe_denum,\n  ? rec: (nullable_coll_field / null),\n  ? exact: (exact_pair / null),\n}"
+mode = "holder"
+type_name = "ProbeHolder"
+
+[[row.vector]]
+hex = "8200a2637072651907766564656e756df6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a2637072651908af6564656e756d190170"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a263707265190b0a6564656e756d190eba"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a363707265186964636f6c6c81191113656578616374f6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a363707265190175637265638183190909190778190ed165657861637482190126190ffd"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a3637072651904336564656e756df66372656381f6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a3637072651907b864636f6c6c80656578616374f6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a36370726519090564636f6c6c811903b365657861637482190a4e1853"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a3637072651909e16564656e756d190e256372656381f6"
+source = "ruby-generate"
+expect = "accept"
+
+[[row.vector]]
+hex = "8200a463707265190a2064636f6c6c8119026b6564656e756d637469636372656381f6"
 source = "ruby-generate"
 expect = "accept"
 

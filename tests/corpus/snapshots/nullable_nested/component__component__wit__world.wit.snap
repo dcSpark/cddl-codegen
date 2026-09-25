@@ -33,6 +33,20 @@ interface types {
     to-cbor-bytes: func() -> list<u8>;
     from-cbor-bytes: static func(bytes: list<u8>) -> result<nullable-denum-field, string>;
   }
+  resource nullable-optional-composite {
+    constructor(pre: u64);
+    pre: func() -> u64;
+    coll: func() -> option<option<list<u64>>>;
+    set-coll: func(coll: option<list<u64>>);
+    denum: func() -> option<option<data-enum>>;
+    set-denum: func(denum: option<borrow<data-enum>>);
+    rec: func() -> option<option<nullable-coll-field>>;
+    set-rec: func(rec: option<borrow<nullable-coll-field>>);
+    exact: func() -> option<option<list<u64>>>;
+    set-exact: func(exact: option<list<u64>>) -> result<_, string>;
+    to-cbor-bytes: func() -> list<u8>;
+    from-cbor-bytes: static func(bytes: list<u8>) -> result<nullable-optional-composite, string>;
+  }
   resource nullable-optional-field {
     constructor(pre: u64);
     pre: func() -> u64;

@@ -20,6 +20,7 @@ impl wit_types::Guest for Component {
     type DataEnum = WitDataEnum;
     type NullableCollField = WitNullableCollField;
     type NullableDenumField = WitNullableDenumField;
+    type NullableOptionalComposite = WitNullableOptionalComposite;
     type NullableOptionalField = WitNullableOptionalField;
 }
 
@@ -137,6 +138,92 @@ impl wit_types::GuestNullableDenumField for WitNullableDenumField {
         )
         .map(|v| wit_types::NullableDenumField::new(WitNullableDenumField(RefCell::new(v))))
         .map_err(err)
+    }
+}
+
+pub struct WitNullableOptionalComposite(pub RefCell<cddl_lib::NullableOptionalComposite>);
+
+impl wit_types::GuestNullableOptionalComposite for WitNullableOptionalComposite {
+    fn new(pre: u64) -> Self {
+        let inner = cddl_lib::NullableOptionalComposite::new(pre);
+        WitNullableOptionalComposite(RefCell::new(inner))
+    }
+
+    fn pre(&self) -> u64 {
+        let me = self.0.borrow();
+        me.pre
+    }
+
+    fn coll(&self) -> Option<Option<Vec<u64>>> {
+        let me = self.0.borrow();
+        me.coll
+            .as_ref()
+            .map(|x| x.as_ref().map(|x| x.iter().map(|x| *x).collect()))
+    }
+
+    fn set_coll(&self, coll: Option<Vec<u64>>) {
+        let coll = coll.map(|v| v.into_iter().collect::<Vec<_>>());
+        self.0.borrow_mut().coll = Some(coll);
+    }
+
+    fn denum(&self) -> Option<Option<wit_types::DataEnum>> {
+        let me = self.0.borrow();
+        me.denum.as_ref().map(|x| {
+            x.as_ref()
+                .map(|x| wit_types::DataEnum::new(WitDataEnum(RefCell::new(x.clone()))))
+        })
+    }
+
+    fn set_denum(&self, denum: Option<wit_types::DataEnumBorrow<'_>>) {
+        let denum = denum.map(|v| v.get::<WitDataEnum>().0.borrow().clone());
+        self.0.borrow_mut().denum = Some(denum);
+    }
+
+    fn rec(&self) -> Option<Option<wit_types::NullableCollField>> {
+        let me = self.0.borrow();
+        me.rec.as_ref().map(|x| {
+            x.as_ref().map(|x| {
+                wit_types::NullableCollField::new(WitNullableCollField(RefCell::new(x.clone())))
+            })
+        })
+    }
+
+    fn set_rec(&self, rec: Option<wit_types::NullableCollFieldBorrow<'_>>) {
+        let rec = rec.map(|v| v.get::<WitNullableCollField>().0.borrow().clone());
+        self.0.borrow_mut().rec = Some(rec);
+    }
+
+    fn exact(&self) -> Option<Option<Vec<u64>>> {
+        let me = self.0.borrow();
+        me.exact
+            .as_ref()
+            .map(|x| x.as_ref().map(|x| x.iter().map(|x| *x).collect()))
+    }
+
+    fn set_exact(&self, exact: Option<Vec<u64>>) -> Result<(), String> {
+        let exact = exact
+            .map(|v| {
+                (v.into_iter().collect::<Vec<_>>())
+                    .try_into()
+                    .map_err(|values: Vec<_>| {
+                        err(format!("array length {} does not equal 2", values.len()))
+                    })
+            })
+            .transpose()?;
+        self.0.borrow_mut().exact = Some(exact);
+        Ok(())
+    }
+
+    fn to_cbor_bytes(&self) -> Vec<u8> {
+        <cddl_lib::NullableOptionalComposite as cddl_lib::serialization::ToCBORBytes>::to_cbor_bytes(
+            &self.0.borrow(),
+        )
+    }
+
+    fn from_cbor_bytes(bytes: Vec<u8>) -> Result<wit_types::NullableOptionalComposite, String> {
+        <cddl_lib::NullableOptionalComposite as cddl_lib::serialization::Deserialize>::from_cbor_bytes(&bytes)
+            .map(|v| wit_types::NullableOptionalComposite::new(WitNullableOptionalComposite(RefCell::new(v))))
+            .map_err(err)
     }
 }
 
