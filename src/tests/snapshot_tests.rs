@@ -799,6 +799,31 @@ fn json_emitted_tests_exempt_unpublished_row_minimum_and_mint_json_any_keys() {
     assert!(!flat.contains("insert_rest(__AnyCborMint::new_array"));
 }
 
+#[test]
+fn emitted_reject_assertions_spell_the_failure_through_the_test_module_alias() {
+    let root =
+        std::env::temp_dir().join(format!("cddl_codegen_reject_alias_{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    let input = root.join("input.cddl");
+    std::fs::write(&input, "rec = [a: uint .le 5]\nch = [0, a: uint .le 5 // 1, b: tstr]\nw = uint .le 5\nf = 0.5..10.5\n").unwrap();
+    let files =
+        crate::api::generated_strings(&cli_for(&input, &["--wasm=false", "--emit-tests=true"]))
+            .unwrap();
+    let src = files.get("rust/src/generated/mod.rs").unwrap();
+    let module = &src[src.find("mod cddl_generated_tests").unwrap()..];
+    let module = &module[..module.find("\n}\n").unwrap() + 2];
+    assert!(module.contains(
+        "use crate::generated::error::DeserializeFailure as __CddlTestDeserializeFailure;"
+    ));
+    assert_eq!(
+        module.matches("DeserializeFailure::").count(),
+        module.matches("__CddlTestDeserializeFailure::").count()
+    );
+    assert!(module.contains("__CddlTestDeserializeFailure::RangeCheckFloat"));
+    assert!(module.contains("__CddlTestDeserializeFailure::RangeCheck {"));
+    std::fs::remove_dir_all(root).ok();
+}
+
 /// Every wasm method that puts an exact byte value directly in a collection carrier must perform
 /// the fallible Vec-to-array handover itself. Constructors that delegate to a native named type are
 /// deliberately absent: their native `new` owns the same conversion and its named diagnostic.

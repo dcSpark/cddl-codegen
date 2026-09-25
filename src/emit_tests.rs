@@ -12,7 +12,7 @@
 //!
 //! * **deser-reject** (structs / `Record`): mint a valid baseline via `new(..)`, mutate one `pub`
 //!   field out of bounds, serialize, and assert `from_cbor_bytes` rejects the wire bytes as
-//!   `DeserializeFailure::RangeCheck`. This exercises the *wire* path — the roadmap's target —
+//!   `__CddlTestDeserializeFailure::RangeCheck`. This exercises the *wire* path — the roadmap's target —
 //!   because serialize does not re-check bounds (raw `write_*`) but deserialize does.
 //! * **construct-reject** (record/choice bounded-array arguments, other bounded type/group choices,
 //!   and bounded `@newtype` wrappers): assert the fallible construction door rejects an
@@ -591,6 +591,7 @@ pub fn emit_generated_tests(
     }
 
     let mut fns: Vec<String> = Vec::new();
+    let mut failure_alias_used = false;
     for (ident, rust_struct) in types.rust_structs() {
         let name = ident.to_string();
         // BOTH halves decode: the round-trip asserts `from_cbor_bytes(to_cbor_bytes(v))` and the
@@ -604,35 +605,39 @@ pub fn emit_generated_tests(
             );
             continue;
         }
+        let mut alias = FailureAlias::default();
         let reject = match rust_struct.variant() {
             RustStructType::Record(record) => {
-                record_deser_reject(types, &name, record, !cli.preserve_encodings)
+                record_deser_reject(types, &name, record, !cli.preserve_encodings, &mut alias)
             }
             RustStructType::TypeChoice { variants } => {
-                choice_construct_reject(types, &name, variants, false)
+                choice_construct_reject(types, &name, variants, false, &mut alias)
             }
             RustStructType::GroupChoice { variants, .. } => {
-                choice_construct_reject(types, &name, variants, true)
+                choice_construct_reject(types, &name, variants, true, &mut alias)
             }
             RustStructType::Wrapper {
                 wrapped,
                 min_max,
                 float_min_max,
             } => match float_min_max {
-                Some(window) => wrapper_construct_reject_float(&name, wrapped, window),
+                Some(window) => wrapper_construct_reject_float(&name, wrapped, window, &mut alias),
                 None => min_max
                     .or_else(|| {
                         wrapped
                             .exact_byte_array_len_checked()
                             .and(wrapped.config.bounds)
                     })
-                    .and_then(|mm| wrapper_construct_reject(types, ident, &name, wrapped, mm)),
+                    .and_then(|mm| {
+                        wrapper_construct_reject(types, ident, &name, wrapped, mm, &mut alias)
+                    }),
             },
             _ => None,
         };
         if let Some(lines) = reject
             && !lines.is_empty()
         {
+            failure_alias_used |= alias.used;
             fns.push(format!(
                 "#[test]\nfn reject_{}() {{\n{}\n}}\n",
                 convert_to_snake_case(&name),
@@ -906,10 +911,7 @@ pub fn emit_generated_tests(
     // through the parent's `error::*` makes that parent glob look needed to the source-level import
     // pruner while rustc still diagnoses it as unused (a descendant's `use super::*` does not count
     // as a use of every parent glob). An explicit child import lets both analyses agree.
-    let bounded_failure_import = if fns
-        .iter()
-        .any(|body| body.contains("__CddlTestDeserializeFailure"))
-    {
+    let bounded_failure_import = if failure_alias_used {
         format!(
             "    use {}::error::DeserializeFailure as __CddlTestDeserializeFailure;\n",
             cli.common_import_rust()
@@ -2348,6 +2350,7 @@ fn type_enforced_bounded_array_ctor_probes(
     ctor: &str,
     arg_types: &[&RustType],
     ctor_can_fail: bool,
+    alias: &mut FailureAlias,
 ) -> Vec<String> {
     let mut blocks = Vec::new();
     for (target, arg_ty) in arg_types.iter().enumerate() {
@@ -2392,7 +2395,12 @@ fn type_enforced_bounded_array_ctor_probes(
                 ));
             } else {
                 blocks.push(format!(
-                    "    assert!(matches!({door}.unwrap_err().failure(), __CddlTestDeserializeFailure::RangeCheck {{ .. }}), \"{ctor} argument {label} must be rejected as RangeCheck\");"
+                    "    {}",
+                    alias.assert_failure(
+                        &format!("{door}.unwrap_err().failure()"),
+                        "RangeCheck",
+                        &format!("{ctor} argument {label} must be rejected as RangeCheck")
+                    )
                 ));
             }
         }
@@ -2423,6 +2431,28 @@ fn render_args_with(
         .collect()
 }
 
+/// Spell reject assertions through the test module's local failure alias and record actual use.
+#[derive(Default)]
+struct FailureAlias {
+    used: bool,
+}
+
+impl FailureAlias {
+    fn assert_failure(&mut self, failure_of: &str, failure: &str, message: &str) -> String {
+        self.used = true;
+        format!(
+            "assert!(matches!({failure_of}, __CddlTestDeserializeFailure::{failure} {{ .. }}), \"{message}\");"
+        )
+    }
+
+    fn assert_failure_debug(&mut self, failure_of: &str, failure: &str, message: &str) -> String {
+        self.used = true;
+        format!(
+            "assert!(matches!({failure_of}, __CddlTestDeserializeFailure::{failure} {{ .. }}), \"{message}, got {{:?}}\", {failure_of});"
+        )
+    }
+}
+
 /// Boundary probes for constructor arguments whose exact-byte carrier is stored as `[u8; N]` but
 /// whose public door deliberately accepts `Vec<u8>` (or `Option<Vec<u8>>`). Unlike a bounded
 /// collection, the invalid state cannot be built and then assigned to the native field: the array
@@ -2433,6 +2463,7 @@ fn exact_byte_array_ctor_probes(
     ctor: &str,
     arg_types: &[&RustType],
     ctor_can_fail: bool,
+    alias: &mut FailureAlias,
 ) -> Vec<String> {
     let mut blocks = Vec::new();
     for (target, arg_ty) in arg_types.iter().enumerate() {
@@ -2476,7 +2507,12 @@ fn exact_byte_array_ctor_probes(
                 blocks.push(format!("    let _ = {call};"));
             } else {
                 blocks.push(format!(
-                    "    assert!(matches!({call}.unwrap_err().failure(), __CddlTestDeserializeFailure::RangeCheck {{ .. }}), \"{ctor} argument {label} must be rejected as RangeCheck\");"
+                    "    {}",
+                    alias.assert_failure(
+                        &format!("{call}.unwrap_err().failure()"),
+                        "RangeCheck",
+                        &format!("{ctor} argument {label} must be rejected as RangeCheck")
+                    )
                 ));
             }
         }
@@ -2491,6 +2527,7 @@ fn record_deser_reject(
     name: &str,
     record: &RustRecord,
     value_eq: bool,
+    alias: &mut FailureAlias,
 ) -> Option<String> {
     let ctor_arg_types = record_ctor_arg_types(record, types);
     let ctor_arg_type_refs: Vec<&RustType> = ctor_arg_types.iter().collect();
@@ -2499,12 +2536,14 @@ fn record_deser_reject(
         &format!("{name}::new"),
         &ctor_arg_type_refs,
         record.native_ctor_can_fail(types),
+        alias,
     );
     ctor_probes.extend(type_enforced_bounded_array_ctor_probes(
         types,
         &format!("{name}::new"),
         &ctor_arg_type_refs,
         record.native_ctor_can_fail(types),
+        alias,
     ));
 
     // constructor arg list: mandatory, non-fixed, non-default fields (mirrors codegen_struct)
@@ -2622,12 +2661,17 @@ fn record_deser_reject(
     }}"
                 ));
             } else {
+                let assertion = alias.assert_failure_debug(
+                    "err.failure()",
+                    failure,
+                    &format!("{name}.{field} {label} must be rejected as {failure}"),
+                );
                 blocks.push(format!(
                     "    {{
         let mut v = mk();
         v.{field} = {expr};
         let err = {name}::from_cbor_bytes(&v.to_cbor_bytes()).unwrap_err();
-        assert!(matches!(err.failure(), DeserializeFailure::{failure} {{ .. }}), \"{name}.{field} {label} must be rejected as {failure}, got {{:?}}\", err.failure());
+        {assertion}
     }}"
                 ));
             }
@@ -2649,6 +2693,7 @@ fn choice_construct_reject(
     name: &str,
     variants: &[EnumVariant],
     group_choice: bool,
+    alias: &mut FailureAlias,
 ) -> Option<String> {
     let mut lines = Vec::new();
     for variant in variants {
@@ -2663,6 +2708,7 @@ fn choice_construct_reject(
             &format!("{name}::{ctor}"),
             &arg_types,
             arg_types.iter().any(|ty| arg_can_fail(types, ty)),
+            alias,
         ));
 
         // which arg (if any) carries a cheaply-testable bound?
@@ -2723,7 +2769,7 @@ fn choice_construct_reject(
                 lines.push(if accept {
                     format!("    assert!({name}::{ctor}({args}).is_ok(), \"{name}::{ctor} {label} arg must be accepted\");")
                 } else {
-                    format!("    assert!(matches!({name}::{ctor}({args}).unwrap_err().failure(), DeserializeFailure::{failure} {{ .. }}), \"{name}::{ctor} {label} arg must be rejected as {failure}\");")
+                    format!("    {}", alias.assert_failure(&format!("{name}::{ctor}({args}).unwrap_err().failure()"), failure, &format!("{name}::{ctor} {label} arg must be rejected as {failure}")))
                 });
             }
         }
@@ -2744,6 +2790,7 @@ fn wrapper_construct_reject(
     name: &str,
     wrapped: &RustType,
     min_max: Bounds,
+    alias: &mut FailureAlias,
 ) -> Option<String> {
     // A bounded nint wrapper stores the inner as a u64 MAGNITUDE (`m = |v + 1|`) and its `new()`
     // checks the nint-transformed bounds (`generation/wrappers.rs` applies `nint_bounds_to_u64`). The
@@ -2776,7 +2823,7 @@ fn wrapper_construct_reject(
             if accept {
                 format!("    assert!({name}::{constructor}({expr}).is_ok(), \"{name}::{constructor} {label} value must be accepted\");")
             } else {
-                format!("    assert!(matches!({name}::{constructor}({expr}).unwrap_err().failure(), DeserializeFailure::RangeCheck {{ .. }}), \"{name}::{constructor} {label} value must be rejected as RangeCheck\");")
+                format!("    {}", alias.assert_failure(&format!("{name}::{constructor}({expr}).unwrap_err().failure()"), "RangeCheck", &format!("{name}::{constructor} {label} value must be rejected as RangeCheck")))
             }
         })
         .collect();
@@ -2790,6 +2837,7 @@ fn wrapper_construct_reject_float(
     name: &str,
     wrapped: &RustType,
     window: &crate::intermediate::FloatWindow,
+    alias: &mut FailureAlias,
 ) -> Option<String> {
     let Some(class) = float_class_of(wrapped) else {
         crate::warn!(
@@ -2805,7 +2853,7 @@ fn wrapper_construct_reject_float(
             if accept {
                 format!("    assert!({name}::new({expr}).is_ok(), \"{name}::new {label} value must be accepted\");")
             } else {
-                format!("    assert!(matches!({name}::new({expr}).unwrap_err().failure(), DeserializeFailure::RangeCheckFloat {{ .. }}), \"{name}::new {label} value must be rejected as RangeCheckFloat\");")
+                format!("    {}", alias.assert_failure(&format!("{name}::new({expr}).unwrap_err().failure()"), "RangeCheckFloat", &format!("{name}::new {label} value must be rejected as RangeCheckFloat")))
             }
         })
         .collect();
