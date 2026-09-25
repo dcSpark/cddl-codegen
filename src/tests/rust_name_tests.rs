@@ -183,3 +183,24 @@ fn rust_name_runtime_type_pin_rejected() {
         "expected a runtime-type-pin rejection, got:\n{err}"
     );
 }
+
+#[test]
+fn rust_name_imported_type_pin_rejected() {
+    let err = generate_dir(
+        &[
+            ("main.cddl", "outer = { x: foo_bar }"),
+            (
+                "_CDDL_CODEGEN_EXTERN_DEPS_DIR_/mydep/mod.cddl",
+                "foo_bar = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name OrderedHashMap",
+            ),
+        ],
+        &[],
+        false,
+        "pin_imported_reject",
+    )
+    .expect_err("a pin to a generator-imported type must be rejected");
+    assert!(
+        err.contains("@rust_name") && err.contains("generator-imported"),
+        "expected an imported-type-pin rejection, got:\n{err}"
+    );
+}

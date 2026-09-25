@@ -1310,6 +1310,20 @@ mod tests {
         for expected in ["rule `key`", "`Key`", "cddl-codegen runtime", "@name"] {
             assert!(runtime.contains(expected), "missing {expected}: {runtime}");
         }
+        for (name, camel) in [
+            ("ordered_hash_map", "OrderedHashMap"),
+            ("serializer", "Serializer"),
+        ] {
+            let err = gen_err(&format!("{name} = [a: uint]\n"), name);
+            for expected in [
+                format!("rule `{name}`"),
+                format!("`{camel}`"),
+                "imports by name".to_owned(),
+                "@name".to_owned(),
+            ] {
+                assert!(err.contains(&expected), "missing {expected}: {err}");
+            }
+        }
 
         // CDDL keyword: `true`.
         let tru = gen_err("true = [a: uint]\n", "true");

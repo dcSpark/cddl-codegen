@@ -79,7 +79,10 @@ pub(crate) fn hazards() -> Vec<&'static str> {
 /// Extend the snapshot/compile sweep without reshuffling the recombination fuzzer's `hazards()`.
 fn swept_hazards() -> Vec<&'static str> {
     let mut out = hazards();
-    for &name in crate::rust_reserved::RUNTIME_TYPES {
+    for &name in crate::rust_reserved::RUNTIME_TYPES
+        .iter()
+        .chain(crate::rust_reserved::IMPORTED_TYPES)
+    {
         if !out.contains(&name) {
             out.push(name);
         }
@@ -145,6 +148,116 @@ fn runtime_types_match_static_sources() {
     assert_eq!(
         found, expected,
         "RUNTIME_TYPES drifted from the runtime modules' public types — update rust_reserved::RUNTIME_TYPES (a missing name is a rule name that generates a non-compiling crate)"
+    );
+}
+
+/// Every capitalized name a generated rust/wasm/component module imports BY NAME is either a type
+/// the reserved-name pre-scan refuses as a rule/group name (`STD_TYPES`, `RUNTIME_TYPES`,
+/// `IMPORTED_TYPES`) or one probed safe to shadow. The spec uses every construct whose runtime
+/// carrier is imported by name, and the profiles cover every import family. A NEW named import of
+/// a runtime or dependency type fails here until it is added to `rust_reserved::IMPORTED_TYPES`
+/// (the failure mode is a rule of that name generating a non-compiling crate).
+#[test]
+fn imported_types_cover_generated_named_imports() {
+    // Imported by name, but a user type of the same name compiles in every profile (probed).
+    const PROBED_SAFE: &[&str] = &["RefCell", "Registrar"];
+    const SPEC: &str = "holder = [\n\
+        ne: [+ uint], bv: [1*3 uint], bm: {1*3 uint => uint}, nm: {+ uint => uint},\n\
+        m: { * uint => uint }, a: any,\n\
+        os: os_t, nos: nos_t, bos: bos_t, pm: pm_t, npm: npm_t, bpm: bpm_t,\n\
+        ]\n\
+        os_t = [* uint] ; @duplicates reject\n\
+        nos_t = [+ uint] ; @duplicates reject\n\
+        bos_t = [1*3 uint] ; @duplicates reject\n\
+        pm_t = { * uint => uint } ; @duplicates preserve\n\
+        npm_t = { + uint => uint } ; @duplicates preserve\n\
+        bpm_t = { 1*3 uint => uint } ; @duplicates preserve\n";
+    fn leaves(tree: &syn::UseTree, out: &mut Vec<String>) {
+        match tree {
+            syn::UseTree::Path(path) if path.ident == "cbor_encodings" => {}
+            syn::UseTree::Path(path) => leaves(&path.tree, out),
+            syn::UseTree::Name(name) => out.push(name.ident.to_string()),
+            syn::UseTree::Rename(rename) if rename.rename != "_" => {
+                out.push(rename.rename.to_string())
+            }
+            syn::UseTree::Group(group) => group.items.iter().for_each(|t| leaves(t, out)),
+            syn::UseTree::Rename(_) | syn::UseTree::Glob(_) => {}
+        }
+    }
+    let path = std::env::temp_dir().join(format!(
+        "cddl_codegen_imported_types_{}.cddl",
+        std::process::id()
+    ));
+    std::fs::write(&path, SPEC).unwrap();
+    let mut unreserved = std::collections::BTreeSet::new();
+    for flags in [
+        &["--wasm", "false"][..],
+        &[
+            "--wasm",
+            "false",
+            "--preserve-encodings",
+            "true",
+            "--canonical-form",
+            "true",
+        ][..],
+        &["--wasm", "true", "--preserve-encodings", "true"][..],
+        &[
+            "--wasm",
+            "true",
+            "--json-serde-derives",
+            "true",
+            "--json-schema-export",
+            "true",
+        ][..],
+        &["--wasm", "false", "--component", "true"][..],
+    ] {
+        let mut args = vec![
+            "cddl-codegen",
+            "--input",
+            path.to_str().unwrap(),
+            "--output",
+            "unused",
+            "--static-dir",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/static"),
+        ];
+        args.extend_from_slice(flags);
+        let files = crate::api::generated_strings(&Cli::parse_from(args))
+            .unwrap_or_else(|e| panic!("{flags:?}: {e}"));
+        let spec_types: std::collections::BTreeSet<String> =
+            ["Holder", "OsT", "NosT", "BosT", "PmT", "NpmT", "BpmT"]
+                .iter()
+                .map(|n| (*n).to_owned())
+                .collect();
+        for (file, source) in &files {
+            if !(file.ends_with("mod.rs") || file.ends_with("serialization.rs")) {
+                continue;
+            }
+            for item in syn::parse_file(source).unwrap().items {
+                if let syn::Item::Use(item) = item {
+                    let mut names = Vec::new();
+                    leaves(&item.tree, &mut names);
+                    for name in names {
+                        let reserved = crate::rust_reserved::STD_TYPES.contains(&name.as_str())
+                            || crate::rust_reserved::RUNTIME_TYPES.contains(&name.as_str())
+                            || crate::rust_reserved::IMPORTED_TYPES.contains(&name.as_str())
+                            || PROBED_SAFE.contains(&name.as_str());
+                        if name.starts_with(char::is_uppercase)
+                            && !reserved
+                            && !spec_types.contains(&name)
+                        {
+                            unreserved.insert(format!("{name} ({file}, {flags:?})"));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    std::fs::remove_file(&path).ok();
+    assert!(
+        unreserved.is_empty(),
+        "generated modules import these names without a reserved-name refusal — add each to \
+         rust_reserved::IMPORTED_TYPES after probing that a rule of that name fails to compile, or to \
+         PROBED_SAFE after probing that it compiles:\n{unreserved:#?}"
     );
 }
 
@@ -296,7 +409,7 @@ fn identifier_hazard_robustness_catalog() {
          # `panic!`/`assert!`. Reserved-name rule/group definitions (a name camel-casing to a reserved\n\
          # Rust std/prelude type, or a CDDL keyword) reject gracefully via a pre-scan in\n\
          # `api::with_types` (`intermediate::reserved_ident_rejection`).\n\
-         # A rule/group name camel-casing to a cddl-codegen runtime type (`rust_reserved::RUNTIME_TYPES`, appended to the swept list) rejects through the same pre-scan.\n\
+         # A rule/group name camel-casing to a cddl-codegen runtime type (`rust_reserved::RUNTIME_TYPES`, `rust_reserved::IMPORTED_TYPES`, appended to the swept list) rejects through the same pre-scan.\n\
          # The `RustIdent::new` asserts remain a backstop for synthesized idents. Exact lowercase rule/group `int` is the one\n\
          # deliberate exception: `api::with_types` releases the built-in `Int` marker before authored\n\
          # parsing, so it may become the real owner; a differently spelled rule that normalizes to\n\

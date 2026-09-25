@@ -274,6 +274,7 @@ Splicing the group with no choice around it stays supported in all its usual pla
 
 A rule or group name becomes the emitted Rust type name, so a name that camel-cases to a Rust std/prelude type (`option` → `Option`), a CDDL keyword, or a type of the cddl-codegen runtime every generated module imports is **rejected at parse time** with a rename remedy.
 The runtime names are `Key`, `DeserializeFailure`, `DeserializeError`, `Deserialize`, `CBORReadLen`, `DeserializeEmbeddedGroup`, `SerializeEmbeddedGroup`, `ToCBORBytes`, `Serialize`, `LenEncoding`, `StringEncoding`, `TagPresenceEncoding`, `RawBytesEncoding` and `DepthGuard` — so `key = …` must be renamed (for example `map_key`).
+Names the generated code imports by name when the spec uses the matching construct are rejected the same way: the runtime carriers `OrderedHashMap`, `NonEmptyVec`, `BoundedVec`, `BoundedMap`, `NonEmptyMap`, `OrderedSet`, `NonEmptyOrderedSet`, `BoundedOrderedSet`, `PairMap`, `NonEmptyPairMap`, `BoundedPairMap` and `AnyCbor`, and the dependency-crate types `BTreeMap`, `Serializer`, `Deserializer`, `JsError` and `JsValue`.
 The set is the same under every flag set, even where a profile does not use a given runtime type.
 Field names are unaffected: `{ key: uint }` still generates.
 

@@ -8,7 +8,7 @@ expression: catalog
 # `panic!`/`assert!`. Reserved-name rule/group definitions (a name camel-casing to a reserved
 # Rust std/prelude type, or a CDDL keyword) reject gracefully via a pre-scan in
 # `api::with_types` (`intermediate::reserved_ident_rejection`).
-# A rule/group name camel-casing to a cddl-codegen runtime type (`rust_reserved::RUNTIME_TYPES`, appended to the swept list) rejects through the same pre-scan.
+# A rule/group name camel-casing to a cddl-codegen runtime type (`rust_reserved::RUNTIME_TYPES`, `rust_reserved::IMPORTED_TYPES`, appended to the swept list) rejects through the same pre-scan.
 # The `RustIdent::new` asserts remain a backstop for synthesized idents. Exact lowercase rule/group `int` is the one
 # deliberate exception: `api::with_types` releases the built-in `Int` marker before authored
 # parsing, so it may become the real owner; a differently spelled rule that normalizes to
@@ -95,6 +95,23 @@ rule-name       StringEncoding error (graceful)
 rule-name       TagPresenceEncoding error (graceful)
 rule-name       RawBytesEncoding error (graceful)
 rule-name       DepthGuard error (graceful)
+rule-name       OrderedHashMap error (graceful)
+rule-name       NonEmptyVec error (graceful)
+rule-name       BoundedVec error (graceful)
+rule-name       BoundedMap error (graceful)
+rule-name       NonEmptyMap error (graceful)
+rule-name       OrderedSet error (graceful)
+rule-name       NonEmptyOrderedSet error (graceful)
+rule-name       BoundedOrderedSet error (graceful)
+rule-name       PairMap    error (graceful)
+rule-name       NonEmptyPairMap error (graceful)
+rule-name       BoundedPairMap error (graceful)
+rule-name       AnyCbor    error (graceful)
+rule-name       BTreeMap   error (graceful)
+rule-name       Serializer error (graceful)
+rule-name       Deserializer error (graceful)
+rule-name       JsError    error (graceful)
+rule-name       JsValue    error (graceful)
 rule-name-enum  as         ok
 rule-name-enum  break      ok
 rule-name-enum  const      ok
@@ -173,6 +190,23 @@ rule-name-enum  StringEncoding error (graceful)
 rule-name-enum  TagPresenceEncoding error (graceful)
 rule-name-enum  RawBytesEncoding error (graceful)
 rule-name-enum  DepthGuard error (graceful)
+rule-name-enum  OrderedHashMap error (graceful)
+rule-name-enum  NonEmptyVec error (graceful)
+rule-name-enum  BoundedVec error (graceful)
+rule-name-enum  BoundedMap error (graceful)
+rule-name-enum  NonEmptyMap error (graceful)
+rule-name-enum  OrderedSet error (graceful)
+rule-name-enum  NonEmptyOrderedSet error (graceful)
+rule-name-enum  BoundedOrderedSet error (graceful)
+rule-name-enum  PairMap    error (graceful)
+rule-name-enum  NonEmptyPairMap error (graceful)
+rule-name-enum  BoundedPairMap error (graceful)
+rule-name-enum  AnyCbor    error (graceful)
+rule-name-enum  BTreeMap   error (graceful)
+rule-name-enum  Serializer error (graceful)
+rule-name-enum  Deserializer error (graceful)
+rule-name-enum  JsError    error (graceful)
+rule-name-enum  JsValue    error (graceful)
 map-key         as         error (graceful)
 map-key         break      error (graceful)
 map-key         const      error (graceful)
@@ -251,6 +285,23 @@ map-key         StringEncoding ok
 map-key         TagPresenceEncoding ok
 map-key         RawBytesEncoding ok
 map-key         DepthGuard ok
+map-key         OrderedHashMap ok
+map-key         NonEmptyVec ok
+map-key         BoundedVec ok
+map-key         BoundedMap ok
+map-key         NonEmptyMap ok
+map-key         OrderedSet ok
+map-key         NonEmptyOrderedSet ok
+map-key         BoundedOrderedSet ok
+map-key         PairMap    ok
+map-key         NonEmptyPairMap ok
+map-key         BoundedPairMap ok
+map-key         AnyCbor    ok
+map-key         BTreeMap   ok
+map-key         Serializer ok
+map-key         Deserializer ok
+map-key         JsError    ok
+map-key         JsValue    ok
 array-key       as         error (graceful)
 array-key       break      error (graceful)
 array-key       const      error (graceful)
@@ -329,6 +380,23 @@ array-key       StringEncoding ok
 array-key       TagPresenceEncoding ok
 array-key       RawBytesEncoding ok
 array-key       DepthGuard ok
+array-key       OrderedHashMap ok
+array-key       NonEmptyVec ok
+array-key       BoundedVec ok
+array-key       BoundedMap ok
+array-key       NonEmptyMap ok
+array-key       OrderedSet ok
+array-key       NonEmptyOrderedSet ok
+array-key       BoundedOrderedSet ok
+array-key       PairMap    ok
+array-key       NonEmptyPairMap ok
+array-key       BoundedPairMap ok
+array-key       AnyCbor    ok
+array-key       BTreeMap   ok
+array-key       Serializer ok
+array-key       Deserializer ok
+array-key       JsError    ok
+array-key       JsValue    ok
 group-name      as         error (graceful)
 group-name      break      error (graceful)
 group-name      const      error (graceful)
@@ -407,6 +475,23 @@ group-name      StringEncoding error (graceful)
 group-name      TagPresenceEncoding error (graceful)
 group-name      RawBytesEncoding error (graceful)
 group-name      DepthGuard error (graceful)
+group-name      OrderedHashMap error (graceful)
+group-name      NonEmptyVec error (graceful)
+group-name      BoundedVec error (graceful)
+group-name      BoundedMap error (graceful)
+group-name      NonEmptyMap error (graceful)
+group-name      OrderedSet error (graceful)
+group-name      NonEmptyOrderedSet error (graceful)
+group-name      BoundedOrderedSet error (graceful)
+group-name      PairMap    error (graceful)
+group-name      NonEmptyPairMap error (graceful)
+group-name      BoundedPairMap error (graceful)
+group-name      AnyCbor    error (graceful)
+group-name      BTreeMap   error (graceful)
+group-name      Serializer error (graceful)
+group-name      Deserializer error (graceful)
+group-name      JsError    error (graceful)
+group-name      JsValue    error (graceful)
 name-directive  as         error (graceful)
 name-directive  break      error (graceful)
 name-directive  const      error (graceful)
@@ -485,3 +570,20 @@ name-directive  StringEncoding ok
 name-directive  TagPresenceEncoding ok
 name-directive  RawBytesEncoding ok
 name-directive  DepthGuard ok
+name-directive  OrderedHashMap ok
+name-directive  NonEmptyVec ok
+name-directive  BoundedVec ok
+name-directive  BoundedMap ok
+name-directive  NonEmptyMap ok
+name-directive  OrderedSet ok
+name-directive  NonEmptyOrderedSet ok
+name-directive  BoundedOrderedSet ok
+name-directive  PairMap    ok
+name-directive  NonEmptyPairMap ok
+name-directive  BoundedPairMap ok
+name-directive  AnyCbor    ok
+name-directive  BTreeMap   ok
+name-directive  Serializer ok
+name-directive  Deserializer ok
+name-directive  JsError    ok
+name-directive  JsValue    ok
