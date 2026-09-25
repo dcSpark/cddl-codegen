@@ -6301,6 +6301,91 @@ fn wasm_any_cbor_submodule_import_compiles() {
     );
 }
 
+/// Generated serialization files bring the method-call-only Serialize trait into scope without
+/// an unused-import warning, including scopes with no call to the trait method.
+#[test]
+fn serialization_trait_import_is_warning_free() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch_name = format!("cddl_codegen_serialize_import_{:016x}", checkout_hash());
+    let _scratch_lock = acquire_scratch_lock(&scratch_name);
+    let root = std::env::temp_dir().join(&scratch_name);
+    let inputs = root.join("inputs");
+    let _ = std::fs::remove_dir_all(&inputs);
+    std::fs::create_dir_all(&inputs).unwrap();
+    std::fs::write(
+        inputs.join("lib.cddl"),
+        "refused = [? a: uint, b: uint]\narrholder = [m: [* refused]]\n",
+    )
+    .unwrap();
+    std::fs::write(inputs.join("map.cddl"), "map_rec = { a: uint, b: text }\n").unwrap();
+    std::fs::write(
+        inputs.join("embedded.cddl"),
+        "grp = (a: uint, b: text)\nouter = [grp, c: uint]\n",
+    )
+    .unwrap();
+
+    for (tag, flags) in [
+        ("plain", &["--preserve-encodings=false"][..]),
+        ("preserve", &["--preserve-encodings=true"][..]),
+        (
+            "canonical",
+            &["--preserve-encodings=true", "--canonical-form=true"][..],
+        ),
+    ] {
+        let out = root.join(tag);
+        let _ = std::fs::remove_dir_all(&out);
+        let mut generated = codegen_cmd();
+        generated
+            .arg(format!("--input={}", inputs.display()))
+            .arg(format!("--output={}", out.display()))
+            .arg(format!(
+                "--static-dir={}/static",
+                env!("CARGO_MANIFEST_DIR")
+            ))
+            .arg("--wasm=false")
+            .arg("--emit-tests=true")
+            .arg(format!("--lib-name=serialize-import-{tag}"))
+            .args(flags);
+        let generated = generated.output().unwrap();
+        assert!(
+            generated.status.success(),
+            "generation failed for {tag}:\n{}",
+            String::from_utf8_lossy(&generated.stderr)
+        );
+        if tag != "canonical" {
+            for file in [
+                "serialization.rs",
+                "map/serialization.rs",
+                "embedded/serialization.rs",
+            ] {
+                let content =
+                    std::fs::read_to_string(out.join("rust/src/generated").join(file)).unwrap();
+                assert!(
+                    content.contains("use cbor_event::se::Serialize as _;"),
+                    "{tag} {file} must carry the anonymous import:\n{content}"
+                );
+            }
+        }
+        let check = tool_cmd("cargo")
+            .args(["test", "--no-run"])
+            .current_dir(out.join("rust"))
+            .env("CARGO_TARGET_DIR", root.join("target"))
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&check.stderr);
+        assert!(
+            check.status.success(),
+            "cargo test --no-run failed for {tag}:\n{stderr}"
+        );
+        assert!(
+            !stderr.contains("warning: unused import"),
+            "unused import in {tag}:\n{stderr}"
+        );
+    }
+}
+
 /// Smoke gate for documented flag *values* that no other test or profile exercises (closed the
 /// once-open "five documented flag values with zero coverage" gap for the rust-side four). Each selects a whole alternative emit path: `--annotate-fields=false` (a
 /// different deserialization / error-emission mode — 13+ branch sites in `generation/`),

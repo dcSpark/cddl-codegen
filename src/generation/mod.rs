@@ -2289,7 +2289,11 @@ impl GenerationScope {
                 .push_import("cbor_event::se", "Serializer", None)
                 .push_import(format!("{}::error", cli.common_import_rust()), "*", None);
             if !(cli.preserve_encodings && cli.canonical_form) {
-                scope.push_import("cbor_event::se", "Serialize", None);
+                // The trait is used only by method-call `.serialize(…)` sites (every impl names it
+                // by full path), which name-based pruning cannot see, so it is imported anonymously
+                // and allowed: a file with no such call carries no warning, and no bare `Serialize`
+                // name is bound.
+                scope.raw("#[allow(unused_imports)]\nuse cbor_event::se::Serialize as _;");
             }
         };
         for (scope, content) in self.serialize_scopes.iter_mut() {

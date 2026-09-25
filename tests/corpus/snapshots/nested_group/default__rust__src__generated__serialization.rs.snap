@@ -5,10 +5,13 @@ expression: content
 // This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/dcSpark/cddl-codegen
 
+#[allow(unused_imports)]
+use cbor_event::se::Serialize as _;
+
 use super::*;
 use crate::generated::error::*;
 use cbor_event::de::Deserializer;
-use cbor_event::se::{Serialize, Serializer};
+use cbor_event::se::Serializer;
 
 impl cbor_event::se::Serialize for Inner {
     fn serialize<'se>(

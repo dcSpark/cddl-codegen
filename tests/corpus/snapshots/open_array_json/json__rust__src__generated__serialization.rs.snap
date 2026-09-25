@@ -6,12 +6,15 @@ expression: content
 // https://github.com/dcSpark/cddl-codegen
 
 extern crate alloc;
-use super::*;
-use crate::generated::error::*;
 use alloc::string::String;
 use alloc::vec::Vec;
+#[allow(unused_imports)]
+use cbor_event::se::Serialize as _;
+
+use super::*;
+use crate::generated::error::*;
 use cbor_event::de::Deserializer;
-use cbor_event::se::{Serialize, Serializer};
+use cbor_event::se::Serializer;
 
 impl cbor_event::se::Serialize for AllMandatoryIgnore {
     /// Open array with an ignored rest tail: tolerates unknown trailing array elements on deserialize and DROPS them, and re-serializes only the declared members. Byte round-trips do NOT hold for wire data that carried extra trailing elements.

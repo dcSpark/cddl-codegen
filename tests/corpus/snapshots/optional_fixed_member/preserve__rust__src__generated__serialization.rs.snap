@@ -6,14 +6,17 @@ expression: content
 // https://github.com/dcSpark/cddl-codegen
 
 extern crate alloc;
-use super::cbor_encodings::*;
-use super::*;
-use crate::generated::error::*;
 use alloc::borrow::ToOwned;
 use alloc::string::String;
 use alloc::vec::Vec;
+#[allow(unused_imports)]
+use cbor_event::se::Serialize as _;
+
+use super::cbor_encodings::*;
+use super::*;
+use crate::generated::error::*;
 use cbor_event::de::Deserializer;
-use cbor_event::se::{Serialize, Serializer};
+use cbor_event::se::Serializer;
 
 impl cbor_event::se::Serialize for OptFixedArray {
     fn serialize<'se>(

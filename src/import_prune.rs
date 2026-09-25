@@ -88,9 +88,9 @@
 //! `JsValue` concrete types, the `wasm_bindgen` attribute macro exercised only via `#[wasm_bindgen]`,
 //! whose ident the scan sees), the `--wasm-*-macro` leaf names (each exercised only via `name!(…)`),
 //! and the cross-scope generator-minted type idents `scope_references` over-imports. Everything
-//! else — notably the `cbor_event::se::Serialize` TRAIT the serialization prelude imports — is kept
-//! untouched (a documented residue). Globs are handled by the separate glob-prune above, never by
-//! name-scan.
+//! else is kept untouched; that is why the serialization prelude imports the method-call-only
+//! `cbor_event::se::Serialize` trait anonymously (`use … as _;` under `#[allow(unused_imports)]`)
+//! rather than by name. Globs are handled by the separate glob-prune above, never by name-scan.
 //!
 //! **Soundness boundary — path-tail idents.** The used-ident scan counts a bare ident as a use but
 //! must NOT count an ident that is a PATH TAIL — the segment after a `::` (a module path, an
@@ -192,8 +192,8 @@ const ERROR_MODULE_EXPORTS: &[&str] = &["Key", "DeserializeFailure", "Deserializ
 /// generator-minted type ident — never a trait — so the "ident absent from the module family ⇒
 /// unused" implication that makes name-scanning sound holds for each (a trait like `cbor_event`'s
 /// `Serialize` is exercised by a method call whose ident never appears, so it is NEVER added here;
-/// it stays a documented residue). A pure function of CLI config + the finalized IR, so the prune
-/// stays deterministic.
+/// the emitter imports it anonymously instead). A pure function of CLI config + the finalized IR,
+/// so the prune stays deterministic.
 #[derive(Default)]
 pub(crate) struct PruneConfig {
     /// Extra idents the prune may remove by name-scan, unioned onto [`ALLOWLIST`]:
