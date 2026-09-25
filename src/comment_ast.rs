@@ -921,11 +921,7 @@ mod tests {
                 "",
                 RuleMetadata {
                     newtype: Some(Some("custom_getter".to_owned())),
-                    key_demand: Some(DemandSet {
-                        bare: true,
-                        hash: false,
-                        ord: false
-                    }),
+                    key_demand: Some(DemandSet::BARE),
                     ..Default::default()
                 }
             ))
@@ -957,11 +953,7 @@ mod tests {
                 "",
                 RuleMetadata {
                     newtype: Some(Some("custom_getter".to_owned())),
-                    key_demand: Some(DemandSet {
-                        bare: true,
-                        hash: false,
-                        ord: false
-                    }),
+                    key_demand: Some(DemandSet::BARE),
                     ..Default::default()
                 }
             ))
@@ -992,11 +984,7 @@ mod tests {
                 RuleMetadata {
                     name: Some("foo".to_string()),
                     newtype: Some(None),
-                    key_demand: Some(DemandSet {
-                        bare: true,
-                        hash: false,
-                        ord: false
-                    }),
+                    key_demand: Some(DemandSet::BARE),
                     ..Default::default()
                 }
             ))
@@ -1010,11 +998,7 @@ mod tests {
             Ok((
                 "",
                 RuleMetadata {
-                    key_demand: Some(DemandSet {
-                        bare: true,
-                        hash: false,
-                        ord: false
-                    }),
+                    key_demand: Some(DemandSet::BARE),
                     ..Default::default()
                 }
             ))
@@ -1145,11 +1129,7 @@ mod tests {
             Ok((
                 "",
                 RuleMetadata {
-                    key_demand: Some(DemandSet {
-                        bare: true,
-                        hash: false,
-                        ord: false
-                    }),
+                    key_demand: Some(DemandSet::BARE),
                     used_as_elem: true,
                     ..Default::default()
                 }
@@ -1164,11 +1144,7 @@ mod tests {
             Ok((
                 "",
                 RuleMetadata {
-                    key_demand: Some(DemandSet {
-                        bare: true,
-                        hash: false,
-                        ord: false
-                    }),
+                    key_demand: Some(DemandSet::BARE),
                     used_as_elem: true,
                     ..Default::default()
                 }
@@ -1470,11 +1446,7 @@ mod tests {
                 RuleMetadata {
                     name: Some("baz".to_string()),
                     newtype: Some(None),
-                    key_demand: Some(DemandSet {
-                        bare: true,
-                        hash: false,
-                        ord: false
-                    }),
+                    key_demand: Some(DemandSet::BARE),
                     used_as_elem: true,
                     custom_json: true,
                     custom_serialize: Some("foo".to_string()),
