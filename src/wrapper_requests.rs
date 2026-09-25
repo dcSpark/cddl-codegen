@@ -38,6 +38,7 @@
 
 use crate::cli::Cli;
 use crate::comment_ast::DemandSet;
+use crate::comment_preserve::{ReservedComment, ReservedTag};
 use crate::intermediate::{AliasIdent, CDDLIdent, IntermediateTypes, RustIdent};
 
 /// One row of a consumer's `BORROWED_SHAPES` table: a collection wrapper the consumer borrows from a
@@ -50,10 +51,6 @@ pub struct WrapperRequestEntry {
     pub name: String,
     pub shape: String,
 }
-
-/// The reserved own-line-comment namespace shared with `comment_preserve.rs`. Every
-/// `// cddl-codegen:<tag>` is either a well-formed known overlay structure or a hard error.
-const CDDL_NAMESPACE: &str = "cddl-codegen:";
 
 /// The exact comment lines the W1 emitter writes (header stamp, four-line sidecar banner — the
 /// fourth banner line is the column legend, kept OUT of the const body so the preservation overlay
@@ -231,16 +228,20 @@ fn flatten_overlay_blocks(contents: &str, file: &str, flag: &str) -> Result<Vec<
     let mut in_replaces_original = false;
     let mut out = Vec::new();
     for raw in contents.lines() {
-        if let Some(tag) = reserved_tag(raw) {
-            match tag {
-                "insert-start" | "insert-end" | "replace-start" | "replace-end" => {
-                    // Scaffolding lines: dropped. `replace-end` also closes any originals section.
-                    if tag == "replace-end" {
-                        in_replaces_original = false;
-                    }
+        // `comment_preserve`'s classifier is the one reader of the reserved namespace; it takes the
+        // comment text from its `//`, so the raw line is trimmed first.
+        if let Some(reserved) = ReservedComment::parse(raw.trim()) {
+            match reserved.tag {
+                ReservedTag::InsertStart | ReservedTag::InsertEnd | ReservedTag::ReplaceStart => {
+                    // Scaffolding lines: dropped.
                     continue;
                 }
-                "replaces" => {
+                ReservedTag::ReplaceEnd => {
+                    // Scaffolding, and it closes any recorded-originals section.
+                    in_replaces_original = false;
+                    continue;
+                }
+                ReservedTag::Replaces => {
                     in_replaces_original = true;
                     continue;
                 }
@@ -251,8 +252,8 @@ fn flatten_overlay_blocks(contents: &str, file: &str, flag: &str) -> Result<Vec<
                 // hard error, naming the offending line verbatim. Both `keep` forms land there
                 // (the bare form on its own marker line, the inline form on its text), so a user
                 // comment can never silently vanish from a machine-read sidecar.
-                t if crate::comment_preserve::tag_head(t) == "keep" => {}
-                "unpreserved-comment" => {
+                ReservedTag::Keep { .. } => {}
+                ReservedTag::UnpreservedComment => {
                     return Err(format!(
                         "{flag} {file}: the sidecar contains a \
                          `// cddl-codegen:unpreserved-comment` sentinel — it is a trapped or drifted \
@@ -260,10 +261,11 @@ fn flatten_overlay_blocks(contents: &str, file: &str, flag: &str) -> Result<Vec<
                          consumer crate to clear it."
                     ));
                 }
-                other => {
+                ReservedTag::Unknown => {
                     return Err(format!(
                         "{flag} {file}: unexpected reserved comment \
-                         `// cddl-codegen:{other}` in the sidecar."
+                         `// cddl-codegen:{}` in the sidecar.",
+                        reserved.text
                     ));
                 }
             }
@@ -276,17 +278,6 @@ fn flatten_overlay_blocks(contents: &str, file: &str, flag: &str) -> Result<Vec<
         out.push(raw.to_string());
     }
     Ok(out)
-}
-
-/// The reserved `cddl-codegen:` tag on an own-line comment, if any — the text after
-/// `// cddl-codegen:` (whitespace-trimmed). Mirrors `comment_preserve.rs`'s recognizer so the two
-/// stay in lockstep on what counts as an overlay marker.
-fn reserved_tag(line: &str) -> Option<&str> {
-    let t = line.trim();
-    t.strip_prefix("//")
-        .map(str::trim_start)
-        .and_then(|rest| rest.strip_prefix(CDDL_NAMESPACE))
-        .map(str::trim)
 }
 
 /// Tokenize the raw `BORROWED_SHAPES` array body (everything between `= &[` and `];`) into entries.

@@ -377,11 +377,13 @@ fn insertion_line(lines: &[&str]) -> usize {
             i += 1;
             continue;
         }
+        // Deliberately broader than `comment_preserve::ReservedComment::parse`: any run of
+        // slashes (`///`, `//!`) counts, since stopping EARLIER is always safe here.
         if trimmed.starts_with("//")
             && trimmed
                 .trim_start_matches('/')
                 .trim_start()
-                .starts_with("cddl-codegen:")
+                .starts_with(crate::comment_preserve::RESERVED_NAMESPACE)
         {
             break;
         }
