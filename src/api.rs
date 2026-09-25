@@ -901,7 +901,7 @@ pub fn with_types<R>(
     // for it either way), and the parent visitor — built next — is therefore constructed over the
     // MERGED AST, so parent identity never sees two rules with one name.
     parsing::merge_incremental_type_choice_extensions(&mut cddl);
-    let pv = cddl::ast::parent::ParentVisitor::new(&cddl).unwrap();
+    let pv = cddl::ast::parent::ParentVisitor::new(&cddl)?;
     // The IR build runs in a LOOP because one of its inputs is decided from its own OUTPUT: the
     // recursive-type boundary (`crate::recursion_boundary`) classifies the finalized IR's cycles,
     // and the repair it can offer — emitting the collection-backed rules of an alias-expansion cycle
