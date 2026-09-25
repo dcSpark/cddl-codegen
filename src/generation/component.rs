@@ -43,7 +43,6 @@ use super::wit::{
     WitTypeDef, WitTypeRef,
 };
 use crate::cli::Cli;
-use crate::component_wit_deps::DepWitPackages;
 use crate::intermediate::{
     ConceptualRustType, EnumVariant, IntermediateTypes, ModuleScope, RESERVED_INT_IDENT,
     Representation, RustIdent, RustStructType, RustType,
@@ -68,13 +67,7 @@ const RUST_KEYWORDS: &[&str] = &[
 ///
 /// Infallible for the same reason the projection is: anything phase 1 cannot render was already
 /// EXCLUDED AND RECORDED upstream, so what arrives here is by construction emittable.
-pub(crate) fn component_glue(
-    types: &IntermediateTypes,
-    cli: &Cli,
-    no_deserialize: &BTreeSet<RustIdent>,
-    dep_wits: &DepWitPackages,
-) -> String {
-    let package = super::wit::project(types, cli, no_deserialize, dep_wits);
+pub(crate) fn component_glue(package: &WitPackage, types: &IntermediateTypes, cli: &Cli) -> String {
     Emitter {
         types,
         cli,
@@ -83,7 +76,7 @@ pub(crate) fn component_glue(
             .iter()
             .map(|(scope, iface)| (scope.clone(), interface_alias(&iface.name)))
             .collect(),
-        package: &package,
+        package,
     }
     .emit()
 }

@@ -2872,16 +2872,14 @@ fn render_type(ty: &WitType, param: bool) -> String {
 /// excluded-with-record, so a spec carrying a phase-2 type class still regenerates cleanly and the
 /// gap is visible in the emitted file rather than as a generation failure.
 ///
-/// `no_deserialize` is the set of idents the rust face declined to give a `Deserialize` impl — a
-/// GENERATION-time verdict, so it arrives from the caller rather than being re-derived here (see
-/// [`bytes_members`]).
+/// `package` is the run's one projection (`GenerationScope::component_package`), made in
+/// `generate()` against the rust face's no-deserialize verdict — a GENERATION-time verdict (see
+/// [`bytes_members`]) — so the rendered WIT and the guest glue come from the same value.
 pub(crate) fn wit_files(
-    types: &IntermediateTypes,
-    cli: &Cli,
-    no_deserialize: &BTreeSet<RustIdent>,
+    package: &WitPackage,
     dep_wits: &DepWitPackages,
 ) -> BTreeMap<String, String> {
-    let mut out = render(&project(types, cli, no_deserialize, dep_wits));
+    let mut out = render(package);
     // The imported dependencies' packages, materialized beside this crate's own: `use
     // <dep-package>/<iface>` resolves only against a package present in this WIT source tree, and
     // WIT resolves a whole DIRECTORY. They ride the same map for the same reason the emitted `.wit`
@@ -2904,18 +2902,13 @@ pub(crate) fn wit_files(
 /// `transaction.transaction` collision survives `wit-parser` resolve AND `wit_component::encode`,
 /// failing only at component validation — so without this detector the user's first sighting is a
 /// wasm-level error naming a mangled `[method]` symbol.
-pub(crate) fn wit_name_collisions(
-    types: &IntermediateTypes,
-    cli: &Cli,
-    no_deserialize: &BTreeSet<RustIdent>,
-    dep_wits: &DepWitPackages,
-) -> Vec<String> {
-    // Projected against the REAL no-deserialize verdict, which is why this runs at GENERATION time
-    // rather than at IR finalization beside `wit_scope_cycles`. Finalization would have to project
-    // with an empty set — the superset of members — and that over-reports for real: a type that gets
-    // no `Deserialize` impl AND carries a field named `from_cbor_bytes` would be rejected for a
-    // collision between a getter and a static the tool never emits.
-    let package = project(types, cli, no_deserialize, dep_wits);
+///
+/// `package` must be projected against the REAL no-deserialize verdict, which is why this runs at
+/// GENERATION time rather than at IR finalization beside `wit_scope_cycles`. Finalization would have
+/// to project with an empty set — the superset of members — and that over-reports for real: a type
+/// that gets no `Deserialize` impl AND carries a field named `from_cbor_bytes` would be rejected for
+/// a collision between a getter and a static the tool never emits.
+pub(crate) fn wit_name_collisions(package: &WitPackage, cli: &Cli) -> Vec<String> {
     let mut msgs = Vec::new();
 
     // 1 — package level. Interfaces and the world share one namespace, and the scope flattening

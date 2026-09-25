@@ -2022,11 +2022,13 @@ impl GenerationScope {
             // `extern-interface/` uses) because it is the guest crate's own input: it has to ride the
             // same map the snapshots capture and the header stamper walks, so a `.wit` and the glue
             // implementing it can never be captured out of step.
+            let package = self
+                .component_package
+                .as_ref()
+                .expect("generate() projects the WIT package whenever --component is set");
             out.extend(crate::generation::wit::wit_files(
-                types,
-                cli,
-                &self.no_deserialize_idents(),
-                self.component_dep_wits(),
+                package,
+                &self.component_dep_wits,
             ));
         }
 

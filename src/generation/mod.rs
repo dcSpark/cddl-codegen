@@ -852,14 +852,19 @@ pub struct GenerationScope {
     /// Recorded here and drained by `generated_files`/`export` (`component_collision_check`),
     /// which report it together with `component_import_errors`. Empty off `--component`.
     component_name_collisions: Vec<String>,
-    /// The dependency WIT packages `--component-extern-wit` names, read once at the top of
-    /// `generate()` and handed to every consumer of the projection.
-    ///
-    /// Loaded HERE rather than at each `wit::project` call site because there are three of them
-    /// (`wit_files`, `wit_name_collisions`, `component_glue`) and a projection that disagreed with
-    /// itself about which deps are in import mode would emit a WIT and a guest crate that do not
-    /// match. Empty off the flag, which is what makes the flag's absence byte-identical to today.
+    /// The dependency WIT packages `--component-extern-wit` names, read once at the top of the
+    /// component block in `generate()`. Projected into [`Self::component_package`] there, and read
+    /// again only by `wit_files`, which materializes the imported packages beside the emitted WIT.
+    /// Empty off the flag, which is what makes the flag's absence byte-identical to today.
     component_dep_wits: crate::component_wit_deps::DepWitPackages,
+    /// The WIT package, projected ONCE in `generate()` and shared by every consumer: the
+    /// strong-uniqueness check (`wit_name_collisions`), the import-seam errors, the guest glue
+    /// (`component_glue`) and the emitted `.wit` files (`wit_files`, in `generated_files`).
+    ///
+    /// One value rather than one projection per consumer because consumers that disagreed about the
+    /// package — which deps are in import mode, which types have a `from-cbor-bytes` — would emit a
+    /// WIT and a guest crate that do not match. `None` off `--component`.
+    component_package: Option<wit::WitPackage>,
     /// Cross-crate seam errors: a malformed/unreadable dependency WIT (found at load) and a consumer
     /// signature the dependency's own WIT cannot satisfy (found by the projection). Same recorded-and
     /// -drained shape as `component_name_collisions`, and drained by the same check.
@@ -963,13 +968,9 @@ impl GenerationScope {
             scope_ref_import_idents: BTreeSet::new(),
             component_name_collisions: Vec::new(),
             component_dep_wits: BTreeMap::new(),
+            component_package: None,
             component_import_errors: Vec::new(),
         }
-    }
-
-    /// The dependency WIT packages this run imports, for the producers that emit the WIT tree.
-    pub(crate) fn component_dep_wits(&self) -> &crate::component_wit_deps::DepWitPackages {
-        &self.component_dep_wits
     }
 
     /// The graceful errors the component face recorded during `generate()`, or `Ok`: the WIT
@@ -2568,6 +2569,7 @@ impl GenerationScope {
                 Ok(dep_wits) => self.component_dep_wits = dep_wits,
                 Err(msg) => self.component_import_errors.push(msg),
             }
+            let package = wit::project(types, cli, &no_deserialize, &self.component_dep_wits);
             // WIT strong uniqueness, against the REAL verdict: an interface is one flat namespace
             // and names compare with the `[method]`/`[static]`/`[constructor]` prefixes stripped, so
             // a collision the rust and wasm faces resolve by scoping is a broken WIT package. The
@@ -2575,14 +2577,12 @@ impl GenerationScope {
             // fails only at binary validation, which is why the tool catches it rather than leaving
             // it to a downstream one. Recorded rather than returned, like the load error above, so
             // one run reports every collision and import error together (component_collision_check).
-            self.component_name_collisions =
-                wit::wit_name_collisions(types, cli, &no_deserialize, &self.component_dep_wits);
-            let package = wit::project(types, cli, &no_deserialize, &self.component_dep_wits);
+            self.component_name_collisions = wit::wit_name_collisions(&package, cli);
             self.component_import_errors
                 .extend(package.import_errors.iter().cloned());
-            let glue =
-                component::component_glue(types, cli, &no_deserialize, &self.component_dep_wits);
+            let glue = component::component_glue(&package, types, cli);
             self.component_lib_scope.raw(glue);
+            self.component_package = Some(package);
         }
 
         // optional generated-test module (reject + round-trip halves; off by default, so it
