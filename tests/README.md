@@ -4589,10 +4589,11 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`, `
 > Fourth sibling, and the one whose axis is NAMES rather than directives:
 > `src/tests/refused_name_closure_tests.rs` is the closure gate for the **side-door** class — a name
 > refused at ONE name-resolution seam still reaching generation through ANOTHER. Its worked example
-> is the narrower-float delivery: the refusal shipped at `IntermediateTypes::new_type`'s
-> unresolved-reserved fallback, and `x = float16 .size 4` still generated at exit 0 because a control
-> operator resolves its head through `parsing::ident_to_primitive` and never calls `new_type`. The
-> per-name position sweeps (`undefined_prelude_generates_in_every_position` plus the refusal siblings)
+> is the narrower-float delivery: when the refusal shipped at `IntermediateTypes::new_type`'s
+> unresolved-reserved fallback, `x = float16 .size 4` still generated at exit 0 because a control
+> operator resolved its head through `parsing::ident_to_primitive` and never called `new_type`.
+> The current `.size` pre-scan rejects that float head; `size_on_unsizable_head_rejects_gracefully` pins this route.
+> The per-name position sweeps (`undefined_prelude_generates_in_every_position` plus the refusal siblings)
 > vary the POSITION and hold the resolution MECHANISM constant, so a second path is invisible to them
 > by construction; those sweeps stay as the WORDING pins and this module owns only the closure
 > property, which keeps its cells cheap (one-rule specs, generation-only, one profile — a refusal

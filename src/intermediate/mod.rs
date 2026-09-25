@@ -586,8 +586,11 @@ impl<'a> IntermediateTypes<'a> {
         RejectionMark(self.rejections.len())
     }
 
-    /// Remove repeated diagnostics from a construction walk after classifying the same AST nodes.
-    /// Each first-walk occurrence removes at most one equal second-walk occurrence.
+    /// For a caller that walks the same AST nodes twice (a classification walk from `walk` to
+    /// `rewalk`, then a construction walk from `rewalk` to now): drop each diagnostic of the second
+    /// walk whose text matches one the first walk recorded, one removal per earlier match, so a
+    /// node reports once however many times it is visited. A diagnostic only one walk records is
+    /// kept, and so is a repeat of equal text beyond the first walk's count (distinct nodes).
     pub fn drop_rewalk_repeats(&mut self, walk: RejectionMark, rewalk: RejectionMark) {
         let mut first_walk: BTreeMap<String, usize> = BTreeMap::new();
         for msg in &self.rejections[walk.0..rewalk.0] {

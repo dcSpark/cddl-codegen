@@ -517,7 +517,8 @@ pub fn rule_ident(cddl_rule: &cddl::ast::Rule) -> RustIdent {
     }
 }
 
-/// The literal tag number of a `#6.N(…)` head, or a rejection for a non-literal head.
+/// The literal tag number of a `#6.N(…)` head, or the graceful-rejection message for a head that
+/// names no literal number: `#6(…)` (any tag) or a type-valued `#6.<t>(…)` (RFC 9682).
 fn tag_number(
     tag: &Option<token::TagConstraint<'_>>,
     rule_name: Option<&RustIdent>,
@@ -618,6 +619,8 @@ fn reject_ignore_not_applicable(types: &mut IntermediateTypes, name: &RustIdent)
     ));
 }
 
+/// `@newtype` on a rule that already generates its own named type (a record struct or a
+/// group-choice enum): there is no transparent alias for the directive to turn into a wrapper.
 fn reject_newtype_on_nominal_rule(types: &mut IntermediateTypes, name: &RustIdent, shape: &str) {
     let source_name = source_rule_name_of(types, name);
     types.record_rejection(format!(
@@ -1944,6 +1947,8 @@ fn mixed_int_float_range_rejection(
     )
 }
 
+/// A value-comparison control (`.eq`/`.ne`/`.le`/`.lt`/`.ge`/`.gt`) whose operand is not a
+/// numeric literal. Rule and member routes, integer and float heads share it.
 fn non_literal_control_operand_rejection(
     rule_name: Option<&RustIdent>,
     ctrl: token::ControlOperator,
@@ -1958,6 +1963,9 @@ fn non_literal_control_operand_rejection(
     )
 }
 
+/// A `.size` operand that is neither an integer literal nor a parenthesized integer literal /
+/// literal range: a name (`.size foo`), a text value, a type choice (`.size (1 / 2)`), or a control
+/// (`.size (1 .le 3)`).
 fn non_literal_size_operand_rejection(rule_name: Option<&RustIdent>, operand: &Type2) -> String {
     format!(
         "{}the `.size` operand `{operand}` is not an integer literal or an integer literal range — \
@@ -2705,6 +2713,9 @@ fn ident_to_primitive(ident: &CDDLIdent) -> Option<Primitive> {
     }
 }
 
+/// The integer a value-comparison control operand denotes, or the graceful-rejection message for
+/// one the integer window cannot hold. Decimal floats never arrive: `try_float_or_reject`
+/// intercepts them first. Integral floats outside the CDDL int/uint literal range are refused.
 fn control_operand_integer(
     rule_name: Option<&RustIdent>,
     ctrl: token::ControlOperator,
@@ -2821,12 +2832,12 @@ fn reject_rule_prefix(rule_name: Option<&RustIdent>) -> String {
 }
 
 /// Intercepts the float-window and graceful-rejection cases of a numeric range/control operator,
-/// BEFORE the integer arms of `parse_control_operator` run (so `control_operand_integer`'s decimal
-/// assert is never reached from a range/control path). Returns:
-/// - `Some(RangeFloat(window))` when the constraint is a float window (float-typed head, or a
-///   literal-headed range promoted by a decimal-float endpoint);
+/// BEFORE the integer arms of `parse_control_operator` run (so an integer arm never casts a
+/// decimal operand). Returns:
+/// - `Some(RangeFloat(window))` when the constraint is a float window over a float-typed head;
 /// - `Some(Range((None, None)))` (a harmless placeholder) after RECORDING a graceful rejection for
-///   an unsupported shape (`.ne` over a float; a decimal float bound on an integer-typed head);
+///   an unsupported shape (`.ne` over a float, a decimal float bound on an integer-typed head, or
+///   a range mixing integer and float literal endpoints);
 /// - `None` when this is a genuine integer constraint (or a non-value op like `.size`/`.cbor`),
 ///   which the caller then handles on the existing integer path.
 fn try_float_or_reject(
