@@ -512,7 +512,7 @@ impl ScopeReferences {
 
 #[derive(Clone, Debug)]
 struct NominalMintClaim {
-    identity: String,
+    identity: StructuralFingerprint,
     site: MintSite,
 }
 
@@ -3372,25 +3372,27 @@ impl<'a> IntermediateTypes<'a> {
     /// registration guard, so equal claims retain the first owner and unequal ones are rejected
     /// rather than creating a competing ownership vocabulary.
     pub fn claim_nominal_mint(&mut self, rust_struct: &RustStruct, site: impl Into<String>) {
-        self.claim_nominal_mint_inner(rust_struct, MintSite::Semantic(site.into()), true);
+        let identity = rust_struct.structural_fingerprint();
+        self.claim_nominal_mint_inner(
+            rust_struct.ident(),
+            &identity,
+            MintSite::Semantic(site.into()),
+            true,
+        );
     }
 
     fn claim_nominal_mint_inner(
         &mut self,
-        rust_struct: &RustStruct,
+        ident: &RustIdent,
+        identity: &StructuralFingerprint,
         site: MintSite,
         report_registration_duplicate: bool,
     ) {
-        let ident = rust_struct.ident().clone();
         if ident.is_type_expression() {
             return;
         }
-        let claim = NominalMintClaim {
-            identity: rust_struct.structural_fingerprint(),
-            site,
-        };
-        if let Some(first) = self.nominal_mint_claims.get(&ident) {
-            if first.identity != claim.identity {
+        if let Some(first) = self.nominal_mint_claims.get(ident) {
+            if first.identity != *identity {
                 // Ordinary registrations retain the legacy global guard's one diagnostic. The
                 // mint ledger speaks only when a semantic pre-registration claimant is involved.
                 if report_registration_duplicate || !matches!(first.site, MintSite::Registration(_))
@@ -3399,13 +3401,19 @@ impl<'a> IntermediateTypes<'a> {
                         "generated Rust type `{ident}` has incompatible mint claims: `{}` first claimed; \
                          `{}` later claimed a different structural/wire identity. Keep one wire shape \
                          per generated Rust name.",
-                        first.site, claim.site,
+                        first.site, site,
                     ));
                 }
             }
             return;
         }
-        self.nominal_mint_claims.insert(ident, claim);
+        self.nominal_mint_claims.insert(
+            ident.clone(),
+            NominalMintClaim {
+                identity: identity.clone(),
+                site,
+            },
+        );
     }
 
     /// Reserve an explicit variant spelling before any derived sibling receives a suffix. Returns
@@ -3550,8 +3558,10 @@ impl<'a> IntermediateTypes<'a> {
         {
             *wrapped = wrapped.clone().with_duplicates_policy(Some(policy));
         }
+        let fingerprint = rust_struct.structural_fingerprint();
         self.claim_nominal_mint_inner(
-            &rust_struct,
+            rust_struct.ident(),
+            &fingerprint,
             MintSite::Registration(rust_struct.ident().clone()),
             false,
         );
@@ -3561,7 +3571,7 @@ impl<'a> IntermediateTypes<'a> {
         // retarget every existing reference to a different wire shape. Equivalent structures are
         // deliberate shared ownership (not replacement).
         if let Some(existing) = self.rust_structs.get(rust_struct.ident()) {
-            if existing.structurally_equivalent(&rust_struct) {
+            if existing.structural_fingerprint() == fingerprint {
                 return;
             }
             let ident = rust_struct.ident();

@@ -436,6 +436,12 @@ impl From<Option<&RuleMetadata>> for RustStructConfig {
     }
 }
 
+/// A struct's structural/wire identity: the `Debug` rendering of `(tag, tag_optional, config,
+/// variant)`. Hand-written `Debug` omits `RustType::generic_param_binding` and
+/// `EnumVariant::derived_name`; neither field bears identity. Compare only; never order or render.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StructuralFingerprint(String);
+
 #[derive(Clone, Debug)]
 pub struct RustStruct {
     pub(super) ident: RustIdent,
@@ -776,11 +782,11 @@ impl RustStruct {
     /// The deterministic structural/wire identity used by the nominal-name mint registry.  Keep
     /// this exactly aligned with [`Self::structurally_equivalent`]: the registry is an earlier
     /// observation point for the global registration guard, not a second ownership policy.
-    pub fn structural_fingerprint(&self) -> String {
-        format!(
+    pub fn structural_fingerprint(&self) -> StructuralFingerprint {
+        StructuralFingerprint(format!(
             "{:?}",
             (&self.tag, self.tag_optional, &self.config, &self.variant)
-        )
+        ))
     }
 
     // The following methods are used internally to generate serialize/deserialize code
