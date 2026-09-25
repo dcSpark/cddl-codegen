@@ -297,169 +297,59 @@ pub struct MatrixDslFacts {
     pub doc: Option<String>,
 }
 
-macro_rules! merge_metadata_fields {
-    ($lhs:expr, $rhs:expr, $field_name:literal) => {
-        match ($lhs.as_ref(), $rhs.as_ref()) {
-            (Some(val1), Some(val2)) => {
-                panic!(
-                    concat!("Key \"", $field_name, "\" specified twice: {:?} {:?}"),
+/// Merge field rules without cross-field verification; directive folds verify once at the end.
+fn merge_fields(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
+    macro_rules! exclusive {
+        ($field:ident) => {
+            match (r1.$field.as_ref(), r2.$field.as_ref()) {
+                (Some(val1), Some(val2)) => panic!(
+                    concat!(
+                        "Key \"",
+                        stringify!($field),
+                        "\" specified twice: {:?} {:?}"
+                    ),
                     val1, val2
-                )
+                ),
+                (val @ Some(_), _) => val.cloned(),
+                (_, val) => val.cloned(),
             }
-            (val @ Some(_), _) => val.cloned(),
-            (_, val) => val.cloned(),
-        }
-    };
-}
-
-pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
-    let merged = RuleMetadata {
-        name: merge_metadata_fields!(r1.name, r2.name, "name"),
-        rust_name: merge_metadata_fields!(r1.rust_name, r2.rust_name, "rust_name"),
-        newtype: merge_metadata_fields!(r1.newtype, r2.newtype, "newtype"),
+        };
+    }
+    RuleMetadata {
+        name: exclusive!(name),
+        rust_name: exclusive!(rust_name),
+        newtype: exclusive!(newtype),
         no_alias: r1.no_alias || r2.no_alias,
         key_demand: merge_key_demand(r1.key_demand, r2.key_demand),
         used_as_elem: r1.used_as_elem || r2.used_as_elem,
         copy: r1.copy || r2.copy,
         raw_bytes_flavor: r1.raw_bytes_flavor || r2.raw_bytes_flavor,
         ignore: r1.ignore || r2.ignore,
-        duplicates: merge_metadata_fields!(r1.duplicates, r2.duplicates, "duplicates"),
+        duplicates: exclusive!(duplicates),
         custom_json: r1.custom_json || r2.custom_json,
         no_json_schema_export: r1.no_json_schema_export || r2.no_json_schema_export,
-        custom_serialize: merge_metadata_fields!(
-            r1.custom_serialize,
-            r2.custom_serialize,
-            "custom_serialize"
-        ),
-        custom_deserialize: merge_metadata_fields!(
-            r1.custom_deserialize,
-            r2.custom_deserialize,
-            "custom_deserialize"
-        ),
-        custom_encodings: merge_metadata_fields!(
-            r1.custom_encodings,
-            r2.custom_encodings,
-            "custom_encodings"
-        ),
-        custom_wire_major: merge_metadata_fields!(
-            r1.custom_wire_major,
-            r2.custom_wire_major,
-            "custom_wire_major"
-        ),
-        extern_companions: merge_metadata_fields!(
-            r1.extern_companions,
-            r2.extern_companions,
-            "extern_companions"
-        ),
-        comment: merge_metadata_fields!(r1.comment, r2.comment, "comment"),
-    };
+        custom_serialize: exclusive!(custom_serialize),
+        custom_deserialize: exclusive!(custom_deserialize),
+        custom_encodings: exclusive!(custom_encodings),
+        custom_wire_major: exclusive!(custom_wire_major),
+        extern_companions: exclusive!(extern_companions),
+        comment: exclusive!(comment),
+    }
+}
+
+pub fn merge_metadata(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
+    let merged = merge_fields(r1, r2);
     merged.verify();
     merged
 }
 
-enum ParseResult {
-    NewType(Option<String>),
-    Name(String),
-    RustName(String),
-    DontGenAlias,
-    UsedAsKey(DemandSet),
-    UsedAsElem,
-    Copy,
-    RawBytesFlavor,
-    Ignore,
-    Duplicates(DuplicatesPolicy),
-    CustomJson,
-    NoJsonSchemaExport,
-    CustomSerialize(String),
-    CustomDeserialize(String),
-    CustomEncodings(Vec<EncodingKind>),
-    CustomWireMajor(WireMajor),
-    ExternCompanionsTag(ExternCompanions),
-    Comment(String),
-}
-
-macro_rules! merge_parse_fields {
-    ($base:expr, $new:expr, $field_name:literal) => {
-        match $base.as_ref() {
-            Some(old) => {
-                panic!(
-                    concat!("Key \"", $field_name, "\" specified twice: {:?} {:?}"),
-                    old, $new
-                )
-            }
-            None => {
-                $base = Some($new.to_owned());
-            }
-        }
-    };
+fn single(set: impl FnOnce(&mut RuleMetadata)) -> RuleMetadata {
+    let mut metadata = RuleMetadata::default();
+    set(&mut metadata);
+    metadata
 }
 
 impl RuleMetadata {
-    fn from_parse_results(results: &[ParseResult]) -> RuleMetadata {
-        let mut base = RuleMetadata::default();
-        for result in results {
-            match result {
-                ParseResult::Name(name) => merge_parse_fields!(base.name, name, "name"),
-                ParseResult::RustName(rust_name) => {
-                    merge_parse_fields!(base.rust_name, rust_name, "rust_name")
-                }
-                ParseResult::NewType(newtype) => {
-                    merge_parse_fields!(base.newtype, newtype, "newtype")
-                }
-                ParseResult::DontGenAlias => {
-                    base.no_alias = true;
-                }
-
-                ParseResult::UsedAsKey(demand) => {
-                    base.key_demand = Some(base.key_demand.unwrap_or_default().union(*demand));
-                }
-                ParseResult::UsedAsElem => {
-                    base.used_as_elem = true;
-                }
-                ParseResult::Copy => {
-                    base.copy = true;
-                }
-                ParseResult::RawBytesFlavor => {
-                    base.raw_bytes_flavor = true;
-                }
-                ParseResult::Ignore => {
-                    base.ignore = true;
-                }
-                ParseResult::Duplicates(policy) => {
-                    merge_parse_fields!(base.duplicates, policy, "duplicates")
-                }
-                ParseResult::CustomJson => {
-                    base.custom_json = true;
-                }
-                ParseResult::NoJsonSchemaExport => {
-                    base.no_json_schema_export = true;
-                }
-                ParseResult::CustomSerialize(custom_serialize) => {
-                    merge_parse_fields!(base.custom_serialize, custom_serialize, "custom_serialize")
-                }
-                ParseResult::CustomDeserialize(custom_deserialize) => merge_parse_fields!(
-                    base.custom_deserialize,
-                    custom_deserialize,
-                    "custom_deserialize"
-                ),
-                ParseResult::CustomEncodings(kinds) => {
-                    merge_parse_fields!(base.custom_encodings, kinds, "custom_encodings")
-                }
-                ParseResult::CustomWireMajor(major) => {
-                    merge_parse_fields!(base.custom_wire_major, major, "custom_wire_major")
-                }
-                ParseResult::ExternCompanionsTag(companions) => {
-                    merge_parse_fields!(base.extern_companions, companions, "extern_companions")
-                }
-                ParseResult::Comment(comment) => {
-                    merge_parse_fields!(base.comment, comment, "comment")
-                }
-            }
-        }
-        base.verify();
-        base
-    }
-
     fn verify(&self) {
         if self.newtype.is_some() && self.no_alias {
             // this would make no sense anyway as with newtype we're already not making an alias
@@ -671,20 +561,20 @@ impl RuleMetadata {
     }
 }
 
-fn tag_name(input: &str) -> IResult<&str, ParseResult> {
+fn tag_name(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = tag("@name")(input)?;
     let (input, _) = take_while(char::is_whitespace)(input)?;
     let (input, name) = take_while1(|ch| !char::is_whitespace(ch))(input)?;
 
-    Ok((input, ParseResult::Name(name.to_string())))
+    Ok((input, single(|m| m.name = Some(name.to_string()))))
 }
 
-fn tag_rust_name(input: &str) -> IResult<&str, ParseResult> {
+fn tag_rust_name(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = tag("@rust_name")(input)?;
     let (input, _) = take_while(char::is_whitespace)(input)?;
     let (input, rust_name) = take_while1(|ch| !char::is_whitespace(ch))(input)?;
 
-    Ok((input, ParseResult::RustName(rust_name.to_string())))
+    Ok((input, single(|m| m.rust_name = Some(rust_name.to_string()))))
 }
 
 /// A syntactic rust identifier: the shape `@newtype`'s optional getter argument must have, since it
@@ -700,10 +590,10 @@ fn is_rust_ident(s: &str) -> bool {
     chars.all(|ch| ch.is_alphanumeric() || ch == '_')
 }
 
-fn tag_newtype(input: &str) -> IResult<&str, ParseResult> {
+fn tag_newtype(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = tag("@newtype")(input)?;
     // to get around type annotations
-    fn parse_newtype(input: &str) -> IResult<&str, ParseResult> {
+    fn parse_newtype(input: &str) -> IResult<&str, RuleMetadata> {
         let (input, _) = take_while(char::is_whitespace)(input)?;
         let (input, getter) = take_while1(|ch| !char::is_whitespace(ch) && ch != '@')(input)?;
         let getter = getter.trim();
@@ -722,21 +612,21 @@ fn tag_newtype(input: &str) -> IResult<&str, ParseResult> {
                  `@doc`."
             );
         }
-        Ok((input, ParseResult::NewType(Some(getter.to_owned()))))
+        Ok((input, single(|m| m.newtype = Some(Some(getter.to_owned())))))
     }
     match parse_newtype(input) {
         Ok(ret) => Ok(ret),
-        Err(_) => Ok((input.trim_start(), ParseResult::NewType(None))),
+        Err(_) => Ok((input.trim_start(), single(|m| m.newtype = Some(None)))),
     }
 }
 
-fn tag_no_alias(input: &str) -> IResult<&str, ParseResult> {
+fn tag_no_alias(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = tag("@no_alias")(input)?;
 
-    Ok((input, ParseResult::DontGenAlias))
+    Ok((input, single(|m| m.no_alias = true)))
 }
 
-fn tag_used_as_key(input: &str) -> IResult<&str, ParseResult> {
+fn tag_used_as_key(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = tag("@used_as_key")(input)?;
     // Parse the optional flavor words (`hash`, `ord`) that follow, up to the next `@tag` or end of
     // the comment. Strict vocabulary: any other word is a PANIC. The comment parser otherwise swallows
@@ -769,34 +659,34 @@ fn tag_used_as_key(input: &str) -> IResult<&str, ParseResult> {
     if !any_flavor {
         demand.bare = true;
     }
-    Ok((rest, ParseResult::UsedAsKey(demand)))
+    Ok((rest, single(|m| m.key_demand = Some(demand))))
 }
 
-fn tag_used_as_elem(input: &str) -> IResult<&str, ParseResult> {
+fn tag_used_as_elem(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = tag("@used_as_elem")(input)?;
 
-    Ok((input, ParseResult::UsedAsElem))
+    Ok((input, single(|m| m.used_as_elem = true)))
 }
 
-fn tag_copy(input: &str) -> IResult<&str, ParseResult> {
+fn tag_copy(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = tag("@copy")(input)?;
 
-    Ok((input, ParseResult::Copy))
+    Ok((input, single(|m| m.copy = true)))
 }
 
-fn tag_raw_bytes_flavor(input: &str) -> IResult<&str, ParseResult> {
+fn tag_raw_bytes_flavor(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = tag("@raw_bytes_flavor")(input)?;
 
-    Ok((input, ParseResult::RawBytesFlavor))
+    Ok((input, single(|m| m.raw_bytes_flavor = true)))
 }
 
-fn tag_ignore(input: &str) -> IResult<&str, ParseResult> {
+fn tag_ignore(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = tag("@ignore")(input)?;
 
-    Ok((input, ParseResult::Ignore))
+    Ok((input, single(|m| m.ignore = true)))
 }
 
-fn tag_duplicates(input: &str) -> IResult<&str, ParseResult> {
+fn tag_duplicates(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = tag("@duplicates")(input)?;
     let (input, _) = take_while(char::is_whitespace)(input)?;
     // `@duplicates` requires exactly one argument from a strict vocabulary. A missing or unknown
@@ -818,44 +708,44 @@ fn tag_duplicates(input: &str) -> IResult<&str, ParseResult> {
              (Trailing prose is not allowed after `@duplicates` — put it in `@doc`.)"
         ),
     };
-    Ok((rest, ParseResult::Duplicates(policy)))
+    Ok((rest, single(|m| m.duplicates = Some(policy))))
 }
 
-fn tag_custom_json(input: &str) -> IResult<&str, ParseResult> {
+fn tag_custom_json(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = tag("@custom_json")(input)?;
 
-    Ok((input, ParseResult::CustomJson))
+    Ok((input, single(|m| m.custom_json = true)))
 }
 
-fn tag_no_json_schema_export(input: &str) -> IResult<&str, ParseResult> {
+fn tag_no_json_schema_export(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = tag("@no_json_schema_export")(input)?;
 
-    Ok((input, ParseResult::NoJsonSchemaExport))
+    Ok((input, single(|m| m.no_json_schema_export = true)))
 }
 
-fn tag_custom_serialize(input: &str) -> IResult<&str, ParseResult> {
+fn tag_custom_serialize(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = tag("@custom_serialize")(input)?;
     let (input, _) = take_while(char::is_whitespace)(input)?;
     let (input, custom_serialize) = take_while1(|ch| !char::is_whitespace(ch))(input)?;
 
     Ok((
         input,
-        ParseResult::CustomSerialize(custom_serialize.to_string()),
+        single(|m| m.custom_serialize = Some(custom_serialize.to_string())),
     ))
 }
 
-fn tag_custom_deserialize(input: &str) -> IResult<&str, ParseResult> {
+fn tag_custom_deserialize(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = tag("@custom_deserialize")(input)?;
     let (input, _) = take_while(char::is_whitespace)(input)?;
     let (input, custom_deserialize) = take_while1(|ch| !char::is_whitespace(ch))(input)?;
 
     Ok((
         input,
-        ParseResult::CustomDeserialize(custom_deserialize.to_string()),
+        single(|m| m.custom_deserialize = Some(custom_deserialize.to_string())),
     ))
 }
 
-fn tag_custom_wire_major(input: &str) -> IResult<&str, ParseResult> {
+fn tag_custom_wire_major(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = tag("@custom_wire_major")(input)?;
     let (input, _) = take_while(char::is_whitespace)(input)?;
     // Exactly one REQUIRED argument from a strict vocabulary (the `@custom_encodings` contract, and
@@ -875,7 +765,7 @@ fn tag_custom_wire_major(input: &str) -> IResult<&str, ParseResult> {
     }
     let (rest, arg) = take_while1(|ch| !char::is_whitespace(ch) && ch != '@')(input)?;
     match WireMajor::ALL.iter().find(|m| m.token() == arg) {
-        Some(major) => Ok((rest, ParseResult::CustomWireMajor(*major))),
+        Some(major) => Ok((rest, single(|m| m.custom_wire_major = Some(*major)))),
         None => panic!(
             "@custom_wire_major: unknown major {arg:?}; expected exactly one of {vocabulary} (e.g. \
              `@custom_wire_major text`). The eight tokens are the eight CBOR major types."
@@ -883,7 +773,7 @@ fn tag_custom_wire_major(input: &str) -> IResult<&str, ParseResult> {
     }
 }
 
-fn tag_custom_encodings(input: &str) -> IResult<&str, ParseResult> {
+fn tag_custom_encodings(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = tag("@custom_encodings")(input)?;
     let (input, _) = take_while(char::is_whitespace)(input)?;
     // Exactly one REQUIRED argument from a strict vocabulary, whitespace-free (house style — the
@@ -906,7 +796,7 @@ fn tag_custom_encodings(input: &str) -> IResult<&str, ParseResult> {
     }
     let (rest, arg) = take_while1(|ch| !char::is_whitespace(ch) && ch != '@')(input)?;
     if arg == "none" {
-        return Ok((rest, ParseResult::CustomEncodings(Vec::new())));
+        return Ok((rest, single(|m| m.custom_encodings = Some(Vec::new()))));
     }
     let kinds = arg
         .split(',')
@@ -921,7 +811,7 @@ fn tag_custom_encodings(input: &str) -> IResult<&str, ParseResult> {
             ),
         })
         .collect();
-    Ok((rest, ParseResult::CustomEncodings(kinds)))
+    Ok((rest, single(|m| m.custom_encodings = Some(kinds))))
 }
 
 /// Whether `path` is a `::`-separated chain of rust identifiers — the shape the `use <path>::<Class>;`
@@ -933,7 +823,7 @@ fn is_rust_path(path: &str) -> bool {
     !path.is_empty() && path.split("::").all(is_rust_ident)
 }
 
-fn tag_extern_companions(input: &str) -> IResult<&str, ParseResult> {
+fn tag_extern_companions(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = tag("@extern_companions")(input)?;
     let (input, _) = take_while(char::is_whitespace)(input)?;
     // Exactly one REQUIRED argument, in a strict shape. A missing or malformed argument is a PANIC
@@ -977,21 +867,26 @@ fn tag_extern_companions(input: &str) -> IResult<&str, ParseResult> {
     }
     Ok((
         rest,
-        ParseResult::ExternCompanionsTag(ExternCompanions {
-            path_prefix: path_prefix.to_owned(),
-            classes,
+        single(|m| {
+            m.extern_companions = Some(ExternCompanions {
+                path_prefix: path_prefix.to_owned(),
+                classes,
+            })
         }),
     ))
 }
 
-fn tag_comment(input: &str) -> IResult<&str, ParseResult> {
+fn tag_comment(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = tag("@doc")(input)?;
     let (input, comment) = take_while1(|c| c != '@')(input)?;
 
-    Ok((input, ParseResult::Comment(comment.trim().to_string())))
+    Ok((
+        input,
+        single(|m| m.comment = Some(comment.trim().to_string())),
+    ))
 }
 
-fn whitespace_then_tag(input: &str) -> IResult<&str, ParseResult> {
+fn whitespace_then_tag(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = take_while(char::is_whitespace)(input)?;
     let (input, result) = alt((
         tag_name,
@@ -1027,9 +922,12 @@ fn whitespace_then_tag(input: &str) -> IResult<&str, ParseResult> {
 }
 
 fn rule_metadata(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, parse_results) = many0(whitespace_then_tag).parse(input)?;
-
-    Ok((input, RuleMetadata::from_parse_results(&parse_results)))
+    let (input, parsed) = many0(whitespace_then_tag).parse(input)?;
+    let metadata = parsed
+        .iter()
+        .fold(RuleMetadata::default(), |acc, one| merge_fields(&acc, one));
+    metadata.verify();
+    Ok((input, metadata))
 }
 
 /// The complete `@`-token vocabulary the rule-metadata DSL recognizes — the `tag("@…")` literals in
