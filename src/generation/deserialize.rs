@@ -750,7 +750,6 @@ impl GenerationScope {
         mut config: DeserializeConfig,
         cli: &Cli,
     ) -> DeserializationCode {
-        //body.line(&format!("println!(\"deserializing {}\");", var_name));
         if !cli.preserve_encodings {
             assert!(config.final_exprs.is_empty());
         }
@@ -934,7 +933,6 @@ impl GenerationScope {
                                     final_expr(config.final_exprs, None),
                                     before_after.after_str(false)
                                 ));
-                                //body.line(&format!("{}{}{}_encoding{}{}", before, sp, var_name, ep, after));
                             }
                         }
                         FixedValue::Nint(x) => {
@@ -968,7 +966,6 @@ impl GenerationScope {
                                     final_expr(config.final_exprs, None),
                                     before_after.after_str(false)
                                 ));
-                                //body.line(&format!("{}{}{}_encoding{}{}", before, sp, var_name, ep, after));
                             }
                         }
                         FixedValue::Text(x) => {
@@ -2096,8 +2093,8 @@ impl GenerationScope {
                         none_block.line("read_len.read_elems(1)?;");
                         deser_code.read_len_used = true;
                     }
-                    // we don't use this to avoid the new (true) if cli.preserve_encodings is set
-                    //self.generate_deserialize(types, &ConceptualRustType::Fixed(FixedValue::Null), var_name, "", "", in_embedded, false, add_parens, &mut none_block);
+                    // Checked inline rather than through the `Fixed(Null)` arm, which under
+                    // --preserve-encodings would emit a unit value line this arm does not want.
                     let mut check_null = Block::new(format!(
                         "if {deserializer_name}.special()? != cbor_event::Special::Null"
                     ));

@@ -648,7 +648,6 @@ impl GenerationScope {
         config: SerializeConfig,
         cli: &Cli,
     ) {
-        //body.line(&format!("// DEBUG - generated from: {:?}", rust_type));
         let line_ender = if config.is_end { "" } else { "?;" };
         let expr_deref = if config.expr_is_ref {
             format!("*{}", config.expr)

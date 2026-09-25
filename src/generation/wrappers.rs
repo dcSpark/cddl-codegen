@@ -1173,12 +1173,6 @@ pub(super) fn generate_wrapper_struct(
             .line(format!("{type_name}::new(inner)"));
         try_from
     } else {
-        // let field_type_tagged = if let Some(t) = tag {
-        //     ConceptualRustType::Tagged(t, Box::new(field_type.clone()))
-        // } else {
-        //     field_type.clone()
-        // };
-        // gen_scope.generate_deserialize(types, &field_type_tagged, "inner", "Ok(Self(", "))", false, false, true, &mut deser_func);
         new_func.ret("Self");
         if let Some(enc_fields) = &enc_fields {
             let (before, after) = if var_names_str.is_empty() {
