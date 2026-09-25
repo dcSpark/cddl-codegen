@@ -2400,53 +2400,24 @@ fn run_test(
 /// Generate + gate every `tests/corpus/*.cddl` crate under each emission profile. The snapshot
 /// suite (`snapshot_tests::feature_corpus`) only pins the generated *source*, so a construct that
 /// emits non-compiling Rust would be snapshotted as "correct"; this is the compile gate for it.
-/// Trait imports the usage-derived prune (`crate::import_prune`) deliberately cannot remove: a trait
-/// is exercised by a method call whose ident never appears (`x.serialize(..)` for `cbor_event`'s
-/// `Serialize`), so name-scanning can't prove it unused. The generated serialization prelude imports
-/// `Serialize` (non-canonical profiles) and a scope that never calls it warns — an out-of-model
-/// residue tracked in `tests/testing-roadmap.toml`'s `unused_imports` entry, NOT a prune regression.
-/// Everything else in a PURELY-generated crate is a prune target, so the scan flags it.
-const UNUSED_IMPORT_TRAIT_RESIDUE: &[&str] = &["Serialize"];
-
 /// Scan rustc/cargo stderr for rendered `unused import` warnings in the generated crates. These
 /// crates are 100% generated, so ANY unused import is a generator imprecision the import prune should
-/// have removed — the scan flags every one EXCEPT warnings that name only a documented trait residue
-/// (`UNUSED_IMPORT_TRAIT_RESIDUE`). Rustc renders these as a single line `warning: unused import:
-/// `PATH`` (or the plural `warning: unused imports: `A`, `B``) with the path(s) inline in backticks;
-/// the leaf ident is the last `::` segment (`super::*` → `*`, always flagged). Returns each offending
-/// line (trimmed) so the caller can name it in the failure.
+/// have removed. Rustc renders these as a single line `warning: unused import: `PATH`` (or the
+/// plural `warning: unused imports: `A`, `B``). Returns every offending line (trimmed) so the
+/// caller can name it in the failure.
 pub(crate) fn unused_generated_import_lines(stderr: &str) -> Vec<String> {
     stderr
         .lines()
-        .filter_map(|line| {
-            if !line.contains("warning: unused import") {
-                return None;
-            }
-            // Leaf ident of every backtick-quoted import path on the line.
-            let idents: Vec<&str> = line
-                .split('`')
-                .skip(1)
-                .step_by(2)
-                .map(|path| path.rsplit("::").next().unwrap_or(path))
-                .collect();
-            // A warning naming ONLY documented trait residue is not a prune target.
-            if !idents.is_empty()
-                && idents
-                    .iter()
-                    .all(|id| UNUSED_IMPORT_TRAIT_RESIDUE.contains(id))
-            {
-                return None;
-            }
-            Some(line.trim().to_string())
-        })
+        .filter(|line| line.contains("warning: unused import"))
+        .map(|line| line.trim().to_string())
         .collect()
 }
 
 /// Red-path guard for the scan: an allowlisted ident, a cross-scope user type, and a `super::*` /
 /// `error::*` glob unused-import warning are all flagged (a purely-generated crate should carry
-/// none), while a warning naming only the documented `Serialize` trait residue is ignored.
+/// none), including a `Serialize` trait import.
 #[test]
-fn unused_generated_import_scan_flags_prune_targets_and_ignores_trait_residue() {
+fn unused_generated_import_scan_flags_every_unused_import() {
     for (label, line) in [
         (
             "allowlisted",
@@ -2472,12 +2443,9 @@ fn unused_generated_import_scan_flags_prune_targets_and_ignores_trait_residue() 
         );
     }
 
-    let trait_residue = "warning: unused import: `cbor_event::se::Serialize`\n \
+    let trait_import = "warning: unused import: `cbor_event::se::Serialize`\n \
                          --> src/generated/serialization.rs:8:5";
-    assert!(
-        unused_generated_import_lines(trait_residue).is_empty(),
-        "the documented Serialize trait residue must be ignored"
-    );
+    assert_eq!(unused_generated_import_lines(trait_import).len(), 1);
 
     // A clean build has no such warning at all.
     assert!(unused_generated_import_lines("   Compiling foo v0.1.0\n    Finished").is_empty());
@@ -2487,8 +2455,8 @@ fn unused_generated_import_scan_flags_prune_targets_and_ignores_trait_residue() 
 /// unused-import scan, these crates are 100% generated, so ANY named binding rustc reports as unused
 /// is a generator imprecision — e.g. a definite-length count match whose arm body is a compile-time
 /// constant (`Some(x) => 3`) should bind `_`, not `x`. Rustc renders these as `warning: unused
-/// variable: `x``. There is no trait-residue analogue here (every such binding is generator-owned),
-/// so every matching line is returned (trimmed) for the caller to name in the failure.
+/// variable: `x``. Every such binding is generator-owned, so every matching line is returned
+/// (trimmed) for the caller to name in the failure.
 pub(crate) fn unused_generated_variable_lines(stderr: &str) -> Vec<String> {
     stderr
         .lines()
@@ -2729,8 +2697,7 @@ pub(crate) fn generator_owned_unused_warning_lines(
     let lines: Vec<&str> = stderr.lines().collect();
     let mut hits = Vec::new();
     for (index, line) in lines.iter().enumerate() {
-        // Reuse the class scans verbatim (trait-residue carve-out included) by asking them about
-        // this one line, so there is exactly one definition of what each class flags.
+        // Reuse the class scans verbatim on this line, so each warning class has one definition.
         let flagged = !unused_generated_import_lines(line).is_empty()
             || !unused_generated_variable_lines(line).is_empty();
         if !flagged {
@@ -2761,7 +2728,7 @@ pub(crate) fn generator_owned_unused_warning_lines(
 
 /// Red-path guard for the location-aware scan: a warning inside generator-written content fails,
 /// while the harness's own appended region, a hand-written path dep (absolute AND relative
-/// rendering), an unlocated warning and the documented trait residue do not.
+/// rendering), and an unlocated warning do not.
 #[test]
 fn generator_owned_scan_attributes_by_location_and_append_boundary() {
     let export = std::path::Path::new("/nonexistent/tests/some-fixture/export");
@@ -2813,10 +2780,11 @@ fn generator_owned_scan_attributes_by_location_and_append_boundary() {
         "an unlocated warning must not borrow the NEXT warning's location"
     );
 
-    let trait_residue = "warning: unused import: `cbor_event::se::Serialize`\n  --> src/generated/serialization.rs:9:22";
-    assert!(
-        generator_owned_unused_warning_lines(trait_residue, &crate_dir, &ownership).is_empty(),
-        "the documented Serialize trait residue stays ignored at a generated location"
+    let trait_import = "warning: unused import: `cbor_event::se::Serialize`\n  --> src/generated/serialization.rs:9:22";
+    assert_eq!(
+        generator_owned_unused_warning_lines(trait_import, &crate_dir, &ownership).len(),
+        1,
+        "a Serialize import warning at a generated location must be flagged"
     );
 
     // A pinned known finding is exempt, but ONLY at its own file and text — and the pin is then
@@ -3248,11 +3216,10 @@ fn feature_corpus_compiles_shard(shard: usize) {
             }
             // Closure-logic version marker: the cached cell scans stderr for unused-import warnings.
             // v2 broadens that scan from the allowlist-only set to EVERY generated-crate unused import
-            // (super::*/error::* globs, cross-scope type imports, wasm macro/prelude imports) minus a
-            // documented trait residue. v3 additionally scans for `unused variable` warnings (a named
-            // count-match binding the generator never uses) — so pre-v3 cached PASSes must be
-            // invalidated. Bump on any future change to the scan's verdict.
-            argv_for_key.push("lint=unused-imports-v3".to_string());
+            // (super::*/error::* globs, cross-scope type imports, wasm macro/prelude imports).
+            // v3 adds `unused variable` warnings; v4 removes the trait-import exemption.
+            // Bump on any future change to the scan's verdict.
+            argv_for_key.push("lint=unused-imports-v4".to_string());
             let outcome = gate_cache::run_cached(
                 "feature_corpus_compiles",
                 &label,
@@ -3280,7 +3247,7 @@ fn feature_corpus_compiles_shard(shard: usize) {
                         }
                         // Warning-severity residue the compile gates (over-prune only) can't see: an
                         // `unused import` in a PURELY-generated crate means the usage-derived import
-                        // prune (crate::import_prune) under-pruned (a documented trait residue aside).
+                        // prune (crate::import_prune) under-pruned.
                         // `ok = false` so a warning cell is never cached as PASS.
                         let unused = unused_generated_import_lines(&stderr);
                         if !unused.is_empty() {
@@ -3783,7 +3750,7 @@ fn feature_corpus_compiles_no_annotate_shard(shard: usize) {
                 "cwd=rust".to_string(),
                 "cargo".to_string(),
                 "check".to_string(),
-                "lint=unused-imports-v3".to_string(),
+                "lint=unused-imports-v4".to_string(),
             ];
             argv_for_key.push(match known_red {
                 Some((_, _, class, _)) => format!("known-red={class}"),
@@ -7228,10 +7195,10 @@ fn generated_code_clippy_clean() {
         "unused_braces",
         "-D",
         "unused_allocation",
-        // `unused_variables` has no legitimate generated-code residue — an emitted binding nothing
-        // reads is a generator defect every time — so it is denied here. `unused_imports` is NOT,
-        // and the asymmetry is the point: the import prune deliberately keeps trait imports
-        // (`cbor_event::se::Serialize`) whose only use is a method call no name-scan can see.
+        // An unread generated binding is always a defect, so `unused_variables` is denied here.
+        // `unused_imports` stays at warn: the name scan conservatively keeps an ancestor import
+        // when an intermediate module may shield a descendant's use, and cannot prune traits by
+        // name. The emitter imports the method-call-only Serialize trait anonymously instead.
         "-D",
         "unused_variables",
     ];

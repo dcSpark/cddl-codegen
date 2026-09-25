@@ -617,19 +617,16 @@ sibling cell failed. Any future convenience refactor that moves these checks int
 tree silently voids the gate's verdict.
 
 **Per-cell verdicts, via accept predicates.** Every cell that asserts a crate *builds* requires
-`exit == 0` **and** every `warning:` line falling in one of three classes (below). The one inverted
+`exit == 0` **and** every `warning:` line falling in one of two classes (below). The one inverted
 cell (`depth_limit.shim_thumb_expect_fail`) requires nonzero exit **and** the pinned
 `compile_error!` substring in stderr, with no warning policy at all — a failing compilation emits
 whatever resolution noise the missing `std` produces, and that noise is the reason the
 `compile_error!` exists. The cache stores cell-SUCCESS, not cargo-exit-0, so the inverted cell
-memoizes like any other. The three allowed warning classes: the cdylib drop (the generated crate's `crate-type` includes `cdylib`, which cargo
-drops with a warning on a no-std target rather than erroring), the documented `Serialize` trait
-residue (matched on the backticked path's *leaf*, exactly as `integration_tests`'
-`UNUSED_IMPORT_TRAIT_RESIDUE` scanner does, since rustc renders it both fully-qualified and as a bare
-leaf), and cargo's per-crate roll-up line. Anything else fails, printing the offending lines and the
-full stderr. Presence is never asserted, only membership — `preserve_canonical` emits no residue at
-all, so requiring it would fail that profile. Asserting warning-free output would make the gate red
-on day one for non-product reasons.
+memoizes like any other. The two allowed warning classes are the cdylib drop (the generated crate's
+`crate-type` includes `cdylib`, which cargo drops with a warning on a no-std target rather than
+erroring) and cargo's per-crate roll-up line. Anything else fails, printing the offending lines and
+the full stderr. Asserting warning-free output would make the gate red on day one for non-product
+reasons.
 
 **Absent target: loud SKIP in `local`, hard FAIL in `full`.** The skip prints a multi-line banner
 naming the gate, the target, the fix and what went unchecked; a silent skip would void the
@@ -637,7 +634,7 @@ attribution guarantee with nothing else positioned to notice, and CI runs `fast`
 
 **Cache participation:** each cell goes through the shared gate cache (key = tree hash over the whole
 scratch output root + `rustc -vV` + RUSTFLAGS + path-normalized argv carrying the verdict marker
-`no-std-check-v3`; `cargo generate-lockfile` for each manifest a cell checks runs *before* hashing).
+`no-std-check-v4`; `cargo generate-lockfile` for each manifest a cell checks runs *before* hashing).
 Both hand-written crates the gate writes live INSIDE the hashed output root, so editing either
 invalidates the key rather than serving a stale PASS. Bump the verdict marker on any change to the
 VERDICT logic — the warning classifier or an accept predicate, not just the allowed-warning set. Because keys are content-derived (scratch paths normalized out), a
@@ -667,7 +664,7 @@ the command sequence in path-normalized form (scratch paths are run- or checkout
 carry the command SHAPE — subcommand + crate role within the hashed tree — never a literal
 scratch path, which would make every key unique to its run), and a schema version. A gate whose
 cached closure ALSO asserts something beyond the cargo exit code versions that extra verdict logic
-into the key as an explicit argv marker (`feature_corpus_compiles`' `lint=unused-imports-v3`), so
+into the key as an explicit argv marker (`feature_corpus_compiles`' `lint=unused-imports-v4`), so
 changing what the closure checks re-runs every previously-cached cell instead of laundering old
 PASSes past the new check. Soundness
 rests on the same enforced determinism
@@ -1813,11 +1810,12 @@ the only allow is permanent and input-dependent: `clippy::disallowed_names` (the
 `foo`/`bar` rule names become generated parameter names — not a generator defect). The gate also
 denies a curated rustc style-lint set (`unused_parens`, `unused_braces`, `unused_allocation`,
 `unused_variables`) that catches redundant emitted grouping/allocation and dead emitted bindings
-without denying `unused_imports`. That asymmetry is deliberate: `unused_imports` keeps
-the one residue the usage-derived import prune (`import_prune::prune_generated_files`)
-deliberately leaves — trait imports (`cbor_event::se::Serialize`), exercised via method calls whose
-ident never appears, so name-scanning cannot prove them unused — while `unused_variables` has NO
-legitimate residue, so an emitted binding nothing reads is a generator defect every time. The
+without denying `unused_imports`. That asymmetry is deliberate: the usage-derived import prune
+(`import_prune::prune_generated_files`) can conservatively keep an ancestor import when an
+intermediate module may shield a descendant's use, and cannot prove trait imports unused by name.
+The emitter imports the method-call-only `cbor_event::se::Serialize` trait anonymously, so it adds
+no unused-import warning. An emitted binding nothing reads is a generator defect every time, so
+`unused_variables` is denied. The
 corpus-wide owner of that same class is `feature_corpus_compiles`'
 `unused_generated_variable_lines` scan. Everything else — the concrete
 collection/encoding idents, the `super::*` glob and enumerable `error::*`/`cbor_encodings::*`
@@ -3675,14 +3673,12 @@ the rustc-warning detector for the usage-derived import prune (`import_prune`): 
 cargo invocation it scans stderr (`unused_generated_import_lines`) and fails on ANY `unused import`
 warning in the generated crates — collection/encoding idents,
 `super::*`/`error::*`/`cbor_encodings::*` globs, cross-scope type imports, and wasm macro/prelude
-imports — minus a documented trait residue
-(`UNUSED_IMPORT_TRAIT_RESIDUE`, the `cbor_event::se::Serialize` trait the name-scan model can't
-prove unused). It also fails on ANY `unused variable` warning (`unused_generated_variable_lines`):
+imports. It also fails on ANY `unused variable` warning (`unused_generated_variable_lines`):
 a named binding rustc reports unused in a purely-generated crate is generator imprecision (a
-count-match arm that should bind `_`), with no trait-residue analogue. This catches a
+count-match arm that should bind `_`). This catches a
 warning-severity under-prune (or unused-binding emission) the compile-error gates (E0412/E0433,
 over-prune only) cannot see. The scan is versioned into the gate-cache key via a
-`lint=unused-imports-v3` marker so a change to its verdict re-runs every cached cell.
+`lint=unused-imports-v4` marker so a change to its verdict re-runs every cached cell.
 
 Those two scans reach beyond this gate's own cells, in two shapes. The corpus cells never generate
 under the cross-crate workspace flags, so both scans also run — through
@@ -5310,7 +5306,7 @@ is the only leg that pays nested cargo, and it is the one that catches the orpha
 `unused import` is a WARNING, so no assertion about generation exiting 0 can see it. It reuses
 `feature_corpus_compiles`' scans, its currently-empty `COMPILE_SKIP` (a future whole-fixture blocker
 would hold after regeneration for the same reason) and its def splice, and is gate-cached per
-generated-crate content hash with its own `regen-edit=v1`
+generated-crate content hash with its own `regen-edit=v2`
 verdict-logic marker. The splice is applied ONCE, before the regeneration, which makes the seed-once
 thin `lib.rs` contract part of what this gate asserts: a consumer's hand-written extern definitions
 must still be there, and still resolve, after the tool has run over their tree a second time. Its own

@@ -77,7 +77,7 @@
 //! descendant D that consumes F's copy for everything at/below M, yet the per-descendant rule still
 //! counts D — which reaches X through M, not F — as a protector. Watched by the
 //! generated-code unused-import scan in the `feature_corpus_compiles` gate (src/tests), which fails
-//! on ANY `unused import` rustc warning in the generated crates (minus a documented trait residue).
+//! on ANY `unused import` rustc warning in the generated crates.
 //!
 //! **Soundness boundary — the name-scan candidate set.** Ident-scanning can prove a *concrete type*
 //! unused: a type can only be used by naming it, so "ident absent from the module family" ⇒ unused.
@@ -2667,7 +2667,7 @@ mod tests {
     }
 
     /// A non-candidate name (not allowlisted, not in the extra set) is never touched even when unused —
-    /// the soundness floor for names outside the name-scan model (e.g. the `Serialize` trait residue).
+    /// the soundness floor for names outside the name-scan model (e.g. a trait import).
     #[test]
     fn non_candidate_unused_import_untouched() {
         let map = files(&[(

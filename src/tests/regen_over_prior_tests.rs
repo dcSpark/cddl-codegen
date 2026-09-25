@@ -1058,7 +1058,7 @@ fn regen_over_prior_output_corpus_compiles() {
         // Verdict-logic version marker, the `feature_corpus_compiles` discipline: the cached cell's
         // verdict depends on the injection rule AND the warning scan, neither of which is in the
         // hashed tree. Bump on any change to either.
-        argv_for_key.push("regen-edit=v1".to_string());
+        argv_for_key.push("regen-edit=v2".to_string());
         let outcome = super::gate_cache::run_cached(
             "regen_over_prior_output_corpus_compiles",
             &stem,

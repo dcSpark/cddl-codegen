@@ -58,7 +58,7 @@ const CODEGEN_DIR = resolve(ROOT, ".."); // the cddl-codegen repo this script li
 const TARGET = "thumbv7m-none-eabi";
 const GATE = "no_std_check";
 /** Bump on any change to a cached CELL verdict (not pre-cell target provisioning or profile bytes). */
-const VERDICT_MARKER = "no-std-check-v3";
+const VERDICT_MARKER = "no-std-check-v4";
 const CARGO_TIMEOUT_S = 900;
 
 /**
@@ -138,35 +138,19 @@ function run(cmd: string[], cwd: string, env?: Record<string, string>, timeoutS 
 
 // ---- the allowed-warning classifier -------------------------------------------------------------
 /**
- * Three classes, each established by capture from a real run rather than guessed:
+ * Two classes, each established by capture from a real run rather than guessed:
  *
  *  1. the cdylib drop — the generated crate declares `crate-type = ["cdylib", "rlib"]`, and cargo
  *     DROPS the cdylib on a no-std target with a warning instead of erroring. Nothing to fix: the
  *     crate-type is right for the crate's normal consumers.
- *  2. the documented `Serialize` trait residue — the usage-derived import prune cannot prove a trait
- *     unused (it is exercised by a method call whose name never mentions it), so a scope importing
- *     `cbor_event::se::Serialize` without calling it warns. Tracked in tests/testing-roadmap.toml's
- *     `unused_imports` entry and encoded in integration_tests' `UNUSED_IMPORT_TRAIT_RESIDUE`. Rustc
- *     renders the path in backticks either fully (`cbor_event::se::Serialize`) or as the bare leaf
- *     (`Serialize`) when it came from a braced group — both are matched, on the LEAF, exactly as the
- *     Rust-side scanner does.
- *  3. cargo's per-crate roll-up (`warning: \`pkg\` (lib) generated N warnings`), which is not a
+ *  2. cargo's per-crate roll-up (`warning: \`pkg\` (lib) generated N warnings`), which is not a
  *     warning at all but a count of the ones above.
- *
- * Presence is never asserted, only membership: the preserve+canonical profile emits NO residue (its
- * serialization scope does call `Serialize`), so requiring class 2 would fail that profile.
  */
-export function classifyWarning(line: string): "cdylib" | "trait-residue" | "rollup" | null {
+export function classifyWarning(line: string): "cdylib" | "rollup" | null {
   const t = line.trim();
   if (!t.startsWith("warning:")) return null;
   if (/^warning: dropping unsupported crate type `\w+` for target `[\w-]+`$/.test(t)) return "cdylib";
   if (/^warning: `[^`]+` \([^)]*\) generated \d+ warnings?/.test(t)) return "rollup";
-  if (t.startsWith("warning: unused import")) {
-    // Every backtick-quoted path on the line, reduced to its leaf ident — `super::*` -> `*`, which is
-    // never allowed. Same reduction as `unused_generated_import_lines` in the Rust suite.
-    const leaves = t.split("`").filter((_, i) => i % 2 === 1).map(p => p.split("::").pop() ?? p);
-    if (leaves.length > 0 && leaves.every(l => l === "Serialize")) return "trait-residue";
-  }
   return null;
 }
 
