@@ -1108,6 +1108,20 @@ fn control_on_literal_head_rejects_gracefully() {
     }
 }
 
+#[test]
+fn plain_group_table_domain_reports_only_the_domain_refusal() {
+    let msg = expect_graceful_rejection(
+        "plain_group_table_domain",
+        "kv = (a: uint, b: tstr)\na = { * int => kv }\nm = { kv }\n",
+        &["--wasm=false"],
+    );
+    assert!(
+        msg.contains("uses the bare plain group `kv` as its VALUE domain"),
+        "{msg}"
+    );
+    assert!(!msg.contains("conflicting representations"), "{msg}");
+}
+
 /// Child half of the warning-capture regression. `warn!` writes directly to stderr, so an
 /// in-process assertion cannot observe it without changing the production logging seam.
 #[test]

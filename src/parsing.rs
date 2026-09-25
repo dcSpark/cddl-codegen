@@ -10064,22 +10064,6 @@ fn parse_group_choice(
             // LIVE — the policy rides the transparent alias built in `register_rust_struct`,
             // swapping the member to the `PairMap`/`NonEmptyPairMap` vec-of-pairs twin. That is the
             // RULE slot's reading; the row slot's is rejected above.
-            // A plain group used as a table key or value (`pair = (int, tstr)`, `a = { * int =>
-            // pair }`) is refused by `parse_group_type` (`record_plain_group_table_domain_rejection`):
-            // a map slot holds one CBOR item. That rejection is drained at `finalize`, so this
-            // Array-rep registration of such a group never reaches generation.
-            for member in [&key_type, &value_type] {
-                if member.generic_param_binding.is_none()
-                    && let ConceptualRustType::Rust(member_ident) = &member.conceptual_type
-                {
-                    types.set_rep_if_plain_group(
-                        parent_visitor,
-                        member_ident,
-                        Representation::Array,
-                        cli,
-                    );
-                }
-            }
             // A tag forces the wrapper for the reason the array sibling above states: a tagged
             // transparent map alias drops the tag from the rule's own standalone
             // `to/from_cbor_bytes` while every embed site writes and requires it. This holds for
