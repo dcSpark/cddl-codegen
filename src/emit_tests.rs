@@ -66,11 +66,11 @@ type Bounds = (Option<i128>, Option<i128>);
 // ============================================================================================
 // The MINT-VALUE data layer. Value derivation (`valid_value`/`materialize`/`mint_struct` and the
 // `bound_cases` boundary triples) produces this abstract tree; a renderer turns it into source.
-// `render_rust` reproduces the rust-crate API strings byte-for-byte. The wasm renderer
-// (`emit_tests_wasm`: `wasm_value`/`wasm_arg` for the wrapper API, `rust_scoped` for its
-// `cddl_lib::` twin) targets the wasm crate from the SAME tree, so a single derivation surface
-// feeds both crates' emitted tests. Kept only as abstract as those renderers need — deliberately
-// NOT a general codegen IR.
+// The native renderer family (`render_rust`/`render_value`, `render_rust_for_direct_storage`,
+// `render_rust_for_named`) serves BOTH crates' native spellings through `TypePaths`: bare in this
+// crate's tests, `cddl_lib::`-scoped for the wasm tests' independent rust twin. `emit_tests_wasm`
+// adds only the wrapper-API renderer (`wasm_value`/`wasm_arg`). Kept only as abstract as those
+// renderers need — deliberately NOT a general codegen IR.
 // ============================================================================================
 
 /// The synthesized-key kind for a minted map (distinct keys `key_base..key_base+count`).
@@ -304,10 +304,7 @@ fn render_value(mv: &MintValue, paths: TypePaths) -> String {
     }
 }
 
-pub(crate) fn render_rust_array(
-    mv: &MintValue,
-    render_elem: &dyn Fn(&MintValue) -> String,
-) -> String {
+fn render_rust_array(mv: &MintValue, render_elem: &dyn Fn(&MintValue) -> String) -> String {
     let MintValue::Array {
         elem,
         count,
@@ -359,7 +356,7 @@ pub(crate) fn render_rust_array(
     }
 }
 
-pub(crate) fn render_rust_map(
+fn render_rust_map(
     mv: &MintValue,
     render_key: &dyn Fn(String) -> String,
     render_val: &dyn Fn(&MintValue) -> String,

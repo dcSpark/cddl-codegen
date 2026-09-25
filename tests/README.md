@@ -3845,7 +3845,9 @@ code. Cite one of them, not `check.ts fast`.
 With `--wasm=true`, `--emit-tests` also emits a `#[cfg(test)] mod cddl_generated_wasm_tests` into the
 generated **wasm** crate. It's a *second renderer* over the same `emit_tests::MintValue` derivation
 surface the rust harness uses (the derivation is the single maintained thing; the two renderers —
-rust-API strings vs wasm-wrapper-API strings — read from it). The teeth, per mintable type:
+rust-API strings vs wasm-wrapper-API strings — read from it). Its independent `cddl_lib::`
+twin uses the rust harness's native renderer family under `TypePaths::Scoped`, so the two crates'
+native spellings cannot drift. The teeth, per mintable type:
 
 1. **Cross-crate byte differential** — build the value through the wasm wrapper ctor/`new_*` AND,
    independently, through the `cddl_lib::` rust ctor (the wasm crate path-depends on it), then assert
