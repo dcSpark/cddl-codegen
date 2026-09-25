@@ -390,13 +390,20 @@ fn generate_array_segment_deserialization(
         vec![]
     };
     let elem_var_name = format!("{}_elem", rest.field_name);
+    // An exact-zero middle window has no decoder loop at all: its next item is the mandatory
+    // suffix, and the shared checked-carrier conversion below validates the staged empty Vec.
+    // Omitting the statically-false loop also avoids emitting an always-false comparison in every
+    // generated crate. With no loop nothing pushes, so its staging Vecs are bound immutably.
+    let exact_zero_middle = is_middle && rest.occurrence.is_some_and(|(_, max)| max == 0);
+    let staging_mut = if exact_zero_middle { "" } else { "mut " };
     if rest.semantics == RestSemantics::Capture {
-        deser_code
-            .content
-            .line(&format!("let mut {} = Vec::new();", rest.field_name));
+        deser_code.content.line(&format!(
+            "let {staging_mut}{} = Vec::new();",
+            rest.field_name
+        ));
         if !elem_encs.is_empty() {
             deser_code.content.line(&format!(
-                "let mut {}_elem_encodings = Vec::new();",
+                "let {staging_mut}{}_elem_encodings = Vec::new();",
                 rest.field_name
             ));
         }
@@ -429,7 +436,13 @@ fn generate_array_segment_deserialization(
         // Finalization proved that every possible-next value lies outside the repeated element's
         // finite fixed-value domain. The body attempts the repeated decoder once and restores the
         // cursor only on its error, leaving the later member for its ordinary generated decoder.
-        format!("({owner_has_more}){maximum_clause}")
+        // A lone owner-boundary match needs no grouping (rustc `unused_parens`); the parentheses
+        // are load-bearing only in front of an `&&` clause.
+        if maximum_clause.is_empty() {
+            owner_has_more
+        } else {
+            format!("({owner_has_more}){maximum_clause}")
+        }
     } else if is_middle {
         // Finalization admitted this variable middle segment only after deriving its effective
         // wire majors. A transparent custom alias's declaration therefore replaces the Rust type
@@ -461,11 +474,6 @@ fn generate_array_segment_deserialization(
     } else {
         owner_has_more
     };
-    // An exact-zero middle window has no decoder loop at all: its next item is the mandatory
-    // suffix, and the shared checked-carrier conversion below validates the staged empty Vec.
-    // Omitting the statically-false loop also avoids emitting an always-false comparison in every
-    // generated crate.
-    let exact_zero_middle = is_middle && rest.occurrence.is_some_and(|(_, max)| max == 0);
     if !exact_zero_middle {
         let mut segment_loop = Block::new(format!("while {loop_condition}"));
         if let Some(retry_position) = fixed_domain_retry_position {

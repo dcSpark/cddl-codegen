@@ -115,10 +115,10 @@ impl Deserialize for FiniteDomainChainOccurrence {
             let len = raw.array()?;
             let mut read_len = CBORReadLen::from(len);
             let mut first = Vec::new();
-            while (match len {
+            while match len {
                 cbor_event::Len::Len(n) => read_len.read() < n,
                 cbor_event::Len::Indefinite => raw.as_slice().first() != Some(&0xff),
-            }) {
+            } {
                 let first_retry_position = raw.position();
                 if (|| -> Result<(), DeserializeError> {
                     let first_elem = (|| -> Result<_, DeserializeError> {
@@ -170,12 +170,12 @@ impl Deserialize for FiniteDomainChainOccurrence {
                 }
                 read_len.read_elems(1)?;
             }
-            let mut skipped = Vec::new();
+            let skipped = Vec::new();
             let mut second = Vec::new();
-            while (match len {
+            while match len {
                 cbor_event::Len::Len(n) => read_len.read() < n,
                 cbor_event::Len::Indefinite => raw.as_slice().first() != Some(&0xff),
-            }) {
+            } {
                 let second_retry_position = raw.position();
                 if (|| -> Result<(), DeserializeError> {
                     let second_elem = (|| -> Result<_, DeserializeError> {
