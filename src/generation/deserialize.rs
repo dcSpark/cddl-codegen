@@ -335,7 +335,7 @@ impl<'a> DeserializeBeforeAfter<'a> {
 /// Emit the unit `()` — the value of a construct that only VERIFIES and stores nothing — through a
 /// caller's `before`/`after` wrapper, or emit nothing at all when the position DISCARDS it.
 ///
-/// The suppression is the same one the preserve-side fixed Null/Bool arms apply, for the same two
+/// The suppression is the same one [`line_verified_unit`] applies under preserve-encodings, for the same two
 /// reasons: a discarded `();` is a `clippy::no_effect` finding in every consumer's regenerated
 /// crate, and at a block tail the missing line is not missing at all — a block with no tail
 /// expression already evaluates to `()`.
@@ -346,6 +346,163 @@ fn line_unit_value(deser_code: &mut DeserializationCode, before_after: &Deserial
             before_after.before_str(false),
             before_after.after_str(false)
         ));
+    }
+}
+
+/// Under `--preserve-encodings`, emit the value of a verified constant that has no encoding of its
+/// own (`null`, `undefined`, `true`/`false`) through the caller's wrapper.
+///
+/// A WRAPPING path may already have pushed exprs into `final_exprs` (a CBOR tag pushes its
+/// tag-encoding expr before recursing), so the value splits:
+/// - `final_exprs` EMPTY: the value is the unit `()`, passed explicitly; otherwise the final expr
+///   collapses to empty and, under `expects_result`, emits `Ok()` (E0061) instead of `Ok(())`.
+/// - `final_exprs` NON-empty: the value is the encoding expr(s) alone (e.g. `Some(tag_enc)` bound to
+///   a single `let v_tag_encoding = ...`); inserting `()` would mis-shape it into
+///   `((), Some(tag_enc))` (E0308, seen with `[v: #6.1(null), x: uint]`).
+///
+/// When the value is the unit AND the position discards it, no line is emitted: a block with no
+/// tail expression already evaluates to `()`, while a bare `();` is a `clippy::no_effect` finding in
+/// every consumer's regenerated crate. (Without encodings, [`line_unit_value`] covers the same
+/// constants.)
+fn line_verified_unit(
+    deser_code: &mut DeserializationCode,
+    before_after: &DeserializeBeforeAfter,
+    final_exprs: Vec<String>,
+) {
+    let unit_if_no_encs = final_exprs.is_empty().then(|| "()".to_owned());
+    if !(unit_if_no_encs.is_some() && before_after.discards_value()) {
+        deser_code.content.line(&format!(
+            "{}{}{}",
+            before_after.before_str(false),
+            tuple_str(unit_if_no_encs.into_iter().chain(final_exprs).collect()),
+            before_after.after_str(false)
+        ));
+    }
+}
+
+/// How one fixed scalar constant is read and verified: the columns in which the `Fixed` decode's
+/// value arms differ. `null` and `undefined` are specials with no value to compare and have none.
+struct FixedValueCheck {
+    /// The `cbor_event` reader; its `_sz` twin additionally returns the encoding.
+    reader: &'static str,
+    /// Read through the `_sz` twin even without encodings, discarding the width.
+    sz_without_encodings: bool,
+    /// The condition under which `{var}_value` is NOT the constant.
+    mismatch: String,
+    /// The `Key` constructor on both sides of `FixedValueMismatch`.
+    key_ctor: &'static str,
+    /// The constant as that constructor's payload.
+    expected_key: String,
+    /// Wraps `{var}_encoding` into the preserve-encodings final expr. `None` for a value with no
+    /// encoding variation (bool), whose preserve value is the unit (see [`line_verified_unit`]).
+    encoding_wrap: Option<&'static str>,
+}
+
+impl FixedValueCheck {
+    fn new(value: &FixedValue, var_name: &str) -> Option<Self> {
+        let compared = |reader, key_ctor, expected: String, encoding_wrap| Self {
+            reader,
+            sz_without_encodings: false,
+            mismatch: format!("{var_name}_value != {expected}"),
+            key_ctor,
+            expected_key: expected,
+            encoding_wrap: Some(encoding_wrap),
+        };
+        Some(match value {
+            FixedValue::Null | FixedValue::Undefined => return None,
+            FixedValue::Uint(x) => compared("unsigned_integer", "Uint", x.to_string(), "Some"),
+            // `_sz` in both profiles: the plain `negative_integer()` has incomplete nint support.
+            // It yields `(i128, Sz)`, so `{var}_value` is already `i128` and feeds `Key::Nint`
+            // directly. Both sides name the value the CDDL AUTHORED (`-7`), not the nint wire
+            // representation (`-1-N`, i.e. `6`) a u64-only `Key` would have forced.
+            FixedValue::Nint(x) => Self {
+                sz_without_encodings: true,
+                ..compared("negative_integer", "Nint", x.to_string(), "Some")
+            },
+            FixedValue::Text(x) => {
+                let literal = format!("\"{}\"", escape_rust_str(x));
+                Self {
+                    expected_key: format!("String::from({literal})"),
+                    ..compared("text", "Str", literal, "StringEncoding::from")
+                }
+            }
+            FixedValue::Bytes(x) => compared(
+                "bytes",
+                "Bytes",
+                FixedValue::bytes_rust_expr(x),
+                "StringEncoding::from",
+            ),
+            // float_literal, not Display: `{}` on a whole-valued f64 drops the decimal point
+            // (3.0 -> "3"), emitting integer literals in the f64 compare and Key::Float positions
+            // (E0308).
+            FixedValue::Float(x) => compared("float", "Float", float_fixed_literal(*x), "Some"),
+            // A bool special has no encoding variation (unlike int/text `_sz` widths), so there is
+            // no encoding var to thread. `.bool()?` is unambiguous here: statement position binds
+            // the Ok type (bool) and the `?` converts the CBOR error (the inference hazard the
+            // `Primitive::Bool` arm documents only bites in element/push position).
+            //
+            // `x != true` / `x != false` are `clippy::bool_comparison` findings in every consumer's
+            // regenerated crate (inside this repo's own `generated_code_clippy_clean` deny set), so
+            // the mismatch test is spelled as the negation / the identity. The failure payload
+            // still names the AUTHORED constant on both sides.
+            FixedValue::Bool(b) => Self {
+                reader: "bool",
+                sz_without_encodings: false,
+                mismatch: if *b {
+                    format!("!{var_name}_value")
+                } else {
+                    format!("{var_name}_value")
+                },
+                key_ctor: "Bool",
+                expected_key: b.to_string(),
+                encoding_wrap: None,
+            },
+        })
+    }
+}
+
+/// Read a fixed scalar through `deserializer_name`, reject any other value with
+/// `FixedValueMismatch`, and under `--preserve-encodings` emit its value (its encoding, after any
+/// the caller already pushed) through the caller's wrapper. Without encodings the caller emits the
+/// unit value.
+fn emit_fixed_value_check(
+    deser_code: &mut DeserializationCode,
+    check: &FixedValueCheck,
+    deserializer_name: &str,
+    var_name: &str,
+    before_after: &DeserializeBeforeAfter,
+    mut final_exprs: Vec<String>,
+    cli: &Cli,
+) {
+    let reader = check.reader;
+    let with_encoding = cli.preserve_encodings && check.encoding_wrap.is_some();
+    deser_code.content.line(&if with_encoding {
+        format!("let ({var_name}_value, {var_name}_encoding) = {deserializer_name}.{reader}_sz()?;")
+    } else if check.sz_without_encodings {
+        format!("let ({var_name}_value, _) = {deserializer_name}.{reader}_sz()?;")
+    } else {
+        format!("let {var_name}_value = {deserializer_name}.{reader}()?;")
+    });
+    let mut compare_block = Block::new(format!("if {}", check.mismatch));
+    compare_block.line(format!(
+        "return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::{ctor}({var_name}_value), expected: Key::{ctor}({expected}) }}.into());",
+        ctor = check.key_ctor,
+        expected = check.expected_key
+    ));
+    deser_code.content.push_block(compare_block);
+    if cli.preserve_encodings {
+        match check.encoding_wrap {
+            Some(wrap) => {
+                final_exprs.push(format!("{wrap}({var_name}_encoding)"));
+                deser_code.content.line(&format!(
+                    "{}{}{}",
+                    before_after.before_str(false),
+                    tuple_str(final_exprs),
+                    before_after.after_str(false)
+                ));
+            }
+            None => line_verified_unit(deser_code, before_after, final_exprs),
+        }
     }
 }
 
@@ -849,269 +1006,39 @@ impl GenerationScope {
                         deser_code.throws = true;
                         deser_code.read_len_used = true;
                     }
-                    match f {
-                        FixedValue::Null => {
+                    match FixedValueCheck::new(f, config.var_name) {
+                        Some(check) => emit_fixed_value_check(
+                            &mut deser_code,
+                            &check,
+                            deserializer_name,
+                            config.var_name,
+                            &before_after,
+                            config.final_exprs,
+                            cli,
+                        ),
+                        // `null` / `undefined` (the only values `new` declines): a special
+                        // with no value to compare.
+                        None => {
+                            let (special, failure) = if matches!(f, FixedValue::Null) {
+                                ("Null", "ExpectedNull")
+                            } else {
+                                ("Undefined", "ExpectedUndefined")
+                            };
                             let mut special_block = Block::new(format!(
-                                "if {deserializer_name}.special()? != cbor_event::Special::Null"
+                                "if {deserializer_name}.special()? != cbor_event::Special::{special}"
                             ));
                             special_block
-                                .line("return Err(DeserializeFailure::ExpectedNull.into());");
+                                .line(format!("return Err(DeserializeFailure::{failure}.into());"));
                             deser_code.content.push_block(special_block);
                             if cli.preserve_encodings {
-                                // A fixed null/bool contributes no encoding var of its own, but a
-                                // WRAPPING path may already have pushed exprs into final_exprs (a
-                                // CBOR tag pushes its tag-encoding expr before recursing). Split:
-                                // - final_exprs EMPTY: the block's value is the unit `()` — pass it
-                                //   explicitly, else the final expr collapses to empty and, under
-                                //   `expects_result`, emits `Ok()` (E0061) instead of `Ok(())`.
-                                //   (Non-preserve appends `Ok(())` below; preserve produces it here.)
-                                // - final_exprs NON-empty: pass None — the value is the encoding
-                                //   expr(s) alone (e.g. `Some(tag_enc)` bound to a single
-                                //   `let v_tag_encoding = ...`); inserting `()` would mis-shape it
-                                //   into `((), Some(tag_enc))` (E0308, seen with
-                                //   `[v: #6.1(null), x: uint]`).
-                                let unit_if_no_encs =
-                                    config.final_exprs.is_empty().then(|| "()".to_owned());
-                                // ...and when the value is unit AND nothing consumes it, emit no
-                                // value line at all: a block with no tail expression already
-                                // evaluates to `()`, while a bare `();` is a `clippy::no_effect`
-                                // finding in every consumer's regenerated crate.
-                                if !(unit_if_no_encs.is_some() && before_after.discards_value()) {
-                                    deser_code.content.line(&format!(
-                                        "{}{}{}",
-                                        before_after.before_str(false),
-                                        final_expr(config.final_exprs, unit_if_no_encs),
-                                        before_after.after_str(false)
-                                    ));
-                                }
+                                line_verified_unit(
+                                    &mut deser_code,
+                                    &before_after,
+                                    config.final_exprs,
+                                );
                             }
                         }
-                        FixedValue::Undefined => {
-                            let mut special_block = Block::new(format!(
-                                "if {}.special()? != cbor_event::Special::Undefined",
-                                deserializer_name
-                            ));
-                            special_block
-                                .line("return Err(DeserializeFailure::ExpectedUndefined.into());");
-                            deser_code.content.push_block(special_block);
-                            if cli.preserve_encodings {
-                                let unit_if_no_encs =
-                                    config.final_exprs.is_empty().then(|| "()".to_owned());
-                                if !(unit_if_no_encs.is_some() && before_after.discards_value()) {
-                                    deser_code.content.line(&format!(
-                                        "{}{}{}",
-                                        before_after.before_str(false),
-                                        final_expr(config.final_exprs, unit_if_no_encs),
-                                        before_after.after_str(false)
-                                    ));
-                                }
-                            }
-                        }
-                        FixedValue::Uint(x) => {
-                            if cli.preserve_encodings {
-                                deser_code.content.line(&format!(
-                                    "let ({}_value, {}_encoding) = {}.unsigned_integer_sz()?;",
-                                    config.var_name, config.var_name, deserializer_name
-                                ));
-                            } else {
-                                deser_code.content.line(&format!(
-                                    "let {}_value = {}.unsigned_integer()?;",
-                                    config.var_name, deserializer_name
-                                ));
-                            }
-                            let mut compare_block =
-                                Block::new(format!("if {}_value != {}", config.var_name, x));
-                            compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Uint({}_value), expected: Key::Uint({}) }}.into());", config.var_name, x));
-                            deser_code.content.push_block(compare_block);
-                            if cli.preserve_encodings {
-                                config
-                                    .final_exprs
-                                    .push(format!("Some({}_encoding)", config.var_name));
-                                deser_code.content.line(&format!(
-                                    "{}{}{}",
-                                    before_after.before_str(false),
-                                    final_expr(config.final_exprs, None),
-                                    before_after.after_str(false)
-                                ));
-                            }
-                        }
-                        FixedValue::Nint(x) => {
-                            if cli.preserve_encodings {
-                                deser_code.content.line(&format!(
-                                    "let ({}_value, {}_encoding) = {}.negative_integer_sz()?;",
-                                    config.var_name, config.var_name, deserializer_name
-                                ));
-                            } else {
-                                // we use the _sz variant here too to get around imcomplete nint support in the regular negative_integer()
-                                deser_code.content.line(&format!(
-                                    "let ({}_value, _) = {}.negative_integer_sz()?;",
-                                    config.var_name, deserializer_name
-                                ));
-                            }
-                            let mut compare_block =
-                                Block::new(format!("if {}_value != {}", config.var_name, x));
-                            // `negative_integer_sz()` yields `(i128, Sz)`, so `{var}_value` is
-                            // already `i128` in both profiles and feeds `Key::Nint` directly. Both
-                            // sides name the value the CDDL AUTHORED (`-7`), not the nint wire
-                            // representation (`-1-N`, i.e. `6`) a u64-only `Key` would have forced.
-                            compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Nint({}_value), expected: Key::Nint({}) }}.into());", config.var_name, x));
-                            deser_code.content.push_block(compare_block);
-                            if cli.preserve_encodings {
-                                config
-                                    .final_exprs
-                                    .push(format!("Some({}_encoding)", config.var_name));
-                                deser_code.content.line(&format!(
-                                    "{}{}{}",
-                                    before_after.before_str(false),
-                                    final_expr(config.final_exprs, None),
-                                    before_after.after_str(false)
-                                ));
-                            }
-                        }
-                        FixedValue::Text(x) => {
-                            if cli.preserve_encodings {
-                                deser_code.content.line(&format!(
-                                    "let ({}_value, {}_encoding) = {}.text_sz()?;",
-                                    config.var_name, config.var_name, deserializer_name
-                                ));
-                            } else {
-                                deser_code.content.line(&format!(
-                                    "let {}_value = {}.text()?;",
-                                    config.var_name, deserializer_name
-                                ));
-                            }
-                            let mut compare_block = Block::new(format!(
-                                "if {}_value != \"{}\"",
-                                config.var_name,
-                                escape_rust_str(x)
-                            ));
-                            compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Str({}_value), expected: Key::Str(String::from(\"{}\")) }}.into());", config.var_name, escape_rust_str(x)));
-                            deser_code.content.push_block(compare_block);
-                            if cli.preserve_encodings {
-                                config.final_exprs.push(format!(
-                                    "StringEncoding::from({}_encoding)",
-                                    config.var_name
-                                ));
-                                deser_code.content.line(&format!(
-                                    "{}{}{}",
-                                    before_after.before_str(false),
-                                    final_expr(config.final_exprs, None),
-                                    before_after.after_str(false)
-                                ));
-                            }
-                        }
-                        FixedValue::Bytes(x) => {
-                            if cli.preserve_encodings {
-                                deser_code.content.line(&format!(
-                                    "let ({}_value, {}_encoding) = {}.bytes_sz()?;",
-                                    config.var_name, config.var_name, deserializer_name
-                                ));
-                            } else {
-                                deser_code.content.line(&format!(
-                                    "let {}_value = {}.bytes()?;",
-                                    config.var_name, deserializer_name
-                                ));
-                            }
-                            let expected = FixedValue::bytes_rust_expr(x);
-                            let mut compare_block =
-                                Block::new(format!("if {}_value != {}", config.var_name, expected));
-                            compare_block.line(format!(
-                                "return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Bytes({}_value), expected: Key::Bytes({}) }}.into());",
-                                config.var_name, expected
-                            ));
-                            deser_code.content.push_block(compare_block);
-                            if cli.preserve_encodings {
-                                config.final_exprs.push(format!(
-                                    "StringEncoding::from({}_encoding)",
-                                    config.var_name
-                                ));
-                                deser_code.content.line(&format!(
-                                    "{}{}{}",
-                                    before_after.before_str(false),
-                                    final_expr(config.final_exprs, None),
-                                    before_after.after_str(false)
-                                ));
-                            }
-                        }
-                        FixedValue::Float(x) => {
-                            if cli.preserve_encodings {
-                                deser_code.content.line(&format!(
-                                    "let ({}_value, {}_encoding) = {}.float_sz()?;",
-                                    config.var_name, config.var_name, deserializer_name
-                                ));
-                            } else {
-                                deser_code.content.line(&format!(
-                                    "let {}_value = {}.float()?;",
-                                    config.var_name, deserializer_name
-                                ));
-                            }
-                            // float_literal, not Display: `{}` on a whole-valued f64 drops the
-                            // decimal point (3.0 -> "3"), emitting integer literals in the f64
-                            // compare and Key::Float positions (E0308).
-                            let mut compare_block = Block::new(format!(
-                                "if {}_value != {}",
-                                config.var_name,
-                                float_fixed_literal(*x)
-                            ));
-                            compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Float({}_value), expected: Key::Float({}) }}.into());", config.var_name, float_fixed_literal(*x)));
-                            deser_code.content.push_block(compare_block);
-                            if cli.preserve_encodings {
-                                config
-                                    .final_exprs
-                                    .push(format!("Some({}_encoding)", config.var_name));
-                                deser_code.content.line(&format!(
-                                    "{}{}{}",
-                                    before_after.before_str(false),
-                                    final_expr(config.final_exprs, None),
-                                    before_after.after_str(false)
-                                ));
-                            }
-                        }
-                        FixedValue::Bool(b) => {
-                            // A bool special has no encoding variation (unlike int/text `_sz`
-                            // widths), so — like the Null arm — there is no encoding var to
-                            // thread; just verify. `.bool()?` is unambiguous here: statement
-                            // position binds the Ok type (bool) and the `?` converts the CBOR
-                            // error, the same shape the Uint arm's `.unsigned_integer()?` uses
-                            // (the inference hazard the `Primitive::Bool` arm documents only bites
-                            // in element/push position).
-                            deser_code.content.line(&format!(
-                                "let {}_value = {}.bool()?;",
-                                config.var_name, deserializer_name
-                            ));
-                            // `x != true` / `x != false` are `clippy::bool_comparison` findings in
-                            // every consumer's regenerated crate (inside this repo's own
-                            // `generated_code_clippy_clean` deny set), so spell the mismatch test
-                            // as the negation / the identity. Same predicate, and the failure
-                            // payload below still names the AUTHORED constant on both sides.
-                            let mut compare_block = Block::new(if *b {
-                                format!("if !{}_value", config.var_name)
-                            } else {
-                                format!("if {}_value", config.var_name)
-                            });
-                            compare_block.line(format!("return Err(DeserializeFailure::FixedValueMismatch{{ found: Key::Bool({}_value), expected: Key::Bool({}) }}.into());", config.var_name, b));
-                            deser_code.content.push_block(compare_block);
-                            if cli.preserve_encodings {
-                                // No encoding var for a bool special, but a wrapping tag may have
-                                // pushed into final_exprs — same empty/non-empty split as the
-                                // FixedValue::Null arm: unit `()` only when final_exprs is empty
-                                // (else `Ok()` E0061); None when non-empty (else `((), tag_enc)`
-                                // E0308).
-                                let unit_if_no_encs =
-                                    config.final_exprs.is_empty().then(|| "()".to_owned());
-                                // Same discard suppression as the Null arm: an unconsumed unit
-                                // value would emit a degenerate `();` statement.
-                                if !(unit_if_no_encs.is_some() && before_after.discards_value()) {
-                                    deser_code.content.line(&format!(
-                                        "{}{}{}",
-                                        before_after.before_str(false),
-                                        final_expr(config.final_exprs, unit_if_no_encs),
-                                        before_after.after_str(false)
-                                    ));
-                                }
-                            }
-                        }
-                    };
+                    }
                     deser_code.throws = true;
                     // The verified constant's value is the unit `()`, emitted through the caller's
                     // wrapper — which yields `Ok(())` for a block that must evaluate to a Result.
