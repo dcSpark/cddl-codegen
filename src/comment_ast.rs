@@ -1088,1117 +1088,870 @@ pub fn metadata_from_comments(comments: &[&str]) -> RuleMetadata {
     result
 }
 
-#[test]
-fn parse_comment_name() {
-    assert_eq!(
-        rule_metadata("@name foo"),
-        Ok((
-            "",
-            RuleMetadata {
-                name: Some("foo".to_string()),
-                rust_name: None,
-                newtype: None,
-                no_alias: false,
-                key_demand: None,
-                used_as_elem: false,
-                copy: false,
-                raw_bytes_flavor: false,
-                ignore: false,
-                duplicates: None,
-                custom_json: false,
-                no_json_schema_export: false,
-                custom_serialize: None,
-                custom_deserialize: None,
-                custom_encodings: None,
-                custom_wire_major: None,
-                extern_companions: None,
-                comment: None,
-            }
-        ))
-    );
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-#[test]
-fn parse_comment_newtype() {
-    assert_eq!(
-        rule_metadata("@newtype"),
-        Ok((
-            "",
-            RuleMetadata {
-                name: None,
-                rust_name: None,
-                newtype: Some(None),
-                no_alias: false,
-                key_demand: None,
-                used_as_elem: false,
-                copy: false,
-                raw_bytes_flavor: false,
-                ignore: false,
-                duplicates: None,
-                custom_json: false,
-                no_json_schema_export: false,
-                custom_serialize: None,
-                custom_deserialize: None,
-                custom_encodings: None,
-                custom_wire_major: None,
-                extern_companions: None,
-                comment: None,
-            }
-        ))
-    );
-}
+    #[test]
+    fn parse_comment_name() {
+        assert_eq!(
+            rule_metadata("@name foo"),
+            Ok((
+                "",
+                RuleMetadata {
+                    name: Some("foo".to_string()),
+                    ..Default::default()
+                }
+            ))
+        );
+    }
 
-#[test]
-fn parse_comment_newtype_getter_before() {
-    assert_eq!(
-        rule_metadata("@newtype custom_getter @used_as_key"),
-        Ok((
-            "",
-            RuleMetadata {
-                name: None,
-                rust_name: None,
-                newtype: Some(Some("custom_getter".to_owned())),
-                no_alias: false,
-                key_demand: Some(DemandSet {
-                    bare: true,
-                    hash: false,
-                    ord: false
-                }),
-                used_as_elem: false,
-                copy: false,
-                raw_bytes_flavor: false,
-                ignore: false,
-                duplicates: None,
-                custom_json: false,
-                no_json_schema_export: false,
-                custom_serialize: None,
-                custom_deserialize: None,
-                custom_encodings: None,
-                custom_wire_major: None,
-                extern_companions: None,
-                comment: None,
-            }
-        ))
-    );
-}
+    #[test]
+    fn parse_comment_newtype() {
+        assert_eq!(
+            rule_metadata("@newtype"),
+            Ok((
+                "",
+                RuleMetadata {
+                    newtype: Some(None),
+                    ..Default::default()
+                }
+            ))
+        );
+    }
 
-/// The getter bound is syntactic, so it must not narrow the spellings that legitimately reach it.
-#[test]
-fn parse_comment_newtype_getter_underscore_ident() {
-    let md = rule_metadata("@newtype _inner").unwrap().1;
-    assert_eq!(md.newtype, Some(Some("_inner".to_owned())));
-}
+    #[test]
+    fn parse_comment_newtype_getter_before() {
+        assert_eq!(
+            rule_metadata("@newtype custom_getter @used_as_key"),
+            Ok((
+                "",
+                RuleMetadata {
+                    newtype: Some(Some("custom_getter".to_owned())),
+                    key_demand: Some(DemandSet {
+                        bare: true,
+                        hash: false,
+                        ord: false
+                    }),
+                    ..Default::default()
+                }
+            ))
+        );
+    }
 
-/// A CDDL comment runs to end of line, so the `;` in `; @newtype ; my comment` is comment CONTENT.
-/// Unbounded, the optional getter reads it and emits `pub fn ;(&self)` — invalid rust that surfaces
-/// as a rustfmt parse failure blaming the generator, a whole pipeline away from the spec line that
-/// caused it. Pinned loud at the cause instead.
-#[test]
-#[should_panic(expected = "@newtype: invalid getter name \";\"")]
-fn parse_comment_newtype_trailing_comment_is_not_a_getter() {
-    let _ = rule_metadata("@newtype    ; my comment");
-}
+    /// The getter bound is syntactic, so it must not narrow the spellings that legitimately reach it.
+    #[test]
+    fn parse_comment_newtype_getter_underscore_ident() {
+        let md = rule_metadata("@newtype _inner").unwrap().1;
+        assert_eq!(md.newtype, Some(Some("_inner".to_owned())));
+    }
 
-#[test]
-fn parse_comment_newtype_getter_after() {
-    assert_eq!(
-        rule_metadata("@used_as_key @newtype custom_getter"),
-        Ok((
-            "",
-            RuleMetadata {
-                name: None,
-                rust_name: None,
-                newtype: Some(Some("custom_getter".to_owned())),
-                no_alias: false,
-                key_demand: Some(DemandSet {
-                    bare: true,
-                    hash: false,
-                    ord: false
-                }),
-                used_as_elem: false,
-                copy: false,
-                raw_bytes_flavor: false,
-                ignore: false,
-                duplicates: None,
-                custom_json: false,
-                no_json_schema_export: false,
-                custom_serialize: None,
-                custom_deserialize: None,
-                custom_encodings: None,
-                custom_wire_major: None,
-                extern_companions: None,
-                comment: None,
-            }
-        ))
-    );
-}
+    /// A CDDL comment runs to end of line, so the `;` in `; @newtype ; my comment` is comment CONTENT.
+    /// Unbounded, the optional getter reads it and emits `pub fn ;(&self)` — invalid rust that surfaces
+    /// as a rustfmt parse failure blaming the generator, a whole pipeline away from the spec line that
+    /// caused it. Pinned loud at the cause instead.
+    #[test]
+    #[should_panic(expected = "@newtype: invalid getter name \";\"")]
+    fn parse_comment_newtype_trailing_comment_is_not_a_getter() {
+        let _ = rule_metadata("@newtype    ; my comment");
+    }
 
-#[test]
-fn parse_comment_newtype_and_name() {
-    assert_eq!(
-        rule_metadata("@newtype @name foo"),
-        Ok((
-            "",
-            RuleMetadata {
-                name: Some("foo".to_string()),
-                rust_name: None,
-                newtype: Some(None),
-                no_alias: false,
-                key_demand: None,
-                used_as_elem: false,
-                copy: false,
-                raw_bytes_flavor: false,
-                ignore: false,
-                duplicates: None,
-                custom_json: false,
-                no_json_schema_export: false,
-                custom_serialize: None,
-                custom_deserialize: None,
-                custom_encodings: None,
-                custom_wire_major: None,
-                extern_companions: None,
-                comment: None,
-            }
-        ))
-    );
-}
+    #[test]
+    fn parse_comment_newtype_getter_after() {
+        assert_eq!(
+            rule_metadata("@used_as_key @newtype custom_getter"),
+            Ok((
+                "",
+                RuleMetadata {
+                    newtype: Some(Some("custom_getter".to_owned())),
+                    key_demand: Some(DemandSet {
+                        bare: true,
+                        hash: false,
+                        ord: false
+                    }),
+                    ..Default::default()
+                }
+            ))
+        );
+    }
 
-#[test]
-fn parse_comment_newtype_and_name_and_used_as_key() {
-    assert_eq!(
-        rule_metadata("@newtype @used_as_key @name foo"),
-        Ok((
-            "",
-            RuleMetadata {
-                name: Some("foo".to_string()),
-                rust_name: None,
-                newtype: Some(None),
-                no_alias: false,
-                key_demand: Some(DemandSet {
-                    bare: true,
-                    hash: false,
-                    ord: false
-                }),
-                used_as_elem: false,
-                copy: false,
-                raw_bytes_flavor: false,
-                ignore: false,
-                duplicates: None,
-                custom_json: false,
-                no_json_schema_export: false,
-                custom_serialize: None,
-                custom_deserialize: None,
-                custom_encodings: None,
-                custom_wire_major: None,
-                extern_companions: None,
-                comment: None,
-            }
-        ))
-    );
-}
+    #[test]
+    fn parse_comment_newtype_and_name() {
+        assert_eq!(
+            rule_metadata("@newtype @name foo"),
+            Ok((
+                "",
+                RuleMetadata {
+                    name: Some("foo".to_string()),
+                    newtype: Some(None),
+                    ..Default::default()
+                }
+            ))
+        );
+    }
 
-#[test]
-fn parse_comment_used_as_key() {
-    assert_eq!(
-        rule_metadata("@used_as_key"),
-        Ok((
-            "",
-            RuleMetadata {
-                name: None,
-                rust_name: None,
-                newtype: None,
-                no_alias: false,
-                key_demand: Some(DemandSet {
-                    bare: true,
-                    hash: false,
-                    ord: false
-                }),
-                used_as_elem: false,
-                copy: false,
-                raw_bytes_flavor: false,
-                ignore: false,
-                duplicates: None,
-                custom_json: false,
-                no_json_schema_export: false,
-                custom_serialize: None,
-                custom_deserialize: None,
-                custom_encodings: None,
-                custom_wire_major: None,
-                extern_companions: None,
-                comment: None,
-            }
-        ))
-    );
-}
+    #[test]
+    fn parse_comment_newtype_and_name_and_used_as_key() {
+        assert_eq!(
+            rule_metadata("@newtype @used_as_key @name foo"),
+            Ok((
+                "",
+                RuleMetadata {
+                    name: Some("foo".to_string()),
+                    newtype: Some(None),
+                    key_demand: Some(DemandSet {
+                        bare: true,
+                        hash: false,
+                        ord: false
+                    }),
+                    ..Default::default()
+                }
+            ))
+        );
+    }
 
-#[test]
-fn parse_comment_used_as_key_hash() {
-    assert_eq!(
-        rule_metadata("@used_as_key hash").unwrap().1.key_demand,
-        Some(DemandSet {
-            bare: false,
-            hash: true,
-            ord: false
-        })
-    );
-}
+    #[test]
+    fn parse_comment_used_as_key() {
+        assert_eq!(
+            rule_metadata("@used_as_key"),
+            Ok((
+                "",
+                RuleMetadata {
+                    key_demand: Some(DemandSet {
+                        bare: true,
+                        hash: false,
+                        ord: false
+                    }),
+                    ..Default::default()
+                }
+            ))
+        );
+    }
 
-#[test]
-fn parse_comment_used_as_key_ord() {
-    assert_eq!(
-        rule_metadata("@used_as_key ord").unwrap().1.key_demand,
-        Some(DemandSet {
-            bare: false,
-            hash: false,
-            ord: true
-        })
-    );
-}
+    #[test]
+    fn parse_comment_used_as_key_hash() {
+        assert_eq!(
+            rule_metadata("@used_as_key hash").unwrap().1.key_demand,
+            Some(DemandSet {
+                bare: false,
+                hash: true,
+                ord: false
+            })
+        );
+    }
 
-#[test]
-fn parse_comment_used_as_key_hash_ord() {
-    assert_eq!(
-        rule_metadata("@used_as_key hash ord").unwrap().1.key_demand,
-        Some(DemandSet {
-            bare: false,
-            hash: true,
-            ord: true
-        })
-    );
-}
+    #[test]
+    fn parse_comment_used_as_key_ord() {
+        assert_eq!(
+            rule_metadata("@used_as_key ord").unwrap().1.key_demand,
+            Some(DemandSet {
+                bare: false,
+                hash: false,
+                ord: true
+            })
+        );
+    }
 
-// Flavor-word order does not matter (both fold into the same union).
-#[test]
-fn parse_comment_used_as_key_ord_hash_order_independent() {
-    assert_eq!(
-        rule_metadata("@used_as_key ord hash").unwrap().1.key_demand,
-        rule_metadata("@used_as_key hash ord").unwrap().1.key_demand,
-    );
-}
+    #[test]
+    fn parse_comment_used_as_key_hash_ord() {
+        assert_eq!(
+            rule_metadata("@used_as_key hash ord").unwrap().1.key_demand,
+            Some(DemandSet {
+                bare: false,
+                hash: true,
+                ord: true
+            })
+        );
+    }
 
-// A flavored tag stops at the next `@tag` — it must not swallow a following tag as a flavor word.
-#[test]
-fn parse_comment_used_as_key_hash_then_newtype() {
-    let md = rule_metadata("@used_as_key hash @newtype custom_getter")
-        .unwrap()
-        .1;
-    assert_eq!(
-        md.key_demand,
-        Some(DemandSet {
-            bare: false,
-            hash: true,
-            ord: false
-        })
-    );
-    assert_eq!(md.newtype, Some(Some("custom_getter".to_owned())));
-}
+    // Flavor-word order does not matter (both fold into the same union).
+    #[test]
+    fn parse_comment_used_as_key_ord_hash_order_independent() {
+        assert_eq!(
+            rule_metadata("@used_as_key ord hash").unwrap().1.key_demand,
+            rule_metadata("@used_as_key hash ord").unwrap().1.key_demand,
+        );
+    }
 
-// Two comment lines union their flavors (field-wise OR merge).
-#[test]
-fn merge_metadata_unions_key_demand_flavors() {
-    let hash = RuleMetadata {
-        key_demand: Some(DemandSet {
-            hash: true,
-            ..Default::default()
-        }),
-        ..Default::default()
-    };
-    let ord = RuleMetadata {
-        key_demand: Some(DemandSet {
-            ord: true,
-            ..Default::default()
-        }),
-        ..Default::default()
-    };
-    assert_eq!(
-        merge_metadata(&hash, &ord).key_demand,
-        Some(DemandSet {
-            bare: false,
-            hash: true,
-            ord: true
-        })
-    );
-}
-
-#[test]
-#[should_panic(expected = "unknown flavor")]
-fn parse_comment_used_as_key_unknown_flavor_panics() {
-    let _ = rule_metadata("@used_as_key hsah");
-}
-
-// Today-legal trailing prose after `@used_as_key` is now a hard error (prose belongs in `@doc`).
-#[test]
-#[should_panic(expected = "unknown flavor")]
-fn parse_comment_used_as_key_trailing_prose_panics() {
-    let _ = rule_metadata("@used_as_key marks the tx-out");
-}
-
-#[test]
-fn parse_comment_used_as_elem() {
-    assert_eq!(
-        rule_metadata("@used_as_elem"),
-        Ok((
-            "",
-            RuleMetadata {
-                name: None,
-                rust_name: None,
-                newtype: None,
-                no_alias: false,
-                key_demand: None,
-                used_as_elem: true,
-                copy: false,
-                raw_bytes_flavor: false,
-                ignore: false,
-                duplicates: None,
-                custom_json: false,
-                no_json_schema_export: false,
-                custom_serialize: None,
-                custom_deserialize: None,
-                custom_encodings: None,
-                custom_wire_major: None,
-                extern_companions: None,
-                comment: None,
-            }
-        ))
-    );
-}
-
-// `@used_as_elem` and `@used_as_key` are independent flags that can co-occur, in either order.
-#[test]
-fn parse_comment_used_as_elem_and_key() {
-    assert_eq!(
-        rule_metadata("@used_as_elem @used_as_key"),
-        Ok((
-            "",
-            RuleMetadata {
-                name: None,
-                rust_name: None,
-                newtype: None,
-                no_alias: false,
-                key_demand: Some(DemandSet {
-                    bare: true,
-                    hash: false,
-                    ord: false
-                }),
-                used_as_elem: true,
-                copy: false,
-                raw_bytes_flavor: false,
-                ignore: false,
-                duplicates: None,
-                custom_json: false,
-                no_json_schema_export: false,
-                custom_serialize: None,
-                custom_deserialize: None,
-                custom_encodings: None,
-                custom_wire_major: None,
-                extern_companions: None,
-                comment: None,
-            }
-        ))
-    );
-}
-
-#[test]
-fn parse_comment_used_as_key_and_elem_inverse() {
-    assert_eq!(
-        rule_metadata("@used_as_key @used_as_elem"),
-        Ok((
-            "",
-            RuleMetadata {
-                name: None,
-                rust_name: None,
-                newtype: None,
-                no_alias: false,
-                key_demand: Some(DemandSet {
-                    bare: true,
-                    hash: false,
-                    ord: false
-                }),
-                used_as_elem: true,
-                copy: false,
-                raw_bytes_flavor: false,
-                ignore: false,
-                duplicates: None,
-                custom_json: false,
-                no_json_schema_export: false,
-                custom_serialize: None,
-                custom_deserialize: None,
-                custom_encodings: None,
-                custom_wire_major: None,
-                extern_companions: None,
-                comment: None,
-            }
-        ))
-    );
-}
-
-// Ordering with a value-carrying tag (@newtype's optional getter) must not swallow @used_as_elem.
-#[test]
-fn parse_comment_newtype_getter_before_used_as_elem() {
-    assert_eq!(
-        rule_metadata("@newtype custom_getter @used_as_elem"),
-        Ok((
-            "",
-            RuleMetadata {
-                name: None,
-                rust_name: None,
-                newtype: Some(Some("custom_getter".to_owned())),
-                no_alias: false,
-                key_demand: None,
-                used_as_elem: true,
-                copy: false,
-                raw_bytes_flavor: false,
-                ignore: false,
-                duplicates: None,
-                custom_json: false,
-                no_json_schema_export: false,
-                custom_serialize: None,
-                custom_deserialize: None,
-                custom_encodings: None,
-                custom_wire_major: None,
-                extern_companions: None,
-                comment: None,
-            }
-        ))
-    );
-}
-
-#[test]
-fn parse_comment_used_as_elem_before_newtype_getter() {
-    assert_eq!(
-        rule_metadata("@used_as_elem @newtype custom_getter"),
-        Ok((
-            "",
-            RuleMetadata {
-                name: None,
-                rust_name: None,
-                newtype: Some(Some("custom_getter".to_owned())),
-                no_alias: false,
-                key_demand: None,
-                used_as_elem: true,
-                copy: false,
-                raw_bytes_flavor: false,
-                ignore: false,
-                duplicates: None,
-                custom_json: false,
-                no_json_schema_export: false,
-                custom_serialize: None,
-                custom_deserialize: None,
-                custom_encodings: None,
-                custom_wire_major: None,
-                extern_companions: None,
-                comment: None,
-            }
-        ))
-    );
-}
-
-// Merging two comment lines OR-folds the flag, matching @used_as_key's merge semantics.
-#[test]
-fn merge_metadata_ors_used_as_elem() {
-    let lhs = RuleMetadata {
-        used_as_elem: true,
-        ..Default::default()
-    };
-    let rhs = RuleMetadata::default();
-    assert!(merge_metadata(&lhs, &rhs).used_as_elem);
-    assert!(merge_metadata(&rhs, &lhs).used_as_elem);
-    assert!(!merge_metadata(&rhs, &rhs).used_as_elem);
-}
-
-#[test]
-fn parse_comment_raw_bytes_flavor() {
-    assert!(
-        rule_metadata("@raw_bytes_flavor")
+    // A flavored tag stops at the next `@tag` — it must not swallow a following tag as a flavor word.
+    #[test]
+    fn parse_comment_used_as_key_hash_then_newtype() {
+        let md = rule_metadata("@used_as_key hash @newtype custom_getter")
             .unwrap()
-            .1
-            .raw_bytes_flavor
-    );
-}
+            .1;
+        assert_eq!(
+            md.key_demand,
+            Some(DemandSet {
+                bare: false,
+                hash: true,
+                ord: false
+            })
+        );
+        assert_eq!(md.newtype, Some(Some("custom_getter".to_owned())));
+    }
 
-// `@raw_bytes_flavor` is an independent flag that co-occurs with other tags, in either order,
-// without swallowing them (mirrors `@used_as_elem`'s ordering coverage).
-#[test]
-fn parse_comment_raw_bytes_flavor_and_name() {
-    let md = rule_metadata("@raw_bytes_flavor @name foo").unwrap().1;
-    assert!(md.raw_bytes_flavor);
-    assert_eq!(md.name, Some("foo".to_string()));
-    let inverse = rule_metadata("@name foo @raw_bytes_flavor").unwrap().1;
-    assert!(inverse.raw_bytes_flavor);
-    assert_eq!(inverse.name, Some("foo".to_string()));
-}
-
-// Merging two comment lines OR-folds the flag, matching the other boolean tags' merge semantics.
-#[test]
-fn merge_metadata_ors_raw_bytes_flavor() {
-    let lhs = RuleMetadata {
-        raw_bytes_flavor: true,
-        ..Default::default()
-    };
-    let rhs = RuleMetadata::default();
-    assert!(merge_metadata(&lhs, &rhs).raw_bytes_flavor);
-    assert!(merge_metadata(&rhs, &lhs).raw_bytes_flavor);
-    assert!(!merge_metadata(&rhs, &rhs).raw_bytes_flavor);
-}
-
-#[test]
-fn parse_comment_copy() {
-    assert!(rule_metadata("@copy").unwrap().1.copy);
-}
-
-// `@ignore` is a bare no-arg flag (the open struct-map tolerate-and-drop rest-row flavor).
-#[test]
-fn parse_comment_ignore() {
-    assert!(rule_metadata("@ignore").unwrap().1.ignore);
-}
-
-// `@ignore` is an independent flag that co-occurs with other tags, in either order, without
-// swallowing them (mirrors `@copy`'s ordering coverage). Here it pairs with `@name`, which a rest
-// row also accepts — the two are read together off the same entry-trailing slot.
-#[test]
-fn parse_comment_ignore_and_name() {
-    let md = rule_metadata("@ignore @name foo").unwrap().1;
-    assert!(md.ignore);
-    assert_eq!(md.name, Some("foo".to_string()));
-    let inverse = rule_metadata("@name foo @ignore").unwrap().1;
-    assert!(inverse.ignore);
-    assert_eq!(inverse.name, Some("foo".to_string()));
-}
-
-// Merging two comment lines OR-folds the flag, matching the other boolean tags' merge semantics.
-#[test]
-fn merge_metadata_ors_ignore() {
-    let lhs = RuleMetadata {
-        ignore: true,
-        ..Default::default()
-    };
-    let rhs = RuleMetadata::default();
-    assert!(merge_metadata(&lhs, &rhs).ignore);
-    assert!(merge_metadata(&rhs, &lhs).ignore);
-    assert!(!merge_metadata(&rhs, &rhs).ignore);
-}
-
-// `@copy` is an independent flag that co-occurs with other tags, in either order, without
-// swallowing them (mirrors `@raw_bytes_flavor`'s ordering coverage).
-#[test]
-fn parse_comment_copy_and_name() {
-    let md = rule_metadata("@copy @name foo").unwrap().1;
-    assert!(md.copy);
-    assert_eq!(md.name, Some("foo".to_string()));
-    let inverse = rule_metadata("@name foo @copy").unwrap().1;
-    assert!(inverse.copy);
-    assert_eq!(inverse.name, Some("foo".to_string()));
-}
-
-// Merging two comment lines OR-folds the flag, matching the other boolean tags' merge semantics.
-#[test]
-fn merge_metadata_ors_copy() {
-    let lhs = RuleMetadata {
-        copy: true,
-        ..Default::default()
-    };
-    let rhs = RuleMetadata::default();
-    assert!(merge_metadata(&lhs, &rhs).copy);
-    assert!(merge_metadata(&rhs, &lhs).copy);
-    assert!(!merge_metadata(&rhs, &rhs).copy);
-}
-
-// `@duplicates` parses both values into the strict `DuplicatesPolicy` enum.
-#[test]
-fn parse_comment_duplicates_preserve() {
-    assert_eq!(
-        rule_metadata("@duplicates preserve").unwrap().1.duplicates,
-        Some(DuplicatesPolicy::Preserve)
-    );
-}
-
-#[test]
-fn parse_comment_duplicates_reject() {
-    assert_eq!(
-        rule_metadata("@duplicates reject").unwrap().1.duplicates,
-        Some(DuplicatesPolicy::Reject)
-    );
-}
-
-// `@duplicates` consumes exactly its one argument, so a directive AFTER it is still parsed and the
-// longer/other tags are not swallowed (mirrors the ordering coverage of the other arg-taking tags).
-#[test]
-fn parse_comment_duplicates_and_name() {
-    let md = rule_metadata("@duplicates reject @name foo").unwrap().1;
-    assert_eq!(md.duplicates, Some(DuplicatesPolicy::Reject));
-    assert_eq!(md.name, Some("foo".to_string()));
-    let inverse = rule_metadata("@name foo @duplicates preserve").unwrap().1;
-    assert_eq!(inverse.duplicates, Some(DuplicatesPolicy::Preserve));
-    assert_eq!(inverse.name, Some("foo".to_string()));
-}
-
-// A second `@duplicates` on the same rule is a hard error (the duplicate-key panic, like `@name`) —
-// the two values are mutually exclusive, so unioning them makes no sense.
-#[test]
-#[should_panic(expected = "\"duplicates\" specified twice")]
-fn parse_comment_duplicates_duplicate_panics() {
-    let _ = rule_metadata("@duplicates reject @duplicates preserve");
-}
-
-// Two comment lines carrying `@duplicates` also collide through the merge path (field-wise), not
-// only within a single line.
-#[test]
-#[should_panic(expected = "\"duplicates\" specified twice")]
-fn merge_metadata_duplicates_twice_panics() {
-    let a = RuleMetadata {
-        duplicates: Some(DuplicatesPolicy::Reject),
-        ..Default::default()
-    };
-    let b = RuleMetadata {
-        duplicates: Some(DuplicatesPolicy::Preserve),
-        ..Default::default()
-    };
-    let _ = merge_metadata(&a, &b);
-}
-
-// An unknown argument is a hard error (matching `@used_as_key`'s unknown-flavor loudness), never a
-// silent metadata drop.
-#[test]
-#[should_panic(expected = "unknown argument")]
-fn parse_comment_duplicates_unknown_arg_panics() {
-    let _ = rule_metadata("@duplicates allow");
-}
-
-// A missing argument is also a hard error — `@duplicates` has no meaningful bare form.
-#[test]
-#[should_panic(expected = "missing required argument")]
-fn parse_comment_duplicates_missing_arg_panics() {
-    let _ = rule_metadata("@duplicates");
-}
-
-// A following directive counts as "missing argument" (the arg vocabulary never matches a `@tag`).
-#[test]
-#[should_panic(expected = "missing required argument")]
-fn parse_comment_duplicates_missing_arg_before_tag_panics() {
-    let _ = rule_metadata("@duplicates @newtype");
-}
-
-#[test]
-fn parse_comment_newtype_and_name_inverse() {
-    assert_eq!(
-        rule_metadata("@name foo @newtype"),
-        Ok((
-            "",
-            RuleMetadata {
-                name: Some("foo".to_string()),
-                rust_name: None,
-                newtype: Some(None),
-                no_alias: false,
-                key_demand: None,
-                used_as_elem: false,
-                copy: false,
-                raw_bytes_flavor: false,
-                ignore: false,
-                duplicates: None,
-                custom_json: false,
-                no_json_schema_export: false,
-                custom_serialize: None,
-                custom_deserialize: None,
-                custom_encodings: None,
-                custom_wire_major: None,
-                extern_companions: None,
-                comment: None,
-            }
-        ))
-    );
-}
-
-#[test]
-fn parse_comment_name_noalias() {
-    assert_eq!(
-        rule_metadata("@no_alias @name foo"),
-        Ok((
-            "",
-            RuleMetadata {
-                name: Some("foo".to_string()),
-                rust_name: None,
-                newtype: None,
-                no_alias: true,
-                key_demand: None,
-                used_as_elem: false,
-                copy: false,
-                raw_bytes_flavor: false,
-                ignore: false,
-                duplicates: None,
-                custom_json: false,
-                no_json_schema_export: false,
-                custom_serialize: None,
-                custom_deserialize: None,
-                custom_encodings: None,
-                custom_wire_major: None,
-                extern_companions: None,
-                comment: None,
-            }
-        ))
-    );
-}
-
-#[test]
-fn parse_comment_newtype_and_custom_json() {
-    assert_eq!(
-        rule_metadata("@custom_json @newtype"),
-        Ok((
-            "",
-            RuleMetadata {
-                name: None,
-                rust_name: None,
-                newtype: Some(None),
-                no_alias: false,
-                key_demand: None,
-                used_as_elem: false,
-                copy: false,
-                raw_bytes_flavor: false,
-                ignore: false,
-                duplicates: None,
-                custom_json: true,
-                no_json_schema_export: false,
-                custom_serialize: None,
-                custom_deserialize: None,
-                custom_encodings: None,
-                custom_wire_major: None,
-                extern_companions: None,
-                comment: None,
-            }
-        ))
-    );
-}
-
-#[test]
-#[should_panic]
-fn parse_comment_noalias_newtype() {
-    let _ = rule_metadata("@no_alias @newtype");
-}
-
-#[test]
-fn parse_comment_custom_serialize_deserialize() {
-    assert_eq!(
-        rule_metadata("@custom_serialize foo @custom_deserialize bar"),
-        Ok((
-            "",
-            RuleMetadata {
-                name: None,
-                rust_name: None,
-                newtype: None,
-                no_alias: false,
-                key_demand: None,
-                used_as_elem: false,
-                copy: false,
-                raw_bytes_flavor: false,
-                ignore: false,
-                duplicates: None,
-                custom_json: false,
-                no_json_schema_export: false,
-                custom_serialize: Some("foo".to_string()),
-                custom_deserialize: Some("bar".to_string()),
-                custom_encodings: None,
-                custom_wire_major: None,
-                extern_companions: None,
-                comment: None,
-            }
-        ))
-    );
-}
-
-// can't have all since @no_alias and @newtype are mutually exclusive
-#[test]
-fn parse_comment_all_except_no_alias() {
-    assert_eq!(
-        rule_metadata(
-            "@newtype @name baz @custom_serialize foo @custom_deserialize bar @used_as_key @used_as_elem @custom_json @doc this is a doc comment"
-        ),
-        Ok((
-            "",
-            RuleMetadata {
-                name: Some("baz".to_string()),
-                rust_name: None,
-                newtype: Some(None),
-                no_alias: false,
-                key_demand: Some(DemandSet {
-                    bare: true,
-                    hash: false,
-                    ord: false
-                }),
-                used_as_elem: true,
-                copy: false,
-                raw_bytes_flavor: false,
-                ignore: false,
-                duplicates: None,
-                custom_json: true,
-                no_json_schema_export: false,
-                custom_serialize: Some("foo".to_string()),
-                custom_deserialize: Some("bar".to_string()),
-                custom_encodings: None,
-                custom_wire_major: None,
-                extern_companions: None,
-                comment: Some("this is a doc comment".to_string()),
-            }
-        ))
-    );
-}
-
-#[test]
-fn parse_comment_rust_name() {
-    assert_eq!(
-        rule_metadata("@rust_name PlutusData").unwrap().1.rust_name,
-        Some("PlutusData".to_string())
-    );
-}
-
-// `@rust_name` (renames the TOP-LEVEL type across the crate boundary) and `@name` (renames a
-// field/variant) are independent single-ident tags that co-occur, in either order, without one
-// swallowing the other. `@rust_name` must NOT be mistaken for `@name` by the parser.
-#[test]
-fn parse_comment_rust_name_and_name() {
-    let md = rule_metadata("@name field_alias @rust_name TypeAlias")
-        .unwrap()
-        .1;
-    assert_eq!(md.name, Some("field_alias".to_string()));
-    assert_eq!(md.rust_name, Some("TypeAlias".to_string()));
-    let inverse = rule_metadata("@rust_name TypeAlias @name field_alias")
-        .unwrap()
-        .1;
-    assert_eq!(inverse.name, Some("field_alias".to_string()));
-    assert_eq!(inverse.rust_name, Some("TypeAlias".to_string()));
-}
-
-// A second `@rust_name` on the same rule is a hard error (the duplicate-key panic, matching `@name`).
-#[test]
-#[should_panic(expected = "\"rust_name\" specified twice")]
-fn parse_comment_rust_name_duplicate_panics() {
-    let _ = rule_metadata("@rust_name Foo @rust_name Bar");
-}
-
-// Two comment lines carrying `@rust_name` also collide through the merge path (field-wise, like
-// `@name`), not only within a single line.
-#[test]
-#[should_panic(expected = "\"rust_name\" specified twice")]
-fn merge_metadata_rust_name_twice_panics() {
-    let a = RuleMetadata {
-        rust_name: Some("Foo".to_string()),
-        ..Default::default()
-    };
-    let b = RuleMetadata {
-        rust_name: Some("Bar".to_string()),
-        ..Default::default()
-    };
-    let _ = merge_metadata(&a, &b);
-}
-
-// `@no_json_schema_export`: the bare no-arg directive parses standalone, and — because it is
-// argument-less — a neighbouring directive on the same line is still reachable in BOTH orders (the
-// prefix-match `alt` has no sibling that shadows it). `@custom_json` is the deliberate neighbour:
-// the two are orthogonal and legally combinable ("I supply the JSON impls, and this type is not a
-// published schema root"), so the pair must parse to both flags rather than conflict.
-#[test]
-fn parse_comment_no_json_schema_export() {
-    assert_eq!(
-        rule_metadata("@no_json_schema_export"),
-        Ok((
-            "",
-            RuleMetadata {
-                no_json_schema_export: true,
+    // Two comment lines union their flavors (field-wise OR merge).
+    #[test]
+    fn merge_metadata_unions_key_demand_flavors() {
+        let hash = RuleMetadata {
+            key_demand: Some(DemandSet {
+                hash: true,
                 ..Default::default()
-            }
-        ))
-    );
-    assert_eq!(
-        rule_metadata("@custom_json @no_json_schema_export"),
-        Ok((
-            "",
-            RuleMetadata {
-                custom_json: true,
-                no_json_schema_export: true,
+            }),
+            ..Default::default()
+        };
+        let ord = RuleMetadata {
+            key_demand: Some(DemandSet {
+                ord: true,
                 ..Default::default()
-            }
-        ))
-    );
-    assert_eq!(
-        rule_metadata("@no_json_schema_export @custom_json"),
-        Ok((
-            "",
-            RuleMetadata {
-                custom_json: true,
-                no_json_schema_export: true,
-                ..Default::default()
-            }
-        ))
-    );
-    // `@no_alias` shares the `@no` prefix but is not a prefix OF this tag (nor vice versa), so
-    // neither shadows the other in the `alt` regardless of their relative order.
-    assert_eq!(
-        rule_metadata("@no_alias @no_json_schema_export"),
-        Ok((
-            "",
-            RuleMetadata {
-                no_alias: true,
-                no_json_schema_export: true,
-                ..Default::default()
-            }
-        ))
-    );
-}
+            }),
+            ..Default::default()
+        };
+        assert_eq!(
+            merge_metadata(&hash, &ord).key_demand,
+            Some(DemandSet {
+                bare: false,
+                hash: true,
+                ord: true
+            })
+        );
+    }
 
-// `@extern_companions` parses its one required argument into the strict `ExternCompanions` shape:
-// a `use`-path prefix and the set of class names that already exist there.
-#[test]
-fn parse_comment_extern_companions() {
-    assert_eq!(
-        rule_metadata("@extern_companions cml_chain_wasm=TransactionMetadatumList")
+    #[test]
+    #[should_panic(expected = "unknown flavor")]
+    fn parse_comment_used_as_key_unknown_flavor_panics() {
+        let _ = rule_metadata("@used_as_key hsah");
+    }
+
+    // Today-legal trailing prose after `@used_as_key` is now a hard error (prose belongs in `@doc`).
+    #[test]
+    #[should_panic(expected = "unknown flavor")]
+    fn parse_comment_used_as_key_trailing_prose_panics() {
+        let _ = rule_metadata("@used_as_key marks the tx-out");
+    }
+
+    #[test]
+    fn parse_comment_used_as_elem() {
+        assert_eq!(
+            rule_metadata("@used_as_elem"),
+            Ok((
+                "",
+                RuleMetadata {
+                    used_as_elem: true,
+                    ..Default::default()
+                }
+            ))
+        );
+    }
+
+    // `@used_as_elem` and `@used_as_key` are independent flags that can co-occur, in either order.
+    #[test]
+    fn parse_comment_used_as_elem_and_key() {
+        assert_eq!(
+            rule_metadata("@used_as_elem @used_as_key"),
+            Ok((
+                "",
+                RuleMetadata {
+                    key_demand: Some(DemandSet {
+                        bare: true,
+                        hash: false,
+                        ord: false
+                    }),
+                    used_as_elem: true,
+                    ..Default::default()
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_comment_used_as_key_and_elem_inverse() {
+        assert_eq!(
+            rule_metadata("@used_as_key @used_as_elem"),
+            Ok((
+                "",
+                RuleMetadata {
+                    key_demand: Some(DemandSet {
+                        bare: true,
+                        hash: false,
+                        ord: false
+                    }),
+                    used_as_elem: true,
+                    ..Default::default()
+                }
+            ))
+        );
+    }
+
+    // Ordering with a value-carrying tag (@newtype's optional getter) must not swallow @used_as_elem.
+    #[test]
+    fn parse_comment_newtype_getter_before_used_as_elem() {
+        assert_eq!(
+            rule_metadata("@newtype custom_getter @used_as_elem"),
+            Ok((
+                "",
+                RuleMetadata {
+                    newtype: Some(Some("custom_getter".to_owned())),
+                    used_as_elem: true,
+                    ..Default::default()
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_comment_used_as_elem_before_newtype_getter() {
+        assert_eq!(
+            rule_metadata("@used_as_elem @newtype custom_getter"),
+            Ok((
+                "",
+                RuleMetadata {
+                    newtype: Some(Some("custom_getter".to_owned())),
+                    used_as_elem: true,
+                    ..Default::default()
+                }
+            ))
+        );
+    }
+
+    // Merging two comment lines OR-folds the flag, matching @used_as_key's merge semantics.
+    #[test]
+    fn merge_metadata_ors_used_as_elem() {
+        let lhs = RuleMetadata {
+            used_as_elem: true,
+            ..Default::default()
+        };
+        let rhs = RuleMetadata::default();
+        assert!(merge_metadata(&lhs, &rhs).used_as_elem);
+        assert!(merge_metadata(&rhs, &lhs).used_as_elem);
+        assert!(!merge_metadata(&rhs, &rhs).used_as_elem);
+    }
+
+    #[test]
+    fn parse_comment_raw_bytes_flavor() {
+        assert!(
+            rule_metadata("@raw_bytes_flavor")
+                .unwrap()
+                .1
+                .raw_bytes_flavor
+        );
+    }
+
+    // `@raw_bytes_flavor` is an independent flag that co-occurs with other tags, in either order,
+    // without swallowing them (mirrors `@used_as_elem`'s ordering coverage).
+    #[test]
+    fn parse_comment_raw_bytes_flavor_and_name() {
+        let md = rule_metadata("@raw_bytes_flavor @name foo").unwrap().1;
+        assert!(md.raw_bytes_flavor);
+        assert_eq!(md.name, Some("foo".to_string()));
+        let inverse = rule_metadata("@name foo @raw_bytes_flavor").unwrap().1;
+        assert!(inverse.raw_bytes_flavor);
+        assert_eq!(inverse.name, Some("foo".to_string()));
+    }
+
+    // Merging two comment lines OR-folds the flag, matching the other boolean tags' merge semantics.
+    #[test]
+    fn merge_metadata_ors_raw_bytes_flavor() {
+        let lhs = RuleMetadata {
+            raw_bytes_flavor: true,
+            ..Default::default()
+        };
+        let rhs = RuleMetadata::default();
+        assert!(merge_metadata(&lhs, &rhs).raw_bytes_flavor);
+        assert!(merge_metadata(&rhs, &lhs).raw_bytes_flavor);
+        assert!(!merge_metadata(&rhs, &rhs).raw_bytes_flavor);
+    }
+
+    #[test]
+    fn parse_comment_copy() {
+        assert!(rule_metadata("@copy").unwrap().1.copy);
+    }
+
+    // `@ignore` is a bare no-arg flag (the open struct-map tolerate-and-drop rest-row flavor).
+    #[test]
+    fn parse_comment_ignore() {
+        assert!(rule_metadata("@ignore").unwrap().1.ignore);
+    }
+
+    // `@ignore` is an independent flag that co-occurs with other tags, in either order, without
+    // swallowing them (mirrors `@copy`'s ordering coverage). Here it pairs with `@name`, which a rest
+    // row also accepts — the two are read together off the same entry-trailing slot.
+    #[test]
+    fn parse_comment_ignore_and_name() {
+        let md = rule_metadata("@ignore @name foo").unwrap().1;
+        assert!(md.ignore);
+        assert_eq!(md.name, Some("foo".to_string()));
+        let inverse = rule_metadata("@name foo @ignore").unwrap().1;
+        assert!(inverse.ignore);
+        assert_eq!(inverse.name, Some("foo".to_string()));
+    }
+
+    // Merging two comment lines OR-folds the flag, matching the other boolean tags' merge semantics.
+    #[test]
+    fn merge_metadata_ors_ignore() {
+        let lhs = RuleMetadata {
+            ignore: true,
+            ..Default::default()
+        };
+        let rhs = RuleMetadata::default();
+        assert!(merge_metadata(&lhs, &rhs).ignore);
+        assert!(merge_metadata(&rhs, &lhs).ignore);
+        assert!(!merge_metadata(&rhs, &rhs).ignore);
+    }
+
+    // `@copy` is an independent flag that co-occurs with other tags, in either order, without
+    // swallowing them (mirrors `@raw_bytes_flavor`'s ordering coverage).
+    #[test]
+    fn parse_comment_copy_and_name() {
+        let md = rule_metadata("@copy @name foo").unwrap().1;
+        assert!(md.copy);
+        assert_eq!(md.name, Some("foo".to_string()));
+        let inverse = rule_metadata("@name foo @copy").unwrap().1;
+        assert!(inverse.copy);
+        assert_eq!(inverse.name, Some("foo".to_string()));
+    }
+
+    // Merging two comment lines OR-folds the flag, matching the other boolean tags' merge semantics.
+    #[test]
+    fn merge_metadata_ors_copy() {
+        let lhs = RuleMetadata {
+            copy: true,
+            ..Default::default()
+        };
+        let rhs = RuleMetadata::default();
+        assert!(merge_metadata(&lhs, &rhs).copy);
+        assert!(merge_metadata(&rhs, &lhs).copy);
+        assert!(!merge_metadata(&rhs, &rhs).copy);
+    }
+
+    // `@duplicates` parses both values into the strict `DuplicatesPolicy` enum.
+    #[test]
+    fn parse_comment_duplicates_preserve() {
+        assert_eq!(
+            rule_metadata("@duplicates preserve").unwrap().1.duplicates,
+            Some(DuplicatesPolicy::Preserve)
+        );
+    }
+
+    #[test]
+    fn parse_comment_duplicates_reject() {
+        assert_eq!(
+            rule_metadata("@duplicates reject").unwrap().1.duplicates,
+            Some(DuplicatesPolicy::Reject)
+        );
+    }
+
+    // `@duplicates` consumes exactly its one argument, so a directive AFTER it is still parsed and the
+    // longer/other tags are not swallowed (mirrors the ordering coverage of the other arg-taking tags).
+    #[test]
+    fn parse_comment_duplicates_and_name() {
+        let md = rule_metadata("@duplicates reject @name foo").unwrap().1;
+        assert_eq!(md.duplicates, Some(DuplicatesPolicy::Reject));
+        assert_eq!(md.name, Some("foo".to_string()));
+        let inverse = rule_metadata("@name foo @duplicates preserve").unwrap().1;
+        assert_eq!(inverse.duplicates, Some(DuplicatesPolicy::Preserve));
+        assert_eq!(inverse.name, Some("foo".to_string()));
+    }
+
+    // A second `@duplicates` on the same rule is a hard error (the duplicate-key panic, like `@name`) —
+    // the two values are mutually exclusive, so unioning them makes no sense.
+    #[test]
+    #[should_panic(expected = "\"duplicates\" specified twice")]
+    fn parse_comment_duplicates_duplicate_panics() {
+        let _ = rule_metadata("@duplicates reject @duplicates preserve");
+    }
+
+    // Two comment lines carrying `@duplicates` also collide through the merge path (field-wise), not
+    // only within a single line.
+    #[test]
+    #[should_panic(expected = "\"duplicates\" specified twice")]
+    fn merge_metadata_duplicates_twice_panics() {
+        let a = RuleMetadata {
+            duplicates: Some(DuplicatesPolicy::Reject),
+            ..Default::default()
+        };
+        let b = RuleMetadata {
+            duplicates: Some(DuplicatesPolicy::Preserve),
+            ..Default::default()
+        };
+        let _ = merge_metadata(&a, &b);
+    }
+
+    // An unknown argument is a hard error (matching `@used_as_key`'s unknown-flavor loudness), never a
+    // silent metadata drop.
+    #[test]
+    #[should_panic(expected = "unknown argument")]
+    fn parse_comment_duplicates_unknown_arg_panics() {
+        let _ = rule_metadata("@duplicates allow");
+    }
+
+    // A missing argument is also a hard error — `@duplicates` has no meaningful bare form.
+    #[test]
+    #[should_panic(expected = "missing required argument")]
+    fn parse_comment_duplicates_missing_arg_panics() {
+        let _ = rule_metadata("@duplicates");
+    }
+
+    // A following directive counts as "missing argument" (the arg vocabulary never matches a `@tag`).
+    #[test]
+    #[should_panic(expected = "missing required argument")]
+    fn parse_comment_duplicates_missing_arg_before_tag_panics() {
+        let _ = rule_metadata("@duplicates @newtype");
+    }
+
+    #[test]
+    fn parse_comment_newtype_and_name_inverse() {
+        assert_eq!(
+            rule_metadata("@name foo @newtype"),
+            Ok((
+                "",
+                RuleMetadata {
+                    name: Some("foo".to_string()),
+                    newtype: Some(None),
+                    ..Default::default()
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_comment_name_noalias() {
+        assert_eq!(
+            rule_metadata("@no_alias @name foo"),
+            Ok((
+                "",
+                RuleMetadata {
+                    name: Some("foo".to_string()),
+                    no_alias: true,
+                    ..Default::default()
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_comment_newtype_and_custom_json() {
+        assert_eq!(
+            rule_metadata("@custom_json @newtype"),
+            Ok((
+                "",
+                RuleMetadata {
+                    newtype: Some(None),
+                    custom_json: true,
+                    ..Default::default()
+                }
+            ))
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn parse_comment_noalias_newtype() {
+        let _ = rule_metadata("@no_alias @newtype");
+    }
+
+    #[test]
+    fn parse_comment_custom_serialize_deserialize() {
+        assert_eq!(
+            rule_metadata("@custom_serialize foo @custom_deserialize bar"),
+            Ok((
+                "",
+                RuleMetadata {
+                    custom_serialize: Some("foo".to_string()),
+                    custom_deserialize: Some("bar".to_string()),
+                    ..Default::default()
+                }
+            ))
+        );
+    }
+
+    // can't have all since @no_alias and @newtype are mutually exclusive
+    #[test]
+    fn parse_comment_all_except_no_alias() {
+        assert_eq!(
+            rule_metadata(
+                "@newtype @name baz @custom_serialize foo @custom_deserialize bar @used_as_key @used_as_elem @custom_json @doc this is a doc comment"
+            ),
+            Ok((
+                "",
+                RuleMetadata {
+                    name: Some("baz".to_string()),
+                    newtype: Some(None),
+                    key_demand: Some(DemandSet {
+                        bare: true,
+                        hash: false,
+                        ord: false
+                    }),
+                    used_as_elem: true,
+                    custom_json: true,
+                    custom_serialize: Some("foo".to_string()),
+                    custom_deserialize: Some("bar".to_string()),
+                    comment: Some("this is a doc comment".to_string()),
+                    ..Default::default()
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_comment_rust_name() {
+        assert_eq!(
+            rule_metadata("@rust_name PlutusData").unwrap().1.rust_name,
+            Some("PlutusData".to_string())
+        );
+    }
+
+    // `@rust_name` (renames the TOP-LEVEL type across the crate boundary) and `@name` (renames a
+    // field/variant) are independent single-ident tags that co-occur, in either order, without one
+    // swallowing the other. `@rust_name` must NOT be mistaken for `@name` by the parser.
+    #[test]
+    fn parse_comment_rust_name_and_name() {
+        let md = rule_metadata("@name field_alias @rust_name TypeAlias")
             .unwrap()
-            .1
-            .extern_companions,
-        Some(ExternCompanions {
-            path_prefix: "cml_chain_wasm".to_owned(),
-            classes: ["TransactionMetadatumList".to_owned()]
-                .into_iter()
-                .collect(),
-        })
-    );
-}
+            .1;
+        assert_eq!(md.name, Some("field_alias".to_string()));
+        assert_eq!(md.rust_name, Some("TypeAlias".to_string()));
+        let inverse = rule_metadata("@rust_name TypeAlias @name field_alias")
+            .unwrap()
+            .1;
+        assert_eq!(inverse.name, Some("field_alias".to_string()));
+        assert_eq!(inverse.rust_name, Some("TypeAlias".to_string()));
+    }
 
-// The class list is comma-separated and order-insensitive (a `BTreeSet`, like every other
-// order-insensitive multi-value directive), and the prefix may be a `::`-qualified module path since
-// it is emitted verbatim as the `use` head.
-#[test]
-fn parse_comment_extern_companions_multiple_classes_and_qualified_prefix() {
-    let md = rule_metadata("@extern_companions cml_chain_wasm::auxdata=MdList,MapMdToMd")
-        .unwrap()
-        .1
-        .extern_companions
-        .unwrap();
-    assert_eq!(md.path_prefix, "cml_chain_wasm::auxdata");
-    assert_eq!(
-        md.classes,
-        ["MapMdToMd".to_owned(), "MdList".to_owned()]
-            .into_iter()
-            .collect()
-    );
-    assert_eq!(
-        rule_metadata("@extern_companions d=MapMdToMd,MdList")
+    // A second `@rust_name` on the same rule is a hard error (the duplicate-key panic, matching `@name`).
+    #[test]
+    #[should_panic(expected = "\"rust_name\" specified twice")]
+    fn parse_comment_rust_name_duplicate_panics() {
+        let _ = rule_metadata("@rust_name Foo @rust_name Bar");
+    }
+
+    // Two comment lines carrying `@rust_name` also collide through the merge path (field-wise, like
+    // `@name`), not only within a single line.
+    #[test]
+    #[should_panic(expected = "\"rust_name\" specified twice")]
+    fn merge_metadata_rust_name_twice_panics() {
+        let a = RuleMetadata {
+            rust_name: Some("Foo".to_string()),
+            ..Default::default()
+        };
+        let b = RuleMetadata {
+            rust_name: Some("Bar".to_string()),
+            ..Default::default()
+        };
+        let _ = merge_metadata(&a, &b);
+    }
+
+    // `@no_json_schema_export`: the bare no-arg directive parses standalone, and — because it is
+    // argument-less — a neighbouring directive on the same line is still reachable in BOTH orders (the
+    // prefix-match `alt` has no sibling that shadows it). `@custom_json` is the deliberate neighbour:
+    // the two are orthogonal and legally combinable ("I supply the JSON impls, and this type is not a
+    // published schema root"), so the pair must parse to both flags rather than conflict.
+    #[test]
+    fn parse_comment_no_json_schema_export() {
+        assert_eq!(
+            rule_metadata("@no_json_schema_export"),
+            Ok((
+                "",
+                RuleMetadata {
+                    no_json_schema_export: true,
+                    ..Default::default()
+                }
+            ))
+        );
+        assert_eq!(
+            rule_metadata("@custom_json @no_json_schema_export"),
+            Ok((
+                "",
+                RuleMetadata {
+                    custom_json: true,
+                    no_json_schema_export: true,
+                    ..Default::default()
+                }
+            ))
+        );
+        assert_eq!(
+            rule_metadata("@no_json_schema_export @custom_json"),
+            Ok((
+                "",
+                RuleMetadata {
+                    custom_json: true,
+                    no_json_schema_export: true,
+                    ..Default::default()
+                }
+            ))
+        );
+        // `@no_alias` shares the `@no` prefix but is not a prefix OF this tag (nor vice versa), so
+        // neither shadows the other in the `alt` regardless of their relative order.
+        assert_eq!(
+            rule_metadata("@no_alias @no_json_schema_export"),
+            Ok((
+                "",
+                RuleMetadata {
+                    no_alias: true,
+                    no_json_schema_export: true,
+                    ..Default::default()
+                }
+            ))
+        );
+    }
+
+    // `@extern_companions` parses its one required argument into the strict `ExternCompanions` shape:
+    // a `use`-path prefix and the set of class names that already exist there.
+    #[test]
+    fn parse_comment_extern_companions() {
+        assert_eq!(
+            rule_metadata("@extern_companions cml_chain_wasm=TransactionMetadatumList")
+                .unwrap()
+                .1
+                .extern_companions,
+            Some(ExternCompanions {
+                path_prefix: "cml_chain_wasm".to_owned(),
+                classes: ["TransactionMetadatumList".to_owned()]
+                    .into_iter()
+                    .collect(),
+            })
+        );
+    }
+
+    // The class list is comma-separated and order-insensitive (a `BTreeSet`, like every other
+    // order-insensitive multi-value directive), and the prefix may be a `::`-qualified module path since
+    // it is emitted verbatim as the `use` head.
+    #[test]
+    fn parse_comment_extern_companions_multiple_classes_and_qualified_prefix() {
+        let md = rule_metadata("@extern_companions cml_chain_wasm::auxdata=MdList,MapMdToMd")
             .unwrap()
             .1
             .extern_companions
+            .unwrap();
+        assert_eq!(md.path_prefix, "cml_chain_wasm::auxdata");
+        assert_eq!(
+            md.classes,
+            ["MapMdToMd".to_owned(), "MdList".to_owned()]
+                .into_iter()
+                .collect()
+        );
+        assert_eq!(
+            rule_metadata("@extern_companions d=MapMdToMd,MdList")
+                .unwrap()
+                .1
+                .extern_companions
+                .unwrap()
+                .classes,
+            md.classes
+        );
+    }
+
+    // The argument is consumed, so a directive AFTER it is still parsed and neither swallows the other
+    // (mirrors the ordering coverage of the other arg-taking tags).
+    #[test]
+    fn parse_comment_extern_companions_and_copy() {
+        let md = rule_metadata("@extern_companions dep_wasm=FooList @copy")
             .unwrap()
-            .classes,
-        md.classes
-    );
-}
+            .1;
+        assert!(md.extern_companions.is_some());
+        assert!(md.copy);
+        let inverse = rule_metadata("@copy @extern_companions dep_wasm=FooList")
+            .unwrap()
+            .1;
+        assert!(inverse.extern_companions.is_some());
+        assert!(inverse.copy);
+    }
 
-// The argument is consumed, so a directive AFTER it is still parsed and neither swallows the other
-// (mirrors the ordering coverage of the other arg-taking tags).
-#[test]
-fn parse_comment_extern_companions_and_copy() {
-    let md = rule_metadata("@extern_companions dep_wasm=FooList @copy")
-        .unwrap()
-        .1;
-    assert!(md.extern_companions.is_some());
-    assert!(md.copy);
-    let inverse = rule_metadata("@copy @extern_companions dep_wasm=FooList")
-        .unwrap()
-        .1;
-    assert!(inverse.extern_companions.is_some());
-    assert!(inverse.copy);
-}
+    // A second `@extern_companions` is the duplicate-key panic (like `@duplicates`/`@rust_name`): one
+    // extern type's companions live in ONE sibling crate, so unioning two declarations would be
+    // ambiguous about which prefix a class comes from.
+    #[test]
+    #[should_panic(expected = "\"extern_companions\" specified twice")]
+    fn parse_comment_extern_companions_duplicate_panics() {
+        let _ = rule_metadata("@extern_companions a=FooList @extern_companions b=BarList");
+    }
 
-// A second `@extern_companions` is the duplicate-key panic (like `@duplicates`/`@rust_name`): one
-// extern type's companions live in ONE sibling crate, so unioning two declarations would be
-// ambiguous about which prefix a class comes from.
-#[test]
-#[should_panic(expected = "\"extern_companions\" specified twice")]
-fn parse_comment_extern_companions_duplicate_panics() {
-    let _ = rule_metadata("@extern_companions a=FooList @extern_companions b=BarList");
-}
+    #[test]
+    #[should_panic(expected = "\"extern_companions\" specified twice")]
+    fn merge_metadata_extern_companions_twice_panics() {
+        let one = RuleMetadata {
+            extern_companions: Some(ExternCompanions {
+                path_prefix: "a".to_owned(),
+                classes: ["FooList".to_owned()].into_iter().collect(),
+            }),
+            ..Default::default()
+        };
+        let _ = merge_metadata(&one, &one);
+    }
 
-#[test]
-#[should_panic(expected = "\"extern_companions\" specified twice")]
-fn merge_metadata_extern_companions_twice_panics() {
-    let one = RuleMetadata {
-        extern_companions: Some(ExternCompanions {
-            path_prefix: "a".to_owned(),
-            classes: ["FooList".to_owned()].into_iter().collect(),
-        }),
-        ..Default::default()
-    };
-    let _ = merge_metadata(&one, &one);
-}
+    // Every malformed argument is a HARD ERROR, never a silent metadata drop: silently dropping this
+    // directive re-mints the very classes it exists to suppress, and the only symptom is a
+    // `rust-lld: duplicate symbol` in a different crate's link.
+    #[test]
+    #[should_panic(expected = "missing required argument")]
+    fn parse_comment_extern_companions_missing_arg_panics() {
+        let _ = rule_metadata("@extern_companions");
+    }
 
-// Every malformed argument is a HARD ERROR, never a silent metadata drop: silently dropping this
-// directive re-mints the very classes it exists to suppress, and the only symptom is a
-// `rust-lld: duplicate symbol` in a different crate's link.
-#[test]
-#[should_panic(expected = "missing required argument")]
-fn parse_comment_extern_companions_missing_arg_panics() {
-    let _ = rule_metadata("@extern_companions");
-}
+    #[test]
+    #[should_panic(expected = "missing required argument")]
+    fn parse_comment_extern_companions_missing_arg_before_tag_panics() {
+        let _ = rule_metadata("@extern_companions @newtype");
+    }
 
-#[test]
-#[should_panic(expected = "missing required argument")]
-fn parse_comment_extern_companions_missing_arg_before_tag_panics() {
-    let _ = rule_metadata("@extern_companions @newtype");
-}
+    #[test]
+    #[should_panic(expected = "malformed argument")]
+    fn parse_comment_extern_companions_no_equals_panics() {
+        let _ = rule_metadata("@extern_companions cml_chain_wasm");
+    }
 
-#[test]
-#[should_panic(expected = "malformed argument")]
-fn parse_comment_extern_companions_no_equals_panics() {
-    let _ = rule_metadata("@extern_companions cml_chain_wasm");
-}
+    #[test]
+    #[should_panic(expected = "invalid use-path prefix")]
+    fn parse_comment_extern_companions_bad_prefix_panics() {
+        let _ = rule_metadata("@extern_companions cml-chain-wasm=FooList");
+    }
 
-#[test]
-#[should_panic(expected = "invalid use-path prefix")]
-fn parse_comment_extern_companions_bad_prefix_panics() {
-    let _ = rule_metadata("@extern_companions cml-chain-wasm=FooList");
-}
+    // An empty prefix is the same class of typo as a hyphenated one (`=FooList`), and is caught by the
+    // same path bound rather than slipping through as `use ::FooList;`.
+    #[test]
+    #[should_panic(expected = "invalid use-path prefix")]
+    fn parse_comment_extern_companions_empty_prefix_panics() {
+        let _ = rule_metadata("@extern_companions =FooList");
+    }
 
-// An empty prefix is the same class of typo as a hyphenated one (`=FooList`), and is caught by the
-// same path bound rather than slipping through as `use ::FooList;`.
-#[test]
-#[should_panic(expected = "invalid use-path prefix")]
-fn parse_comment_extern_companions_empty_prefix_panics() {
-    let _ = rule_metadata("@extern_companions =FooList");
-}
+    // A trailing comma reaches the class loop as an EMPTY name — the spelling a hand-edited list is
+    // likeliest to grow — so it is named as such rather than silently dropped.
+    #[test]
+    #[should_panic(expected = "invalid companion class name")]
+    fn parse_comment_extern_companions_trailing_comma_panics() {
+        let _ = rule_metadata("@extern_companions dep_wasm=FooList,");
+    }
 
-// A trailing comma reaches the class loop as an EMPTY name — the spelling a hand-edited list is
-// likeliest to grow — so it is named as such rather than silently dropped.
-#[test]
-#[should_panic(expected = "invalid companion class name")]
-fn parse_comment_extern_companions_trailing_comma_panics() {
-    let _ = rule_metadata("@extern_companions dep_wasm=FooList,");
-}
+    // A CDDL comment runs to end of line, so trailing prose after the argument is comment CONTENT that
+    // `many0` simply stops at — it must not be swallowed into the class list (the `@newtype` getter
+    // trap's shape). The directive still parses, with only its own token consumed.
+    #[test]
+    fn parse_comment_extern_companions_trailing_prose_is_not_an_argument() {
+        let md = rule_metadata("@extern_companions dep_wasm=FooList borrowed from the sibling")
+            .unwrap()
+            .1
+            .extern_companions
+            .unwrap();
+        assert_eq!(md.path_prefix, "dep_wasm");
+        assert_eq!(
+            md.classes,
+            ["FooList".to_owned()]
+                .into_iter()
+                .collect::<std::collections::BTreeSet<_>>()
+        );
+    }
 
-// A CDDL comment runs to end of line, so trailing prose after the argument is comment CONTENT that
-// `many0` simply stops at — it must not be swallowed into the class list (the `@newtype` getter
-// trap's shape). The directive still parses, with only its own token consumed.
-#[test]
-fn parse_comment_extern_companions_trailing_prose_is_not_an_argument() {
-    let md = rule_metadata("@extern_companions dep_wasm=FooList borrowed from the sibling")
-        .unwrap()
-        .1
-        .extern_companions
-        .unwrap();
-    assert_eq!(md.path_prefix, "dep_wasm");
-    assert_eq!(
-        md.classes,
-        ["FooList".to_owned()]
-            .into_iter()
-            .collect::<std::collections::BTreeSet<_>>()
-    );
-}
-
-// Boolean flags OR-merge across comment LINES too (the `metadata_from_comments` path), like
-// `@copy`/`@used_as_elem`.
-#[test]
-fn merge_metadata_ors_no_json_schema_export() {
-    let lhs = RuleMetadata {
-        no_json_schema_export: true,
-        ..Default::default()
-    };
-    let rhs = RuleMetadata::default();
-    assert!(merge_metadata(&lhs, &rhs).no_json_schema_export);
-    assert!(merge_metadata(&rhs, &lhs).no_json_schema_export);
-    assert!(merge_metadata(&lhs, &lhs).no_json_schema_export);
+    // Boolean flags OR-merge across comment LINES too (the `metadata_from_comments` path), like
+    // `@copy`/`@used_as_elem`.
+    #[test]
+    fn merge_metadata_ors_no_json_schema_export() {
+        let lhs = RuleMetadata {
+            no_json_schema_export: true,
+            ..Default::default()
+        };
+        let rhs = RuleMetadata::default();
+        assert!(merge_metadata(&lhs, &rhs).no_json_schema_export);
+        assert!(merge_metadata(&rhs, &lhs).no_json_schema_export);
+        assert!(merge_metadata(&lhs, &lhs).no_json_schema_export);
+    }
 }
