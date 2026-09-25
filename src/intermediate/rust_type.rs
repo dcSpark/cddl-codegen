@@ -2130,10 +2130,10 @@ impl RustType {
     /// The wasm keys-list class a table keyed by `self` returns from `keys()`: the loose list of
     /// the key projected by `loosened_for_wasm_table_boundary_key`.
     pub fn wasm_table_keys_list_ident(&self, types: &IntermediateTypes) -> RustIdent {
-        RustIdent::new(CDDLIdent::new(
+        RustIdent::from_formatted(
             self.loosened_for_wasm_table_boundary_key()
                 .name_as_wasm_array(types),
-        ))
+        )
     }
 
     /// `self` is the ELEMENT type; this is the `Vec<element>` rust type. Bounds-aware over the
@@ -2254,12 +2254,12 @@ impl RustType {
         preserve: bool,
         types: &IntermediateTypes,
     ) -> RustIdent {
-        RustIdent::new(CDDLIdent::new(format!(
+        RustIdent::from_formatted(format!(
             "{}Map{}To{}",
             if preserve { "Pair" } else { "" },
             k.wasm_boundary_identity_fragment(types),
             v.wasm_boundary_identity_fragment(types)
-        )))
+        ))
     }
 
     /// Structural map class name for this map occurrence, including its duplicate policy.

@@ -52,18 +52,33 @@ impl RustIdent {
     }
 
     pub fn new(cddl_ident: CDDLIdent) -> Self {
+        Self::assert_not_reserved(&cddl_ident.0);
+        Self(super::convert_to_camel_case(&cddl_ident.0))
+    }
+
+    fn assert_not_reserved(token: &str) {
         // Message texts are recombination-sweep panic-class keys — keep them if refactoring.
-        match Self::reserved_reason(&cddl_ident.0) {
+        match Self::reserved_reason(token) {
             Some(ReservedIdentKind::RustTypeName) => {
-                panic!("Cannot use reserved Rust type name: \"{}\"", cddl_ident.0)
+                panic!("Cannot use reserved Rust type name: \"{}\"", token)
             }
             Some(ReservedIdentKind::CddlKeyword) => {
-                panic!("Cannot use reserved CDDL keyword: \"{}\"", cddl_ident.0)
+                panic!("Cannot use reserved CDDL keyword: \"{}\"", token)
             }
             None => {}
         }
+    }
 
-        Self(super::convert_to_camel_case(&cddl_ident.0))
+    /// A structural wasm name already assembled from formatted fragments, or a fixed runtime name.
+    /// Skips `convert_to_camel_case`, which is only an accidental no-op on these names.
+    /// CDDL-sourced text must use [`Self::new`]. The reserved-name assertion still applies.
+    /// A `FixedValue::Text` legacy fragment can start lowercase (`"!abc"` becomes `abc`).
+    /// Only the parse-time rejection of bare fixed elements under count-permitting `*`, `+`, or `n*m` occurrences keeps that fragment from leading a structural name.
+    /// If that rejection is lifted, camel-case the leaf before assembling the name.
+    pub fn from_formatted(name: impl Into<String>) -> Self {
+        let name = name.into();
+        Self::assert_not_reserved(&name);
+        Self(name)
     }
 
     /// Mints the `Base<Args>` TYPE-EXPRESSION ident a generic-extern instance resolves to
@@ -173,5 +188,31 @@ impl std::fmt::Display for AliasIdent {
             AliasIdent::Reserved(name) => write!(f, "{name}"),
             AliasIdent::Rust(ident) => ident.fmt(f),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CDDLIdent, RustIdent};
+
+    #[test]
+    fn from_formatted_equals_new_on_formatted_names() {
+        for name in [
+            "NonEmptyFooList",
+            "MapTextToU64",
+            "PairMapU64ToArrBytes",
+            "U64ListMax5List",
+            "Vec<u64>",
+            "AnyCbor",
+            "OptNint5List",
+        ] {
+            assert_eq!(
+                RustIdent::from_formatted(name),
+                RustIdent::new(CDDLIdent::new(name))
+            );
+            assert_eq!(RustIdent::from_formatted(name).to_string(), name);
+        }
+        std::panic::catch_unwind(|| RustIdent::from_formatted("Vec")).unwrap_err();
+        std::panic::catch_unwind(|| RustIdent::new(CDDLIdent::new("Vec"))).unwrap_err();
     }
 }

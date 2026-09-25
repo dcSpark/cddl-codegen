@@ -1360,7 +1360,7 @@ impl<'a> IntermediateTypes<'a> {
     /// structural wrappers, and two compatible uses of one structural class must unify rather than
     /// mistake the first synthesis for a user claim when the second registers.
     fn wasm_ident_claimed_by_user_rule(&self, name: &str) -> bool {
-        let ident = RustIdent::new(CDDLIdent::new(name));
+        let ident = RustIdent::from_formatted(name);
         self.is_toplevel_rule(&ident) && self.scope(&ident).export()
     }
 
@@ -1369,7 +1369,7 @@ impl<'a> IntermediateTypes<'a> {
     /// restricted wrapper may borrow. Bounded `BoundedVec` and reject `OrderedSet` rules share none
     /// of that representation, even if their bounds are not `[+]`.
     fn provides_compatible_loose_list(&self, name: &str, element_resolved: &RustType) -> bool {
-        let ident = RustIdent::new(CDDLIdent::new(name));
+        let ident = RustIdent::from_formatted(name);
         self.rust_structs.get(&ident).is_some_and(|rs| {
             matches!(
                 rs.variant(),
@@ -1389,7 +1389,7 @@ impl<'a> IntermediateTypes<'a> {
     /// the named claimant — so the direct-claim leg must not report the same conflict a second time
     /// in a voice that would tell the author to rename a rule the other message already names.
     fn claims_ident_as_self_named_non_empty_list(&self, name: &str) -> bool {
-        let ident = RustIdent::new(CDDLIdent::new(name));
+        let ident = RustIdent::from_formatted(name);
         matches!(
             self.rust_structs.get(&ident).map(|rs| rs.variant()),
             Some(RustStructType::Array {
@@ -1404,7 +1404,7 @@ impl<'a> IntermediateTypes<'a> {
     /// SELF-NAMED `{+ k => v}` table whose own loose-builder name is `name`. Owned by the self-named
     /// leg of `non_empty_map_wrapper_name_collisions`, so the direct-claim leg skips it.
     fn claims_ident_as_self_named_non_empty_table(&self, name: &str) -> bool {
-        let ident = RustIdent::new(CDDLIdent::new(name));
+        let ident = RustIdent::from_formatted(name);
         self.rust_structs.get(&ident).is_some_and(|rs| {
             let preserve =
                 rs.config().duplicates_preserve();
@@ -1435,7 +1435,7 @@ impl<'a> IntermediateTypes<'a> {
         // structurally incompatible with the keyed default, so the rule must match on BOTH
         preserve: bool,
     ) -> bool {
-        let ident = RustIdent::new(CDDLIdent::new(name));
+        let ident = RustIdent::from_formatted(name);
         let rule_preserve = self
             .rust_structs
             .get(&ident)
@@ -1618,7 +1618,7 @@ impl<'a> IntermediateTypes<'a> {
                 _ => return None,
             }
         };
-        let ident = RustIdent::new(CDDLIdent::new(name));
+        let ident = RustIdent::from_formatted(name);
         let scope = self.scope(&ident).clone();
         Some((ident, scope))
     }
@@ -1718,7 +1718,7 @@ impl<'a> IntermediateTypes<'a> {
             if loose == wrapper_ident.as_ref() {
                 return;
             }
-            let loose_ident = RustIdent::new(CDDLIdent::new(loose));
+            let loose_ident = RustIdent::from_formatted(loose);
             if let Some(dep_scope) = deferred.get(&loose_ident) {
                 let emit_scope = types.scope(wrapper_ident).clone();
                 refs.add_import(emit_scope, dep_scope.clone(), loose_ident);
@@ -1822,7 +1822,7 @@ impl<'a> IntermediateTypes<'a> {
             if loose == wrapper_ident.as_ref() {
                 return;
             }
-            let loose_ident = RustIdent::new(CDDLIdent::new(loose));
+            let loose_ident = RustIdent::from_formatted(loose);
             if deferred.contains_key(&loose_ident) {
                 return;
             }
@@ -2057,7 +2057,7 @@ impl<'a> IntermediateTypes<'a> {
                         refs.add_import(
                             current_scope.to_owned(),
                             ROOT_SCOPE.clone(),
-                            RustIdent::new(CDDLIdent::new("AnyCbor")),
+                            RustIdent::from_formatted("AnyCbor"),
                         );
                     }
                 }
@@ -2374,9 +2374,8 @@ impl<'a> IntermediateTypes<'a> {
                             // mark the element at the list's scope here on the same condition
                             // `register_root_keys_list` mints under.
                             let loose_domain = rest.domain().loosened_for_wasm_table_boundary_key();
-                            let keys_ident = RustIdent::new(CDDLIdent::new(
-                                loose_domain.name_as_wasm_array(self),
-                            ));
+                            let keys_ident =
+                                RustIdent::from_formatted(loose_domain.name_as_wasm_array(self));
                             if !ConceptualRustType::Array(Box::new(rest.domain().clone()))
                                 .directly_wasm_exposable_ct(self)
                                 && !deferred.contains_key(&keys_ident)
@@ -2672,8 +2671,7 @@ impl<'a> IntermediateTypes<'a> {
                                 elem,
                                 rt.restricted_list_always_needs_loose_source(),
                             );
-                            let loose =
-                                RustIdent::new(CDDLIdent::new(elem.name_as_wasm_array(self)));
+                            let loose = RustIdent::from_formatted(elem.name_as_wasm_array(self));
                             if !requested_hosted.contains(&loose) {
                                 register_root_restricted_list_source(
                                     &mut refs,
@@ -4039,7 +4037,7 @@ impl<'a> IntermediateTypes<'a> {
                         .directly_wasm_exposable_ct(self)
                         && !self
                             .rust_structs
-                            .contains_key(&RustIdent::new(CDDLIdent::new(name.clone()))))
+                            .contains_key(&RustIdent::from_formatted(name.clone())))
                     .then(|| domain.clone())
                 }
                 _ => None,
@@ -4072,7 +4070,7 @@ impl<'a> IntermediateTypes<'a> {
         if raw_arr_type.directly_wasm_exposable_ct(self) {
             return raw_arr_type.into();
         }
-        let array_type_ident = RustIdent::new(CDDLIdent::new(array_type_name));
+        let array_type_ident = RustIdent::from_formatted(array_type_name);
         // If we are the only thing referring to our element and it's a plain group
         // we must mark it as being serialized as an array
         if let ConceptualRustType::Rust(_) = &element_type.conceptual_type {
