@@ -268,6 +268,13 @@ A plain group as a **TYPE-choice arm** (`u = kv / null`, `t = [ c: uint, x: kv /
 
 Splicing the group with no choice around it stays supported in all its usual placements: the mandatory array member (`t = [ c: uint, kv ]`), the keyless group-choice arm (`t = [ x: uint // kv ]`) and a plain alias to the group (`u = kv`).
 
+## Reserved rule names
+
+A rule or group name becomes the emitted Rust type name, so a name that camel-cases to a Rust std/prelude type (`option` → `Option`), a CDDL keyword, or a type of the cddl-codegen runtime every generated module imports is **rejected at parse time** with a rename remedy.
+The runtime names are `Key`, `DeserializeFailure`, `DeserializeError`, `Deserialize`, `CBORReadLen`, `DeserializeEmbeddedGroup`, `SerializeEmbeddedGroup`, `ToCBORBytes`, `Serialize`, `LenEncoding`, `StringEncoding`, `TagPresenceEncoding`, `RawBytesEncoding` and `DepthGuard` — so `key = …` must be renamed (for example `map_key`).
+The set is the same under every flag set, even where a profile does not use a given runtime type.
+Field names are unaffected: `{ key: uint }` still generates.
+
 ## Reserved field names
 
 A field whose emitted identifier is one of the fixed locals the generated `serialize`/`deserialize` bodies bind would shadow that local, and the crate would generate at exit 0 and fail to compile two build steps from the CDDL line that caused it — so it is **rejected at parse time** instead, with the field, the rule and the remedy in the message. The reserved set and where each member applies:

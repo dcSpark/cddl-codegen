@@ -7,7 +7,7 @@
 //! colliding with the reader/writer generics the pre-cbor_event-3.x emission carried (`r`/`w` vs
 //! `R`/`W`; the 3.x de-generified `Serializer`/`Deserializer` removed those fn generics, and the
 //! collision class with them — see the empty `EXPECTED_COMPILE_FAIL`). This module sweeps a hazard list ×
-//! name-position table so the whole keyword list (and the std/prelude type names) get verdicted
+//! name-position table so the whole keyword list (and the std/prelude and runtime type names) get verdicted
 //! alongside the cases we already knew about, instead of each being rediscovered by hand.
 //!
 //! The rule-name position carries a type-SHAPE axis (record struct AND type-choice enum), because the
@@ -52,6 +52,8 @@ use clap::Parser;
 ///   module, so a rule/group named `option` emits `pub …Option…` that shadows the prelude the emitted
 ///   code itself uses.
 ///
+/// Runtime names are appended by `swept_hazards()` rather than entering `hazards()`, which the
+/// recombination fuzzer indexes by position.
 /// `box` overlaps `RUST_KEYWORDS`; the dedup in `hazards()` keeps the first (keyword) occurrence.
 const EXTRA_HAZARDS: &[&str] = &[
     "r", "w", // historical reader/writer-generic collisions (see above)
@@ -72,6 +74,78 @@ pub(crate) fn hazards() -> Vec<&'static str> {
         }
     }
     out
+}
+
+/// Extend the snapshot/compile sweep without reshuffling the recombination fuzzer's `hazards()`.
+fn swept_hazards() -> Vec<&'static str> {
+    let mut out = hazards();
+    for &name in crate::rust_reserved::RUNTIME_TYPES {
+        if !out.contains(&name) {
+            out.push(name);
+        }
+    }
+    out
+}
+
+#[test]
+fn runtime_types_match_static_sources() {
+    fn public_types(source: &str, into: &mut std::collections::BTreeSet<String>) {
+        for item in syn::parse_file(source).unwrap().items {
+            let ident = match item {
+                syn::Item::Struct(item) if matches!(item.vis, syn::Visibility::Public(_)) => {
+                    Some(item.ident)
+                }
+                syn::Item::Enum(item) if matches!(item.vis, syn::Visibility::Public(_)) => {
+                    Some(item.ident)
+                }
+                syn::Item::Type(item) if matches!(item.vis, syn::Visibility::Public(_)) => {
+                    Some(item.ident)
+                }
+                syn::Item::Trait(item) if matches!(item.vis, syn::Visibility::Public(_)) => {
+                    Some(item.ident)
+                }
+                _ => None,
+            };
+            if let Some(ident) = ident {
+                into.insert(ident.to_string());
+            }
+        }
+    }
+
+    let mut found = std::collections::BTreeSet::new();
+    public_types(include_str!("../../static/error.rs"), &mut found);
+    for extra in [
+        &[][..],
+        &["--preserve-encodings", "true"][..],
+        &["--preserve-encodings", "true", "--canonical-form", "true"][..],
+    ] {
+        let mut args = vec![
+            "cddl-codegen",
+            "--input",
+            "unused.cddl",
+            "--output",
+            "unused",
+            "--wasm",
+            "false",
+            "--deserialize-depth-limit",
+            "64",
+            "--static-dir",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/static"),
+        ];
+        args.extend_from_slice(extra);
+        let cli = Cli::parse_from(args);
+        let source =
+            crate::generation::GenerationScope::serialization_prelude(true, true, &cli).unwrap();
+        public_types(&source, &mut found);
+    }
+    let expected: std::collections::BTreeSet<_> = crate::rust_reserved::RUNTIME_TYPES
+        .iter()
+        .map(|name| (*name).to_owned())
+        .collect();
+    assert_eq!(
+        found, expected,
+        "RUNTIME_TYPES drifted from the runtime modules' public types — update rust_reserved::RUNTIME_TYPES (a missing name is a rule name that generates a non-compiling crate)"
+    );
 }
 
 /// A name position — a template that lands `hazard` in emitted Rust. `i` disambiguates the wrapper
@@ -212,7 +286,7 @@ fn emitted_signatures_carry_no_reader_writer_generics() {
 /// `ok` here — the compile verdict is layer 2's job, invisible to this generate-only pass.
 #[test]
 fn identifier_hazard_robustness_catalog() {
-    let hz = hazards();
+    let hz = swept_hazards();
     assert!(!hz.is_empty(), "hazard list is empty");
 
     let mut catalog = String::from(
@@ -221,8 +295,9 @@ fn identifier_hazard_robustness_catalog() {
          # silently-wrong `ok` — is a regression: hazardous names must reject gracefully, never\n\
          # `panic!`/`assert!`. Reserved-name rule/group definitions (a name camel-casing to a reserved\n\
          # Rust std/prelude type, or a CDDL keyword) reject gracefully via a pre-scan in\n\
-         # `api::with_types` (`intermediate::reserved_ident_rejection`); the `RustIdent::new` asserts\n\
-         # remain a backstop for synthesized idents. Exact lowercase rule/group `int` is the one\n\
+         # `api::with_types` (`intermediate::reserved_ident_rejection`).\n\
+         # A rule/group name camel-casing to a cddl-codegen runtime type (`rust_reserved::RUNTIME_TYPES`, appended to the swept list) rejects through the same pre-scan.\n\
+         # The `RustIdent::new` asserts remain a backstop for synthesized idents. Exact lowercase rule/group `int` is the one\n\
          # deliberate exception: `api::with_types` releases the built-in `Int` marker before authored\n\
          # parsing, so it may become the real owner; a differently spelled rule that normalizes to\n\
          # `Int` keeps the marker and rejects through global registration. `ok` is\n\
@@ -347,7 +422,7 @@ fn gen_and_check_with(
 #[test]
 #[ignore]
 fn identifier_hazard_crates_compile() {
-    let hz = hazards();
+    let hz = swept_hazards();
     for (position, hazard, _) in EXPECTED_COMPILE_FAIL {
         assert!(
             POSITIONS.iter().any(|pos| pos.name == *position),

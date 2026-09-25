@@ -7,8 +7,9 @@ expression: catalog
 # silently-wrong `ok` — is a regression: hazardous names must reject gracefully, never
 # `panic!`/`assert!`. Reserved-name rule/group definitions (a name camel-casing to a reserved
 # Rust std/prelude type, or a CDDL keyword) reject gracefully via a pre-scan in
-# `api::with_types` (`intermediate::reserved_ident_rejection`); the `RustIdent::new` asserts
-# remain a backstop for synthesized idents. Exact lowercase rule/group `int` is the one
+# `api::with_types` (`intermediate::reserved_ident_rejection`).
+# A rule/group name camel-casing to a cddl-codegen runtime type (`rust_reserved::RUNTIME_TYPES`, appended to the swept list) rejects through the same pre-scan.
+# The `RustIdent::new` asserts remain a backstop for synthesized idents. Exact lowercase rule/group `int` is the one
 # deliberate exception: `api::with_types` releases the built-in `Int` marker before authored
 # parsing, so it may become the real owner; a differently spelled rule that normalizes to
 # `Int` keeps the marker and rejects through global registration. `ok` is
@@ -80,6 +81,20 @@ rule-name       vec        error (graceful)
 rule-name       string     error (graceful)
 rule-name       int        ok
 rule-name       error      ok
+rule-name       Key        error (graceful)
+rule-name       DeserializeFailure error (graceful)
+rule-name       DeserializeError error (graceful)
+rule-name       Deserialize error (graceful)
+rule-name       CBORReadLen error (graceful)
+rule-name       DeserializeEmbeddedGroup error (graceful)
+rule-name       SerializeEmbeddedGroup error (graceful)
+rule-name       ToCBORBytes error (graceful)
+rule-name       Serialize  error (graceful)
+rule-name       LenEncoding error (graceful)
+rule-name       StringEncoding error (graceful)
+rule-name       TagPresenceEncoding error (graceful)
+rule-name       RawBytesEncoding error (graceful)
+rule-name       DepthGuard error (graceful)
 rule-name-enum  as         ok
 rule-name-enum  break      ok
 rule-name-enum  const      ok
@@ -144,6 +159,20 @@ rule-name-enum  vec        error (graceful)
 rule-name-enum  string     error (graceful)
 rule-name-enum  int        ok
 rule-name-enum  error      ok
+rule-name-enum  Key        error (graceful)
+rule-name-enum  DeserializeFailure error (graceful)
+rule-name-enum  DeserializeError error (graceful)
+rule-name-enum  Deserialize error (graceful)
+rule-name-enum  CBORReadLen error (graceful)
+rule-name-enum  DeserializeEmbeddedGroup error (graceful)
+rule-name-enum  SerializeEmbeddedGroup error (graceful)
+rule-name-enum  ToCBORBytes error (graceful)
+rule-name-enum  Serialize  error (graceful)
+rule-name-enum  LenEncoding error (graceful)
+rule-name-enum  StringEncoding error (graceful)
+rule-name-enum  TagPresenceEncoding error (graceful)
+rule-name-enum  RawBytesEncoding error (graceful)
+rule-name-enum  DepthGuard error (graceful)
 map-key         as         error (graceful)
 map-key         break      error (graceful)
 map-key         const      error (graceful)
@@ -208,6 +237,20 @@ map-key         vec        ok
 map-key         string     ok
 map-key         int        ok
 map-key         error      ok
+map-key         Key        ok
+map-key         DeserializeFailure ok
+map-key         DeserializeError ok
+map-key         Deserialize ok
+map-key         CBORReadLen ok
+map-key         DeserializeEmbeddedGroup ok
+map-key         SerializeEmbeddedGroup ok
+map-key         ToCBORBytes ok
+map-key         Serialize  ok
+map-key         LenEncoding error (graceful)
+map-key         StringEncoding ok
+map-key         TagPresenceEncoding ok
+map-key         RawBytesEncoding ok
+map-key         DepthGuard ok
 array-key       as         error (graceful)
 array-key       break      error (graceful)
 array-key       const      error (graceful)
@@ -272,6 +315,20 @@ array-key       vec        ok
 array-key       string     ok
 array-key       int        ok
 array-key       error      ok
+array-key       Key        ok
+array-key       DeserializeFailure ok
+array-key       DeserializeError ok
+array-key       Deserialize ok
+array-key       CBORReadLen ok
+array-key       DeserializeEmbeddedGroup ok
+array-key       SerializeEmbeddedGroup ok
+array-key       ToCBORBytes ok
+array-key       Serialize  ok
+array-key       LenEncoding error (graceful)
+array-key       StringEncoding ok
+array-key       TagPresenceEncoding ok
+array-key       RawBytesEncoding ok
+array-key       DepthGuard ok
 group-name      as         error (graceful)
 group-name      break      error (graceful)
 group-name      const      error (graceful)
@@ -336,6 +393,20 @@ group-name      vec        error (graceful)
 group-name      string     error (graceful)
 group-name      int        ok
 group-name      error      ok
+group-name      Key        error (graceful)
+group-name      DeserializeFailure error (graceful)
+group-name      DeserializeError error (graceful)
+group-name      Deserialize error (graceful)
+group-name      CBORReadLen error (graceful)
+group-name      DeserializeEmbeddedGroup error (graceful)
+group-name      SerializeEmbeddedGroup error (graceful)
+group-name      ToCBORBytes error (graceful)
+group-name      Serialize  error (graceful)
+group-name      LenEncoding error (graceful)
+group-name      StringEncoding error (graceful)
+group-name      TagPresenceEncoding error (graceful)
+group-name      RawBytesEncoding error (graceful)
+group-name      DepthGuard error (graceful)
 name-directive  as         error (graceful)
 name-directive  break      error (graceful)
 name-directive  const      error (graceful)
@@ -400,3 +471,17 @@ name-directive  vec        ok
 name-directive  string     ok
 name-directive  int        ok
 name-directive  error      ok
+name-directive  Key        ok
+name-directive  DeserializeFailure ok
+name-directive  DeserializeError ok
+name-directive  Deserialize ok
+name-directive  CBORReadLen ok
+name-directive  DeserializeEmbeddedGroup ok
+name-directive  SerializeEmbeddedGroup ok
+name-directive  ToCBORBytes ok
+name-directive  Serialize  ok
+name-directive  LenEncoding error (graceful)
+name-directive  StringEncoding ok
+name-directive  TagPresenceEncoding ok
+name-directive  RawBytesEncoding ok
+name-directive  DepthGuard ok

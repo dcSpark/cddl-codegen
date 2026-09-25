@@ -4507,7 +4507,7 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`, `
 > **NAME-shaped** axis a construct enumeration can never catch — collisions between a user-chosen CDDL
 > *name* and the Rust the generator *emits* (the axis IS the name). It sweeps a static hazard table
 > (`RUST_KEYWORDS` reused from `parsing.rs`, the single-letter names `r`/`w`, and prelude/std type names
-> like `Option`/`Vec`/`Int`) × six name positions (rule name in BOTH emitted type shapes — record
+> like `Option`/`Vec`/`Int`) plus the cddl-codegen runtime type names (`rust_reserved::RUNTIME_TYPES`, appended by `swept_hazards()` without entering the fuzzer's `hazards()`), rejected at the rule/group positions and drift-guarded by `runtime_types_match_static_sources` × six name positions (rule name in BOTH emitted type shapes — record
 > struct and type-choice enum, since the historical generic collision was shape-dependent and a
 > struct-only sweep would launder enum-shaped `w` as clean — bareword map key, bareword array key, plain group name,
 > `@name` directive value). It is a Rust module rather than a `project_robustness.ts`

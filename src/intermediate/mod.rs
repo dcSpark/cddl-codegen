@@ -8527,8 +8527,13 @@ fn rewrite_inline_sets_in_record(
 ///
 /// The asserts stay as a backstop for synthesized/internal idents (which never route through here);
 /// this function is only for user-chosen names, where a panic on valid CDDL is the bug being fixed.
+/// A third, non-panicking class — cddl-codegen runtime types (`rust_reserved::RUNTIME_TYPES`) — is
+/// refused only here, never by `RustIdent::new`.
 pub fn reserved_ident_rejection(source_name: &str) -> Option<String> {
-    match RustIdent::reserved_reason(source_name)? {
+    let Some(kind) = RustIdent::reserved_reason(source_name) else {
+        return runtime_type_rejection(source_name);
+    };
+    match kind {
         ReservedIdentKind::RustTypeName => {
             let camel = convert_to_camel_case(source_name);
             Some(format!(
@@ -8548,6 +8553,25 @@ pub fn reserved_ident_rejection(source_name: &str) -> Option<String> {
     }
 }
 
+/// Refuse a user-chosen rule/group name that camel-cases to a cddl-codegen runtime type.
+/// This stays outside `RustIdent::reserved_reason`, which also guards internally minted idents
+/// with panicking asserts.
+fn runtime_type_rejection(source_name: &str) -> Option<String> {
+    let camel = convert_to_camel_case(source_name);
+    crate::rust_reserved::RUNTIME_TYPES
+        .contains(&camel.as_str())
+        .then(|| {
+            format!(
+                "rule `{source_name}`: its name camel-cases to `{camel}`, a type of the \
+                 cddl-codegen runtime (the `error`/`serialization` modules) that the generated code \
+                 imports into every module — emitting a type by that name would collide with it. A \
+                 rule/group name becomes the emitted Rust type name directly, so (unlike a struct \
+                 field, which a `; @name` comment renames) the CDDL identifier itself must be \
+                 renamed to a non-reserved name."
+            )
+        })
+}
+
 /// A graceful-rejection message if a `@rust_name` PIN cannot be used as a Rust type name, else
 /// `None`. A pin becomes the emitted Rust name for the dependency's type verbatim (the consumer
 /// imports `use dep::<pin> as <derived>;`), so it must clear the SAME reserved-ident bar a derived
@@ -8560,10 +8584,13 @@ pub fn reserved_ident_rejection(source_name: &str) -> Option<String> {
 /// to an authored `int` rule, a lifecycle a pin never passes through.
 pub fn reserved_pin_rejection(pin: &str, rule: &str) -> Option<String> {
     let camel = convert_to_camel_case(pin);
-    if crate::rust_reserved::STD_TYPES.contains(&camel.as_str()) || is_identifier_reserved(pin) {
+    if crate::rust_reserved::STD_TYPES.contains(&camel.as_str())
+        || crate::rust_reserved::RUNTIME_TYPES.contains(&camel.as_str())
+        || is_identifier_reserved(pin)
+    {
         return Some(format!(
             "@rust_name `{pin}` on rule `{rule}`: the pinned Rust name is a reserved Rust \
-             std/prelude type or CDDL keyword — a dependency could never have emitted a type by that \
+             std/prelude type, a cddl-codegen runtime type, or a CDDL keyword — a dependency could never have emitted a type by that \
              name, so this pin can never be honored. Choose a non-reserved name."
         ));
     }

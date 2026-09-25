@@ -233,7 +233,7 @@ use plutus_dep::PlutusData as PlutusDatum; // when the consumer would derive `Pl
 
 so the rest of the generated code (and the wasm↔rust conversions) keep referring to the derived
 name. A pin-less rule falls back to today's consumer-side derivation (hand-stub compatibility). A
-pin that camel-cases to a reserved Rust std/prelude type (`Option`, `Box`, …) or a CDDL keyword is
+pin that camel-cases to a reserved Rust std/prelude type (`Option`, `Box`, …), a cddl-codegen runtime type (`Key`, `DeserializeError`, …), or a CDDL keyword is
 rejected, exactly as a derived rule name by that spelling would be — a dependency could never have
 emitted a type by that name, so the pin could never be honored.
 

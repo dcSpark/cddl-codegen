@@ -162,3 +162,24 @@ fn rust_name_reserved_pin_rejected() {
         "expected a reserved-pin rejection, got:\n{err}"
     );
 }
+
+#[test]
+fn rust_name_runtime_type_pin_rejected() {
+    let err = generate_dir(
+        &[
+            ("main.cddl", "outer = { x: foo_bar }"),
+            (
+                "_CDDL_CODEGEN_EXTERN_DEPS_DIR_/mydep/mod.cddl",
+                "foo_bar = _CDDL_CODEGEN_EXTERN_TYPE_ ; @rust_name Key",
+            ),
+        ],
+        &[],
+        false,
+        "pin_runtime_reject",
+    )
+    .expect_err("a pin to a cddl-codegen runtime type must be rejected");
+    assert!(
+        err.contains("@rust_name") && err.contains("cddl-codegen runtime"),
+        "expected a runtime-type-pin rejection, got:\n{err}"
+    );
+}

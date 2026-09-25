@@ -1263,7 +1263,7 @@ mod tests {
     /// A rule/plain-group whose name would collide with a reserved Rust type or a CDDL keyword is
     /// rejected GRACEFULLY (a drained rejection → `Err`), never via the `assert!`-panic in
     /// `RustIdent::new`. Pins the message for one `STD_TYPES` case (`option` → `Option`) and one
-    /// CDDL-keyword case (`true`), including the `@name`-anchored remedy. Regression guard for the
+    /// CDDL-keyword case (`true`) and a runtime-type case (`key`), including the `@name`-anchored remedy. Regression guard for the
     /// reserved-name graceful-rejection fix; the full (position × hazard) sweep lives in
     /// `identifier_hazard_robustness_catalog`.
     #[test]
@@ -1303,6 +1303,10 @@ mod tests {
             opt.contains("@name"),
             "must point at the @name remedy: {opt}"
         );
+        let runtime = gen_err("key = [a: uint]\n", "key");
+        for expected in ["rule `key`", "`Key`", "cddl-codegen runtime", "@name"] {
+            assert!(runtime.contains(expected), "missing {expected}: {runtime}");
+        }
 
         // CDDL keyword: `true`.
         let tru = gen_err("true = [a: uint]\n", "true");
