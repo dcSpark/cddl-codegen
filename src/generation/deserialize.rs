@@ -1468,6 +1468,10 @@ impl GenerationScope {
                             );
                             let is_f32 = p.float_carrier_is_f32();
                             let (min_head, max_head) = p.float_class_window().unwrap();
+                            let (min_head, max_head) = (
+                                crate::intermediate::float_head_name(min_head),
+                                crate::intermediate::float_head_name(max_head),
+                            );
                             // Width-unconstrained `float` is EVERY float value, so the plain read IS
                             // the whole check — no membership test to emit. Every other class reads
                             // at any head and then tests the decoded VALUE against the window its

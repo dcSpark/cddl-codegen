@@ -762,24 +762,35 @@ impl std::fmt::Display for Primitive {
         )
     }
 }
+/// The `cbor_event::Sz` variant name of a float head width, as emitted code spells it.
+pub fn float_head_name(sz: cbor_event::Sz) -> &'static str {
+    match sz {
+        cbor_event::Sz::Two => "Two",
+        cbor_event::Sz::Four => "Four",
+        cbor_event::Sz::Eight => "Eight",
+        other => unreachable!("{other:?} is not a float head width"),
+    }
+}
+
 // TODO: impl display or fmt or whatever rust uses
 impl Primitive {
-    /// The window of SHORTEST-LOSSLESS-FORM widths this primitive's CDDL float class spans, as the
-    /// `cbor_event::Sz` spellings of its narrowest and widest — or `None` when it is not a float.
+    /// The window of SHORTEST-LOSSLESS-FORM widths this primitive's CDDL float class spans, as its
+    /// narrowest and widest `cbor_event::Sz` — or `None` when it is not a float.
     /// A value belongs to the class exactly when `smallest_float_sz(value)` lands inside the window,
     /// which is what lets both directions express the class as a pair of bounds: decode accepts any
     /// head and rejects a VALUE whose shortest form falls outside, and a write emits that same
     /// shortest form (RFC 8949 §4.1 preferred serialization), which for a member is its declared
     /// width by construction. The window is always contiguous in width order (`Two` < `Four` <
     /// `Eight`).
-    pub fn float_class_window(self) -> Option<(&'static str, &'static str)> {
+    pub fn float_class_window(self) -> Option<(cbor_event::Sz, cbor_event::Sz)> {
+        use cbor_event::Sz::{Eight, Four, Two};
         Some(match self {
-            Primitive::F16 => ("Two", "Two"),
-            Primitive::F32 => ("Four", "Four"),
-            Primitive::F64 => ("Eight", "Eight"),
-            Primitive::F16To32 => ("Two", "Four"),
-            Primitive::F32To64 => ("Four", "Eight"),
-            Primitive::Float => ("Two", "Eight"),
+            Primitive::F16 => (Two, Two),
+            Primitive::F32 => (Four, Four),
+            Primitive::F64 => (Eight, Eight),
+            Primitive::F16To32 => (Two, Four),
+            Primitive::F32To64 => (Four, Eight),
+            Primitive::Float => (Two, Eight),
             _ => return None,
         })
     }

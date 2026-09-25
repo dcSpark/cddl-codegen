@@ -1041,7 +1041,11 @@ impl GenerationScope {
                             // and no membership check — only the smallest-head rule.
                             let class_window = (*p != Primitive::Float).then(|| {
                                 let (min, max) = p.float_class_window().unwrap();
-                                format!("cbor_event::Sz::{min}, cbor_event::Sz::{max}")
+                                format!(
+                                    "cbor_event::Sz::{}, cbor_event::Sz::{}",
+                                    crate::intermediate::float_head_name(min),
+                                    crate::intermediate::float_head_name(max)
+                                )
                             });
                             match (cli.preserve_encodings, class_window) {
                                 (true, None) => write_float(

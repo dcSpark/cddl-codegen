@@ -3061,19 +3061,8 @@ fn valid_float_in_window(window: &crate::intermediate::FloatWindow) -> f64 {
     }
 }
 
-/// Rank of a float class-window endpoint (`float_class_window`'s `cbor_event::Sz` spelling) in width
-/// order. Derived from that one table rather than restating it, so the six classes have a single
-/// definition here as they do in the runtime.
-fn float_width_rank(name: &str) -> u8 {
-    match name {
-        "Two" => 0,
-        "Four" => 1,
-        "Eight" => 2,
-        other => unreachable!("float class-window endpoint {other} is not a float width"),
-    }
-}
-
-/// Rank of a float head width in the same order as `float_width_rank`.
+/// Rank of a float head width in width order (`Two` < `Four` < `Eight`); `cbor_event::Sz` has no
+/// `Ord`.
 fn sz_rank(sz: cbor_event::Sz) -> u8 {
     match sz {
         cbor_event::Sz::Two => 0,
@@ -3094,7 +3083,7 @@ fn float_class_admits(p: Primitive, value: f64) -> bool {
         return false;
     };
     let smallest = sz_rank(cbor_event::se::smallest_float_sz(value));
-    smallest >= float_width_rank(min) && smallest <= float_width_rank(max)
+    smallest >= sz_rank(min) && smallest <= sz_rank(max)
 }
 
 /// A member of `p`'s float class near `base`, in preference order: `base` itself, then the nearest
@@ -4068,11 +4057,7 @@ mod tests {
         let values = [1.5, 100000.0, 1.1];
         for (class, lo, hi) in classes {
             let (min, max) = class.float_class_window().unwrap();
-            assert_eq!(
-                (float_width_rank(min), float_width_rank(max)),
-                (lo, hi),
-                "{class:?}"
-            );
+            assert_eq!((sz_rank(min), sz_rank(max)), (lo, hi), "{class:?}");
             for (rank, value) in values.into_iter().enumerate() {
                 let rank = rank as u8;
                 assert_eq!(
