@@ -44,7 +44,7 @@ moves. This roadmap owns only the work still needed to close that loop; delivere
 user-facing contracts, and current oracle behavior live in their durable documentation.
 
 One deferred coverage item remains: the wasm emit-tests minter has no standalone `any` constructor path (`src/emit_tests_wasm.rs`, `Any => None`), so a minted `any` leaf gets no wasm-native constructor differential even when its enclosing rust test exercises the value.
-Exact, bounded, and bounded-map collections containing `any` now execute their wasm round trips through `From<core>`, without constructing an individual wasm `AnyCbor` value.
+Exact, bounded, and bounded-map collections containing `any` execute their wasm round trips through `From<core>`, without constructing an individual wasm `AnyCbor` value.
 Lifting the standalone boundary follows demand because the wasm `AnyCbor` wrapper is byte-oriented and exposes no value-destructuring constructor.
 The other remaining work on this axis is carried by the future items below.
 
