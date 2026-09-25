@@ -67,6 +67,10 @@ syn = { version = "2", features = ["full", "visit"] }
 # `cargo_manifest.rs`: a user's concrete version pin is kept verbatim when it satisfies the tool's
 # version requirement (caret semantics), otherwise the tool's floor wins.
 semver = "1.0"
+# Levenshtein distance for the config reader's "did you mean" suggestion (`config.rs`,
+# `unknown_key_advice`). Already in-tree through clap's own suggestion support, so a direct dep
+# adds no lockfile weight. Never a generated-crate dep: it runs inside this tool only.
+strsim = "0.11"
 # Format-preserving TOML DOM (the crate `cargo add`/`cargo remove` use). Powers the declarative
 # Cargo.toml changeset model in `cargo_manifest.rs`: untouched keys/comments/formatting of a
 # user-edited manifest survive regeneration byte-for-byte. `default-features` keeps `parse`+`display`.

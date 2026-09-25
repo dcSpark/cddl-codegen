@@ -276,6 +276,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "strsim",
  "syn 2.0.118",
  "toml",
  "toml_edit",

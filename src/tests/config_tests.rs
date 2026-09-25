@@ -292,6 +292,15 @@ fn an_unknown_key_suggests_the_nearest_key_that_table_accepts() {
         "a one-character typo must be answered with the key, got: {typo}"
     );
 
+    // Distance counts characters, not bytes: two accented letters are two edits (four in UTF-8 bytes).
+    let accented = error(&format!(
+        "[defaults]\n\"préservé-encodings\" = true\n{MINIMAL_CRATE}"
+    ));
+    assert!(
+        accented.contains("did you mean `preserve-encodings`?"),
+        "a two-character typo in non-ASCII text must still be answered with the key, got: {accented}"
+    );
+
     // The near-collision. `json-schema-dep` (a Settings key) and `json-schema-deps` (per-crate only)
     // differ by one character, so which one is nearest is decided by which table is being read.
     let in_crate =

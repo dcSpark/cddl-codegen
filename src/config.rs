@@ -177,33 +177,6 @@ pub(crate) const SETTINGS_KEYS: &[&str] = &[
     "verbosity",
 ];
 
-/// Levenshtein distance, capped: the caller only ever asks "is this within 2?", so the row-by-row
-/// walk bails as soon as the whole row exceeds the cap.
-///
-/// Implemented here rather than pulled in as a dependency — it is eleven lines, and a new crate in
-/// the tree to spell-check config keys is not a trade worth making.
-fn edit_distance_within(a: &str, b: &str, cap: usize) -> Option<usize> {
-    let b: Vec<char> = b.chars().collect();
-    if a.chars().count().abs_diff(b.len()) > cap {
-        return None;
-    }
-    let mut prev: Vec<usize> = (0..=b.len()).collect();
-    let mut row: Vec<usize> = vec![0; b.len() + 1];
-    for (i, ca) in a.chars().enumerate() {
-        row[0] = i + 1;
-        for (j, cb) in b.iter().enumerate() {
-            let substitute = prev[j] + usize::from(ca != *cb);
-            row[j + 1] = substitute.min(prev[j + 1] + 1).min(row[j] + 1);
-        }
-        if row.iter().min().copied().unwrap_or(0) > cap {
-            return None;
-        }
-        std::mem::swap(&mut prev, &mut row);
-    }
-    let distance = prev[b.len()];
-    (distance <= cap).then_some(distance)
-}
-
 /// How far a key may be from a known one and still be offered as the thing it meant. Two edits
 /// covers the realistic typo (a dropped, doubled, swapped or wrong character, or two of them) without
 /// reaching the point where several unrelated keys qualify and the "nearest" is arbitrary.
@@ -220,7 +193,8 @@ fn unknown_key_advice(key: &str, known: &[&str]) -> String {
     let nearest = known
         .iter()
         .filter_map(|candidate| {
-            edit_distance_within(key, candidate, SUGGEST_WITHIN).map(|d| (d, *candidate))
+            let distance = strsim::levenshtein(key, candidate);
+            (distance <= SUGGEST_WITHIN).then_some((distance, *candidate))
         })
         // Ties broken by name so the suggestion is the same on every machine, like every other
         // ordering in this file.
