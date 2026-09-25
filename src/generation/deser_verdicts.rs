@@ -9,13 +9,13 @@ impl GenerationScope {
         !self.no_deser_reasons.contains_key(name)
     }
 
-    /// Every ident the rust face declined to give a `Deserialize` impl, as a set the WIT projection
-    /// can consult. A verdict, not a rule: it is only complete once the rust face's walk has run.
+    /// Every ident the rust face declines to give a `Deserialize` impl, as a set the WIT projection
+    /// can consult. Complete once `seed_no_deserialize_verdicts` has run, before any emission.
     pub(super) fn no_deserialize_idents(&self) -> std::collections::BTreeSet<RustIdent> {
         self.no_deser_reasons.keys().cloned().collect()
     }
 
-    pub(super) fn deserialize_generated_for_type(&self, field_type: &ConceptualRustType) -> bool {
+    fn deserialize_generated_for_type(&self, field_type: &ConceptualRustType) -> bool {
         match field_type {
             ConceptualRustType::Fixed(_) => true,
             ConceptualRustType::Primitive(_) => true,
@@ -43,7 +43,7 @@ impl GenerationScope {
     /// every struct on every round and re-derives the refusals it already knows. One line per
     /// DISTINCT cause is also what the warning wants — a cause is identified by its text (it names
     /// the field/variant), so a repeat is a repeat.
-    pub(super) fn dont_generate_deserialize(&mut self, name: &RustIdent, reason: String) {
+    fn dont_generate_deserialize(&mut self, name: &RustIdent, reason: String) {
         let reasons = self.no_deser_reasons.entry(name.clone()).or_default();
         if !reasons.contains(&reason) {
             reasons.push(reason);
