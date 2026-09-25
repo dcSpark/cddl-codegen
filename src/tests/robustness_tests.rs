@@ -1026,6 +1026,40 @@ fn aliased_float_head_value_controls_generate() {
     }
 }
 
+#[test]
+fn vacuous_ne_exclusion_constrains_nothing() {
+    for (tag, spec, absent) in [
+        ("uint_member", "x = [a: uint .ne -1]\n", "-2"),
+        ("uint_rule", "x = uint .ne -1\n", "-1"),
+        ("uint_rule_newtype", "x = uint .ne -1 ; @newtype\n", "-1"),
+        ("uint_alias", "u = uint\nx = [a: u .ne -1]\n", "-2"),
+        ("nint_zero", "x = [a: nint .ne 0]\n", "a == 1"),
+        ("nint_positive", "x = [a: nint .ne 5]\n", "a == 6"),
+    ] {
+        let src = expect_generates(tag, spec, &["--wasm=false"])
+            .into_values()
+            .collect::<String>();
+        assert!(
+            !src.contains(absent),
+            "{tag}: unexpected {absent:?} in {src}"
+        );
+    }
+    for (tag, spec, needle) in [
+        ("nint_negative", "x = [a: nint .ne -3]\n", "a == 2"),
+        ("uint_three", "x = [a: uint .ne 3]\n", "a == 3"),
+        (
+            "uint_three_payload",
+            "x = [a: uint .ne 3]\n",
+            "min: Some(4)",
+        ),
+    ] {
+        let src = expect_generates(tag, spec, &["--wasm=false"])
+            .into_values()
+            .collect::<String>();
+        assert!(src.contains(needle), "{tag}: missing {needle:?} in {src}");
+    }
+}
+
 /// Child half of the warning-capture regression. `warn!` writes directly to stderr, so an
 /// in-process assertion cannot observe it without changing the production logging seam.
 #[test]

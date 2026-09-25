@@ -1,4 +1,5 @@
 use super::*;
+use crate::intermediate::IntBounds;
 
 pub(super) fn bounds_check_expr(p: Primitive, e: &str) -> String {
     match p {
@@ -99,12 +100,8 @@ pub(crate) fn nint_bounds_to_u64(
     // magnitude 1, which turns "anything except -1" into "exactly -2". Re-encode the excluded
     // magnitude as the same inverted-window sentinel instead. i128 has room for both sentinels at
     // the full u64 magnitude endpoints (`m - 1`, `m + 1`).
-    if let (Some(min), Some(max)) = bounds
-        && min > max
-    {
-        let excluded_value = min - 1;
-        let excluded_magnitude = (excluded_value + 1).abs();
-        return (Some(excluded_magnitude + 1), Some(excluded_magnitude - 1));
+    if let IntBounds::Exclusion(excluded_value) = IntBounds::read(*bounds) {
+        return IntBounds::exclusion((excluded_value + 1).abs());
     }
     (
         bounds.1.map(|x| (x + 1).abs()),
@@ -545,10 +542,11 @@ impl RejectCond {
 /// when unsure a caller passes `false` and keeps the long form. The two agree on every value the
 /// assertion admits, so an evaluating caller that cannot vouch for the sign passes `false`.
 pub(crate) fn reject_cond(bounds: &(Option<i128>, Option<i128>), non_negative: bool) -> RejectCond {
+    // the `.ne N` exclusion, not an (unsatisfiable) window
+    if let IntBounds::Exclusion(excluded) = IntBounds::read(*bounds) {
+        return RejectCond::Eq(excluded);
+    }
     match bounds {
-        // `.ne N` is encoded as Range(N+1, N-1) (see parsing.rs NE): min > max means an
-        // EXCLUSION of the single value between them, not an (unsatisfiable) window
-        (Some(min), Some(max)) if min > max => RejectCond::Eq(min - 1),
         // a single-value window (min == max) is one equality, not the redundant `< N || > N`
         (Some(min), Some(max)) if min == max => RejectCond::Ne(*min),
         // `min == 0` on a provably-non-negative expr: the `e < 0` leg can never fire — drop it
@@ -612,15 +610,13 @@ pub(super) fn classify_sign_arm(
     };
     // `.ne N` exclusion encoding: min > max excludes the single value min-1. Route the exclusion
     // check to whichever arm the excluded value lives in; the other arm has nothing to check.
-    if let (Some(min), Some(max)) = bounds
-        && min > max
-    {
+    if let IntBounds::Exclusion(excluded) = IntBounds::read(bounds) {
         let excluded_here = match arm {
-            SignArm::Uint => (min - 1) >= 0,
-            SignArm::Nint => (min - 1) < 0,
+            SignArm::Uint => excluded >= 0,
+            SignArm::Nint => excluded < 0,
         };
         return if excluded_here {
-            SignArmBounds::Check((Some(min), Some(max)))
+            SignArmBounds::Check(bounds)
         } else {
             SignArmBounds::Unconstrained
         };
@@ -764,10 +760,10 @@ pub(super) fn width_reject(
 // bound >= the type min (nint side). A min>max pair is the `.ne` EXCLUSION
 // encoding — it caps nothing.
 pub(super) fn upper_caps(bounds: &Option<(Option<i128>, Option<i128>)>, wmax: i128) -> bool {
-    matches!(bounds, Some((mn, Some(mx))) if mn.is_none_or(|mn| mn <= *mx) && *mx <= wmax)
+    matches!(bounds.map(IntBounds::read), Some(IntBounds::Window(_, Some(mx))) if mx <= wmax)
 }
 fn lower_caps(bounds: &Option<(Option<i128>, Option<i128>)>, wmin: i128) -> bool {
-    matches!(bounds, Some((Some(mn), mx)) if mx.is_none_or(|mx| *mn <= mx) && *mn >= wmin)
+    matches!(bounds.map(IntBounds::read), Some(IntBounds::Window(Some(mn), _)) if mn >= wmin)
 }
 pub(super) fn uint_arm_needs_width(arm: &SignArmBounds, wmax: i128) -> bool {
     match arm {
@@ -787,6 +783,20 @@ pub(super) fn nint_arm_needs_width(arm: &SignArmBounds, wmin: i128) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn int_bounds_is_the_one_exclusion_codec() {
+        for value in [-1, 0, 5, i64::MIN as i128, u64::MAX as i128] {
+            assert_eq!(
+                IntBounds::read(IntBounds::exclusion(value)),
+                IntBounds::Exclusion(value)
+            );
+        }
+        assert_eq!(
+            IntBounds::read((Some(0), Some(5))),
+            IntBounds::Window(Some(0), Some(5))
+        );
+    }
+
     use super::*;
 
     #[test]

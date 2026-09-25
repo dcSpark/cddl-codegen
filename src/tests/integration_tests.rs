@@ -34159,6 +34159,9 @@ u = uint
 u8a = uint .size 1
 uw = [a: u .size 2, b: (u) .size (1..2), c: u8a .size 2, d: (uint) .size 2, e: u .size 9]
 uk = { * u .size 2 => tstr }
+n = nint
+nw = [a: uint .ne -1, b: nint .ne 0, c: u .ne -1, d: n .ne 5, e: nint .ne -3, f: int .ne 5]
+nr = uint .ne -1
 ";
     let input = root.join("input.cddl");
     std::fs::write(&input, spec).unwrap();

@@ -7,9 +7,9 @@ use crate::comment_ast::{DuplicatesPolicy, RuleMetadata, merge_metadata, metadat
 use crate::intermediate::{
     AliasIdent, AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant,
     EnumVariantData, FixedValue, FloatWindow, ForbiddenField, GenericDef, GenericInstance,
-    GenericParamBinding, IntermediateTypes, ModuleScope, PlainGroupInfo, Primitive, Representation,
-    RestKind, RestRow, RestSemantics, RustField, RustIdent, RustRecord, RustStruct, RustStructType,
-    RustType, VariantIdent, reserved_pin_rejection,
+    GenericParamBinding, IntBounds, IntermediateTypes, ModuleScope, PlainGroupInfo, Primitive,
+    Representation, RestKind, RestRow, RestSemantics, RustField, RustIdent, RustRecord, RustStruct,
+    RustStructType, RustType, VariantIdent, reserved_pin_rejection,
 };
 use crate::utils::{
     append_number_if_duplicate, convert_to_camel_case, convert_to_snake_case,
@@ -3175,8 +3175,17 @@ fn parse_control_operator(
                     token::ControlOperator::EQ => {
                         ControlOperator::Range((Some(value), Some(value)))
                     }
+                    // A value the head cannot hold (`uint .ne -1`, `nint .ne 0`) is never
+                    // present, so excluding it constrains nothing.
+                    token::ControlOperator::NE
+                        if resolved_head_primitive(types, type2)
+                            .and_then(integer_primitive_domain)
+                            .is_some_and(|(min, max)| value < min || value > max) =>
+                    {
+                        ControlOperator::Range((None, None))
+                    }
                     token::ControlOperator::NE => {
-                        ControlOperator::Range((Some(value + 1), Some(value - 1)))
+                        ControlOperator::Range(IntBounds::exclusion(value))
                     }
                     token::ControlOperator::LE => {
                         ControlOperator::Range((lower_bound, Some(value)))
@@ -6882,7 +6891,7 @@ fn with_resolved_head_window(
         }
         ConceptualRustType::Primitive(primitive)
             if let Some((min, max)) = integer_primitive_domain(*primitive)
-                && !matches!(window, (Some(l), Some(h)) if l > h) =>
+                && matches!(IntBounds::read(window), IntBounds::Window(..)) =>
         {
             (
                 window.0.filter(|low| *low > min),

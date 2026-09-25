@@ -885,6 +885,35 @@ pub enum CBOREncodingOperation {
 /// used exactly; emitted comparisons cast the f32 value to f64.
 pub type FloatWindow = (Option<(f64, bool)>, Option<(f64, bool)>);
 
+/// What a stored integer bound pair (`RustTypeConfig::bounds`, a wrapper's `min_max`) means.
+///
+/// `.ne N` is stored as the inverted pair `(N + 1, N - 1)`: the pair stays the storage because the
+/// emitted `RangeCheck` payload reports it verbatim. This type is the one encoder
+/// ([`IntBounds::exclusion`]) and the one decoder ([`IntBounds::read`]) of that inversion, so no
+/// consumer re-derives it from `min > max`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IntBounds {
+    /// Admitted values lie in `min..=max`; an absent side is open.
+    Window(Option<i128>, Option<i128>),
+    /// Every value except this one (`.ne N`).
+    Exclusion(i128),
+}
+
+impl IntBounds {
+    /// The stored pair for `.ne value`.
+    pub fn exclusion(value: i128) -> (Option<i128>, Option<i128>) {
+        (Some(value + 1), Some(value - 1))
+    }
+
+    /// The meaning of a stored pair.
+    pub fn read(bounds: (Option<i128>, Option<i128>)) -> Self {
+        match bounds {
+            (Some(min), Some(max)) if min > max => IntBounds::Exclusion(min - 1),
+            (min, max) => IntBounds::Window(min, max),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RustTypeSerializeConfig {
     /// default value when missing in deserialization
@@ -1068,8 +1097,10 @@ impl RustType {
 
     pub fn with_bounds(mut self, mut bounds: (Option<i128>, Option<i128>)) -> Self {
         assert!(self.config.bounds.is_none());
-        // remove redundant 0 for unsigned types
+        // remove redundant 0 for unsigned types — a window's lower endpoint only: an exclusion's
+        // stored pair has no endpoint to drop (`.ne -1` is `(0, -2)`)
         if bounds.0 == Some(0)
+            && matches!(IntBounds::read(bounds), IntBounds::Window(..))
             && matches!(
                 self.conceptual_type.resolve_alias_shallow(),
                 ConceptualRustType::Primitive(Primitive::Bytes)
