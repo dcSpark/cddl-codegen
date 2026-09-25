@@ -9,7 +9,7 @@ extern crate alloc;
 use alloc::vec;
 use alloc::vec::Vec;
 #[allow(unused_imports)]
-use cbor_event::se::Serialize as _;
+use cbor_event::se::Serialize;
 
 use super::*;
 use crate::generated::error::*;

@@ -2297,10 +2297,10 @@ impl GenerationScope {
                 .push_import(format!("{}::error", cli.common_import_rust()), "*", None);
             if !(cli.preserve_encodings && cli.canonical_form) {
                 // The trait is used only by method-call `.serialize(…)` sites (every impl names it
-                // by full path), which name-based pruning cannot see, so it is imported anonymously
-                // and allowed: a file with no such call carries no warning, and no bare `Serialize`
-                // name is bound.
-                scope.raw("#[allow(unused_imports)]\nuse cbor_event::se::Serialize as _;");
+                // by full path), which name-based pruning cannot see. Keep a named import so it
+                // takes precedence over the runtime serialization glob's own `Serialize` trait;
+                // allow it where this scope has no such call.
+                scope.raw("#[allow(unused_imports)]\nuse cbor_event::se::Serialize;");
             }
         };
         for (scope, content) in self.serialize_scopes.iter_mut() {
@@ -2309,8 +2309,8 @@ impl GenerationScope {
             // only a non-root scope or a `--common-import-override` root imports it. Its exports
             // are mostly traits (`Deserialize`, `SerializeEmbeddedGroup`, `ToCBORBytes`, …) that
             // `Type::deserialize(raw)`-style paths and method calls use without naming, so no
-            // name-scan can prove the glob unused; like the anonymous `Serialize` import above it
-            // is emitted allowed, and a scope that uses none of it (every deserialize refused)
+            // name-scan can prove the glob unused; like the named `Serialize` import above it is
+            // emitted allowed, and a scope that uses none of it (every deserialize refused)
             // stays warning-free.
             if cli.common_import_override.is_some() || *scope != *ROOT_SCOPE {
                 content.raw(format!(

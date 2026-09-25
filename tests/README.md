@@ -1813,8 +1813,10 @@ denies a curated rustc style-lint set (`unused_parens`, `unused_braces`, `unused
 without denying `unused_imports`. That asymmetry is deliberate: the usage-derived import prune
 (`import_prune::prune_generated_files`) can conservatively keep an ancestor import when an
 intermediate module may shield a descendant's use, and cannot prove trait imports unused by name.
-The emitter imports the method-call-only `cbor_event::se::Serialize` trait anonymously, so it adds
-no unused-import warning. An emitted binding nothing reads is a generator defect every time, so
+The emitter imports the method-call-only `cbor_event::se::Serialize` trait by name with
+`#[allow(unused_imports)]`, so it takes precedence over a runtime serialization glob without
+warning in scopes with no `.serialize(…)` call. An emitted binding nothing reads is a generator
+defect every time, so
 `unused_variables` is denied. The
 corpus-wide owner of that same class is `feature_corpus_compiles`'
 `unused_generated_variable_lines` scan. Everything else — the concrete

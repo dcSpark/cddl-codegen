@@ -6332,12 +6332,13 @@ fn serialization_trait_import_is_warning_free() {
                 "serialization.rs",
                 "map/serialization.rs",
                 "embedded/serialization.rs",
+                "refused_scope/serialization.rs",
             ] {
                 let content =
                     std::fs::read_to_string(out.join("rust/src/generated").join(file)).unwrap();
                 assert!(
-                    content.contains("use cbor_event::se::Serialize as _;"),
-                    "{tag} {file} must carry the anonymous import:\n{content}"
+                    content.contains("#[allow(unused_imports)]\nuse cbor_event::se::Serialize;"),
+                    "{tag} {file} must carry the named, allowed import:\n{content}"
                 );
             }
         }
@@ -7215,7 +7216,8 @@ fn generated_code_clippy_clean() {
         // An unread generated binding is always a defect, so `unused_variables` is denied here.
         // `unused_imports` stays at warn: the name scan conservatively keeps an ancestor import
         // when an intermediate module may shield a descendant's use, and cannot prune traits by
-        // name. The emitter imports the method-call-only Serialize trait anonymously instead.
+        // name. The emitter imports the method-call-only Serialize trait by name with an allow
+        // attribute so it shadows runtime globs without warning where no method call uses it.
         "-D",
         "unused_variables",
     ];

@@ -10,7 +10,7 @@ use alloc::borrow::ToOwned;
 use alloc::string::String;
 use alloc::vec::Vec;
 #[allow(unused_imports)]
-use cbor_event::se::Serialize as _;
+use cbor_event::se::Serialize;
 
 use super::cbor_encodings::*;
 use super::*;

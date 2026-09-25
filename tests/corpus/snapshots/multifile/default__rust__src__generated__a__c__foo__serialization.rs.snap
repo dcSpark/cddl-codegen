@@ -8,7 +8,7 @@ expression: content
 #[allow(unused_imports)]
 use crate::generated::serialization::*;
 #[allow(unused_imports)]
-use cbor_event::se::Serialize as _;
+use cbor_event::se::Serialize;
 
 use super::*;
 use crate::generated::error::*;

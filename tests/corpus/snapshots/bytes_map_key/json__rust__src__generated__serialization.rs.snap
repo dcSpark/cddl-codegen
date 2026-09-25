@@ -9,7 +9,7 @@ extern crate alloc;
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 #[allow(unused_imports)]
-use cbor_event::se::Serialize as _;
+use cbor_event::se::Serialize;
 
 use super::*;
 use crate::generated::error::*;

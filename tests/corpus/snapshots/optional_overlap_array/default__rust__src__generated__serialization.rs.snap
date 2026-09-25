@@ -6,7 +6,7 @@ expression: content
 // https://github.com/dcSpark/cddl-codegen
 
 #[allow(unused_imports)]
-use cbor_event::se::Serialize as _;
+use cbor_event::se::Serialize;
 
 use super::*;
 use cbor_event::se::Serializer;
