@@ -115,6 +115,7 @@ use bounds::{
 };
 pub(crate) use bounds::{bounds_check_expr_rust_type, bounds_reject_value, nint_bounds_to_u64};
 
+mod deser_verdicts;
 mod deserialize;
 mod serialize;
 use deserialize::{
