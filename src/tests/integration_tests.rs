@@ -6236,6 +6236,71 @@ fn wasm_macros_multifile_compiles() {
     );
 }
 
+/// A non-root wasm module that uses `any` must import the root `AnyCbor` class.
+/// The temp-written directory input exercises all supported submodule positions without
+/// adding a fixture-registry entry. Tier: local and later.
+#[test]
+fn wasm_any_cbor_submodule_import_compiles() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let scratch_name = format!("cddl_codegen_wasm_any_submodule_{:016x}", checkout_hash());
+    let _scratch_lock = acquire_scratch_lock(&scratch_name);
+    let root = std::env::temp_dir().join(&scratch_name);
+    let inputs = root.join("inputs");
+    let out = root.join("out");
+    let _ = std::fs::remove_dir_all(&inputs);
+    let _ = std::fs::remove_dir_all(&out);
+    std::fs::create_dir_all(&inputs).unwrap();
+    std::fs::write(inputs.join("lib.cddl"), "a = [uint, text]\n").unwrap();
+    std::fs::write(
+        inputs.join("sub.cddl"),
+        "b = { x: a, y: any, ? z: any }\n\
+         c = [any, uint]\n\
+         d = [* any]\n\
+         e = { * uint => any }\n\
+         f = #6.11(any)\n\
+         g = any\n\
+         h = [ d: d, e: e, g: g ]\n",
+    )
+    .unwrap();
+
+    let generated = codegen_cmd()
+        .arg(format!("--input={}", inputs.display()))
+        .arg(format!("--output={}", out.display()))
+        .arg("--wasm=true")
+        .arg("--emit-tests=false")
+        .output()
+        .unwrap();
+    assert!(
+        generated.status.success(),
+        "generation failed\n{}",
+        String::from_utf8_lossy(&generated.stderr)
+    );
+    let submodule = std::fs::read_to_string(out.join("wasm/src/generated/sub/mod.rs")).unwrap();
+    assert!(
+        submodule
+            .lines()
+            .any(|line| line.contains("use crate::generated::") && line.contains("AnyCbor")),
+        "the submodule must import root AnyCbor:\n{submodule}"
+    );
+    assert!(
+        submodule.contains("-> AnyCbor"),
+        "the submodule must use AnyCbor:\n{submodule}"
+    );
+    let check = tool_cmd("cargo")
+        .arg("check")
+        .current_dir(out.join("wasm"))
+        .env("CARGO_TARGET_DIR", root.join("target"))
+        .output()
+        .unwrap();
+    assert!(
+        check.status.success(),
+        "wasm cargo check failed\n{}",
+        String::from_utf8_lossy(&check.stderr)
+    );
+}
+
 /// Smoke gate for documented flag *values* that no other test or profile exercises (closed the
 /// once-open "five documented flag values with zero coverage" gap for the rust-side four). Each selects a whole alternative emit path: `--annotate-fields=false` (a
 /// different deserialization / error-emission mode — 13+ branch sites in `generation/`),

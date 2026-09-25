@@ -1855,7 +1855,11 @@ impl<'a> IntermediateTypes<'a> {
                         // empty for the rust pass and whenever the flag families are unused, so
                         // output is byte-identical without the flag.
                         if let Some(dep_scope) = deferred.get(rust_ident) {
-                            refs.add_import(current_scope.to_owned(), dep_scope.clone(), rust_ident.clone());
+                            refs.add_import(
+                                current_scope.to_owned(),
+                                dep_scope.clone(),
+                                rust_ident.clone(),
+                            );
                             return;
                         }
                         set_ref(refs, types, wasm, current_scope, rust_ident);
@@ -1935,7 +1939,11 @@ impl<'a> IntermediateTypes<'a> {
                         // scope (a no-op when they coincide, e.g. an anonymous same-shape use inside
                         // the wrapper's own module).
                         if emit_scope != *current_scope {
-                            refs.add_import(current_scope.to_owned(), emit_scope.clone(), wrapper.clone());
+                            refs.add_import(
+                                current_scope.to_owned(),
+                                emit_scope.clone(),
+                                wrapper.clone(),
+                            );
                         }
                         // A RESTRICTED wrapper (`[+ …]`, bounded/static ordinary list, or `@duplicates reject`) borrows a LOOSE
                         // `<Elem>List` as its `try_from` source, named bare in its emission scope —
@@ -1988,12 +1996,18 @@ impl<'a> IntermediateTypes<'a> {
                         elem_ty,
                     );
                 }
-                ConceptualRustType::Fixed(_)
-                | ConceptualRustType::Primitive(_)
-                // `AnyCbor` is a static-runtime type imported globally (see the `uses_any_cbor`
-                // dumb-push in generation/mod.rs), not a cross-scope generated ident, so ref-marking
-                // has nothing to add here.
-                | ConceptualRustType::Any => {
+                // The wasm face spells `any` as bare `AnyCbor`, emitted or re-exported in the root
+                // wasm scope. The rust face uses a fully qualified common-crate path.
+                ConceptualRustType::Any => {
+                    if wasm && *current_scope != *ROOT_SCOPE {
+                        refs.add_import(
+                            current_scope.to_owned(),
+                            ROOT_SCOPE.clone(),
+                            RustIdent::new(CDDLIdent::new("AnyCbor")),
+                        );
+                    }
+                }
+                ConceptualRustType::Fixed(_) | ConceptualRustType::Primitive(_) => {
                     // nothing to import
                 }
                 ConceptualRustType::Map(key, value) => {
@@ -2016,7 +2030,11 @@ impl<'a> IntermediateTypes<'a> {
                             return;
                         }
                         if emit_scope != *current_scope {
-                            refs.add_import(current_scope.to_owned(), emit_scope.clone(), wrapper.clone());
+                            refs.add_import(
+                                current_scope.to_owned(),
+                                emit_scope.clone(),
+                                wrapper.clone(),
+                            );
                         }
                         // A restricted map wrapper enters via `try_from(&MapKToV)`, naming the loose
                         // structural table wrapper bare in its emission scope. `{+ …}` uses its

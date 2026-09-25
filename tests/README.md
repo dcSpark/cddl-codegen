@@ -1376,6 +1376,7 @@ minted at the container's root scope while naming a cross-module element. Its in
 rather than committed so it earns no fixture-registry obligations, and its verdict is compile-only,
 which is the decided permanent posture for macro-mode wasm surfaces (see the wasm-crate test module
 section's macro-mode skip).
+`wasm_any_cbor_submodule_import_compiles` compile-checks that a non-root wasm module importing the root `AnyCbor` class builds.
 
 `extern_wrapper_index_defers_to_dep` pins the `--extern-wrapper-index` deferral surface (a consumer
 skips re-minting collection wrappers a dependency's committed `generated/collections.rs` index says
