@@ -427,78 +427,21 @@ fn stub_dir_declares(cli: &Cli, dep: &str) -> bool {
     cli.input.is_dir() && cli.input.join(parsing::EXTERN_DEPS_DIR).join(dep).is_dir()
 }
 
-/// Every rule that rejects a COMBINATION of flags, as a function of the `Cli`.
-///
-/// Extracted from [`with_types`] — which still calls it, in the same position, so a single-crate
-/// command line behaves byte for byte as it did — because the multi-crate `--config` front end needs
-/// to run these rules for EVERY crate before ANY crate generates. Inside the generation loop, a
-/// shared key that trips one of them leaves the crates before it fully regenerated on disk and
-/// reports a bare flag message naming neither the crate nor the config key that produced it.
-///
-/// Every rule here reads `cli` alone, apart from `stub_dir_declares`' existence check on the input
-/// directory `cli` names; none reads the parsed spec. That is the property that makes the hoist
-/// possible at all, and it is a constraint on what may be added: a rule needing the parsed spec
-/// (`--workspace-dep`'s "names a configured extern dependency", say) cannot live here, because there
-/// is no spec to consult before generation starts.
-pub fn validate_flag_combinations(cli: &Cli) -> Result<(), String> {
-    // The companion is an explicit cross-crate input for the runtime named by the override. Without
-    // that override there is no runtime to compare against, so accepting a path would silently do
-    // nothing (and a misspelled path would evade every later diagnostic).
-    if cli.common_import_flavor.is_some() && cli.common_import_override.is_none() {
-        return Err(
-            "--common-import-flavor requires --common-import-override: the record describes the \
-             common runtime an override names, so without an override it would be a silent no-op"
-                .to_owned(),
-        );
-    }
-    // The canonical toggle is emitted as an extra argument on the preserve-encodings `serialize`
-    // signatures; without --preserve-encodings those signatures don't take it, so the generator
-    // emits `serialize(serializer, force_canonical)` calls against 1-arg methods and references an
-    // unbound `force_canonical` — a crate that does not compile. Reject the combination up front
-    // rather than emit broken output (the docs likewise require the two together).
-    if cli.canonical_form && !cli.preserve_encodings {
-        return Err(
-            "--canonical-form=true requires --preserve-encodings=true: the canonical toggle rides \
-             on the preserve-encodings serialize signatures, so on its own the generated crate does \
-             not compile"
-                .to_owned(),
-        );
-    }
-    // The conformance oracle is a per-round-trip-case add-on to the --emit-tests module; without
-    // --emit-tests there is no module to add the validation calls to. Reject the combination up
-    // front rather than silently emit nothing (mirrors the canonical/preserve rule above).
-    if cli.emit_tests_conformance && !cli.emit_tests {
-        return Err(
-            "--emit-tests-conformance=true requires --emit-tests=true: the conformance oracle adds \
-             a validation call to each emitted round-trip case, so there is nothing to add without \
-             the generated-test module"
-                .to_owned(),
-        );
-    }
-    // The copied scripts compile the schema document the `--json-schema-export` json-gen crate
-    // writes; without that flag nothing ever writes a `schemas/` dir, so the scripts would be shipped
-    // as a toolchain that cannot run (and whose first action is to abort). Reject the combination up
-    // front rather than copy dead files (mirrors the two rules above).
-    if cli.json_schema_scripts && !cli.json_schema_export {
-        return Err(
-            "--json-schema-scripts=true requires --json-schema-export=true: the copied scripts read \
-             the schema document the json-gen crate exports, so without it there is nothing to \
-             compile to TypeScript"
-                .to_owned(),
-        );
-    }
-    // An extra schema root is an additional registration row in the json-gen crate's `add_schemas`;
-    // without --json-schema-export there is no json-gen crate and no `add_schemas` for the row to
-    // land in, so the flag would silently do nothing. Reject the combination up front (mirrors the
-    // three rules above).
-    if !cli.json_schema_root.is_empty() && !cli.json_schema_export {
-        return Err(
-            "--json-schema-root requires --json-schema-export=true: the extra root is emitted as a \
-             registration row in the json-gen crate's `add_schemas`, so without it there is no \
-             crate for the row to land in"
-                .to_owned(),
-        );
-    }
+/// One ordered step of the flag-combination validator. First-error order is observable, so
+/// checks of another shape keep their positions among the prerequisite rules.
+enum FlagRule {
+    /// Reject a flag whose required companion is absent, using the existing message verbatim.
+    Requires {
+        present: bool,
+        prerequisite: bool,
+        message: &'static str,
+    },
+    /// Evaluate a non-uniform check at its position.
+    Check(fn(&Cli) -> Result<(), String>),
+}
+
+/// Reject repeated schema roots at their ordered validation step.
+fn json_schema_root_duplicates(cli: &Cli) -> Result<(), String> {
     // Two identical --json-schema-root values are a user mistake with no meaning: the emitted rows
     // are byte-identical, and the second is a silent no-op (the injectivity ledger the runtime
     // `add_schema` keeps is keyed on `std::any::type_name` and only fires when a name is claimed by a
@@ -516,17 +459,11 @@ pub fn validate_flag_combinations(cli: &Cli) -> Result<(), String> {
             ));
         }
     }
-    // A dep registrar call is a line in the json-gen crate's `add_schemas`; without
-    // --json-schema-export there is no json-gen crate and no `add_schemas` for the call to land in,
-    // so the flag would silently do nothing (mirrors the four rules above).
-    if !cli.json_schema_dep.is_empty() && !cli.json_schema_export {
-        return Err(
-            "--json-schema-dep requires --json-schema-export=true: the dependency's registrar is \
-             emitted as a call in the json-gen crate's `add_schemas`, so without it there is no \
-             crate for the call to land in"
-                .to_owned(),
-        );
-    }
+    Ok(())
+}
+
+/// Reject repeated dependency labels or registrar names at their ordered validation step.
+fn json_schema_dep_duplicates(cli: &Cli) -> Result<(), String> {
     // Both duplicate checks live here rather than falling out of the accessor's collection type,
     // because `json_schema_deps()` is a Vec on purpose (flag order is load-bearing for the emission).
     let deps = cli.json_schema_deps();
@@ -562,60 +499,150 @@ pub fn validate_flag_combinations(cli: &Cli) -> Result<(), String> {
             ));
         }
     }
-    // A `--json-gen-dep` entry is a `[dependencies]` key in the json-gen crate's manifest; without
-    // --json-schema-export that crate is never generated and neither is its manifest, so the flag
-    // would silently do nothing (mirrors the five rules above).
-    if !cli.json_gen_dep.is_empty() && !cli.json_schema_export {
-        return Err(
-            "--json-gen-dep requires --json-schema-export=true: the entry is written into the \
+    Ok(())
+}
+
+/// Every rule that rejects a COMBINATION of flags, as a function of the `Cli`.
+///
+/// Extracted from [`with_types`] — which still calls it, in the same position, so a single-crate
+/// command line behaves byte for byte as it did — because the multi-crate `--config` front end needs
+/// to run these rules for EVERY crate before ANY crate generates. Inside the generation loop, a
+/// shared key that trips one of them leaves the crates before it fully regenerated on disk and
+/// reports a bare flag message naming neither the crate nor the config key that produced it.
+///
+/// Every rule here reads `cli` alone, apart from `stub_dir_declares`' existence check on the input
+/// directory `cli` names; none reads the parsed spec. That is the property that makes the hoist
+/// possible at all, and it is a constraint on what may be added: a rule needing the parsed spec
+/// (`--workspace-dep`'s "names a configured extern dependency", say) cannot live here, because there
+/// is no spec to consult before generation starts.
+pub fn validate_flag_combinations(cli: &Cli) -> Result<(), String> {
+    let rules = [
+        // The companion is an explicit cross-crate input for the runtime named by the override. Without
+        // that override there is no runtime to compare against, so accepting a path would silently do
+        // nothing (and a misspelled path would evade every later diagnostic).
+        FlagRule::Requires {
+            present: cli.common_import_flavor.is_some(),
+            prerequisite: cli.common_import_override.is_some(),
+            message: "--common-import-flavor requires --common-import-override: the record describes the \
+             common runtime an override names, so without an override it would be a silent no-op",
+        },
+        // The canonical toggle is emitted as an extra argument on the preserve-encodings `serialize`
+        // signatures; without --preserve-encodings those signatures don't take it, so the generator
+        // emits `serialize(serializer, force_canonical)` calls against 1-arg methods and references an
+        // unbound `force_canonical` — a crate that does not compile. Reject the combination up front
+        // rather than emit broken output (the docs likewise require the two together).
+        FlagRule::Requires {
+            present: cli.canonical_form,
+            prerequisite: cli.preserve_encodings,
+            message: "--canonical-form=true requires --preserve-encodings=true: the canonical toggle rides \
+             on the preserve-encodings serialize signatures, so on its own the generated crate does \
+             not compile",
+        },
+        // The conformance oracle is a per-round-trip-case add-on to the --emit-tests module; without
+        // --emit-tests there is no module to add the validation calls to. Reject the combination up
+        // front rather than silently emit nothing.
+        FlagRule::Requires {
+            present: cli.emit_tests_conformance,
+            prerequisite: cli.emit_tests,
+            message: "--emit-tests-conformance=true requires --emit-tests=true: the conformance oracle adds \
+             a validation call to each emitted round-trip case, so there is nothing to add without \
+             the generated-test module",
+        },
+        // The copied scripts compile the schema document the `--json-schema-export` json-gen crate
+        // writes; without that flag nothing ever writes a `schemas/` dir, so the scripts would be shipped
+        // as a toolchain that cannot run (and whose first action is to abort). Reject the combination up
+        // front rather than copy dead files.
+        FlagRule::Requires {
+            present: cli.json_schema_scripts,
+            prerequisite: cli.json_schema_export,
+            message: "--json-schema-scripts=true requires --json-schema-export=true: the copied scripts read \
+             the schema document the json-gen crate exports, so without it there is nothing to \
+             compile to TypeScript",
+        },
+        // An extra schema root is an additional registration row in the json-gen crate's `add_schemas`;
+        // without --json-schema-export there is no json-gen crate and no `add_schemas` for the row to
+        // land in, so the flag would silently do nothing. Reject the combination up front.
+        FlagRule::Requires {
+            present: !cli.json_schema_root.is_empty(),
+            prerequisite: cli.json_schema_export,
+            message: "--json-schema-root requires --json-schema-export=true: the extra root is emitted as a \
+             registration row in the json-gen crate's `add_schemas`, so without it there is no \
+             crate for the row to land in",
+        },
+        FlagRule::Check(json_schema_root_duplicates),
+        // A dep registrar call is a line in the json-gen crate's `add_schemas`; without
+        // --json-schema-export there is no json-gen crate and no `add_schemas` for the call to land in,
+        // so the flag would silently do nothing.
+        FlagRule::Requires {
+            present: !cli.json_schema_dep.is_empty(),
+            prerequisite: cli.json_schema_export,
+            message: "--json-schema-dep requires --json-schema-export=true: the dependency's registrar is \
+             emitted as a call in the json-gen crate's `add_schemas`, so without it there is no \
+             crate for the call to land in",
+        },
+        FlagRule::Check(json_schema_dep_duplicates),
+        // A `--json-gen-dep` entry is a `[dependencies]` key in the json-gen crate's manifest; without
+        // --json-schema-export that crate is never generated and neither is its manifest, so the flag
+        // would silently do nothing.
+        FlagRule::Requires {
+            present: !cli.json_gen_dep.is_empty(),
+            prerequisite: cli.json_schema_export,
+            message: "--json-gen-dep requires --json-schema-export=true: the entry is written into the \
              json-gen crate's `Cargo.toml`, so without it there is no crate and no manifest for the \
-             dependency to land in"
-                .to_owned(),
-        );
-    }
-    // A `--wasm-dep` entry is a `[dependencies]` key in the wasm crate's manifest; without --wasm
-    // that crate is never generated and neither is its manifest, so the flag would silently do
-    // nothing (the same rule its `--json-gen-dep` sibling above carries, on the other manifest).
-    if !cli.wasm_dep.is_empty() && !cli.wasm {
-        return Err(
-            "--wasm-dep requires --wasm=true: the entry is written into the wasm crate's \
+             dependency to land in",
+        },
+        // A `--wasm-dep` entry is a `[dependencies]` key in the wasm crate's manifest; without --wasm
+        // that crate is never generated and neither is its manifest, so the flag would silently do
+        // nothing.
+        FlagRule::Requires {
+            present: !cli.wasm_dep.is_empty(),
+            prerequisite: cli.wasm,
+            message: "--wasm-dep requires --wasm=true: the entry is written into the wasm crate's \
              `Cargo.toml`, so without it there is no crate and no manifest for the dependency to \
-             land in"
-                .to_owned(),
-        );
-    }
-    // A `--component-dep` entry is a `[dependencies]` key in the component crate's manifest; without
-    // --component that crate is never generated and neither is its manifest, so the flag would
-    // silently do nothing (the same rule its two siblings above carry, on the third manifest).
-    if !cli.component_dep.is_empty() && !cli.component {
-        return Err(
-            "--component-dep requires --component=true: the entry is written into the component \
+             land in",
+        },
+        // A `--component-dep` entry is a `[dependencies]` key in the component crate's manifest; without
+        // --component that crate is never generated and neither is its manifest, so the flag would
+        // silently do nothing.
+        FlagRule::Requires {
+            present: !cli.component_dep.is_empty(),
+            prerequisite: cli.component,
+            message: "--component-dep requires --component=true: the entry is written into the component \
              crate's `Cargo.toml`, so without it there is no crate and no manifest for the \
-             dependency to land in"
-                .to_owned(),
-        );
-    }
-    // `--wit-package` names the generated WIT package, which only the component face emits. Without
-    // --component there is no `.wit` for it to title, so the flag would silently do nothing —
-    // rejected on exactly the terms the manifest-entry rules above are.
-    if cli.wit_package.is_some() && !cli.component {
-        return Err(
-            "--wit-package requires --component=true: it names the generated WIT package, and \
-             without the component face no `.wit` is emitted for it to title"
-                .to_owned(),
-        );
-    }
-    // `--component-extern-wit` materializes a dep's WIT into the component crate's own WIT package
-    // and puts the co-required `with:` entries into its `generate!` invocation. Without --component
-    // neither exists, so the flag would silently do nothing — rejected on exactly the terms its
-    // siblings above are.
-    if !cli.component_extern_wit.is_empty() && !cli.component {
-        return Err(
-            "--component-extern-wit requires --component=true: the dep's WIT is copied into the \
+             dependency to land in",
+        },
+        // `--wit-package` names the generated WIT package, which only the component face emits. Without
+        // --component there is no `.wit` for it to title, so the flag would silently do nothing.
+        FlagRule::Requires {
+            present: cli.wit_package.is_some(),
+            prerequisite: cli.component,
+            message: "--wit-package requires --component=true: it names the generated WIT package, and \
+             without the component face no `.wit` is emitted for it to title",
+        },
+        // `--component-extern-wit` materializes a dep's WIT into the component crate's own WIT package
+        // and puts the co-required `with:` entries into its `generate!` invocation. Without --component
+        // neither exists, so the flag would silently do nothing.
+        FlagRule::Requires {
+            present: !cli.component_extern_wit.is_empty(),
+            prerequisite: cli.component,
+            message: "--component-extern-wit requires --component=true: the dep's WIT is copied into the \
              component crate's own WIT package and its interfaces are named by that crate's \
-             `wit_bindgen::generate!` invocation, and without the component face neither exists"
-                .to_owned(),
-        );
+             `wit_bindgen::generate!` invocation, and without the component face neither exists",
+        },
+    ];
+    for rule in &rules {
+        match rule {
+            FlagRule::Requires {
+                present,
+                prerequisite,
+                message,
+            } => {
+                if *present && !*prerequisite {
+                    return Err((*message).to_owned());
+                }
+            }
+            FlagRule::Check(check) => check(cli)?,
+        }
     }
     // A `<dep>` whose WIT is supplied but whose RULES are not is a dependency in name only: the WIT
     // says how the dep's types cross the component boundary, while `--extern-import` (or a physical
