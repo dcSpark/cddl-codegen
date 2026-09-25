@@ -452,7 +452,8 @@ pub struct IntermediateTypes<'a> {
     nominal_mint_claims: BTreeMap<RustIdent, NominalMintClaim>,
     // Every choice's explicit reservations and settled derived names, keyed by its emitted-enum
     // context. This makes name allocation independent of arm order without a parser-local policy.
-    variant_mint_claims: BTreeMap<String, Vec<VariantMintClaim>>,
+    // Only `get` and `entry` access this map; it is never iterated, so address-derived `Ord` cannot order observable output.
+    variant_mint_claims: BTreeMap<VariantMintContext, Vec<VariantMintClaim>>,
     // Deferred rejections: constructs the parse walk (which returns `()` and so can't surface an
     // `Err`) recognizes as unsupported-by-design but must reject GRACEFULLY rather than `panic!`.
     // Each entry is a human-actionable message; `finalize` drains them into a single `Err` before
@@ -512,7 +513,25 @@ impl ScopeReferences {
 #[derive(Clone, Debug)]
 struct NominalMintClaim {
     identity: String,
-    site: String,
+    site: MintSite,
+}
+
+/// Who claimed a nominal mint. Display preserves diagnostic and floor provenance.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum MintSite {
+    /// The ordinary `register_rust_struct` seam, retracted by `remove_rust_struct`.
+    Registration(RustIdent),
+    /// A pre-registration minter via `claim_nominal_mint`, such as a fixed singleton.
+    Semantic(String),
+}
+
+impl std::fmt::Display for MintSite {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Registration(ident) => write!(f, "RustStruct registration for `{ident}`"),
+            Self::Semantic(site) => f.write_str(site),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -538,17 +557,28 @@ pub(crate) struct VariantMintClaim {
     requested_base: Option<String>,
 }
 
-impl<'a> IntermediateTypes<'a> {
-    // Inline choices need an address-qualified key so two independent anonymous namespaces do not
-    // share reservations. An address is process-local, however, and must never reach a rejection:
-    // diagnostics remain deterministic for identical CDDL input.
-    fn variant_mint_context_for_diagnostic(context: &str) -> &str {
-        context
-            .strip_prefix("inline type choice at ")
-            .map(|_| "an inline type choice")
-            .unwrap_or(context)
-    }
+/// The namespace where one enum's variant names are reserved and settled.
+#[allow(clippy::enum_variant_names)] // Each variant names its source choice kind.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum VariantMintContext {
+    TypeChoice(RustIdent),
+    GroupChoice(RustIdent),
+    /// The AST address qualifies the key so independent inline choices never share reservations.
+    /// It is process-local and must never reach a rejection, keeping diagnostics deterministic for identical CDDL.
+    InlineTypeChoice(usize),
+}
 
+impl std::fmt::Display for VariantMintContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TypeChoice(rule) => write!(f, "type choice for rule {rule}"),
+            Self::GroupChoice(rule) => write!(f, "group choice for rule {rule}"),
+            Self::InlineTypeChoice(_) => f.write_str("an inline type choice"),
+        }
+    }
+}
+
+impl<'a> IntermediateTypes<'a> {
     pub fn new() -> Self {
         let mut rust_structs = BTreeMap::new();
         rust_structs.insert(
@@ -3342,17 +3372,13 @@ impl<'a> IntermediateTypes<'a> {
     /// registration guard, so equal claims retain the first owner and unequal ones are rejected
     /// rather than creating a competing ownership vocabulary.
     pub fn claim_nominal_mint(&mut self, rust_struct: &RustStruct, site: impl Into<String>) {
-        self.claim_nominal_mint_inner(rust_struct, site.into(), true);
-    }
-
-    fn registration_mint_site(ident: &RustIdent) -> String {
-        format!("RustStruct registration for `{ident}`")
+        self.claim_nominal_mint_inner(rust_struct, MintSite::Semantic(site.into()), true);
     }
 
     fn claim_nominal_mint_inner(
         &mut self,
         rust_struct: &RustStruct,
-        site: String,
+        site: MintSite,
         report_registration_duplicate: bool,
     ) {
         let ident = rust_struct.ident().clone();
@@ -3367,8 +3393,7 @@ impl<'a> IntermediateTypes<'a> {
             if first.identity != claim.identity {
                 // Ordinary registrations retain the legacy global guard's one diagnostic. The
                 // mint ledger speaks only when a semantic pre-registration claimant is involved.
-                if report_registration_duplicate
-                    || !first.site.starts_with("RustStruct registration for `")
+                if report_registration_duplicate || !matches!(first.site, MintSite::Registration(_))
                 {
                     self.record_rejection(format!(
                         "generated Rust type `{ident}` has incompatible mint claims: `{}` first claimed; \
@@ -3388,7 +3413,7 @@ impl<'a> IntermediateTypes<'a> {
     /// established kind-specific diagnostic wording.
     pub(crate) fn reserve_explicit_variant_mint(
         &mut self,
-        context: &str,
+        context: &VariantMintContext,
         arm_ordinal: usize,
         source_name: String,
         emitted_name: String,
@@ -3408,7 +3433,6 @@ impl<'a> IntermediateTypes<'a> {
                 // explicit collision.
                 return None;
             }
-            let context = Self::variant_mint_context_for_diagnostic(context);
             self.record_rejection(format!(
                 "variant mint claim drift in {context}: arm {arm_ordinal} first claimed source `{}` as `{}` ({}) but later claimed source `{source_name}` as `{emitted_name}` (explicit @name). One enum arm must retain one stable mint claim.",
                 first.source_name,
@@ -3417,10 +3441,7 @@ impl<'a> IntermediateTypes<'a> {
             ));
             return None;
         }
-        let claims = self
-            .variant_mint_claims
-            .entry(context.to_owned())
-            .or_default();
+        let claims = self.variant_mint_claims.entry(context.clone()).or_default();
         let first = claims
             .iter()
             .find(|claim| claim.explicit && claim.emitted_name == emitted_name)
@@ -3439,7 +3460,7 @@ impl<'a> IntermediateTypes<'a> {
     /// derived settlements in this enum's actual namespace.
     pub(crate) fn settle_derived_variant_mint(
         &mut self,
-        context: &str,
+        context: &VariantMintContext,
         arm_ordinal: usize,
         source_name: String,
         base: String,
@@ -3459,7 +3480,6 @@ impl<'a> IntermediateTypes<'a> {
                 // construction re-entered.
                 return first.emitted_name;
             }
-            let context = Self::variant_mint_context_for_diagnostic(context);
             self.record_rejection(format!(
                 "variant mint claim drift in {context}: arm {arm_ordinal} first claimed source `{}` as `{}` ({}) but later claimed source `{source_name}` from derived base `{base}`. One enum arm must retain one stable mint claim.",
                 first.source_name,
@@ -3468,10 +3488,7 @@ impl<'a> IntermediateTypes<'a> {
             ));
             return first.emitted_name;
         }
-        let claims = self
-            .variant_mint_claims
-            .entry(context.to_owned())
-            .or_default();
+        let claims = self.variant_mint_claims.entry(context.clone()).or_default();
         let used = |candidate: &str, claims: &[VariantMintClaim]| {
             claims.iter().any(|claim| claim.emitted_name == candidate)
         };
@@ -3535,7 +3552,7 @@ impl<'a> IntermediateTypes<'a> {
         }
         self.claim_nominal_mint_inner(
             &rust_struct,
-            Self::registration_mint_site(rust_struct.ident()),
+            MintSite::Registration(rust_struct.ident().clone()),
             false,
         );
         // Every generated nominal shares this namespace. Decide ownership only after the incoming
@@ -6294,14 +6311,14 @@ impl<'a> IntermediateTypes<'a> {
                 let provenance = self
                     .nominal_mint_claims
                     .get(ident)
-                    .map(|claim| claim.site.as_str())
-                    .or_else(|| self.source_rule_name(ident))
-                    .unwrap_or("IR nominal registration");
+                    .map(|claim| claim.site.to_string())
+                    .or_else(|| self.source_rule_name(ident).map(str::to_owned))
+                    .unwrap_or_else(|| "IR nominal registration".to_owned());
                 check_name(
                     &mut messages,
                     ident.as_ref(),
                     "nominal Rust type",
-                    provenance,
+                    &provenance,
                 );
             }
             let enum_provenance = format!("enum `{ident}`");
@@ -6320,8 +6337,8 @@ impl<'a> IntermediateTypes<'a> {
                 for variant in variants {
                     let name = variant.name.to_string();
                     let variant_provenance = [
-                        format!("type choice for rule {ident}"),
-                        format!("group choice for rule {ident}"),
+                        VariantMintContext::TypeChoice(ident.clone()),
+                        VariantMintContext::GroupChoice(ident.clone()),
                     ]
                     .into_iter()
                     .find_map(|context| {
@@ -8120,10 +8137,9 @@ impl<'a> IntermediateTypes<'a> {
         // only the matching ordinary-registration claim; a semantic pre-registration claim (for
         // example a fixed singleton) remains evidence even if another owner is removed.
         if removed.is_some()
-            && self
-                .nominal_mint_claims
-                .get(ident)
-                .is_some_and(|claim| claim.site == Self::registration_mint_site(ident))
+            && self.nominal_mint_claims.get(ident).is_some_and(
+                |claim| matches!(&claim.site, MintSite::Registration(owner) if owner == ident),
+            )
         {
             self.nominal_mint_claims.remove(ident);
         }
@@ -8869,7 +8885,7 @@ mod registration_tests {
         let enum_ident = RustIdent::new(CDDLIdent::new("choices"));
         let primitive = RustType::new(ConceptualRustType::Primitive(Primitive::U64));
         types.reserve_explicit_variant_mint(
-            "type choice for rule Choices",
+            &VariantMintContext::TypeChoice(RustIdent::new(CDDLIdent::new("choices"))),
             1,
             "self".to_owned(),
             "Self".to_owned(),
@@ -8957,33 +8973,38 @@ mod registration_tests {
     #[test]
     fn variant_mint_claims_are_idempotent_per_arm_and_retain_provenance() {
         let mut types = IntermediateTypes::new();
-        let context = "type choice for rule Choice";
-        assert!(types
-            .reserve_explicit_variant_mint(
-                context,
-                2,
-                "chosen".to_owned(),
-                "Chosen".to_owned(),
-            )
-            .is_none());
-        assert!(types
-            .reserve_explicit_variant_mint(
-                context,
-                2,
-                "chosen".to_owned(),
-                "Chosen".to_owned(),
-            )
-            .is_none(), "a revisited explicit arm is not a second claimant");
+        let context = VariantMintContext::TypeChoice(RustIdent::new(CDDLIdent::new("choice")));
+        assert!(
+            types
+                .reserve_explicit_variant_mint(
+                    &context,
+                    2,
+                    "chosen".to_owned(),
+                    "Chosen".to_owned(),
+                )
+                .is_none()
+        );
+        assert!(
+            types
+                .reserve_explicit_variant_mint(
+                    &context,
+                    2,
+                    "chosen".to_owned(),
+                    "Chosen".to_owned(),
+                )
+                .is_none(),
+            "a revisited explicit arm is not a second claimant"
+        );
         assert_eq!(
-            types.settle_derived_variant_mint(context, 1, "tstr".to_owned(), "Text".to_owned()),
+            types.settle_derived_variant_mint(&context, 1, "tstr".to_owned(), "Text".to_owned()),
             "Text"
         );
         assert_eq!(
-            types.settle_derived_variant_mint(context, 1, "tstr".to_owned(), "Text".to_owned()),
+            types.settle_derived_variant_mint(&context, 1, "tstr".to_owned(), "Text".to_owned()),
             "Text",
             "a revisited derived arm must retain its original spelling rather than suffix"
         );
-        let claims = types.variant_mint_claims.get(context).unwrap();
+        let claims = types.variant_mint_claims.get(&context).unwrap();
         assert_eq!(claims.len(), 2);
         assert!(claims.iter().any(|claim| {
             claim.arm_ordinal == 2
@@ -8998,15 +9019,15 @@ mod registration_tests {
         let cddl = cddl::parser::cddl_from_str("anchor = uint\n", true).unwrap();
         let parent_visitor = ParentVisitor::new(&cddl).unwrap();
         let mut types = IntermediateTypes::new();
-        let context = "type choice for rule Choice";
+        let context = VariantMintContext::TypeChoice(RustIdent::new(CDDLIdent::new("choice")));
         assert_eq!(
-            types.settle_derived_variant_mint(context, 1, "uint".to_owned(), "Uint".to_owned()),
+            types.settle_derived_variant_mint(&context, 1, "uint".to_owned(), "Uint".to_owned()),
             "Uint"
         );
         // Same ordinal is one semantic enum arm. A different source/base is not an AST revisit:
         // retaining the first claim and rejecting the second makes the drift deterministic.
         assert_eq!(
-            types.settle_derived_variant_mint(context, 1, "tstr".to_owned(), "Text".to_owned()),
+            types.settle_derived_variant_mint(&context, 1, "tstr".to_owned(), "Text".to_owned()),
             "Uint"
         );
         let error = types
@@ -9030,20 +9051,22 @@ mod registration_tests {
         let mut types = IntermediateTypes::new();
         // The pointer suffix is a private registry discriminator only. A drift error must not
         // make an otherwise deterministic rejection vary across processes.
-        let context = "inline type choice at 0xDEADBEEF";
+        let context = VariantMintContext::InlineTypeChoice(0xDEAD_BEEF);
         assert!(
             types
-                .reserve_explicit_variant_mint(context, 1, "first".to_owned(), "First".to_owned(),)
+                .reserve_explicit_variant_mint(&context, 1, "first".to_owned(), "First".to_owned(),)
                 .is_none()
         );
-        assert!(types
-            .reserve_explicit_variant_mint(
-                context,
-                1,
-                "second".to_owned(),
-                "Second".to_owned(),
-            )
-            .is_none());
+        assert!(
+            types
+                .reserve_explicit_variant_mint(
+                    &context,
+                    1,
+                    "second".to_owned(),
+                    "Second".to_owned(),
+                )
+                .is_none()
+        );
         let error = types
             .finalize(&parent_visitor, &cli())
             .expect_err("an explicit re-entry with changed source/name must reject")
@@ -9052,7 +9075,9 @@ mod registration_tests {
             error.contains("variant mint claim drift in an inline type choice")
                 && error.contains("source `first` as `First`")
                 && error.contains("source `second` as `Second`")
-                && !error.contains("0xDEADBEEF"),
+                && !error.contains("0xDEADBEEF")
+                && !error.contains("deadbeef")
+                && !error.contains("3735928559"),
             "the explicit drift must retain both claims but hide process-local key state: {error}"
         );
     }

@@ -1281,7 +1281,7 @@ fn reject_group_choice_arm_ident_collision(
 /// arm's explicit name before the loop, so the authored name wins from either source position.
 fn settle_arm_variant_name(
     types: &mut IntermediateTypes,
-    context: &str,
+    context: &crate::intermediate::VariantMintContext,
     arm_ordinal: usize,
     base: String,
     arm_source_name: &str,
@@ -1354,12 +1354,17 @@ fn reject_type_choice_arm_variant_name_collision(
 /// The namespace key a type choice's variant names are reserved and settled under: the owning rule
 /// when there is one, otherwise the inline choice itself. `create_variants_from_type_choices`
 /// passes it to both the explicit-name pre-reservation and `settle_derived_variant_mint`.
-fn choice_variant_context(owner: Option<&RustIdent>, type_choices: &[TypeChoice]) -> String {
+fn choice_variant_context(
+    owner: Option<&RustIdent>,
+    type_choices: &[TypeChoice],
+) -> crate::intermediate::VariantMintContext {
     match owner {
-        Some(owner) => format!("type choice for rule {owner}"),
+        Some(owner) => crate::intermediate::VariantMintContext::TypeChoice(owner.clone()),
         // The AST address is in-process provenance only (never emitted); unlike the human-facing
         // diagnostic it distinguishes two independent inline enum namespaces in one rule.
-        None => format!("inline type choice at {:p}", type_choices.as_ptr()),
+        None => {
+            crate::intermediate::VariantMintContext::InlineTypeChoice(type_choices.as_ptr().addr())
+        }
     }
 }
 
@@ -10068,7 +10073,7 @@ pub fn parse_group(
         // The arms' explicit names are reserved BEFORE the loop so that which side of a colliding
         // explicit/derived pair keeps the plain name never depends on the order the author happened
         // to write the arms in: the authored name wins from either position.
-        let choice_context = format!("group choice for rule {name}");
+        let choice_context = crate::intermediate::VariantMintContext::GroupChoice(name.clone());
         for (arm_idx, group_choice) in group.group_choices.iter().enumerate() {
             if let Some(explicit) =
                 RuleMetadata::from(group_choice.comments_before_grpchoice.as_ref()).name
