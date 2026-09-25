@@ -192,7 +192,7 @@ t = [ point: #6.42([x: uint]) ; @name tagged_point
     , label: text ]
 ```
 mints `struct TaggedPoint`, holds it in a field named `tagged_point`, and writes the tag over it.
-Any number of nested tags (`#6.1(#6.42([x: uint]))`) works the same way. This emits exactly what
+At this member naming door, any number of nested tags (`#6.1(#6.42([x: uint]))`) works the same way. A nested tag directly in a rule body's tag is rejected gracefully; name the inner tagged value as its own rule. This member spelling emits exactly what
 the named-rule spelling emits (`p = [x: uint]`, then `#6.42(p)`), so the two are interchangeable —
 pick whichever reads better.
 
