@@ -1642,6 +1642,8 @@ fn multi_segment_exact_byte_element_generates() {
 /// types are unchanged. An upper bound of `u64::MAX` is no constraint on any CBOR length and is
 /// dropped. `--emit-tests` minted `vec![0u8; 18446744073709551616]`, and `--json-schema-export`
 /// panicked doubling a huge byte bound into a hex length.
+/// `integration_tests::length_windows_compile_for_wasm32` compiles the generated rust and wasm
+/// crates on wasm32, including emitted tests that must skip unrepresentable lengths.
 #[test]
 fn length_window_bounds_fit_every_target_usize() {
     for (tag, spec, expected) in [

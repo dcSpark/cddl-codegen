@@ -3576,8 +3576,14 @@ fn materialize_at(
             // ask for magnitude -1 (e.g. a `.le -1` wrapper whose magnitude floor is 0); that isn't
             // representable in the u64 backing type, so drop it rather than render `new(-1)`.
             Primitive::N64 => (measure >= 0).then_some(MintValue::Int { value: measure }),
-            Primitive::Str => Some(MintValue::Str { len: measure }),
-            Primitive::Bytes => Some(MintValue::Bytes { len: measure }),
+            // Emitted test lengths are `usize` literals, 32 bits on wasm32. Skip a boundary that
+            // cannot be represented or allocated there, as for unrepresentable integer bounds.
+            Primitive::Str => (0..=u32::MAX as i128)
+                .contains(&measure)
+                .then_some(MintValue::Str { len: measure }),
+            Primitive::Bytes => (0..=u32::MAX as i128)
+                .contains(&measure)
+                .then_some(MintValue::Bytes { len: measure }),
             Primitive::Bool => Some(MintValue::Bool),
             // A minted float must be a MEMBER of its CDDL class (serializing a non-member fails
             // loudly by design) and, when bounded, must also sit IN-WINDOW — a default `0.0`

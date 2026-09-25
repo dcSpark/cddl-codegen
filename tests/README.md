@@ -1844,6 +1844,8 @@ content change goes Dirty and re-lints (verified by injecting a `();` `no_effect
 generated source and watching the gate command fail). Re-prove it that way, not by timing, if the
 speed ever raises the suspicion again.
 
+`length_windows_compile_for_wasm32` generates byte/text length windows at and above wasm32's `usize::MAX` (rule, `@newtype`, member, element, and map key/value positions, with `--emit-tests`) and compiles the rust crate under `cargo clippy --all-targets` and the wasm crate under `cargo check`, both for `wasm32-unknown-unknown`, so an emitted length literal that overflows a 32-bit `usize` or compares against its maximum fails there; `robustness_tests::length_window_bounds_fit_every_target_usize` pins the widened `(len() as u64)` spellings.
+
 Distinct from this generated-code gate, the fast-tier WORKSPACE clippy gate (check.ts's `clippy`)
 denies `clippy::all` PLUS the restriction lint `clippy::assertions_on_result_states` over the
 repo's own code: an `assert!(r.is_ok())` / `assert!(r.is_err())` discards the payload that would

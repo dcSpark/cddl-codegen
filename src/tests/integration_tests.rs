@@ -19987,6 +19987,87 @@ fn wasm32_target_installed() -> bool {
         .unwrap_or(false)
 }
 
+/// Byte/text length windows at and above wasm32's `usize::MAX` must compile on wasm32, where a length
+/// is a 32-bit `usize`. Before their checks compared `(len() as u64)`,
+/// `bytes .size (0..18446744073709551614)` emitted `len() > 18446744073709551614` (literal out of
+/// range for `usize`), `--emit-tests` minted `vec![0u8; 18446744073709551616]`, and
+/// `tstr .size (0..4294967295)` emitted `len() > 4294967295`, which the deny-by-default
+/// `clippy::absurd_extreme_comparisons` refuses on wasm32.
+/// `robustness_tests::length_window_bounds_fit_every_target_usize` pins the spellings; this compiles
+/// them, emitted tests included, for the target that exposed them.
+#[test]
+fn length_windows_compile_for_wasm32() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    if !wasm32_target_installed() {
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "wasm32-unknown-unknown is required to run length_windows_compile_for_wasm32 in CI"
+        );
+        eprintln!(
+            "skipping length_windows_compile_for_wasm32: wasm32-unknown-unknown target not installed"
+        );
+        return;
+    }
+    let scratch = std::env::temp_dir().join(format!(
+        "cddl_codegen_length_windows_wasm32_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let input = scratch.join("input.cddl");
+    std::fs::write(
+        &input,
+        "a = bytes .size (1..18446744073709551615)\n\
+         b = bytes .size (0..18446744073709551614)\n\
+         c = tstr .size (0..4294967295)\n\
+         d = tstr .size (0..4294967295) ; @newtype\n\
+         e = bytes .size (4294967296..18446744073709551615)\n\
+         f = tstr .size 5000000000\n\
+         g = bytes .size (4294967295..4294967300)\n\
+         h = [\n\
+           ma: bytes .size (1..18446744073709551615),\n\
+           mb: tstr .size (0..18446744073709551614),\n\
+           mc: bytes .size (0..4294967295),\n\
+           el: [* bytes .size (1..18446744073709551615)],\n\
+           mp: { * tstr .size (4294967296..4294967300) => bytes .size (0..4294967295) },\n\
+         ]\n",
+    )
+    .unwrap();
+    let out = scratch.join("export");
+    let generated = codegen_cmd()
+        .arg(format!("--input={}", input.display()))
+        .arg(format!("--output={}", out.display()))
+        .args(["--wasm=true", "--emit-tests=true"])
+        .output()
+        .unwrap();
+    assert!(
+        generated.status.success(),
+        "generation failed:\n{}",
+        String::from_utf8_lossy(&generated.stderr)
+    );
+    let target_dir = scratch.join("target");
+    for (crate_sub, subcommand, extra) in [
+        ("rust", "clippy", &["--all-targets"][..]),
+        ("wasm", "check", &[][..]),
+    ] {
+        let built = tool_cmd("cargo")
+            .arg(subcommand)
+            .args(extra)
+            .args(["--target", "wasm32-unknown-unknown"])
+            .current_dir(out.join(crate_sub))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        assert!(
+            built.status.success(),
+            "`cargo {subcommand}` for wasm32 failed on the generated {crate_sub} crate:\n{}",
+            String::from_utf8_lossy(&built.stderr)
+        );
+    }
+}
+
 /// Unit-pin the canonical shape renderer (`generation::render_wrapper_shape`) against the W1
 /// shape-column grammar directly, so its exact spelling — the format a dep re-parses and the
 /// warning hint pastes — is fixed independently of the heavier integration gate. Covers loose and
