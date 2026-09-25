@@ -3338,15 +3338,8 @@ fn range_to_primitive(low: Option<i128>, high: Option<i128>, primitive: Primitiv
             | Primitive::N64
     );
     if !integer_head {
-        let unconstrained_length = matches!(primitive, Primitive::Bytes | Primitive::Str)
-            && matches!(low, None | Some(0))
-            && high == Some(u64::MAX as i128);
-        let bounds = if unconstrained_length {
-            (None, None)
-        } else {
-            (low, high)
-        };
-        return RustType::from(ConceptualRustType::Primitive(primitive)).with_bounds(bounds);
+        return RustType::from(ConceptualRustType::Primitive(primitive))
+            .with_bounds(length_window(primitive, (low, high)));
     }
     match (low, high) {
         (Some(l), Some(h)) if l == u8::MIN as i128 && h == u8::MAX as i128 => {
@@ -4330,6 +4323,7 @@ fn parse_type(
                                     ));
                                     return;
                                 };
+                                let min_max = length_window(primitive, min_max);
                                 let mut ranged_type =
                                     range_to_primitive(min_max.0, min_max.1, primitive);
                                 // An exact byte `.size` becomes a Rust array length.  Validate at
@@ -4362,7 +4356,8 @@ fn parse_type(
                                             outer_tag,
                                             Some(&rule_metadata),
                                             ranged_type,
-                                            (!exact_byte_array).then_some(min_max),
+                                            (!exact_byte_array && min_max != (None, None))
+                                                .then_some(min_max),
                                         ),
                                         cli,
                                     );
@@ -6720,6 +6715,23 @@ fn rust_type_from_type1(
         types.record_rejection(exact_homogeneous_array_length_rejection(length));
     }
     result
+}
+
+/// The window a byte/text `.size` checks. A CBOR length never exceeds `u64::MAX`, so an upper
+/// bound there is no constraint (and `len > u64::MAX` is an absurd comparison on every target); a
+/// zero minimum left without it checks nothing either. An exact window keeps both bounds, so exact
+/// bytes still reach the `[u8; N]` path and its own length floor. Every other primitive's window
+/// passes through unchanged.
+fn length_window(
+    primitive: Primitive,
+    (low, high): (Option<i128>, Option<i128>),
+) -> (Option<i128>, Option<i128>) {
+    match (primitive, high) {
+        (Primitive::Bytes | Primitive::Str, Some(h)) if h == u64::MAX as i128 && low != Some(h) => {
+            (low.filter(|l| *l != 0), None)
+        }
+        _ => (low, high),
+    }
 }
 
 /// The shared graceful refusal for an exact byte-string length that cannot become a Rust array on

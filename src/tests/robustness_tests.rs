@@ -1454,6 +1454,118 @@ fn multi_segment_exact_byte_element_generates() {
     );
 }
 
+/// A byte/text length is a `usize`, 32 bits on wasm32, and every generated crate must compile
+/// there. A length bound at or above `u32::MAX` was spelled as a `usize` literal that overflows on
+/// wasm32 (`len() > 18446744073709551614`) or as an extreme comparison the deny-by-default
+/// `clippy::absurd_extreme_comparisons` refuses there (`len() > 4294967295`). Such a check now
+/// compares `(len() as u64)`, which still enforces the bound on 64-bit targets, and the wrapper
+/// types are unchanged. An upper bound of `u64::MAX` is no constraint on any CBOR length and is
+/// dropped. `--emit-tests` minted `vec![0u8; 18446744073709551616]`, and `--json-schema-export`
+/// panicked doubling a huge byte bound into a hex length.
+#[test]
+fn length_window_bounds_fit_every_target_usize() {
+    for (tag, spec, expected) in [
+        (
+            "len_wide_rule_min_one",
+            "x = bytes .size (1..18446744073709551615)\n",
+            "if inner.len() < 1 {",
+        ),
+        (
+            "len_wide_rule_below_u64_max",
+            "x = bytes .size (0..18446744073709551614)\n",
+            "if (inner.len() as u64) > 18446744073709551614 {",
+        ),
+        (
+            "len_wide_rule_u32_max",
+            "x = tstr .size (0..4294967295)\n",
+            "if (inner.len() as u64) > 4294967295 {",
+        ),
+        (
+            "len_wide_rule_newtype_full_window",
+            "x = tstr .size (0..18446744073709551615) ; @newtype\n",
+            "pub struct X(pub(crate) String);",
+        ),
+        (
+            "len_wide_rule_minimum",
+            "x = bytes .size (4294967296..18446744073709551615)\n",
+            "if (inner.len() as u64) < 4294967296 {",
+        ),
+        (
+            "len_wide_exact_text",
+            "x = tstr .size 5000000000\n",
+            "if (inner.len() as u64) != 5000000000 {",
+        ),
+        (
+            "len_wide_member",
+            "x = [a: tstr .size (2..18446744073709551614)]\n",
+            "if (a.len() as u64) < 2 || (a.len() as u64) > 18446744073709551614 {",
+        ),
+        (
+            "len_wide_element",
+            "x = [a: [* bytes .size (0..4294967296)]]\n",
+            "if (bytes.len() as u64) > 4294967296 {",
+        ),
+        (
+            "len_wide_map_key",
+            "x = [a: { * tstr .size (4294967296..4294967300) => uint }]\n",
+            "if (s.len() as u64) < 4294967296 || (s.len() as u64) > 4294967300 {",
+        ),
+        (
+            "len_narrow_kept",
+            "x = tstr .size (2..4294967294)\n",
+            "if inner.len() < 2 || inner.len() > 4294967294 {",
+        ),
+    ] {
+        let files = expect_generates(tag, spec, &["--wasm=false"]);
+        let src = files
+            .iter()
+            .filter(|(path, _)| path.starts_with("rust/src/generated/"))
+            .map(|(_, text)| text.as_str())
+            .collect::<String>();
+        assert!(
+            src.contains(expected),
+            "{tag}: expected `{expected}`, got:\n{src}"
+        );
+        for unportable in [
+            "len() > 18446744073709551615",
+            "len() > 18446744073709551614",
+            "len() > 4294967295",
+            "len() < 4294967296",
+            "len() != 5000000000",
+            "len() > 4294967296",
+        ] {
+            assert!(
+                !src.contains(unportable),
+                "{tag}: a length bound past wasm32's usize must compare a widened length, found `{unportable}` in:\n{src}"
+            );
+        }
+    }
+    for (tag, spec) in [
+        (
+            "len_wide_json_schema_rule",
+            "x = bytes .size (1..18446744073709551615)\n",
+        ),
+        (
+            "len_wide_json_schema_half",
+            "x = bytes .size (1..10000000000000000000)\n",
+        ),
+    ] {
+        let files = expect_generates(
+            tag,
+            spec,
+            &[
+                "--wasm=false",
+                "--json-serde-derives=true",
+                "--json-schema-export=true",
+            ],
+        );
+        assert!(
+            !files["rust/src/generated/mod.rs"].contains("\"maxLength\""),
+            "{tag}: a byte bound with no u64 hex length must omit maxLength"
+        );
+    }
+}
+
 /// `uint .size (l..h)`: RFC 8610 §3.8.1 makes the controller a type of admitted sizes, and on
 /// `uint` each size N is a MAXIMUM (`uint .size N` is `0...256**N`). A value matches when it fits
 /// in some N of `l..h`, so the ranged form is exactly `uint .size h` and the lower size never

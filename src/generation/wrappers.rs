@@ -59,20 +59,24 @@ fn emit_checked_scalar_json_schema_bounds(
             ConceptualRustType::Primitive(Primitive::Bytes) => {
                 // Bytes render as canonical hexadecimal: exactly two ASCII JSON characters per
                 // byte, unlike text's UTF-8-byte runtime measure above.
-                if let Some(min) = min {
-                    let chars = u64::try_from(min)
+                // A bound past `u64::MAX / 2` has no hex length a `u64` can hold; omitting it
+                // keeps the schema sound (it never rejects what the deserializer accepts).
+                if let Some(chars) = min.and_then(|min| {
+                    u64::try_from(min)
                         .expect("bytes size lower bound must be non-negative")
                         .checked_mul(2)
-                        .expect("bytes JSON hex length must fit u64");
+                }) {
                     json_schema_fn.line(format!(
                         "out.insert(\"minLength\".to_owned(), {chars}u64.into());"
                     ));
                 }
-                if let Some(max) = max {
-                    let chars = u64::try_from(max)
+                // A bound past `u64::MAX / 2` has no hex length a `u64` can hold; omitting it
+                // keeps the schema sound (it never rejects what the deserializer accepts).
+                if let Some(chars) = max.and_then(|max| {
+                    u64::try_from(max)
                         .expect("bytes size upper bound must be non-negative")
                         .checked_mul(2)
-                        .expect("bytes JSON hex length must fit u64");
+                }) {
                     json_schema_fn.line(format!(
                         "out.insert(\"maxLength\".to_owned(), {chars}u64.into());"
                     ));

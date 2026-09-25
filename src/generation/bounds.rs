@@ -409,6 +409,7 @@ fn externally_wrapped_bounds_check_line(
     let check_expr = bounds_check_expr_rust_type(ty, e)?;
     let non_negative = bounds_check_expr_non_negative(ty);
     let bounds = effective_int_bounds(ty, bounds);
+    let check_expr = portable_len_expr(&check_expr, &bounds);
     let (payload_min, payload_max) = canonical_range_check_payload(&bounds, non_negative);
     let opt = |b: Option<i128>| b.map_or_else(|| "None".to_owned(), |b| format!("Some({b})"));
     Some(format!(
@@ -420,6 +421,26 @@ fn externally_wrapped_bounds_check_line(
             opt(payload_max),
         ))
     ))
+}
+
+/// wasm32's `usize::MAX`, the narrowest length type of any supported target.
+const WASM32_USIZE_MAX: i128 = u32::MAX as i128;
+
+/// The length expression a bounds check compares. A `.len()` is a `usize`, 32 bits on wasm32: a
+/// bound at or above `u32::MAX` would be a `usize` literal that overflows there, or an extreme
+/// comparison `clippy::absurd_extreme_comparisons` denies, so such a check compares the length
+/// widened to `u64`, which holds every CBOR length and enforces the bound on 64-bit targets too.
+/// Every other expression and window is returned unchanged.
+fn portable_len_expr<'a>(e: &'a str, bounds: &(Option<i128>, Option<i128>)) -> Cow<'a, str> {
+    let beyond_wasm32 = [bounds.0, bounds.1]
+        .into_iter()
+        .flatten()
+        .any(|bound| bound >= WASM32_USIZE_MAX);
+    if beyond_wasm32 && e.ends_with(".len()") {
+        Cow::Owned(format!("({e} as u64)"))
+    } else {
+        Cow::Borrowed(e)
+    }
 }
 
 /// The `if <cond> { Err(RangeCheck..) }` integer bounds check — the single owner of the condition
@@ -441,6 +462,7 @@ pub(super) fn bounds_check_if_block(
     location: Option<&str>,
     found_i128: bool,
 ) -> String {
+    let e = &*portable_len_expr(e, bounds);
     let (payload_min, payload_max) = canonical_range_check_payload(bounds, non_negative);
     format!(
         "if {} {}",
