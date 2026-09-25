@@ -18462,6 +18462,148 @@ fn json_schema_scripts_without_package_json() {
     );
 }
 
+/// Prerequisite rules keep their full messages and first-error order across rule shapes.
+#[test]
+fn flag_combination_rules_keep_their_messages_and_first_error_order() {
+    use crate::cli::{Cli, KeyValueArg};
+
+    let base = || Cli {
+        input: "tests/json-extern/input.cddl".into(),
+        output: "unused".into(),
+        wasm: false,
+        ..Default::default()
+    };
+    let pair = || KeyValueArg::new("dep", "path");
+    let cases = [
+        (
+            Cli {
+                common_import_flavor: Some("flavor.toml".into()),
+                ..base()
+            },
+            "--common-import-flavor requires --common-import-override: the record describes the common runtime an override names, so without an override it would be a silent no-op",
+        ),
+        (
+            Cli {
+                canonical_form: true,
+                ..base()
+            },
+            "--canonical-form=true requires --preserve-encodings=true: the canonical toggle rides on the preserve-encodings serialize signatures, so on its own the generated crate does not compile",
+        ),
+        (
+            Cli {
+                emit_tests_conformance: true,
+                ..base()
+            },
+            "--emit-tests-conformance=true requires --emit-tests=true: the conformance oracle adds a validation call to each emitted round-trip case, so there is nothing to add without the generated-test module",
+        ),
+        (
+            Cli {
+                json_schema_scripts: true,
+                ..base()
+            },
+            "--json-schema-scripts=true requires --json-schema-export=true: the copied scripts read the schema document the json-gen crate exports, so without it there is nothing to compile to TypeScript",
+        ),
+        (
+            Cli {
+                json_schema_root: vec!["a::B".into()],
+                ..base()
+            },
+            "--json-schema-root requires --json-schema-export=true: the extra root is emitted as a registration row in the json-gen crate's `add_schemas`, so without it there is no crate for the row to land in",
+        ),
+        (
+            Cli {
+                json_schema_dep: vec![pair()],
+                ..base()
+            },
+            "--json-schema-dep requires --json-schema-export=true: the dependency's registrar is emitted as a call in the json-gen crate's `add_schemas`, so without it there is no crate for the call to land in",
+        ),
+        (
+            Cli {
+                json_gen_dep: vec![pair()],
+                ..base()
+            },
+            "--json-gen-dep requires --json-schema-export=true: the entry is written into the json-gen crate's `Cargo.toml`, so without it there is no crate and no manifest for the dependency to land in",
+        ),
+        (
+            Cli {
+                wasm_dep: vec![pair()],
+                ..base()
+            },
+            "--wasm-dep requires --wasm=true: the entry is written into the wasm crate's `Cargo.toml`, so without it there is no crate and no manifest for the dependency to land in",
+        ),
+        (
+            Cli {
+                component_dep: vec![pair()],
+                ..base()
+            },
+            "--component-dep requires --component=true: the entry is written into the component crate's `Cargo.toml`, so without it there is no crate and no manifest for the dependency to land in",
+        ),
+        (
+            Cli {
+                wit_package: Some("cddl:x".into()),
+                ..base()
+            },
+            "--wit-package requires --component=true: it names the generated WIT package, and without the component face no `.wit` is emitted for it to title",
+        ),
+        (
+            Cli {
+                component_extern_wit: vec![pair()],
+                ..base()
+            },
+            "--component-extern-wit requires --component=true: the dep's WIT is copied into the component crate's own WIT package and its interfaces are named by that crate's `wit_bindgen::generate!` invocation, and without the component face neither exists",
+        ),
+    ];
+    for (cli, expected) in cases {
+        assert_eq!(
+            crate::api::validate_flag_combinations(&cli).unwrap_err(),
+            expected
+        );
+    }
+
+    let first = Cli {
+        common_import_flavor: Some("flavor.toml".into()),
+        canonical_form: true,
+        ..base()
+    };
+    assert!(
+        crate::api::validate_flag_combinations(&first)
+            .unwrap_err()
+            .starts_with("--common-import-flavor requires")
+    );
+    let roots = Cli {
+        json_schema_export: true,
+        json_schema_root: vec!["a::B".into(), "a::B".into()],
+        wasm_dep: vec![pair()],
+        ..base()
+    };
+    assert!(
+        crate::api::validate_flag_combinations(&roots)
+            .unwrap_err()
+            .starts_with("--json-schema-root=a::B was passed more than once")
+    );
+    let deps = Cli {
+        json_schema_export: true,
+        json_schema_dep: vec![KeyValueArg::new("d", "l1"), KeyValueArg::new("d", "l2")],
+        component_dep: vec![pair()],
+        ..base()
+    };
+    assert!(
+        crate::api::validate_flag_combinations(&deps)
+            .unwrap_err()
+            .starts_with("--json-schema-dep label \"d\" was passed more than once")
+    );
+    let wit = Cli {
+        component_extern_wit: vec![pair()],
+        rust_dep: vec![KeyValueArg::new("r", "p1"), KeyValueArg::new("r", "p2")],
+        ..base()
+    };
+    assert!(
+        crate::api::validate_flag_combinations(&wit)
+            .unwrap_err()
+            .starts_with("--component-extern-wit requires")
+    );
+}
+
 /// The three cheap (no nested cargo) halves of `--json-schema-root`'s input contract. The
 /// success direction — an extra root actually reaching the document's `$defs` — is the nested-cargo
 /// `json_extern`; this pins what must be rejected, and rejected BEFORE anything is written.
