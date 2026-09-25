@@ -512,42 +512,30 @@ fn dep_feature_names(item: &Item) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Does the user's concrete version pin satisfy the tool's version requirement? The tool spec parses
-/// as a cargo-default-caret [`semver::VersionReq`] (`"0.2"` → `^0.2`); the user string is stripped of
-/// a leading `^`/`=`, parsed as a [`semver::Version`] with missing minor/patch padded to `0`, and
-/// tested against the requirement. Anything the user wrote that isn't a plain (optionally caret/exact)
-/// version — a range, a wildcard, `*` — fails to parse and the tool's floor wins (the safe fallback).
+/// Does the user's version pin satisfy the tool's version requirement? The tool spec parses as a
+/// cargo-default-caret [`semver::VersionReq`] (`"0.2"` → `^0.2`). The user string parses as ONE
+/// [`semver::Comparator`], cargo's own reading of a requirement, and counts as a pin only when
+/// its operator is caret (explicit or bare) or exact. Its floor (missing minor/patch as `0`,
+/// pre-release kept) is tested against the requirement. Anything else the user wrote (a tilde,
+/// a range, a bare wildcard, several comparators, or a string cargo would reject) fails, and the
+/// tool's floor wins (the safe fallback).
 fn user_satisfies_tool(user: &str, tool: &str) -> bool {
     let Ok(req) = semver::VersionReq::parse(tool) else {
         return false;
     };
-    let stripped = user
-        .strip_prefix('^')
-        .or_else(|| user.strip_prefix('='))
-        .unwrap_or(user);
-    let Some(version) = parse_padded_version(stripped) else {
+    let Ok(pin) = semver::Comparator::parse(user) else {
         return false;
     };
-    req.matches(&version)
-}
-
-/// Parse a concrete version, padding a missing minor/patch to `0` (`"0.2"` → `0.2.0`). Returns `None`
-/// for anything that isn't a bare dotted numeric version (ranges, wildcards, pre-release soup).
-fn parse_padded_version(s: &str) -> Option<semver::Version> {
-    if let Ok(v) = semver::Version::parse(s) {
-        return Some(v);
+    if !matches!(pin.op, semver::Op::Caret | semver::Op::Exact) {
+        return false;
     }
-    let mut nums = Vec::with_capacity(3);
-    for part in s.split('.') {
-        nums.push(part.parse::<u64>().ok()?);
-    }
-    if nums.is_empty() || nums.len() > 3 {
-        return None;
-    }
-    while nums.len() < 3 {
-        nums.push(0);
-    }
-    Some(semver::Version::new(nums[0], nums[1], nums[2]))
+    req.matches(&semver::Version {
+        major: pin.major,
+        minor: pin.minor.unwrap_or(0),
+        patch: pin.patch.unwrap_or(0),
+        pre: pin.pre,
+        build: semver::BuildMetadata::EMPTY,
+    })
 }
 
 /// Merge the tool's dep spec (`tool`) field-level onto the user's existing entry (`existing`, the
@@ -1991,6 +1979,70 @@ linked-hash-map = \"0.5.6\"
         let line = merged_dep("[dependencies]\nfoo = \"1.*\"\n", "foo", "\"1.2.3\"");
         assert!(line.contains("1.2.3"), "tool floor not applied: {line}");
         assert!(!line.contains("1.*"), "unparseable pin survived: {line}");
+    }
+
+    #[test]
+    fn merge_keeps_prerelease_pin_matching_the_tool_prerelease() {
+        let line = merged_dep(
+            "[dependencies]\nfoo = \"0.2.3-rc.1\"\n",
+            "foo",
+            "\"0.2.3-rc.1\"",
+        );
+        assert!(line.contains("0.2.3-rc.1"), "pre-release pin lost: {line}");
+    }
+
+    #[test]
+    fn merge_bumps_prerelease_pin_against_a_release_requirement() {
+        let line = merged_dep(
+            "[dependencies]\nfoo = \"1.2.3-alpha.1\"\n",
+            "foo",
+            "\"1.2\"",
+        );
+        assert!(line.contains("\"1.2\""), "tool floor not applied: {line}");
+        assert!(!line.contains("alpha"), "pre-release pin survived: {line}");
+    }
+
+    #[test]
+    fn merge_bumps_tilde_pin() {
+        let line = merged_dep("[dependencies]\nfoo = \"~0.2.5\"\n", "foo", "\"0.2\"");
+        assert!(line.contains("\"0.2\""), "tool floor not applied: {line}");
+        assert!(!line.contains("~0.2.5"), "tilde pin survived: {line}");
+    }
+
+    #[test]
+    fn merge_keeps_build_metadata_pin() {
+        let line = merged_dep(
+            "[dependencies]\nfoo = \"1.2.3+build.5\"\n",
+            "foo",
+            "\"1.2\"",
+        );
+        assert!(line.contains("1.2.3+build.5"), "build pin lost: {line}");
+    }
+
+    #[test]
+    fn merge_reads_a_whitespace_padded_pin_as_cargo_does() {
+        let line = merged_dep("[dependencies]\nfoo = \" 0.2.5\"\n", "foo", "\"0.2\"");
+        assert!(line.contains(" 0.2.5"), "user pin lost: {line}");
+    }
+
+    #[test]
+    fn merge_bumps_a_leading_zero_pin_cargo_rejects() {
+        let line = merged_dep("[dependencies]\nfoo = \"0.02\"\n", "foo", "\"0.2\"");
+        assert!(line.contains("\"0.2\""), "tool floor not applied: {line}");
+        assert!(!line.contains("0.02"), "invalid pin survived: {line}");
+    }
+
+    #[test]
+    fn merge_bumps_a_sign_prefixed_pin_cargo_rejects() {
+        let line = merged_dep("[dependencies]\nfoo = \"+1\"\n", "foo", "\"1\"");
+        assert!(line.contains("\"1\""), "tool floor not applied: {line}");
+        assert!(!line.contains("+1"), "invalid pin survived: {line}");
+    }
+
+    #[test]
+    fn merge_reads_caret_wildcard_as_its_floor() {
+        let line = merged_dep("[dependencies]\nfoo = \"^0.*\"\n", "foo", "\"0\"");
+        assert!(line.contains("^0.*"), "cargo-compatible pin lost: {line}");
     }
 
     #[test]
