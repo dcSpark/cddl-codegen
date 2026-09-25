@@ -80,6 +80,7 @@ plain_group_array_rest_tail error (graceful)
 plain_group_optional_array_field error (graceful)
 plain_group_type_choice_arm error (graceful)
 prelude_biguint            ok
+range_mixed_int_float      error (graceful)
 rangeop_typename_end       error (graceful)
 rangeop_typename_start     error (graceful)
 recursive_alias_hop        ok

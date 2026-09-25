@@ -556,6 +556,38 @@ fn integral_float_bound_outside_integer_range_rejects_gracefully() {
     }
 }
 
+#[test]
+fn mixed_int_float_range_rejects_gracefully() {
+    for (tag, spec, range) in [
+        ("huge", "x = 0..1.0e300\n", "0..1e300"),
+        ("member", "x = [a: 0..1.0e300]\n", "0..1e300"),
+        (
+            "signed",
+            "x = -9223372036854775808..1.0e300\n",
+            "-9223372036854775808..1e300",
+        ),
+        ("integral", "x = 0..10.0\n", "0..10.0"),
+        ("float_first", "x = 0.0..10\n", "0.0..10"),
+        ("decimal", "x = 0..1.5\n", "0..1.5"),
+        ("exclusive", "x = 0...10.0\n", "0...10.0"),
+    ] {
+        let msg = expect_graceful_rejection(tag, spec, &["--wasm=false"]);
+        assert!(
+            msg.contains("mixes an integer and a float endpoint") && msg.contains(range),
+            "{tag}: {msg}"
+        );
+    }
+    for (tag, spec) in [
+        ("int", "x = 0..10\n"),
+        ("float", "x = 0.5..10.5\n"),
+        ("integral_float", "x = 0.0..10.0\n"),
+        ("float_member", "x = [a: 0.5..10.5]\n"),
+        ("negative", "x = -10..-3\n"),
+    ] {
+        expect_generates(tag, spec, &["--wasm=false"]);
+    }
+}
+
 /// Child half of the warning-capture regression. `warn!` writes directly to stderr, so an
 /// in-process assertion cannot observe it without changing the production logging seam.
 #[test]

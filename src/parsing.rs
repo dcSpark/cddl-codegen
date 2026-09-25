@@ -1922,6 +1922,28 @@ fn non_literal_range_bound_rejection(
     )
 }
 
+/// RFC 8610 defines ranges only between endpoints of the same numeric kind.
+fn mixed_int_float_range_rejection(
+    rule_name: Option<&RustIdent>,
+    start: &Type2,
+    end: &Type2,
+    is_inclusive: bool,
+) -> String {
+    let spell = |t: &Type2| match t {
+        Type2::FloatValue { value, .. } => format!("{value:?}"),
+        other => other.to_string(),
+    };
+    format!(
+        "{}the range `{}{}{}` mixes an integer and a float endpoint, which is unsupported — RFC \
+         8610 §2.2.2.1 defines a range only between two integers (`0..10`) or two floats \
+         (`0.0..10.0`). Spell both endpoints as the same kind.",
+        reject_rule_prefix(rule_name),
+        spell(start),
+        if is_inclusive { ".." } else { "..." },
+        spell(end),
+    )
+}
+
 fn non_literal_control_operand_rejection(
     rule_name: Option<&RustIdent>,
     ctrl: token::ControlOperator,
@@ -2731,6 +2753,19 @@ fn try_float_or_reject(
     let head = head_numeric(type2);
     match operator.operator {
         RangeCtlOp::RangeOp { is_inclusive, .. } => {
+            let is_int = |t: &Type2| matches!(t, Type2::UintValue { .. } | Type2::IntValue { .. });
+            let is_float = |t: &Type2| matches!(t, Type2::FloatValue { .. });
+            if (is_int(type2) && is_float(&operator.type2))
+                || (is_float(type2) && is_int(&operator.type2))
+            {
+                types.record_rejection(mixed_int_float_range_rejection(
+                    rule_name,
+                    type2,
+                    &operator.type2,
+                    is_inclusive,
+                ));
+                return Some(ControlOperator::Range((None, None)));
+            }
             let decimal_endpoint =
                 type2_is_decimal_float(type2) || type2_is_decimal_float(&operator.type2);
             let is_float = head == HeadNumeric::Float || decimal_endpoint;
@@ -2880,7 +2915,6 @@ fn parse_control_operator(
             let range_start = match type2 {
                 Type2::UintValue { value, .. } => *value as i128,
                 Type2::IntValue { value, .. } => *value as i128,
-                Type2::FloatValue { value, .. } => *value as i128,
                 _ => {
                     types.record_rejection(non_literal_range_bound_rejection(
                         rule_name, "start", type2,
@@ -2891,7 +2925,6 @@ fn parse_control_operator(
             let range_end = match operator.type2 {
                 Type2::UintValue { value, .. } => value as i128,
                 Type2::IntValue { value, .. } => value as i128,
-                Type2::FloatValue { value, .. } => value as i128,
                 _ => {
                     types.record_rejection(non_literal_range_bound_rejection(
                         rule_name,
@@ -4737,20 +4770,9 @@ fn parse_type(
                         cli,
                     );
                 }
-                Some(ControlOperator::RangeFloat(window)) => {
-                    // `foo = 0..10.5` (int-literal head promoted by a decimal endpoint): wraps as a
-                    // float bounds-enforcing newtype, primitive f64.
-                    register_float_range(
-                        types,
-                        parent_visitor,
-                        type_name,
-                        float_range_to_primitive(window, Primitive::Float),
-                        window,
-                        outer_tag,
-                        rule_metadata,
-                        cli,
-                    );
-                }
+                Some(ControlOperator::RangeFloat(_)) => unreachable!(
+                    "a float window over an integer-literal head is a mixed-kind range, refused in try_float_or_reject"
+                ),
                 _ => {
                     register_fixed_singleton(
                         types,
@@ -4794,19 +4816,9 @@ fn parse_type(
                         cli,
                     );
                 }
-                Some(ControlOperator::RangeFloat(window)) => {
-                    // `foo = 0..10.5` (uint-literal head promoted by a decimal endpoint): float f64.
-                    register_float_range(
-                        types,
-                        parent_visitor,
-                        type_name,
-                        float_range_to_primitive(window, Primitive::Float),
-                        window,
-                        outer_tag,
-                        rule_metadata,
-                        cli,
-                    );
-                }
+                Some(ControlOperator::RangeFloat(_)) => unreachable!(
+                    "a float window over an integer-literal head is a mixed-kind range, refused in try_float_or_reject"
+                ),
                 _ => {
                     register_fixed_singleton(
                         types,
@@ -6580,8 +6592,7 @@ fn rust_type_from_type1(
                     None => base_type.with_float_bounds(window),
                 }
             }
-            // literal-headed member range promoted to float by a decimal endpoint (`[f: 0.5..10.5]`,
-            // `[f: 0..10.5]`) — the base value is a Fixed constant, so use an f64 primitive.
+            // A float-literal member range (`[f: 0.5..10.5]`) uses an f64 primitive.
             Type2::IntValue { .. } | Type2::UintValue { .. } | Type2::FloatValue { .. } => {
                 float_range_to_primitive(window, Primitive::Float)
             }
