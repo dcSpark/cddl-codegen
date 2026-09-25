@@ -61,7 +61,7 @@ impl ModuleScope {
         self.export
     }
 
-    pub fn components(&self) -> &Vec<String> {
+    pub fn components(&self) -> &[String] {
         &self.scope
     }
 }

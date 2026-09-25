@@ -1423,7 +1423,7 @@ fn scope_path(scope: &crate::intermediate::ModuleScope) -> Vec<String> {
     if *scope == *ROOT_SCOPE {
         Vec::new()
     } else {
-        scope.components().clone()
+        scope.components().to_vec()
     }
 }
 
