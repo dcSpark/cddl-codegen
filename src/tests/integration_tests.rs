@@ -9567,6 +9567,57 @@ forbidden_pair_rest = {
 forbidden_bounded_field_rest = { required: uint .le 10, 0*0 forbidden: uint, * tstr => uint }
 ";
 
+/// Shared by the emission pin in `snapshot_tests` and the execution gate below: exact carriers
+/// whose elements are themselves exact (`[T; M]` or `[u8; M]`) must be built element-tight.
+pub(crate) const NESTED_EXACT_DIRECT_STORAGE_CDDL: &str = "\
+nested_exact = [2*2 [3*3 uint]]
+nested_exact_holder = [nested: nested_exact]
+nested_exact_inline = [nested: [2*2 [3*3 uint]]]
+exact_bytes_pair_holder = [pair: [2*2 bytes .size 4]]
+";
+
+#[test]
+fn nested_exact_direct_storage_emit_tests_execute() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_nested_exact_emit_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let input = root.join("input.cddl");
+    std::fs::write(&input, NESTED_EXACT_DIRECT_STORAGE_CDDL).unwrap();
+    let out = root.join("crate");
+    let generate = codegen_cmd()
+        .arg(format!("--input={}", input.display()))
+        .arg(format!("--output={}", out.display()))
+        .arg("--wasm=true")
+        .arg("--emit-tests=true")
+        .output()
+        .unwrap();
+    assert!(
+        generate.status.success(),
+        "generation failed:\n{}",
+        String::from_utf8_lossy(&generate.stderr)
+    );
+    for face in ["rust", "wasm"] {
+        let test = tool_cmd("cargo")
+            .arg("test")
+            .current_dir(out.join(face))
+            .output()
+            .unwrap();
+        assert!(
+            test.status.success(),
+            "emitted {face} tests failed:\n{}\n{}",
+            String::from_utf8_lossy(&test.stdout),
+            String::from_utf8_lossy(&test.stderr)
+        );
+    }
+    let _ = std::fs::remove_dir_all(root);
+}
+
 /// The default/json exact-zero fixture above proves checked parent mutation. This preserve-only
 /// fixture reaches the other half of the contract: a decoded parent grows through `insert_rest`,
 /// invalidating its old replay length and rebuilding the order without losing pre-existing entry

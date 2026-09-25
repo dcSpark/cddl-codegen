@@ -420,15 +420,7 @@ pub(crate) fn render_rust_for_direct_storage(
     stored_type: &RustType,
     paths: TypePaths,
 ) -> String {
-    if let Some(len) = stored_type
-        .exact_byte_array_len_checked()
-        .or_else(|| stored_type.exact_homogeneous_array_len_checked())
-    {
-        // This feeds an already-typed stored carrier, but `Wrapper::from(vec.try_into())` leaves
-        // the TryInto target ambiguous now that both BoundedVec and `[T; N]` are viable.
-        return static_array_handover(len, &render_value(mv, paths));
-    }
-    match stored_type.resolve_alias_shallow() {
+    let stored = match stored_type.resolve_alias_shallow() {
         ConceptualRustType::Array(element) if matches!(mv, MintValue::Array { .. }) => {
             render_rust_array(mv, &|value| {
                 render_rust_for_direct_storage(types, value, element, paths)
@@ -439,6 +431,17 @@ pub(crate) fn render_rust_for_direct_storage(
         }
         ConceptualRustType::Rust(type_ident) => render_rust_for_named(types, mv, type_ident, paths),
         _ => render_value(mv, paths),
+    };
+    // An exact carrier (`[u8; N]`, or `[T; N]` whose elements were built tight above) owes its own
+    // Vec -> array handover. Rendering its contents loosely left nested exact elements as Vecs.
+    // The explicit target also keeps `Wrapper::from(..)` unambiguous when both BoundedVec and
+    // `[T; N]` are viable TryInto targets.
+    match stored_type
+        .exact_byte_array_len_checked()
+        .or_else(|| stored_type.exact_homogeneous_array_len_checked())
+    {
+        Some(len) => static_array_handover(len, &stored),
+        None => stored,
     }
 }
 

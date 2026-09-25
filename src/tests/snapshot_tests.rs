@@ -985,6 +985,59 @@ fn wasm_emitted_test_rust_twin_tightens_nested_exact_bytes() {
     );
 }
 
+/// Exact outer arrays must render their elements through their stored types in both emitted
+/// test modules. The execution gate also compiles and runs the generated rust and wasm crates.
+#[test]
+fn emitted_tests_build_nested_exact_carriers_element_tight() {
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_nested_exact_emit_pin_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let input = root.join("input.cddl");
+    std::fs::write(
+        &input,
+        crate::tests::integration_tests::NESTED_EXACT_DIRECT_STORAGE_CDDL,
+    )
+    .unwrap();
+    let files =
+        crate::api::generated_strings(&cli_for(&input, &["--wasm=true", "--emit-tests=true"]))
+            .expect("nested exact emitted-test spec must generate");
+    let rust = files.get("rust/src/generated/mod.rs").unwrap();
+    let wasm = files.get("wasm/src/generated/mod.rs").unwrap();
+    let rust_flat: String = rust.split_whitespace().collect();
+    let wasm_flat: String = wasm.split_whitespace().collect();
+    for needle in [
+        "NestedExactHolder::new(<[_;2]>::try_from(vec![<[_;3]>::try_from(vec![0;3]).unwrap();2]).unwrap()",
+        "NestedExactInline::new(<[_;2]>::try_from(vec![<[_;3]>::try_from(vec![0;3]).unwrap();2]).unwrap()",
+        "ExactBytesPairHolder::new(<[_;2]>::try_from(vec![<[_;4]>::try_from(vec![0u8;4]).unwrap();2]).unwrap()",
+    ] {
+        assert!(
+            rust_flat.contains(needle),
+            "missing {needle} in rust emitted tests:\n{rust}"
+        );
+    }
+    for needle in [
+        "letrust_v=cddl_lib::NestedExactHolder::new(<[_;2]>::try_from(vec![<[_;3]>::try_from(vec![0;3]).unwrap();2]).unwrap()",
+        "letwasm_v=ExactBytesPairHolder::new(&BytesListMin2Max2::from(<[_;2]>::try_from(vec![<[_;4]>::try_from(vec![0u8;4]).unwrap();2]).unwrap()",
+    ] {
+        assert!(
+            wasm_flat.contains(needle),
+            "missing {needle} in wasm emitted tests:\n{wasm}"
+        );
+    }
+    for (face, flat) in [("rust", &rust_flat), ("wasm", &wasm_flat)] {
+        for loose in ["vec![vec![0;3];2]", "vec![vec![0u8;4];2]"] {
+            assert!(
+                !flat.contains(loose),
+                "{face} emitted tests left nested exact elements loose: {loose}"
+            );
+        }
+    }
+    let _ = std::fs::remove_dir_all(root);
+}
+
 /// A record with an exact-zero forbidden key and a protected LOOSE rest row takes the complete
 /// checked rest map as a native and wasm constructor argument. The wasm emitted-test projection must
 /// admit that same row, or it reports false constructor drift and silently drops both the round trip

@@ -3883,6 +3883,8 @@ decoding the rust twin's bytes with a loud skip of the ctor differential. A wrap
 a ctor arg with no wasm build (a name-erased wrapper collection, a `Fixed`/`Alias`/`any` inner) and
 the same-class wrapper-entry ctor differential, plus the whole module under any
 `--wasm-*-macro` flag (those replace the wrapper method surface) — each a `crate::warn!` to stderr.
+`integration_tests::nested_exact_direct_storage_emit_tests_execute` compiles and runs both generated
+crates to prove that exact carriers of exact elements build their elements tight in the native twin.
 
 The tagged-`any` fallback still renders its independently minted rust twin through the private
 `__AnyCborMint` spelling. The module therefore imports
