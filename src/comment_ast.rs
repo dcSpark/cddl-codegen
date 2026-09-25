@@ -406,20 +406,20 @@ macro_rules! directives {
 }
 
 directives! {
-    Name = "@name" => name_args,
-    RustName = "@rust_name" => rust_name_args,
+    Name = "@name" => |i| word_arg(i, |m, w| m.name = Some(w)),
+    RustName = "@rust_name" => |i| word_arg(i, |m, w| m.rust_name = Some(w)),
     Newtype = "@newtype" => newtype_args,
-    NoAlias = "@no_alias" => no_alias_args,
+    NoAlias = "@no_alias" => |i| flag(i, |m| m.no_alias = true),
     UsedAsKey = "@used_as_key" => used_as_key_args,
-    UsedAsElem = "@used_as_elem" => used_as_elem_args,
-    Copy = "@copy" => copy_args,
-    RawBytesFlavor = "@raw_bytes_flavor" => raw_bytes_flavor_args,
-    Ignore = "@ignore" => ignore_args,
+    UsedAsElem = "@used_as_elem" => |i| flag(i, |m| m.used_as_elem = true),
+    Copy = "@copy" => |i| flag(i, |m| m.copy = true),
+    RawBytesFlavor = "@raw_bytes_flavor" => |i| flag(i, |m| m.raw_bytes_flavor = true),
+    Ignore = "@ignore" => |i| flag(i, |m| m.ignore = true),
     Duplicates = "@duplicates" => duplicates_args,
-    CustomJson = "@custom_json" => custom_json_args,
-    NoJsonSchemaExport = "@no_json_schema_export" => no_json_schema_export_args,
-    CustomSerialize = "@custom_serialize" => custom_serialize_args,
-    CustomDeserialize = "@custom_deserialize" => custom_deserialize_args,
+    CustomJson = "@custom_json" => |i| flag(i, |m| m.custom_json = true),
+    NoJsonSchemaExport = "@no_json_schema_export" => |i| flag(i, |m| m.no_json_schema_export = true),
+    CustomSerialize = "@custom_serialize" => |i| word_arg(i, |m, w| m.custom_serialize = Some(w)),
+    CustomDeserialize = "@custom_deserialize" => |i| word_arg(i, |m, w| m.custom_deserialize = Some(w)),
     CustomEncodings = "@custom_encodings" => custom_encodings_args,
     CustomWireMajor = "@custom_wire_major" => custom_wire_major_args,
     ExternCompanions = "@extern_companions" => extern_companions_args,
@@ -593,18 +593,42 @@ impl RuleMetadata {
     }
 }
 
-fn name_args(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = take_while(char::is_whitespace)(input)?;
-    let (input, name) = take_while1(|ch| !char::is_whitespace(ch))(input)?;
-
-    Ok((input, single(|m| m.name = Some(name.to_string()))))
+/// An argument-less directive (`@copy`, `@no_alias`, …): consumes nothing after its spelling.
+fn flag(input: &str, set: impl FnOnce(&mut RuleMetadata)) -> IResult<&str, RuleMetadata> {
+    Ok((input, single(set)))
 }
 
-fn rust_name_args(input: &str) -> IResult<&str, RuleMetadata> {
+/// A directive taking one whitespace-free word (`@name`, `@rust_name`, `@custom_serialize`,
+/// `@custom_deserialize`). Lenient, as it always was: a missing word is a nom error, which
+/// `metadata_from_comments` swallows with the rest of the line; and the word is NOT cut at `@`.
+fn word_arg(
+    input: &str,
+    set: impl FnOnce(&mut RuleMetadata, String),
+) -> IResult<&str, RuleMetadata> {
     let (input, _) = take_while(char::is_whitespace)(input)?;
-    let (input, rust_name) = take_while1(|ch| !char::is_whitespace(ch))(input)?;
+    let (input, word) = take_while1(|ch: char| !ch.is_whitespace())(input)?;
+    Ok((input, single(|metadata| set(metadata, word.to_string()))))
+}
 
-    Ok((input, single(|m| m.rust_name = Some(rust_name.to_string()))))
+/// The strict-vocabulary directives' REQUIRED argument: skip whitespace, PANIC with `missing` when
+/// the comment ends or the next directive starts, else take one token cut at whitespace or `@`.
+/// Panicking (not a nom error) is the point: `metadata_from_comments` swallows nom errors, so a
+/// soft failure would silently drop the whole line's metadata — the distant-failure class these
+/// directives exist to kill.
+fn required_arg<'a>(input: &'a str, missing: &str) -> IResult<&'a str, &'a str> {
+    let (input, _) = take_while(char::is_whitespace)(input)?;
+    if input.is_empty() || input.starts_with('@') {
+        panic!("{missing}");
+    }
+    take_while1(|ch: char| !ch.is_whitespace() && ch != '@')(input)
+}
+
+/// The backtick-quoted, ` / `-joined token list a strict directive's rejection message names.
+fn vocabulary<T: Copy>(all: &[T], token: impl Fn(T) -> &'static str) -> String {
+    all.iter()
+        .map(|item| format!("`{}`", token(*item)))
+        .collect::<Vec<_>>()
+        .join(" / ")
 }
 
 /// A syntactic rust identifier: the shape `@newtype`'s optional getter argument must have, since it
@@ -649,10 +673,6 @@ fn newtype_args(input: &str) -> IResult<&str, RuleMetadata> {
     }
 }
 
-fn no_alias_args(input: &str) -> IResult<&str, RuleMetadata> {
-    Ok((input, single(|m| m.no_alias = true)))
-}
-
 fn used_as_key_args(input: &str) -> IResult<&str, RuleMetadata> {
     // Parse the optional flavor words (`hash`, `ord`) that follow, up to the next `@tag` or end of
     // the comment. Strict vocabulary: any other word is a PANIC. The comment parser otherwise swallows
@@ -688,35 +708,13 @@ fn used_as_key_args(input: &str) -> IResult<&str, RuleMetadata> {
     Ok((rest, single(|m| m.key_demand = Some(demand))))
 }
 
-fn used_as_elem_args(input: &str) -> IResult<&str, RuleMetadata> {
-    Ok((input, single(|m| m.used_as_elem = true)))
-}
-
-fn copy_args(input: &str) -> IResult<&str, RuleMetadata> {
-    Ok((input, single(|m| m.copy = true)))
-}
-
-fn raw_bytes_flavor_args(input: &str) -> IResult<&str, RuleMetadata> {
-    Ok((input, single(|m| m.raw_bytes_flavor = true)))
-}
-
-fn ignore_args(input: &str) -> IResult<&str, RuleMetadata> {
-    Ok((input, single(|m| m.ignore = true)))
-}
-
 fn duplicates_args(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = take_while(char::is_whitespace)(input)?;
-    // `@duplicates` requires exactly one argument from a strict vocabulary. A missing or unknown
-    // argument is a PANIC (matching `@used_as_key`'s unknown-flavor handling): the comment parser
-    // otherwise swallows nom errors (`metadata_from_comments`), so a soft failure here would silently
-    // drop the whole line's metadata — the exact distant-failure class this DSL exists to kill.
-    if input.is_empty() || input.starts_with('@') {
-        panic!(
-            "@duplicates: missing required argument; expected `preserve` or `reject` \
-             (e.g. `@duplicates reject`)."
-        );
-    }
-    let (rest, word) = take_while1(|ch| !char::is_whitespace(ch) && ch != '@')(input)?;
+    // `@duplicates` requires exactly one argument from a strict vocabulary; see `required_arg`.
+    let (rest, word) = required_arg(
+        input,
+        "@duplicates: missing required argument; expected `preserve` or `reject` \
+         (e.g. `@duplicates reject`).",
+    )?;
     let policy = match word {
         "preserve" => DuplicatesPolicy::Preserve,
         "reject" => DuplicatesPolicy::Reject,
@@ -728,52 +726,18 @@ fn duplicates_args(input: &str) -> IResult<&str, RuleMetadata> {
     Ok((rest, single(|m| m.duplicates = Some(policy))))
 }
 
-fn custom_json_args(input: &str) -> IResult<&str, RuleMetadata> {
-    Ok((input, single(|m| m.custom_json = true)))
-}
-
-fn no_json_schema_export_args(input: &str) -> IResult<&str, RuleMetadata> {
-    Ok((input, single(|m| m.no_json_schema_export = true)))
-}
-
-fn custom_serialize_args(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = take_while(char::is_whitespace)(input)?;
-    let (input, custom_serialize) = take_while1(|ch| !char::is_whitespace(ch))(input)?;
-
-    Ok((
-        input,
-        single(|m| m.custom_serialize = Some(custom_serialize.to_string())),
-    ))
-}
-
-fn custom_deserialize_args(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = take_while(char::is_whitespace)(input)?;
-    let (input, custom_deserialize) = take_while1(|ch| !char::is_whitespace(ch))(input)?;
-
-    Ok((
-        input,
-        single(|m| m.custom_deserialize = Some(custom_deserialize.to_string())),
-    ))
-}
-
 fn custom_wire_major_args(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = take_while(char::is_whitespace)(input)?;
     // Exactly one REQUIRED argument from a strict vocabulary (the `@custom_encodings` contract, and
-    // panicking for the same reason: `metadata_from_comments` swallows nom errors, so a soft failure
-    // would silently drop the whole line's metadata — here that means dropping the pair AND its
-    // declared major, re-arming the silent-normalization trap this family exists to disarm).
-    let vocabulary = WireMajor::ALL
-        .iter()
-        .map(|major| format!("`{}`", major.token()))
-        .collect::<Vec<_>>()
-        .join(" / ");
-    if input.is_empty() || input.starts_with('@') {
-        panic!(
+    // panicking for the same reason: a soft failure would drop the pair AND its declared major,
+    // re-arming the silent-normalization trap this family exists to disarm).
+    let vocabulary = vocabulary(WireMajor::ALL, WireMajor::token);
+    let (rest, arg) = required_arg(
+        input,
+        &format!(
             "@custom_wire_major: missing required argument; expected exactly one of {vocabulary} \
              (e.g. `@custom_wire_major text`)."
-        );
-    }
-    let (rest, arg) = take_while1(|ch| !char::is_whitespace(ch) && ch != '@')(input)?;
+        ),
+    )?;
     match WireMajor::ALL.iter().find(|m| m.token() == arg) {
         Some(major) => Ok((rest, single(|m| m.custom_wire_major = Some(*major)))),
         None => panic!(
@@ -784,26 +748,18 @@ fn custom_wire_major_args(input: &str) -> IResult<&str, RuleMetadata> {
 }
 
 fn custom_encodings_args(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = take_while(char::is_whitespace)(input)?;
-    // Exactly one REQUIRED argument from a strict vocabulary, whitespace-free (house style — the
-    // argument reader is `take_while1(!ws)`). A missing or malformed argument is a PANIC (matching
-    // `@duplicates`/`@extern_companions`): the comment parser otherwise swallows nom errors
-    // (`metadata_from_comments`), so a soft failure would silently drop the whole line's metadata —
-    // here that means dropping the pair AND its declaration, re-arming the very silent-normalization
-    // trap this directive exists to disarm. Loud at the cause.
-    let vocabulary = EncodingKind::ALL
-        .iter()
-        .map(|kind| format!("`{}`", kind.token()))
-        .collect::<Vec<_>>()
-        .join(" / ");
-    if input.is_empty() || input.starts_with('@') {
-        panic!(
+    // Exactly one REQUIRED argument from a strict vocabulary, whitespace-free (house style). A
+    // missing or malformed argument is a PANIC: a soft failure would drop the pair AND its
+    // declaration, re-arming the very silent-normalization trap this directive exists to disarm.
+    let vocabulary = vocabulary(EncodingKind::ALL, EncodingKind::token);
+    let (rest, arg) = required_arg(
+        input,
+        &format!(
             "@custom_encodings: missing required argument; expected a comma-separated list of \
              {vocabulary} with no whitespace (e.g. `@custom_encodings sz,str`), or the keyword \
              `none` for a wire with no framing."
-        );
-    }
-    let (rest, arg) = take_while1(|ch| !char::is_whitespace(ch) && ch != '@')(input)?;
+        ),
+    )?;
     if arg == "none" {
         return Ok((rest, single(|m| m.custom_encodings = Some(Vec::new()))));
     }
@@ -833,20 +789,15 @@ fn is_rust_path(path: &str) -> bool {
 }
 
 fn extern_companions_args(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = take_while(char::is_whitespace)(input)?;
-    // Exactly one REQUIRED argument, in a strict shape. A missing or malformed argument is a PANIC
-    // (matching `@duplicates`/`@used_as_key`): the comment parser otherwise swallows nom errors
-    // (`metadata_from_comments`), so a soft failure would silently drop the whole line's metadata —
-    // here that means silently re-minting the very classes the directive exists to suppress, whose
-    // only symptom is a `rust-lld: duplicate symbol` in a DIFFERENT crate's link. Loud at the cause.
-    if input.is_empty() || input.starts_with('@') {
-        panic!(
-            "@extern_companions: missing required argument; expected \
-             `<use_path_prefix>=<Class>[,<Class>…]` (e.g. \
-             `@extern_companions cml_chain_wasm=TransactionMetadatumList`)."
-        );
-    }
-    let (rest, arg) = take_while1(|ch| !char::is_whitespace(ch) && ch != '@')(input)?;
+    // Exactly one REQUIRED argument, in a strict shape (see `required_arg`): a soft failure would
+    // silently re-mint the very classes the directive exists to suppress, whose only symptom is a
+    // `rust-lld: duplicate symbol` in a DIFFERENT crate's link. Loud at the cause.
+    let (rest, arg) = required_arg(
+        input,
+        "@extern_companions: missing required argument; expected \
+         `<use_path_prefix>=<Class>[,<Class>…]` (e.g. \
+         `@extern_companions cml_chain_wasm=TransactionMetadatumList`).",
+    )?;
     let Some((path_prefix, class_list)) = arg.split_once('=') else {
         panic!(
             "@extern_companions: malformed argument {arg:?}; expected \
@@ -873,26 +824,22 @@ fn extern_companions_args(input: &str) -> IResult<&str, RuleMetadata> {
         }
         classes.insert(class.to_owned());
     }
-    Ok((
-        rest,
-        single(|m| {
-            m.extern_companions = Some(ExternCompanions {
-                path_prefix: path_prefix.to_owned(),
-                classes,
-            })
-        }),
-    ))
+    let companions = ExternCompanions {
+        path_prefix: path_prefix.to_owned(),
+        classes,
+    };
+    Ok((rest, single(|m| m.extern_companions = Some(companions))))
 }
 
+/// `@doc`: everything up to the next `@` (or the end of the comment), trimmed.
 fn doc_args(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, comment) = take_while1(|c| c != '@')(input)?;
-
-    Ok((
-        input,
-        single(|m| m.comment = Some(comment.trim().to_string())),
-    ))
+    let (input, doc) = take_while1(|c| c != '@')(input)?;
+    Ok((input, single(|m| m.comment = Some(doc.trim().to_string()))))
 }
 
+/// Skip whitespace, then parse ONE directive: the first [`Directive::ALL`] spelling that prefixes
+/// the input, then its arguments. First-match is order-independent because no spelling is a prefix
+/// of another (`no_directive_spelling_prefixes_another` pins that).
 fn whitespace_then_directive(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = take_while(char::is_whitespace)(input)?;
     for &directive in Directive::ALL {
