@@ -1,0 +1,1 @@
+old.rs:6: An `// cddl-codegen:replace-start` block has no `// cddl-codegen:replaces` marker

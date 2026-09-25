@@ -166,7 +166,10 @@ version-bump/re-ownership tripwires, not a claim that every trailing position fo
 - `insert_orphaned_end_errors` — `insert-end` with no matching `insert-start`.
 - `insert_unclosed_errors` — `insert-start` with no matching `insert-end`.
 - `namespace_bare_unpreserved_marker_errors` — a bare `unpreserved-comment` marker not backed by a `compile_error!`.
-- `replace_missing_replaces_errors` — a replace block with no `replaces` marker (nothing separates user code from the recorded original).
+- `replace_missing_replaces_errors` — a replace block that reaches `replace-end` before any `replaces` marker.
+- `replace_unterminated_before_replaces_errors` — a replace block with no later reserved marker and no `replaces` marker.
+- `replace_foreign_tag_before_end_errors` — an `insert-end` tag interrupts a replace block's recorded-original section.
+- `replace_recorded_section_contains_code_errors` — code appears between `replaces` and `replace-end`.
 - `replace_missing_end_errors` — a replace block with no `replace-end`.
 - `replace_empty_recorded_original_errors` — a `replaces` section that lexes to zero code tokens.
 - `replace_unbalanced_user_section_errors` — the user section closes a delimiter it does not open (an interior dip, e.g. `} else {`).

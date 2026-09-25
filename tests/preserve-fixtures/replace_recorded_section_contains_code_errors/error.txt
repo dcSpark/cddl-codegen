@@ -1,0 +1,1 @@
+old.rs:6: An `// cddl-codegen:replaces` section contains code
