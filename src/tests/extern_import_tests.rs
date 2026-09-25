@@ -1289,21 +1289,86 @@ fn extern_import_empty_path_hard_errors() {
     );
 }
 
-/// A malformed `--extern-import` value (no `=`) is a hard error, mirroring the other cross-crate
-/// flag parsers.
+/// Malformed pair flags fail in clap while valid pairs retain their mapping semantics.
 #[test]
-#[should_panic(expected = "--extern-import")]
-fn extern_import_malformed_flag_value_panics() {
-    let cli = Cli::parse_from([
+fn malformed_pair_flag_values_are_parse_errors_not_panics() {
+    let cases = [
+        (
+            "extern-wasm-crate",
+            "nope",
+            "--extern-wasm-crate value must be <dep>=<wasm_crate>, got: \"nope\"",
+        ),
+        ("extern-wasm-crate", "=x", "with both sides non-empty"),
+        ("extern-wasm-crate", "x=", "with both sides non-empty"),
+        (
+            "extern-wrapper-index",
+            "nope",
+            "--extern-wrapper-index value must be <dep>=<path/to/collections.rs>, got: \"nope\"",
+        ),
+        (
+            "wrapper-requests",
+            "nope",
+            "--wrapper-requests value must be <consumer>=<path/to/borrowed_collections.rs>, got: \"nope\"",
+        ),
+        (
+            "key-requests",
+            "=p",
+            "--key-requests value must be <consumer>=<path/to/borrowed_key_types.rs> with both sides non-empty",
+        ),
+        (
+            "extern-import",
+            "no_equals_sign",
+            "--extern-import value must be <dep>=<path/to/extern-interface/dep>, got: \"no_equals_sign\"",
+        ),
+        ("extern-import", "a=", "with both sides non-empty"),
+        ("workspace-dep", "a=b", "is reserved but not yet supported"),
+        ("workspace-dep", "", "must be a non-empty <dep> name"),
+        ("workspace-dep", "  ", "must be a non-empty <dep> name"),
+    ];
+    for (flag, value, expected) in cases {
+        let arg = format!("--{flag}={value}");
+        let err = Cli::try_parse_from([
+            "cddl-codegen",
+            "--input=unused.cddl",
+            "--output=unused",
+            &arg,
+        ])
+        .expect_err(&arg);
+        assert_eq!(err.kind(), clap::error::ErrorKind::ValueValidation, "{arg}");
+        assert!(err.to_string().contains(expected), "{arg}: {err}");
+    }
+
+    let cli = Cli::try_parse_from([
         "cddl-codegen",
-        "--input",
-        "unused.cddl",
-        "--output",
-        "unused",
-        "--extern-import",
-        "no_equals_sign",
-    ]);
-    let _ = cli.extern_import_paths();
+        "--input=unused.cddl",
+        "--output=unused",
+        "--extern-wasm-crate= a = b-c ",
+    ])
+    .unwrap();
+    assert_eq!(
+        cli.extern_wasm_crate_map(),
+        [("a".into(), "b_c".into())].into()
+    );
+    let cli = Cli::try_parse_from([
+        "cddl-codegen",
+        "--input=unused.cddl",
+        "--output=unused",
+        "--extern-import=a=p1",
+        "--extern-import=a=p2",
+    ])
+    .unwrap();
+    assert_eq!(
+        cli.extern_import_paths(),
+        [("a".into(), "p2".into())].into()
+    );
+    let cli = Cli::try_parse_from([
+        "cddl-codegen",
+        "--input=unused.cddl",
+        "--output=unused",
+        "--workspace-dep= core ",
+    ])
+    .unwrap();
+    assert_eq!(cli.workspace_deps(), ["core".into()].into());
 }
 
 // ============================================================================================

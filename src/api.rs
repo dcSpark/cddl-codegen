@@ -654,7 +654,7 @@ pub fn validate_flag_combinations(cli: &Cli) -> Result<(), String> {
     }
     // One package name under two paths is ambiguous, not additive: a manifest holds ONE
     // `[dependencies]` entry per package, so the second value would silently replace the first.
-    // Read off the RAW flag lists rather than the `*_deps()` accessors, whose `BTreeMap`s are
+    // Read off the flag lists rather than the `*_deps()` accessors, whose `BTreeMap`s are
     // exactly where a duplicate would disappear.
     //
     // `--rust-dep` joins them here and NOWHERE above: the rust crate is the one crate every run
@@ -667,10 +667,7 @@ pub fn validate_flag_combinations(cli: &Cli) -> Result<(), String> {
     ] {
         let mut seen = std::collections::BTreeSet::new();
         for entry in entries {
-            let name = entry
-                .split_once('=')
-                .map_or(entry.as_str(), |(name, _)| name)
-                .trim();
+            let name = entry.key.as_str();
             if !seen.insert(name) {
                 return Err(format!(
                     "{flag} package name {name:?} was passed more than once: a manifest holds \
@@ -686,16 +683,8 @@ pub fn validate_flag_combinations(cli: &Cli) -> Result<(), String> {
     // AUTHOR of a manifest cargo rejects — either a bare `default-features = false` with no source,
     // or a feature naming a dependency that is not there. Rejected here rather than left to cargo
     // because the tool wrote the manifest and the user wrote the flags.
-    let rust_dep_packages: std::collections::BTreeSet<&str> = cli
-        .rust_dep
-        .iter()
-        .map(|entry| {
-            entry
-                .split_once('=')
-                .map_or(entry.as_str(), |(name, _)| name)
-                .trim()
-        })
-        .collect();
+    let rust_dep_packages: std::collections::BTreeSet<&str> =
+        cli.rust_dep.iter().map(|kv| kv.key.as_str()).collect();
     for package in &cli.std_forward_dep {
         let package = package.trim();
         if !rust_dep_packages.contains(package) {

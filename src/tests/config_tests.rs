@@ -767,6 +767,23 @@ fn preserve_comments_omitted_or_true_leaves_the_built_in_alone() {
     );
 }
 
+/// Config expansion and flag listing reject malformed pair values with the source key attributed.
+#[test]
+fn a_malformed_pair_value_is_refused_at_expansion_naming_its_key() {
+    let config = parse(&format!(
+        "{MINIMAL_CRATE}extern-wasm-crate = {{ core = \"\" }}\n"
+    ));
+    let error = config
+        .expand(&[])
+        .expect_err("an empty value must fail expansion");
+    assert!(error.contains("[crates.demo].extern-wasm-crate"), "{error}");
+    assert!(error.contains("with both sides non-empty"), "{error}");
+    let listing_error = config
+        .flag_listing(&[])
+        .expect_err("listing must validate too");
+    assert_eq!(listing_error, error);
+}
+
 /// A value clap rejects is reported against the TOML key that produced it, not against a flag the
 /// user never typed. The rejection itself is clap's — the config must not be able to bypass a value
 /// parser (here `parse_json_schema_root`'s emitted-verbatim charset guard).
@@ -4438,10 +4455,7 @@ fn the_derived_json_gen_dep_path_is_relative_in_every_layout() {
             &vec![format!("core-json-schema-gen={expected}")],
             "dep package-json={dep_npm}, consumer package-json={consumer_npm}"
         );
-        let path = derived[0]
-            .split_once('=')
-            .expect("the flag is <package>=<path>")
-            .1;
+        let path = derived[0].value.as_str();
         assert!(
             std::path::Path::new(path).is_relative(),
             "a cargo path dependency is resolved against the manifest holding it, and an absolute \
@@ -4465,10 +4479,7 @@ fn the_derived_path_stays_relative_across_a_mixed_absolute_and_relative_output()
     ));
     let derived = &by_name["ledger"].json_gen_dep;
     assert_eq!(derived.len(), 1, "one edge derives one entry");
-    let path = derived[0]
-        .split_once('=')
-        .expect("the flag is <package>=<path>")
-        .1;
+    let path = derived[0].value.as_str();
     assert!(
         std::path::Path::new(path).is_relative(),
         "the derived cargo path dependency must be relative however the outputs were spelled, got \
@@ -4546,10 +4557,7 @@ fn a_dot_or_dot_dot_in_an_output_derives_the_same_path_the_plain_spelling_does()
         "a relative `output` climbing out of the config directory denotes the same directory an \
          absolute one does, so it must derive the same manifest entry"
     );
-    let path = climbing[0]
-        .split_once('=')
-        .expect("the flag is <package>=<path>")
-        .1;
+    let path = climbing[0].value.as_str();
     assert!(
         std::path::Path::new(path).is_relative() && path.ends_with("gen/core/wasm/json-gen"),
         "and it must still be a relative path reaching the dependency's json-gen crate, got {path}"
@@ -5112,10 +5120,7 @@ fn the_derived_wasm_dep_path_is_relative_in_every_layout() {
             "dep package-json={dep_npm}, consumer package-json={consumer_npm}"
         );
         for entry in derived {
-            let path = entry
-                .split_once('=')
-                .expect("the flag is <package>=<path>")
-                .1;
+            let path = entry.value.as_str();
             assert!(
                 std::path::Path::new(path).is_relative(),
                 "a cargo path dependency is resolved against the manifest holding it, and an \

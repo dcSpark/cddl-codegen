@@ -18643,7 +18643,10 @@ fn json_schema_dep_input_contract() {
     // 1. requires --json-schema-export
     let cli = crate::cli::Cli {
         json_schema_export: false,
-        json_schema_dep: vec!["dep_crate=dep_crate_json_schema_gen".to_owned()],
+        json_schema_dep: vec![crate::cli::KeyValueArg::new(
+            "dep_crate",
+            "dep_crate_json_schema_gen",
+        )],
         ..base()
     };
     let err = crate::api::with_types(&cli, |_, _| ())
@@ -18657,9 +18660,9 @@ fn json_schema_dep_input_contract() {
     // 2. a repeated LABEL is rejected, and the message names the label
     let cli = crate::cli::Cli {
         json_schema_dep: vec![
-            "dep_crate=first_json_schema_gen".to_owned(),
-            "other_dep=other_json_schema_gen".to_owned(),
-            "dep_crate=second_json_schema_gen".to_owned(),
+            crate::cli::KeyValueArg::new("dep_crate", "first_json_schema_gen"),
+            crate::cli::KeyValueArg::new("other_dep", "other_json_schema_gen"),
+            crate::cli::KeyValueArg::new("dep_crate", "second_json_schema_gen"),
         ],
         ..base()
     };
@@ -18674,8 +18677,8 @@ fn json_schema_dep_input_contract() {
     // 3. one lib name under two labels is rejected, and the message names the lib name
     let cli = crate::cli::Cli {
         json_schema_dep: vec![
-            "dep_crate=shared_json_schema_gen".to_owned(),
-            "other_dep=shared_json_schema_gen".to_owned(),
+            crate::cli::KeyValueArg::new("dep_crate", "shared_json_schema_gen"),
+            crate::cli::KeyValueArg::new("other_dep", "shared_json_schema_gen"),
         ],
         ..base()
     };
@@ -18691,8 +18694,8 @@ fn json_schema_dep_input_contract() {
     // directions above and not the flag itself.
     let cli = crate::cli::Cli {
         json_schema_dep: vec![
-            "dep_crate=dep_crate_json_schema_gen".to_owned(),
-            "other_dep=other_dep_json_schema_gen".to_owned(),
+            crate::cli::KeyValueArg::new("dep_crate", "dep_crate_json_schema_gen"),
+            crate::cli::KeyValueArg::new("other_dep", "other_dep_json_schema_gen"),
         ],
         ..base()
     };
@@ -18794,7 +18797,10 @@ fn json_gen_dep_input_contract() {
     // 1. requires --json-schema-export
     let cli = crate::cli::Cli {
         json_schema_export: false,
-        json_gen_dep: vec!["dep-json-schema-gen=../dep/wasm/json-gen".to_owned()],
+        json_gen_dep: vec![crate::cli::KeyValueArg::new(
+            "dep-json-schema-gen",
+            "../dep/wasm/json-gen",
+        )],
         ..base()
     };
     let err = crate::api::with_types(&cli, |_, _| ())
@@ -18808,9 +18814,9 @@ fn json_gen_dep_input_contract() {
     // 2. a repeated PACKAGE NAME is rejected, and the message names it
     let cli = crate::cli::Cli {
         json_gen_dep: vec![
-            "dep-json-schema-gen=../first".to_owned(),
-            "other-json-schema-gen=../other".to_owned(),
-            "dep-json-schema-gen=../second".to_owned(),
+            crate::cli::KeyValueArg::new("dep-json-schema-gen", "../first"),
+            crate::cli::KeyValueArg::new("other-json-schema-gen", "../other"),
+            crate::cli::KeyValueArg::new("dep-json-schema-gen", "../second"),
         ],
         ..base()
     };
@@ -18827,8 +18833,8 @@ fn json_gen_dep_input_contract() {
     // directory holds one crate or a workspace is cargo's business, not this tool's).
     let cli = crate::cli::Cli {
         json_gen_dep: vec![
-            "dep-json-schema-gen=../dep/wasm/json-gen".to_owned(),
-            "other-json-schema-gen=../dep/wasm/json-gen".to_owned(),
+            crate::cli::KeyValueArg::new("dep-json-schema-gen", "../dep/wasm/json-gen"),
+            crate::cli::KeyValueArg::new("other-json-schema-gen", "../dep/wasm/json-gen"),
         ],
         ..base()
     };
@@ -18918,7 +18924,7 @@ fn wasm_dep_input_contract() {
     // 1. requires --wasm
     let cli = crate::cli::Cli {
         wasm: false,
-        wasm_dep: vec!["dep-wasm=../../dep/wasm".to_owned()],
+        wasm_dep: vec![crate::cli::KeyValueArg::new("dep-wasm", "../../dep/wasm")],
         ..base()
     };
     let err = crate::api::with_types(&cli, |_, _| ())
@@ -18932,9 +18938,9 @@ fn wasm_dep_input_contract() {
     // 2. a repeated PACKAGE NAME is rejected, and the message names it
     let cli = crate::cli::Cli {
         wasm_dep: vec![
-            "dep-wasm=../first".to_owned(),
-            "other-wasm=../other".to_owned(),
-            "dep-wasm=../second".to_owned(),
+            crate::cli::KeyValueArg::new("dep-wasm", "../first"),
+            crate::cli::KeyValueArg::new("other-wasm", "../other"),
+            crate::cli::KeyValueArg::new("dep-wasm", "../second"),
         ],
         ..base()
     };
@@ -18950,8 +18956,8 @@ fn wasm_dep_input_contract() {
     // since a dependency contributes its rust crate and its wasm crate.
     let cli = crate::cli::Cli {
         wasm_dep: vec![
-            "dep=../../dep/rust".to_owned(),
-            "dep-wasm=../../dep/wasm".to_owned(),
+            crate::cli::KeyValueArg::new("dep", "../../dep/rust"),
+            crate::cli::KeyValueArg::new("dep-wasm", "../../dep/wasm"),
         ],
         ..base()
     };

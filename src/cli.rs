@@ -90,19 +90,10 @@ fn parse_json_schema_root(s: &str) -> Result<String, String> {
 /// package name works verbatim). NOT accepted: `<`, `>`, `,` and space — a module path has no
 /// generic arguments — and everything else, since any other character could introduce a comment, a
 /// statement separator, or a string literal into a generated file.
-fn parse_json_schema_dep(s: &str) -> Result<String, String> {
-    let (dep, lib) = s.split_once('=').ok_or_else(|| {
-        format!("--json-schema-dep value must be <dep>=<dep_json_gen_lib_name>, got: {s:?}")
-    })?;
-    let dep = dep.trim();
-    let lib = lib.trim();
-    if dep.is_empty() || lib.is_empty() {
-        return Err(format!(
-            "--json-schema-dep value must be <dep>=<dep_json_gen_lib_name> with both sides \
-             non-empty, got: {s:?}"
-        ));
-    }
-    if let Some(c) = lib
+fn parse_json_schema_dep(s: &str) -> Result<KeyValueArg, String> {
+    let kv = parse_key_value(s, "json-schema-dep", "<dep>=<dep_json_gen_lib_name>")?;
+    if let Some(c) = kv
+        .value
         .chars()
         .find(|c| !matches!(c, 'A'..='Z' | 'a'..='z' | '0'..='9' | '_' | ':' | '-'))
     {
@@ -117,7 +108,7 @@ fn parse_json_schema_dep(s: &str) -> Result<String, String> {
              or a string literal into a generated file"
         ));
     }
-    Ok(s.to_owned())
+    Ok(kv)
 }
 
 /// clap value parser body for the three `<cargo-package-name>=<path>` flags — `--rust-dep`,
@@ -146,19 +137,10 @@ fn parse_manifest_dep(
     flag: &str,
     manifest: &str,
     example: &str,
-) -> Result<String, String> {
-    let (name, path) = s
-        .split_once('=')
-        .ok_or_else(|| format!("--{flag} value must be <cargo_package_name>=<path>, got: {s:?}"))?;
-    let name = name.trim();
-    let path = path.trim();
-    if name.is_empty() || path.is_empty() {
-        return Err(format!(
-            "--{flag} value must be <cargo_package_name>=<path> with both sides non-empty, \
-             got: {s:?}"
-        ));
-    }
-    if let Some(c) = name
+) -> Result<KeyValueArg, String> {
+    let kv = parse_key_value(s, flag, "<cargo_package_name>=<path>")?;
+    if let Some(c) = kv
+        .key
         .chars()
         .find(|c| !matches!(c, 'A'..='Z' | 'a'..='z' | '0'..='9' | '_' | '-'))
     {
@@ -170,11 +152,11 @@ fn parse_manifest_dep(
              `--json-schema-dep` takes on its right-hand side"
         ));
     }
-    Ok(s.to_owned())
+    Ok(kv)
 }
 
 /// clap value parser for `--json-gen-dep`, whose value is `<cargo-package-name>=<path>`.
-fn parse_json_gen_dep(s: &str) -> Result<String, String> {
+fn parse_json_gen_dep(s: &str) -> Result<KeyValueArg, String> {
     parse_manifest_dep(
         s,
         "json-gen-dep",
@@ -184,17 +166,17 @@ fn parse_json_gen_dep(s: &str) -> Result<String, String> {
 }
 
 /// clap value parser for `--wasm-dep`, whose value is `<cargo-package-name>=<path>`.
-fn parse_wasm_dep(s: &str) -> Result<String, String> {
+fn parse_wasm_dep(s: &str) -> Result<KeyValueArg, String> {
     parse_manifest_dep(s, "wasm-dep", "wasm/Cargo.toml", "cml-chain-wasm")
 }
 
 /// clap value parser for `--rust-dep`, whose value is `<cargo-package-name>=<path>`.
-fn parse_rust_dep(s: &str) -> Result<String, String> {
+fn parse_rust_dep(s: &str) -> Result<KeyValueArg, String> {
     parse_manifest_dep(s, "rust-dep", "rust/Cargo.toml", "cml-chain")
 }
 
 /// clap value parser for `--component-dep`, whose value is `<cargo-package-name>=<path>`.
-fn parse_component_dep(s: &str) -> Result<String, String> {
+fn parse_component_dep(s: &str) -> Result<KeyValueArg, String> {
     parse_manifest_dep(
         s,
         "component-dep",
@@ -209,30 +191,25 @@ fn parse_component_dep(s: &str) -> Result<String, String> {
 /// The LEFT side is an extern-deps directory name (the same value `--extern-import` takes), not a
 /// cargo package name, so it is checked against the extern-deps charset rather than through
 /// [`parse_manifest_dep`]: nothing here becomes a `[dependencies]` key.
-fn parse_component_extern_wit(s: &str) -> Result<String, String> {
-    let Some((dep, path)) = s.split_once('=') else {
-        return Err(format!(
-            "--component-extern-wit value must be <dep>=<path/to/dep/component/wit>, got: {s:?}"
-        ));
-    };
-    let (dep, path) = (dep.trim(), path.trim());
-    if dep.is_empty() || path.is_empty() {
-        return Err(format!(
-            "--component-extern-wit value must be <dep>=<path/to/dep/component/wit> with both \
-             sides non-empty, got: {s:?}"
-        ));
-    }
-    if let Some(c) = dep
+fn parse_component_extern_wit(s: &str) -> Result<KeyValueArg, String> {
+    let kv = parse_key_value(
+        s,
+        "component-extern-wit",
+        "<dep>=<path/to/dep/component/wit>",
+    )?;
+    if let Some(c) = kv
+        .key
         .chars()
         .find(|c| !matches!(c, 'A'..='Z' | 'a'..='z' | '0'..='9' | '_' | '-'))
     {
         return Err(format!(
-            "--component-extern-wit dep name {dep:?} contains {c:?}; the <dep> side is an \
+            "--component-extern-wit dep name {:?} contains {c:?}; the <dep> side is an \
              extern-deps directory name (the same value --extern-import takes on its left), which \
-             uses only [A-Za-z0-9_-]"
+             uses only [A-Za-z0-9_-]",
+            kv.key
         ));
     }
-    Ok(s.to_owned())
+    Ok(kv)
 }
 
 /// clap value parser for `--wit-package`, whose value is `<namespace>:<name>[@<version>]`.
@@ -273,6 +250,118 @@ fn parse_std_forward_dep(s: &str) -> Result<String, String> {
     Ok(name.to_owned())
 }
 
+/// One `<key>=<value>` flag value, split once — at argument parsing, by that flag's clap value
+/// parser — with both sides trimmed and non-empty. The accessors on [`Cli`] fold these into their
+/// maps without re-validating, so a malformed value is a clap error naming the flag rather than a
+/// panic mid-generation. The fields are public so a hand-built `Cli` can be constructed; such a
+/// caller owns the non-empty invariant the parsers enforce.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KeyValueArg {
+    pub key: String,
+    pub value: String,
+}
+
+impl KeyValueArg {
+    pub fn new(key: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            key: key.into(),
+            value: value.into(),
+        }
+    }
+
+    #[cfg(test)]
+    fn matches_rendered(&self, other: &str) -> bool {
+        other
+            .split_once('=')
+            .is_some_and(|(key, value)| self.key == key && self.value == value)
+    }
+}
+
+impl std::fmt::Display for KeyValueArg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}={}", self.key, self.value)
+    }
+}
+
+#[cfg(test)]
+impl PartialEq<&str> for KeyValueArg {
+    fn eq(&self, other: &&str) -> bool {
+        self.matches_rendered(other)
+    }
+}
+
+#[cfg(test)]
+impl PartialEq<String> for KeyValueArg {
+    fn eq(&self, other: &String) -> bool {
+        self.matches_rendered(other)
+    }
+}
+
+/// Split at the first `=`, trim both sides, and require both to be non-empty.
+fn parse_key_value(s: &str, flag: &str, shape: &str) -> Result<KeyValueArg, String> {
+    let (key, value) = s
+        .split_once('=')
+        .ok_or_else(|| format!("--{flag} value must be {shape}, got: {s:?}"))?;
+    let (key, value) = (key.trim(), value.trim());
+    if key.is_empty() || value.is_empty() {
+        return Err(format!(
+            "--{flag} value must be {shape} with both sides non-empty, got: {s:?}"
+        ));
+    }
+    Ok(KeyValueArg::new(key, value))
+}
+
+/// clap value parser for `--extern-wasm-crate`.
+fn parse_extern_wasm_crate(s: &str) -> Result<KeyValueArg, String> {
+    parse_key_value(s, "extern-wasm-crate", "<dep>=<wasm_crate>")
+}
+
+/// clap value parser for `--extern-wrapper-index`.
+fn parse_extern_wrapper_index(s: &str) -> Result<KeyValueArg, String> {
+    parse_key_value(s, "extern-wrapper-index", "<dep>=<path/to/collections.rs>")
+}
+
+/// clap value parser for `--wrapper-requests`.
+fn parse_wrapper_requests(s: &str) -> Result<KeyValueArg, String> {
+    parse_key_value(
+        s,
+        "wrapper-requests",
+        "<consumer>=<path/to/borrowed_collections.rs>",
+    )
+}
+
+/// clap value parser for `--key-requests`.
+fn parse_key_requests(s: &str) -> Result<KeyValueArg, String> {
+    parse_key_value(
+        s,
+        "key-requests",
+        "<consumer>=<path/to/borrowed_key_types.rs>",
+    )
+}
+
+/// clap value parser for `--extern-import`.
+fn parse_extern_import(s: &str) -> Result<KeyValueArg, String> {
+    parse_key_value(s, "extern-import", "<dep>=<path/to/extern-interface/dep>")
+}
+
+/// clap value parser for the bare `--workspace-dep` name.
+fn parse_workspace_dep(s: &str) -> Result<String, String> {
+    if s.contains('=') {
+        return Err(format!(
+            "--workspace-dep value {s:?} contains '='; the <dep>=<host> host form (for \
+             unmodifiable external deps) is reserved but not yet supported — pass a bare \
+             <dep> name"
+        ));
+    }
+    let dep = s.trim();
+    if dep.is_empty() {
+        return Err(format!(
+            "--workspace-dep value must be a non-empty <dep> name, got: {s:?}"
+        ));
+    }
+    Ok(dep.to_owned())
+}
+
 /// Fold one of the `<cargo-package-name>=<path>` flag lists into `package name -> path`, SORTED by
 /// package name.
 ///
@@ -282,28 +371,15 @@ fn parse_std_forward_dep(s: &str) -> Result<String, String> {
 /// in a TOML manifest, where nothing observes the order they were declared in — so sorting invents
 /// no semantics and gives the manifest a stable key order independent of how the flags happened to
 /// be spelled. Duplicate detection therefore cannot fall out of the map (a duplicate would silently
-/// collapse) and lives in `api::validate_flag_combinations`, which reads the raw flag lists.
+/// collapse) and lives in `api::validate_flag_combinations`, which reads each flag entry.
 ///
 /// No dash normalisation, unlike `json_schema_deps`: the left side is already the cargo package
-/// name, which is where the dashes belong. A malformed value is a hard error naming the flag,
-/// mirroring the siblings; a parsed invocation cannot reach that panic, since the value parsers
-/// reject the same shapes gracefully first.
-fn manifest_deps(entries: &[String], flag: &str) -> std::collections::BTreeMap<String, String> {
-    let mut map = std::collections::BTreeMap::new();
-    for entry in entries {
-        let (name, path) = entry.split_once('=').unwrap_or_else(|| {
-            panic!("--{flag} value must be <cargo_package_name>=<path>, got: {entry:?}")
-        });
-        let name = name.trim();
-        let path = path.trim();
-        if name.is_empty() || path.is_empty() {
-            panic!(
-                "--{flag} value must be <cargo_package_name>=<path> with both sides non-empty, got: {entry:?}"
-            );
-        }
-        map.insert(name.to_owned(), path.to_owned());
-    }
-    map
+/// name, which is where the dashes belong. The flag's value parser validates the shape.
+fn manifest_deps(entries: &[KeyValueArg]) -> std::collections::BTreeMap<String, String> {
+    entries
+        .iter()
+        .map(|kv| (kv.key.clone(), kv.value.clone()))
+        .collect()
 }
 
 /// The flags below describe ONE generated crate. A project that generates several — the shape that
@@ -527,7 +603,7 @@ pub struct Cli {
         value_parser = parse_json_schema_dep,
         value_name = "DEP=DEP_JSON_GEN_LIB"
     )]
-    pub json_schema_dep: Vec<String>,
+    pub json_schema_dep: Vec<KeyValueArg>,
 
     /// Declare a `[dependencies]` entry in the generated `wasm/json-gen/Cargo.toml`:
     /// `<cargo-package-name> = { path = "<path>" }`. This is the manifest half of every cross-crate
@@ -565,7 +641,7 @@ pub struct Cli {
         value_parser = parse_json_gen_dep,
         value_name = "PACKAGE=PATH"
     )]
-    pub json_gen_dep: Vec<String>,
+    pub json_gen_dep: Vec<KeyValueArg>,
 
     /// Declare a `[dependencies]` entry in the generated `wasm/Cargo.toml`:
     /// `<cargo-package-name> = { path = "<path>" }`. The same move as `--json-gen-dep`, for the
@@ -605,7 +681,7 @@ pub struct Cli {
         value_parser = parse_wasm_dep,
         value_name = "PACKAGE=PATH"
     )]
-    pub wasm_dep: Vec<String>,
+    pub wasm_dep: Vec<KeyValueArg>,
 
     /// Declare a `[dependencies]` entry in the generated `rust/Cargo.toml`:
     /// `<cargo-package-name> = { path = "<path>" }`. The third sibling of `--wasm-dep` and
@@ -645,7 +721,7 @@ pub struct Cli {
         value_parser = parse_rust_dep,
         value_name = "PACKAGE=PATH"
     )]
-    pub rust_dep: Vec<String>,
+    pub rust_dep: Vec<KeyValueArg>,
 
     /// Declare a `[dependencies]` entry in the generated `component/Cargo.toml`:
     /// `<cargo-package-name> = { path = "<path>" }`. The fourth sibling of `--rust-dep`,
@@ -675,7 +751,7 @@ pub struct Cli {
         value_parser = parse_component_dep,
         value_name = "PACKAGE=PATH"
     )]
-    pub component_dep: Vec<String>,
+    pub component_dep: Vec<KeyValueArg>,
 
     /// Consume a dependency's committed WIT package (`<dep output>/component/wit`) so this crate's
     /// component face IMPORTS the dep's types instead of leaving them unprojected. One
@@ -708,7 +784,7 @@ pub struct Cli {
         value_parser = parse_component_extern_wit,
         value_name = "DEP=PATH"
     )]
-    pub component_extern_wit: Vec<String>,
+    pub component_extern_wit: Vec<KeyValueArg>,
 
     /// Mark a `--rust-dep` path dependency as std-FORWARDING: the generated `rust/Cargo.toml` takes
     /// it with `default-features = false`, and the crate's own `std` feature gains a
@@ -807,8 +883,8 @@ pub struct Cli {
     /// rust crate. Repeatable; each value is `<dep>=<wasm_crate>` (e.g.
     /// `--extern-wasm-crate cml_core=cml_core_wasm`). Without a mapping the dep keeps using its
     /// rust crate name for both passes (the single-crate convention).
-    #[clap(long = "extern-wasm-crate", value_parser)]
-    pub extern_wasm_crate: Vec<String>,
+    #[clap(long = "extern-wasm-crate", value_parser = parse_extern_wasm_crate)]
+    pub extern_wasm_crate: Vec<KeyValueArg>,
 
     /// Point the consumer at a dependency's committed collection-wrapper index
     /// (`generated/collections.rs`, emitted by every wasm run) so it DEFERS to the dep's wasm
@@ -822,8 +898,8 @@ pub struct Cli {
     /// `--extern-wrapper-index cml_core=../cml-core/wasm/src/generated/collections.rs`). Regenerate
     /// the dep BEFORE the consumer — the index is committed generated output and part of the dep's
     /// cross-crate interface.
-    #[clap(long = "extern-wrapper-index", value_parser)]
-    pub extern_wrapper_index: Vec<String>,
+    #[clap(long = "extern-wrapper-index", value_parser = parse_extern_wrapper_index)]
+    pub extern_wrapper_index: Vec<KeyValueArg>,
 
     /// Mark an `_CDDL_CODEGEN_EXTERN_DEPS_DIR_/<dep>` dependency as a co-generated workspace member.
     /// For every collection wrapper whose element types are ALL owned (transitively) by that single
@@ -838,7 +914,7 @@ pub struct Cli {
     /// `<dep>=<host>` host form for unmodifiable external deps is reserved but not yet supported).
     /// Each named dep must be a configured extern dependency AND have an `--extern-wasm-crate`
     /// mapping (the deferral imports and sidecar `use` lines need the wasm crate name).
-    #[clap(long = "workspace-dep", value_parser)]
+    #[clap(long = "workspace-dep", value_parser = parse_workspace_dep)]
     pub workspace_dep: Vec<String>,
 
     /// W2 dep-side companion to `--workspace-dep`: one `<consumer>=<path>` per consumer, pointing at
@@ -856,8 +932,8 @@ pub struct Cli {
     /// `wrapper_requests::read_request_sidecar`); a file that exists but cannot be read or parsed
     /// stays a hard error. With no `--wrapper-requests` flags the output is byte-identical to today
     /// (the file is not emitted).
-    #[clap(long = "wrapper-requests", value_parser)]
-    pub wrapper_requests: Vec<String>,
+    #[clap(long = "wrapper-requests", value_parser = parse_wrapper_requests)]
+    pub wrapper_requests: Vec<KeyValueArg>,
 
     /// Dep-side companion to a consumer's `rust/src/generated/borrowed_key_types.rs` sidecar (the
     /// in-workspace map-key-derive channel). One `<consumer>=<path>` per consumer. The dep parses each
@@ -871,8 +947,8 @@ pub struct Cli {
     /// messages). A `<path>` with NO FILE is the cold-workspace case — a warning, not an error; same
     /// contract as `--wrapper-requests` above. With no `--key-requests` flags the output is
     /// byte-identical to today.
-    #[clap(long = "key-requests", value_parser)]
-    pub key_requests: Vec<String>,
+    #[clap(long = "key-requests", value_parser = parse_key_requests)]
+    pub key_requests: Vec<KeyValueArg>,
 
     /// Consume a dependency's committed extern-interface export (`extern-interface/<dep>/**`, emitted
     /// by the dep's own regen). This is how a dependency that HAS an export is declared; a physical
@@ -905,8 +981,8 @@ pub struct Cli {
     /// inputs -> same bytes). Regenerate the dependency BEFORE the consumer so its export is fresh.
     /// Repeatable; each value is `<dep>=<path/to/extern-interface/<dep>>` (e.g.
     /// `--extern-import cml_core=../cml-core/extern-interface/cml_core`).
-    #[clap(long = "extern-import", value_parser)]
-    pub extern_import: Vec<String>,
+    #[clap(long = "extern-import", value_parser = parse_extern_import)]
+    pub extern_import: Vec<KeyValueArg>,
 
     /// Additionally export the composed rust static runtime into the CRATE at `<dir>` (created if
     /// needed), regardless of whether in-crate static export happens: the runtime files (error.rs,
@@ -989,160 +1065,82 @@ impl Cli {
     }
 
     /// Parsed `--extern-wasm-crate` mappings: extern-deps directory name -> wasm crate name in code
-    /// form. BTreeMap (never HashMap) for deterministic output. Malformed values are a hard error.
+    /// form. BTreeMap (never HashMap) for deterministic output. The flag's value parser validates
+    /// the shape.
     pub fn extern_wasm_crate_map(&self) -> std::collections::BTreeMap<String, String> {
-        let mut map = std::collections::BTreeMap::new();
-        for entry in &self.extern_wasm_crate {
-            let (dep, wasm_crate) = entry.split_once('=').unwrap_or_else(|| {
-                panic!("--extern-wasm-crate value must be <dep>=<wasm_crate>, got: {entry:?}")
-            });
-            let dep = dep.trim();
-            let wasm_crate = wasm_crate.trim();
-            if dep.is_empty() || wasm_crate.is_empty() {
-                panic!(
-                    "--extern-wasm-crate value must be <dep>=<wasm_crate> with both sides non-empty, got: {entry:?}"
-                );
-            }
-            map.insert(dep.to_owned(), wasm_crate.replace('-', "_"));
-        }
-        map
+        self.extern_wasm_crate
+            .iter()
+            .map(|kv| (kv.key.clone(), kv.value.replace('-', "_")))
+            .collect()
     }
 
     /// Parsed `--extern-wrapper-index` mappings: extern-deps directory name -> path to the dep's
     /// committed `collections.rs` index file. BTreeMap (never HashMap) for deterministic output.
-    /// Malformed values are a hard error, mirroring `extern_wasm_crate_map`.
+    /// The flag's value parser validates the shape.
     pub fn extern_wrapper_index_files(&self) -> std::collections::BTreeMap<String, String> {
-        let mut map = std::collections::BTreeMap::new();
-        for entry in &self.extern_wrapper_index {
-            let (dep, path) = entry.split_once('=').unwrap_or_else(|| {
-                panic!(
-                    "--extern-wrapper-index value must be <dep>=<path/to/collections.rs>, got: {entry:?}"
-                )
-            });
-            let dep = dep.trim();
-            let path = path.trim();
-            if dep.is_empty() || path.is_empty() {
-                panic!(
-                    "--extern-wrapper-index value must be <dep>=<path/to/collections.rs> with both sides non-empty, got: {entry:?}"
-                );
-            }
-            map.insert(dep.to_owned(), path.to_owned());
-        }
-        map
+        self.extern_wrapper_index
+            .iter()
+            .map(|kv| (kv.key.clone(), kv.value.clone()))
+            .collect()
     }
 
     /// Parsed `--workspace-dep` values: the set of extern-deps directory names marked co-generated
-    /// workspace members. BTreeSet (never HashMap) for deterministic output. An empty value is a hard
-    /// error; a value containing `=` is a hard error naming the future `<dep>=<host>` host form as not
-    /// yet supported (flag-syntax reservation without implementing it). The names are further
+    /// workspace members. BTreeSet (never HashMap) for deterministic output. The flag's value
+    /// parser rejects an empty value and the future `<dep>=<host>` host form as not yet supported
+    /// (flag-syntax reservation without implementing it). The names are further
     /// validated against the extern-dep set and `--extern-wasm-crate` mappings at generation time.
     pub fn workspace_deps(&self) -> std::collections::BTreeSet<String> {
-        let mut set = std::collections::BTreeSet::new();
-        for entry in &self.workspace_dep {
-            if entry.contains('=') {
-                panic!(
-                    "--workspace-dep value {entry:?} contains '='; the <dep>=<host> host form (for \
-                     unmodifiable external deps) is reserved but not yet supported — pass a bare \
-                     <dep> name"
-                );
-            }
-            let dep = entry.trim();
-            if dep.is_empty() {
-                panic!("--workspace-dep value must be a non-empty <dep> name, got: {entry:?}");
-            }
-            set.insert(dep.to_owned());
-        }
-        set
+        self.workspace_dep.iter().cloned().collect()
     }
 
     /// Parsed `--wrapper-requests` mappings: consumer label -> path to that consumer's committed
     /// `borrowed_collections.rs` sidecar. BTreeMap (never HashMap) for deterministic output — the
-    /// requested-wrapper union must not depend on flag order. A malformed value (no `=`, or an empty
-    /// side) is a hard error naming the flag; an unreadable path is a hard error at load time (see the
-    /// generation-side loader). Mirrors `extern_wrapper_index_files`.
+    /// requested-wrapper union must not depend on flag order. The flag's value parser validates
+    /// the shape; an unreadable path is a hard error at load time (see the generation-side loader).
+    /// Mirrors `extern_wrapper_index_files`.
     pub fn wrapper_requests(&self) -> std::collections::BTreeMap<String, String> {
-        let mut map = std::collections::BTreeMap::new();
-        for entry in &self.wrapper_requests {
-            let (consumer, path) = entry.split_once('=').unwrap_or_else(|| {
-                panic!(
-                    "--wrapper-requests value must be <consumer>=<path/to/borrowed_collections.rs>, got: {entry:?}"
-                )
-            });
-            let consumer = consumer.trim();
-            let path = path.trim();
-            if consumer.is_empty() || path.is_empty() {
-                panic!(
-                    "--wrapper-requests value must be <consumer>=<path/to/borrowed_collections.rs> with both sides non-empty, got: {entry:?}"
-                );
-            }
-            map.insert(consumer.to_owned(), path.to_owned());
-        }
-        map
+        self.wrapper_requests
+            .iter()
+            .map(|kv| (kv.key.clone(), kv.value.clone()))
+            .collect()
     }
 
     /// Parsed `--key-requests` mappings: consumer label -> path to that consumer's committed
     /// `borrowed_key_types.rs` sidecar. BTreeMap (never HashMap) for deterministic output — the
-    /// seeded key-derive set must not depend on flag order. A malformed value (no `=`, or an empty
-    /// side) is a hard error naming the flag; an unreadable path is a hard error at seed time (see
+    /// seeded key-derive set must not depend on flag order. The flag's value parser validates the
+    /// shape; an unreadable path is a hard error at seed time (see
     /// `wrapper_requests::seed_used_as_key_from_key_requests`). Mirrors `wrapper_requests`.
     pub fn key_requests(&self) -> std::collections::BTreeMap<String, String> {
-        let mut map = std::collections::BTreeMap::new();
-        for entry in &self.key_requests {
-            let (consumer, path) = entry.split_once('=').unwrap_or_else(|| {
-                panic!(
-                    "--key-requests value must be <consumer>=<path/to/borrowed_key_types.rs>, got: {entry:?}"
-                )
-            });
-            let consumer = consumer.trim();
-            let path = path.trim();
-            if consumer.is_empty() || path.is_empty() {
-                panic!(
-                    "--key-requests value must be <consumer>=<path/to/borrowed_key_types.rs> with both sides non-empty, got: {entry:?}"
-                );
-            }
-            map.insert(consumer.to_owned(), path.to_owned());
-        }
-        map
+        self.key_requests
+            .iter()
+            .map(|kv| (kv.key.clone(), kv.value.clone()))
+            .collect()
     }
 
     /// Parsed `--extern-import` mappings: extern-deps directory name -> path to the dep's committed
     /// `extern-interface/<dep>/` export tree. BTreeMap (never HashMap) for deterministic output — the
-    /// concatenation order of imported deps must not depend on flag order. A malformed value (no `=`,
-    /// or an empty side) is a hard error naming the flag; a missing/empty-of-cddl path and a
-    /// double-declaration against a physical stub dir are hard errors at load time (see the api input
-    /// assembly). Mirrors `extern_wrapper_index_files`.
+    /// concatenation order of imported deps must not depend on flag order. The flag's value parser
+    /// validates the shape; a missing/empty-of-cddl path and a double-declaration against a
+    /// physical stub dir are hard errors at load time (see the api input assembly).
+    /// Mirrors `extern_wrapper_index_files`.
     pub fn extern_import_paths(&self) -> std::collections::BTreeMap<String, String> {
-        let mut map = std::collections::BTreeMap::new();
-        for entry in &self.extern_import {
-            let (dep, path) = entry.split_once('=').unwrap_or_else(|| {
-                panic!(
-                    "--extern-import value must be <dep>=<path/to/extern-interface/dep>, got: {entry:?}"
-                )
-            });
-            let dep = dep.trim();
-            let path = path.trim();
-            if dep.is_empty() || path.is_empty() {
-                panic!(
-                    "--extern-import value must be <dep>=<path/to/extern-interface/dep> with both sides non-empty, got: {entry:?}"
-                );
-            }
-            map.insert(dep.to_owned(), path.to_owned());
-        }
-        map
+        self.extern_import
+            .iter()
+            .map(|kv| (kv.key.clone(), kv.value.clone()))
+            .collect()
     }
 
     /// Parsed `--component-extern-wit` mappings: extern-deps directory name -> path to the dep's
     /// committed `component/wit/` package. BTreeMap (never HashMap) for deterministic output — the
-    /// materialization order of imported dep packages must not depend on flag order. The value shape
-    /// is validated by the clap parser, so this only splits; a path that does not exist, holds no
-    /// `.wit`, or carries a shape the reader does not understand is a hard error at load time
+    /// materialization order of imported dep packages must not depend on flag order. The flag's
+    /// value parser validates the shape; a path that does not exist, holds no `.wit`, or carries a
+    /// shape the reader does not understand is a hard error at load time
     /// (`component_wit_deps::load`). Mirrors [`Cli::extern_import_paths`], whose determinism class it
     /// shares.
     pub(crate) fn component_extern_wit_paths(&self) -> std::collections::BTreeMap<String, String> {
         self.component_extern_wit
             .iter()
-            .filter_map(|entry| entry.split_once('='))
-            .map(|(dep, path)| (dep.trim().to_owned(), path.trim().to_owned()))
+            .map(|kv| (kv.key.clone(), kv.value.clone()))
             .collect()
     }
 
@@ -1155,55 +1153,39 @@ impl Cli {
     /// registrars run in, and that order is observable through the emitted injectivity guard's
     /// messages. Sorting would silently rewrite an input; a `Vec` keeps "same inputs -> same bytes"
     /// without inventing an ordering. Duplicate detection therefore does not fall out of the
-    /// collection type and lives in `api::with_types` instead.
+    /// collection type and lives in `api::validate_flag_combinations` instead.
     ///
     /// Dashes in the lib name are normalised to underscores here (mirroring `extern_wasm_crate_map`)
-    /// so a cargo package name can be passed verbatim. A malformed value (no `=`, or an empty side)
-    /// is a hard error naming the flag, mirroring `extern_wasm_crate_map`; a parsed invocation cannot
-    /// reach that panic, since `parse_json_schema_dep` rejects the same shapes gracefully first.
+    /// so a cargo package name can be passed verbatim. The flag's value parser validates the shape.
     pub fn json_schema_deps(&self) -> Vec<(String, String)> {
         self.json_schema_dep
             .iter()
-            .map(|entry| {
-                let (dep, lib) = entry.split_once('=').unwrap_or_else(|| {
-                    panic!(
-                        "--json-schema-dep value must be <dep>=<dep_json_gen_lib_name>, got: {entry:?}"
-                    )
-                });
-                let dep = dep.trim();
-                let lib = lib.trim();
-                if dep.is_empty() || lib.is_empty() {
-                    panic!(
-                        "--json-schema-dep value must be <dep>=<dep_json_gen_lib_name> with both sides non-empty, got: {entry:?}"
-                    );
-                }
-                (dep.to_owned(), lib.replace('-', "_"))
-            })
+            .map(|kv| (kv.key.clone(), kv.value.replace('-', "_")))
             .collect()
     }
 
     /// Parsed `--json-gen-dep` mappings: `cargo package name -> path`, SORTED by package name. See
     /// [`manifest_deps`] for why sorted and why duplicate detection lives elsewhere.
     pub fn json_gen_deps(&self) -> std::collections::BTreeMap<String, String> {
-        manifest_deps(&self.json_gen_dep, "json-gen-dep")
+        manifest_deps(&self.json_gen_dep)
     }
 
     /// Parsed `--wasm-dep` mappings: `cargo package name -> path`, SORTED by package name. Same
     /// contract as [`Self::json_gen_deps`] directly above, for `wasm/Cargo.toml`.
     pub fn wasm_deps(&self) -> std::collections::BTreeMap<String, String> {
-        manifest_deps(&self.wasm_dep, "wasm-dep")
+        manifest_deps(&self.wasm_dep)
     }
 
     /// Parsed `--rust-dep` mappings: `cargo package name -> path`, SORTED by package name. Same
     /// contract as the two directly above, for `rust/Cargo.toml`.
     pub fn rust_deps(&self) -> std::collections::BTreeMap<String, String> {
-        manifest_deps(&self.rust_dep, "rust-dep")
+        manifest_deps(&self.rust_dep)
     }
 
     /// Parsed `--component-dep` mappings: `cargo package name -> path`, SORTED by package name.
     /// Same contract as the three directly above, for `component/Cargo.toml`.
     pub fn component_deps(&self) -> std::collections::BTreeMap<String, String> {
-        manifest_deps(&self.component_dep, "component-dep")
+        manifest_deps(&self.component_dep)
     }
 
     /// The generated WIT package's identifier: `--wit-package` when given, else the `--lib-name`
