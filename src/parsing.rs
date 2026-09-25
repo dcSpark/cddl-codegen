@@ -2818,6 +2818,45 @@ fn type2_is_decimal_float(type2: &Type2) -> bool {
     matches!(type2, Type2::FloatValue { value, .. } if value.fract() != 0.0)
 }
 
+/// The rust primitive a control HEAD denotes once aliases resolve: a prelude name (`uint`,
+/// `float64`) or a rule that is a transparent alias of one (`f = float64`, forward references and
+/// chains included — rules parse in dependency order), looking through bare single-type parentheses
+/// (`(f)`). `None` for a literal, a generic parameter, a generic instance, and any name that resolves
+/// to something other than a bare primitive (a record, an enum, or a wrapper that a tag, a window or
+/// `@newtype` made nominal).
+fn resolved_head_primitive(types: &IntermediateTypes, head: &Type2) -> Option<Primitive> {
+    let mut head = head;
+    while let Type2::ParenthesizedType { pt, .. } = head
+        && let [only] = pt.type_choices.as_slice()
+        && only.type1.operator.is_none()
+    {
+        head = &only.type1.type2;
+    }
+    let Type2::Typename {
+        ident,
+        generic_args: None,
+        ..
+    } = head
+    else {
+        return None;
+    };
+    let cddl_ident = CDDLIdent::new(ident.to_string());
+    if let Some(primitive) = ident_to_primitive(&cddl_ident) {
+        return Some(primitive);
+    }
+    if types.active_generic_param_binding(ident.ident).is_some() {
+        return None;
+    }
+    let resolved = types.resolve_alias(&AliasIdent::new(cddl_ident))?;
+    if resolved.config.bounds.is_some() || resolved.config.float_bounds.is_some() {
+        return None;
+    }
+    match resolved.conceptual_type.resolve_alias_shallow() {
+        ConceptualRustType::Primitive(primitive) => Some(*primitive),
+        _ => None,
+    }
+}
+
 /// Numeric classification of a range/control HEAD (the `type2` left of the operator).
 #[derive(Clone, Copy, PartialEq)]
 enum HeadNumeric {
@@ -2830,10 +2869,10 @@ enum HeadNumeric {
     Other,
 }
 
-fn head_numeric(type2: &Type2) -> HeadNumeric {
+fn head_numeric(types: &IntermediateTypes, type2: &Type2) -> HeadNumeric {
     match type2 {
-        Type2::Typename { ident, .. } => {
-            match ident_to_primitive(&CDDLIdent::new(ident.to_string())) {
+        Type2::Typename { .. } | Type2::ParenthesizedType { .. } => {
+            match resolved_head_primitive(types, type2) {
                 Some(p) if p.is_float() => HeadNumeric::Float,
                 Some(Primitive::U64) | Some(Primitive::N64) | Some(Primitive::I64) => {
                     HeadNumeric::NamedInt
@@ -2872,7 +2911,7 @@ fn try_float_or_reject(
     operator: &Operator,
     rule_name: Option<&RustIdent>,
 ) -> Option<ControlOperator> {
-    let head = head_numeric(type2);
+    let head = head_numeric(types, type2);
     match operator.operator {
         RangeCtlOp::RangeOp { is_inclusive, .. } => {
             let is_int = |t: &Type2| matches!(t, Type2::UintValue { .. } | Type2::IntValue { .. });
@@ -6697,11 +6736,10 @@ fn member_size_named_head_rejection(
         return None;
     }
     Some(format!(
-        "`.size` on `{ident}` is unsupported — a `.size` written on a type name is read as a byte \
-         or text length, and `{ident}` is not a byte or text string (RFC 8610 §3.8.1 gives a size \
-         only to `uint` and to byte and text strings). Write `.size` on the prelude type itself \
-         (`uint .size 2`, `bytes .size 4`), in the rule that defines `{ident}` or at this use, or \
-         remove the control."
+        "`.size` on `{ident}` is unsupported — `{ident}` is neither `uint` nor a byte or text \
+         string (nor an alias of one), the only types RFC 8610 §3.8.1 gives a size to. Apply \
+         `.size` to one of those types (`uint .size 2`, `bytes .size 4`, or `t = tstr` and then \
+         `t .size 3`), or remove the control."
     ))
 }
 

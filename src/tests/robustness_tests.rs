@@ -871,6 +871,77 @@ fn size_on_unsizable_head_rejects_gracefully() {
     }
 }
 
+#[test]
+fn aliased_float_head_value_controls_generate() {
+    for (tag, spec, needle) in [
+        (
+            "alias_float_lt",
+            "f = float64\nx = [a: f .lt 3]\n",
+            "if !(a < 3.0f64)",
+        ),
+        (
+            "alias_float_decimal",
+            "f = float64\nx = [a: f .lt 3.5]\n",
+            "if !(a < 3.5f64)",
+        ),
+        (
+            "alias_float_eq",
+            "f = float64\nx = [a: f .eq 3]\n",
+            "if !(a >= 3.0f64 && a <= 3.0f64)",
+        ),
+        (
+            "alias_float_forward",
+            "x = [a: f .le 3]\nf = float64\n",
+            "if !(a <= 3.0f64)",
+        ),
+        (
+            "alias_float_chain",
+            "f = float64\ng = f\nx = [a: g .gt 3]\n",
+            "if !(a > 3.0f64)",
+        ),
+        (
+            "alias_float_paren",
+            "f = float64\nx = [a: (f) .lt 3]\n",
+            "if !(a < 3.0f64)",
+        ),
+        (
+            "prelude_float_paren",
+            "x = [a: (float64) .lt 3]\n",
+            "if !(a < 3.0f64)",
+        ),
+        (
+            "alias_float32",
+            "f = float32\nx = [a: f .le 3]\n",
+            "<= 3.0f64",
+        ),
+        (
+            "alias_float_choice_arm",
+            "f = float64\nx = tstr / f .lt 3\n",
+            "< 3.0f64",
+        ),
+    ] {
+        let src = expect_generates(tag, spec, &["--wasm=false"])
+            .into_values()
+            .collect::<String>();
+        assert!(src.contains(needle), "{tag}: missing {needle:?} in {src}");
+    }
+    for (tag, spec, needle) in [
+        (
+            "alias_float_ne",
+            "f = float64\nx = [a: f .ne 3]\n",
+            "`.ne` on a float value is unsupported",
+        ),
+        (
+            "alias_float_rule",
+            "f = float64\nx = f .lt 3\n",
+            "a range or `.size` control operator on `f` is unsupported",
+        ),
+    ] {
+        let msg = expect_graceful_rejection(tag, spec, &["--wasm=false"]);
+        assert!(msg.contains(needle), "{tag}: {msg}");
+    }
+}
+
 /// Child half of the warning-capture regression. `warn!` writes directly to stderr, so an
 /// in-process assertion cannot observe it without changing the production logging seam.
 #[test]

@@ -34138,6 +34138,66 @@ fn alias_of_instance_chain_member_compiles() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+#[test]
+fn resolved_control_heads_compile() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_resolved_heads_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let spec = "\
+f = float64
+g = f
+fw = [a: f .lt 3, b: (f) .ge 1.5, c: g .eq 2, d: (float64) .le 4]
+fc = tstr / f .lt 3
+fm = { * tstr => f .le 3 }
+";
+    let input = root.join("input.cddl");
+    std::fs::write(&input, spec).unwrap();
+    let target_dir = root.join("target");
+    for (profile, extra) in [
+        ("plain", None),
+        ("preserve", Some("--preserve-encodings=true")),
+    ] {
+        let out = root.join(format!("out_{profile}"));
+        let mut cmd = codegen_cmd();
+        cmd.args([
+            "--input",
+            input.to_str().unwrap(),
+            "--output",
+            out.to_str().unwrap(),
+            "--wasm=true",
+        ]);
+        if let Some(extra) = extra {
+            cmd.arg(extra);
+        }
+        let generated = cmd.output().unwrap();
+        assert!(
+            generated.status.success(),
+            "{profile}: resolved control heads must generate:\n{spec}\n{}",
+            String::from_utf8_lossy(&generated.stderr)
+        );
+        for face in ["rust", "wasm"] {
+            let check = tool_cmd("cargo")
+                .arg("check")
+                .current_dir(out.join(face))
+                .env("CARGO_TARGET_DIR", &target_dir)
+                .output()
+                .unwrap();
+            assert!(
+                check.status.success(),
+                "{profile}: generated {face} crate must compile:\n{}",
+                String::from_utf8_lossy(&check.stderr)
+            );
+        }
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// COMPILE FLOOR + behavioral leg for the LIST-TAKING wasm doors over an element wasm-bindgen
 /// exposes as a scalar but NOT as a bare `Vec`.
 ///
