@@ -1767,7 +1767,9 @@ fn map_key_run_is_accepted(key: &MapKey, key_ty: &RustType, count: i128, base: i
     })
 }
 
-/// Record round-trip: a valid baseline, plus one case per optional field with that field present.
+/// Record round-trip: a valid constructor baseline, then one case per optional field present, the
+/// first mandatory nullable present, each dynamic row populated, and an open table's combined case.
+/// The case order is the emitted test order.
 fn record_roundtrip(
     types: &IntermediateTypes,
     name: &str,
@@ -1776,6 +1778,33 @@ fn record_roundtrip(
     dump_rule: Option<&str>,
     rt: RtEmit,
 ) -> Option<String> {
+    let valid_args = record_ctor_mints(types, name, record)?;
+    let base = record_ctor_expr(types, name, record, &valid_args);
+    let mut cases = vec![(base.clone(), "baseline".to_owned())];
+    cases.extend(optional_present_cases(types, name, record, &base));
+    cases.extend(nullable_present_case(types, record, &base));
+    cases.extend(dynamic_row_cases(
+        types,
+        name,
+        record,
+        &base,
+        &valid_args,
+        rt,
+    ));
+    let declared = record
+        .captured_dynamic_rows()
+        .any(|row| !row.is_array_tail() && row.occurrence.is_some_and(|(min, _)| min > 0))
+        .then(|| record.json_reserved_member_names());
+    roundtrip_body(name, cases, conf, dump_rule, rt, None, declared.as_deref())
+}
+
+/// The record constructor's argument mints in `new()` order, or `None` (with a warning naming the
+/// argument) when one is not cheaply mintable.
+fn record_ctor_mints(
+    types: &IntermediateTypes,
+    name: &str,
+    record: &RustRecord,
+) -> Option<Vec<MintValue>> {
     let ctor_fields: Vec<&RustField> = record
         .fields
         .iter()
@@ -1915,6 +1944,16 @@ fn record_roundtrip(
         ordered.sort_by_key(|(source_index, _)| *source_index);
         valid_args = ordered.into_iter().map(|(_, value)| value).collect();
     }
+    Some(valid_args)
+}
+
+/// The baseline constructor expression over the rendered constructor mints.
+fn record_ctor_expr(
+    types: &IntermediateTypes,
+    name: &str,
+    record: &RustRecord,
+    valid_args: &[MintValue],
+) -> String {
     let ctor_arg_types = record_ctor_arg_types(record, types);
     debug_assert_eq!(valid_args.len(), ctor_arg_types.len());
     let rendered_args = valid_args
@@ -1923,15 +1962,24 @@ fn record_roundtrip(
         .map(|(value, ty)| render_rust_for_constructor_arg(types, value, ty, TypePaths::Bare))
         .collect::<Vec<_>>()
         .join(", ");
-    let base = format!(
+    format!(
         "{name}::new({rendered_args}){}",
         if record.native_ctor_can_fail(types) {
             ".unwrap()"
         } else {
             ""
         }
-    );
-    let mut cases = vec![(base.clone(), "baseline".to_owned())];
+    )
+}
+
+/// One case per optional field, with that field present.
+fn optional_present_cases(
+    types: &IntermediateTypes,
+    name: &str,
+    record: &RustRecord,
+    base: &str,
+) -> Vec<(String, String)> {
+    let mut cases = Vec::new();
     for f in record.fields.iter().filter(|f| f.optional) {
         // An optional fixed value (any kind, including float) is stored as a `bool` presence field,
         // not `Option<T>`: the present case just flips it true so the round-trip exercises writing
@@ -1964,15 +2012,23 @@ fn record_roundtrip(
             ),
         }
     }
-    // A MANDATORY nullable (`T / null` -> `Option<T>`) field mints its degenerate `None` in the
-    // baseline (`valid_value` yields `None` for any `Optional`), so the `Some(inner)` serialize /
-    // deserialize direction stays compile-locked but never executed. Add ONE case exercising it —
-    // first mintable nullable field, no combinatorics — so the composite-inner wire path runs.
+    cases
+}
+
+/// A MANDATORY nullable (`T / null` -> `Option<T>`) field mints its degenerate `None` in the
+/// baseline (`valid_value` yields `None` for any `Optional`), so the `Some(inner)` serialize /
+/// deserialize direction stays compile-locked but never executed. Add ONE case exercising it —
+/// first mintable nullable field, no combinatorics — so the composite-inner wire path runs.
+fn nullable_present_case(
+    types: &IntermediateTypes,
+    record: &RustRecord,
+    base: &str,
+) -> Option<(String, String)> {
     for f in record.fields.iter().filter(|f| !f.optional) {
         if let ConceptualRustType::Optional(inner) = f.rust_type.resolve_alias_shallow()
             && let Some(x) = valid_value(types, inner)
         {
-            cases.push((
+            return Some((
                 format!(
                     "{{ let mut v = {base}; v.{} = Some({}); v }}",
                     f.name,
@@ -1980,121 +2036,62 @@ fn record_roundtrip(
                 ),
                 format!("nullable `{}` present", f.name),
             ));
-            break;
         }
     }
-    // Open struct-map (rest row): mint ONE captured entry through the generated `.rest` map API
-    // (`insert`, uniform across the BTreeMap / OrderedHashMap / PairMap flavors) so the round-trip
-    // loop actually serializes and re-reads rest content — the rest row is excluded from `new()`
-    // (defaults empty), so this is the only path that populates it. Under `--preserve-encodings` the
-    // encoding-fidelity mutator then exercises the header/width classes over the captured entry's
-    // bytes, and — when the rest RANGE is `any` — the `widen_float` class over the float head the
-    // `MintValue::Any` composite carries (the rest-position twin of `emit_tests_any_float_execute`'s
-    // member-position float mint). Both key (domain) and value (range) are minted via `valid_value`;
-    // a domain/range not cheaply mintable skips the rest case, leaving the baseline empty-rest case
-    // (which still round-trips: empty rest ≡ closed-struct bytes). CAPTURE only: an `@ignore`
-    // (tolerate-and-drop) row exposes no `.rest` field to mint into — the minted value carries only
-    // declared fields, and round-trips trivially (no unknown entries exist in generated-API mint).
-    //
-    // BOTH dynamic rows, so an open table's TYPED row is minted the same way its catch-all is —
-    // otherwise every round-trip of the shape the feature exists for would carry an empty typed
-    // region, i.e. would never execute the wire-major dispatch at all. Each row also contributes to
-    // a COMBINED case below, which is the one that exercises what two dynamic sequences add: the
-    // tagged order encoding and (under canonical) the key merge spanning both regions.
-    //
-    // One exclusion, for the typed row only: a `@custom_wire_major` key whose codec owns the wire
-    // writes bytes of the DECLARED major, which need not be the major the key's rust type would
-    // naturally write. A value minted from the type could therefore land on the wrong side of the
-    // dispatch and read back into the catch-all — a mint artifact reported as a round-trip failure.
-    // Those specs have the acceptance corpus as their oracle; here the row is skipped loudly.
+    None
+}
+
+/// Open struct-map (rest row): mint ONE captured entry through the generated `.rest` map API
+/// (`insert`, uniform across the BTreeMap / OrderedHashMap / PairMap flavors) so the round-trip
+/// loop actually serializes and re-reads rest content — the rest row is excluded from `new()`
+/// (defaults empty), so this is the only path that populates it. Under `--preserve-encodings` the
+/// encoding-fidelity mutator then exercises the header/width classes over the captured entry's
+/// bytes, and — when the rest RANGE is `any` — the `widen_float` class over the float head the
+/// `MintValue::Any` composite carries (the rest-position twin of `emit_tests_any_float_execute`'s
+/// member-position float mint). Both key (domain) and value (range) are minted via `valid_value`;
+/// a domain/range not cheaply mintable skips the rest case, leaving the baseline empty-rest case
+/// (which still round-trips: empty rest ≡ closed-struct bytes). CAPTURE only: an `@ignore`
+/// (tolerate-and-drop) row exposes no `.rest` field to mint into — the minted value carries only
+/// declared fields, and round-trips trivially (no unknown entries exist in generated-API mint).
+///
+/// BOTH dynamic rows, so an open table's TYPED row is minted the same way its catch-all is —
+/// otherwise every round-trip of the shape the feature exists for would carry an empty typed
+/// region, i.e. would never execute the wire-major dispatch at all. Each row also contributes to
+/// a COMBINED case below, which is the one that exercises what two dynamic sequences add: the
+/// tagged order encoding and (under canonical) the key merge spanning both regions.
+///
+/// One exclusion, for the typed row only: a `@custom_wire_major` key whose codec owns the wire
+/// writes bytes of the DECLARED major, which need not be the major the key's rust type would
+/// naturally write. A value minted from the type could therefore land on the wrong side of the
+/// dispatch and read back into the catch-all — a mint artifact reported as a round-trip failure.
+/// Those specs have the acceptance corpus as their oracle; here the row is skipped loudly.
+fn dynamic_row_cases(
+    types: &IntermediateTypes,
+    name: &str,
+    record: &RustRecord,
+    base: &str,
+    valid_args: &[MintValue],
+    rt: RtEmit,
+) -> Vec<(String, String)> {
+    let mut cases = Vec::new();
     let mut per_row_entry_mints: Vec<String> = Vec::new();
     for rest in record.captured_dynamic_rows() {
         let typed = record.is_typed_row(rest);
         match &rest.kind {
             // Map `* k => v` rest row: mint one entry via the row's map `insert` API.
-            crate::intermediate::RestKind::MapEntries { domain, range, .. } => {
-                // An exact occurrence row already enters the baseline as its complete checked
-                // carrier. Adding one more member through the generic per-row mutation is
-                // necessarily invalid (and can reintroduce a fixed-key collision); the baseline
-                // is the present-row execution case for this shape.
-                if rest.has_exact_occurrence_window() {
-                    continue;
-                }
-                if typed && type_uses_custom_ser(types, domain, &mut BTreeSet::new()) {
-                    crate::warn!(
-                        "cddl-codegen --emit-tests: {name} typed row's key is written by a custom codec — round-trip covers an empty typed row only"
-                    );
-                    continue;
-                }
-                let protected = record.has_protected_rest_keys(types) && !rest.is_array_tail();
-                let json_any_key = rt.json_schema
-                    && matches!(domain.resolve_alias_shallow(), ConceptualRustType::Any);
-                let key = if protected || json_any_key {
-                    let initial = valid_value(types, domain);
-                    if protected && matches!(&initial, Some(MintValue::Int { .. })) {
-                        // The former integer search also minted the row carrier to identify its
-                        // key kind. Retain that existing diagnostic for an unmintable range; the
-                        // candidate search itself must not probe composite choice arms.
-                        let _ = valid_value(types, &rest.container_type());
-                    }
-                    mint_checked_rest_entry_key(
-                        types,
-                        name,
-                        record,
-                        rest,
-                        &valid_args,
-                        initial,
-                        rt.json_schema,
-                    )
-                } else {
-                    valid_value(types, domain)
-                };
-                match (key, valid_value(types, range)) {
-                    (Some(k), Some(v)) => {
-                        let mint = if protected {
-                            // A possible fixed/rest collision makes the carrier private. Re-enter
-                            // the record's checked insertion door, which composes declared/forbidden
-                            // validation with the carrier's own cardinality/duplicate semantics.
-                            format!(
-                                "v.insert_{}({}, {}).unwrap();",
-                                rest.field_name,
-                                render_rust(&k),
-                                render_rust(&v)
-                            )
-                        } else {
-                            format!(
-                                "v.{}.insert({}, {});",
-                                rest.field_name,
-                                render_rust_for_direct_storage(types, &k, domain, TypePaths::Bare),
-                                render_rust_for_direct_storage(types, &v, range, TypePaths::Bare)
-                            )
-                        };
-                        cases.push((
-                            format!("{{ let mut v = {base}; {mint} v }}"),
-                            if typed {
-                                "typed row entry present".to_owned()
-                            } else {
-                                "rest entry present".to_owned()
-                            },
-                        ));
-                        per_row_entry_mints.push(mint);
-                    }
-                    _ => {
+            crate::intermediate::RestKind::MapEntries { .. } => {
+                if let Some(mint) = map_row_entry_mint(types, name, record, rest, valid_args, rt) {
+                    cases.push((
+                        format!("{{ let mut v = {base}; {mint} v }}"),
                         if typed {
-                            crate::warn!(
-                                "cddl-codegen --emit-tests: {name} typed row not cheaply mintable — round-trip covers an empty typed row only"
-                            )
+                            "typed row entry present".to_owned()
                         } else {
-                            crate::warn!(
-                                "cddl-codegen --emit-tests: {name} rest row not cheaply mintable — round-trip covers empty rest only"
-                            )
-                        }
-                    }
+                            "rest entry present".to_owned()
+                        },
+                    ));
+                    per_row_entry_mints.push(mint);
                 }
             }
-            // Array rest tail: a loose `* t` starts empty, while a `+ t` baseline already holds its
-            // first element through `new`; both gain one more element here through the non-shrinking
-            // `.push` API so serialization/deserialization executes the tail loop.
             crate::intermediate::RestKind::ArrayTail { element, .. } => {
                 // Exact static tails are already fully represented in the baseline `[T; N]`.
                 // They have no length-preserving `push` operation, and attempting one would
@@ -2135,11 +2132,95 @@ fn record_roundtrip(
             "both rows populated".to_owned(),
         ));
     }
-    let declared = record
-        .captured_dynamic_rows()
-        .any(|row| !row.is_array_tail() && row.occurrence.is_some_and(|(min, _)| min > 0))
-        .then(|| record.json_reserved_member_names());
-    roundtrip_body(name, cases, conf, dump_rule, rt, None, declared.as_deref())
+    cases
+}
+
+/// The one-entry mutation statement for a map dynamic row, or `None` when the row is skipped (exact
+/// occurrence window, custom-codec typed key, or an entry that is not cheaply mintable, the last two
+/// with a warning).
+fn map_row_entry_mint(
+    types: &IntermediateTypes,
+    name: &str,
+    record: &RustRecord,
+    rest: &RestRow,
+    valid_args: &[MintValue],
+    rt: RtEmit,
+) -> Option<String> {
+    let crate::intermediate::RestKind::MapEntries { domain, range, .. } = &rest.kind else {
+        unreachable!("map_row_entry_mint is called only for map dynamic rows")
+    };
+    let typed = record.is_typed_row(rest);
+    // An exact occurrence row already enters the baseline as its complete checked
+    // carrier. Adding one more member through the generic per-row mutation is
+    // necessarily invalid (and can reintroduce a fixed-key collision); the baseline
+    // is the present-row execution case for this shape.
+    if rest.has_exact_occurrence_window() {
+        return None;
+    }
+    if typed && type_uses_custom_ser(types, domain, &mut BTreeSet::new()) {
+        crate::warn!(
+            "cddl-codegen --emit-tests: {name} typed row's key is written by a custom codec — round-trip covers an empty typed row only"
+        );
+        return None;
+    }
+    let protected = record.has_protected_rest_keys(types) && !rest.is_array_tail();
+    let json_any_key =
+        rt.json_schema && matches!(domain.resolve_alias_shallow(), ConceptualRustType::Any);
+    let key = if protected || json_any_key {
+        let initial = valid_value(types, domain);
+        if protected && matches!(&initial, Some(MintValue::Int { .. })) {
+            // The former integer search also minted the row carrier to identify its
+            // key kind. Retain that existing diagnostic for an unmintable range; the
+            // candidate search itself must not probe composite choice arms.
+            let _ = valid_value(types, &rest.container_type());
+        }
+        mint_checked_rest_entry_key(
+            types,
+            name,
+            record,
+            rest,
+            valid_args,
+            initial,
+            rt.json_schema,
+        )
+    } else {
+        valid_value(types, domain)
+    };
+    match (key, valid_value(types, range)) {
+        (Some(k), Some(v)) => {
+            let mint = if protected {
+                // A possible fixed/rest collision makes the carrier private. Re-enter
+                // the record's checked insertion door, which composes declared/forbidden
+                // validation with the carrier's own cardinality/duplicate semantics.
+                format!(
+                    "v.insert_{}({}, {}).unwrap();",
+                    rest.field_name,
+                    render_rust(&k),
+                    render_rust(&v)
+                )
+            } else {
+                format!(
+                    "v.{}.insert({}, {});",
+                    rest.field_name,
+                    render_rust_for_direct_storage(types, &k, domain, TypePaths::Bare),
+                    render_rust_for_direct_storage(types, &v, range, TypePaths::Bare)
+                )
+            };
+            Some(mint)
+        }
+        _ => {
+            if typed {
+                crate::warn!(
+                    "cddl-codegen --emit-tests: {name} typed row not cheaply mintable — round-trip covers an empty typed row only"
+                )
+            } else {
+                crate::warn!(
+                    "cddl-codegen --emit-tests: {name} rest row not cheaply mintable — round-trip covers empty rest only"
+                )
+            }
+            None
+        }
+    }
 }
 
 /// Choice round-trip: one wire cycle per constructible variant (the construct-reject half never
