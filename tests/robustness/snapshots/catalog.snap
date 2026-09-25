@@ -34,7 +34,9 @@ ctl_cbor_non_bytes_head    error (graceful)
 ctl_cbor_non_bytes_head_member error (graceful)
 ctl_default_supported_head error (graceful)
 ctl_default_unmapped_head  error (graceful)
+ctl_non_literal_operand    error (graceful)
 ctl_size_float_operand     error (graceful)
+ctl_size_operand_shape     error (graceful)
 ctl_size_uint_range_lower  ok
 duplicate_rule             error (graceful)
 eb64url_member             ok

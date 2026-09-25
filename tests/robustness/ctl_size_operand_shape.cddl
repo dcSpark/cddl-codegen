@@ -1,0 +1,2 @@
+; size_operand_shape_rejects_gracefully pins a controlled size operand.
+x = bstr .size (1 .le 3)

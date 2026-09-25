@@ -330,21 +330,110 @@ fn revisited_rejection_nodes_report_once_without_collapsing_distinct_nodes() {
 #[test]
 fn member_route_rejection_is_reported_once() {
     let rows = [
-        ("named", "x = [a: uint .within int]\n", "the `.within` control operator is unsupported", 1),
-        ("unnamed", "x = [uint .within int]\n", "the `.within` control operator is unsupported", 1),
-        ("size", "x = [a: bytes .size (0...0)]\n", "empty `.size` window", 1),
-        ("default", "x = [a: uint .default foo]\nfoo = 1\n", "is not a default VALUE", 1),
-        ("prelude", "x = [cbor-any]\n", "the CDDL prelude type `cbor-any`", 1),
+        (
+            "named",
+            "x = [a: uint .within int]\n",
+            "the `.within` control operator is unsupported",
+            1,
+        ),
+        (
+            "unnamed",
+            "x = [uint .within int]\n",
+            "the `.within` control operator is unsupported",
+            1,
+        ),
+        (
+            "size",
+            "x = [a: bytes .size (0...0)]\n",
+            "empty `.size` window",
+            1,
+        ),
+        (
+            "default",
+            "x = [a: uint .default foo]\nfoo = 1\n",
+            "is not a default VALUE",
+            1,
+        ),
+        (
+            "prelude",
+            "x = [cbor-any]\n",
+            "the CDDL prelude type `cbor-any`",
+            1,
+        ),
         ("tag", "x = #6.1([uint .within int])\n", ".within", 1),
-        ("nested_named", "x = [ p: [a: uint .within int] ; @name inner\n    , b: text ]\n", ".within", 1),
-        ("nested_anonymous", "x = [a: [a: uint .within int]]\n", ".within", 1),
-        ("distinct", "x = [a: uint .within int, b: uint .within int]\n", ".within", 2),
+        (
+            "nested_named",
+            "x = [ p: [a: uint .within int] ; @name inner\n    , b: text ]\n",
+            ".within",
+            1,
+        ),
+        (
+            "nested_anonymous",
+            "x = [a: [a: uint .within int]]\n",
+            ".within",
+            1,
+        ),
+        (
+            "distinct",
+            "x = [a: uint .within int, b: uint .within int]\n",
+            ".within",
+            2,
+        ),
     ];
     for (tag, spec, needle, expected) in rows {
         let msg = expect_graceful_rejection(tag, spec, &["--wasm=false"]);
         assert_eq!(msg.matches(needle).count(), expected, "{tag}: {msg}");
         if tag == "nested_anonymous" {
-            assert_eq!(msg.matches("Anonymous groups not allowed").count(), 1, "{msg}");
+            assert_eq!(
+                msg.matches("Anonymous groups not allowed").count(),
+                1,
+                "{msg}"
+            );
+        }
+    }
+}
+
+#[test]
+fn non_literal_control_operand_rejects_gracefully() {
+    for (tag, spec) in [
+        ("eq", "foo = 3\nx = uint .eq foo\n"),
+        ("lt", "foo = 3\nx = uint .lt foo\n"),
+        ("ge", "foo = 3\nx = int .ge foo\n"),
+        ("member", "foo = 3\nx = [a: uint .ne foo]\n"),
+        ("float", "foo = 3\nx = float64 .le foo\n"),
+        ("float_member", "foo = 3\nx = [a: float64 .le foo]\n"),
+    ] {
+        let msg = expect_graceful_rejection(tag, spec, &["--wasm=false"]);
+        assert!(
+            msg.contains("operand `foo` is not a numeric literal"),
+            "{tag}: {msg}"
+        );
+        if !tag.contains("member") {
+            assert!(msg.contains("rule `X`"), "{tag}: {msg}");
+        }
+    }
+}
+
+#[test]
+fn size_operand_shape_rejects_gracefully() {
+    for (tag, spec) in [
+        ("bstr_ctl", "x = bstr .size (1 .le 3)\n"),
+        ("uint_ctl", "x = uint .size (1 .le 3)\n"),
+        ("member_ctl", "x = [a: bstr .size (1 .le 3)]\n"),
+        ("choice", "x = bstr .size (1 / 2)\n"),
+        ("name", "foo = 3\nx = bstr .size foo\n"),
+        ("paren_name", "foo = 3\nx = bstr .size (foo)\n"),
+        ("range_name", "foo = 3\nx = bstr .size (1..foo)\n"),
+        ("text", "x = uint .size \"a\"\n"),
+        ("member_name", "foo = 3\nx = [a: bstr .size foo]\n"),
+    ] {
+        let msg = expect_graceful_rejection(tag, spec, &["--wasm=false"]);
+        assert!(
+            msg.contains("is not an integer literal or an integer literal range"),
+            "{tag}: {msg}"
+        );
+        if tag == "text" {
+            assert!(msg.contains("`\"a\"`"), "{msg}");
         }
     }
 }

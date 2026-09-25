@@ -1902,6 +1902,29 @@ fn non_literal_range_bound_rejection(
     )
 }
 
+fn non_literal_control_operand_rejection(
+    rule_name: Option<&RustIdent>,
+    ctrl: token::ControlOperator,
+    operand: &Type2,
+) -> String {
+    format!(
+        "{}the `{ctrl}` operand `{operand}` is not a numeric literal — a value comparison lowers \
+         onto a (min, max) window over the rust primitive backing the constrained type, so a named \
+         type or expression as the operand has no value to lower. Write a numeric literal operand \
+         (`uint .le 255`), or remove the control.",
+        reject_rule_prefix(rule_name)
+    )
+}
+
+fn non_literal_size_operand_rejection(rule_name: Option<&RustIdent>, operand: &Type2) -> String {
+    format!(
+        "{}the `.size` operand `{operand}` is not an integer literal or an integer literal range — \
+         a size is a whole number of bytes, so spell it as a literal (`.size 4`) or a literal range \
+         (`.size (1..63)`).",
+        reject_rule_prefix(rule_name)
+    )
+}
+
 /// `.cbor` written on a head that is not `bytes`.
 ///
 /// RFC 8610 §3.8.4 restricts `.cbor` to byte strings — the payload IS the bytes' content — so
@@ -2555,23 +2578,18 @@ fn ident_to_primitive(ident: &CDDLIdent) -> Option<Primitive> {
     }
 }
 
-fn type2_to_number_literal(type2: &Type2) -> i128 {
-    match type2 {
-        Type2::UintValue { value, .. } => *value as i128,
-        Type2::IntValue { value, .. } => *value as i128,
-        Type2::FloatValue { value, .. } => {
-            // FloatToInt trait still experimental so just directly check
-            let as_int = *value as i128;
-            assert_eq!(
-                as_int as f64, *value,
-                "decimal not supported. Issue: https://github.com/dcSpark/cddl-codegen/issues/178"
-            );
-            as_int
-        }
-        _ => panic!(
-            "Value specified: {:?} must be a number literal to be used here",
-            type2
-        ),
+fn control_operand_integer(
+    rule_name: Option<&RustIdent>,
+    ctrl: token::ControlOperator,
+    operand: &Type2,
+) -> Result<i128, String> {
+    match operand {
+        Type2::UintValue { value, .. } => Ok(*value as i128),
+        Type2::IntValue { value, .. } => Ok(*value as i128),
+        Type2::FloatValue { value, .. } => Ok(*value as i128),
+        _ => Err(non_literal_control_operand_rejection(
+            rule_name, ctrl, operand,
+        )),
     }
 }
 
@@ -2664,7 +2682,7 @@ fn reject_rule_prefix(rule_name: Option<&RustIdent>) -> String {
 }
 
 /// Intercepts the float-window and graceful-rejection cases of a numeric range/control operator,
-/// BEFORE the integer arms of `parse_control_operator` run (so `type2_to_number_literal`'s decimal
+/// BEFORE the integer arms of `parse_control_operator` run (so `control_operand_integer`'s decimal
 /// assert is never reached from a range/control path). Returns:
 /// - `Some(RangeFloat(window))` when the constraint is a float window (float-typed head, or a
 ///   literal-headed range promoted by a decimal-float endpoint);
@@ -2724,8 +2742,12 @@ fn try_float_or_reject(
                     ));
                     return Some(ControlOperator::Range((None, None)));
                 }
-                let v =
-                    type2_to_f64(operand).expect("float control operand must be a numeric literal");
+                let Some(v) = type2_to_f64(operand) else {
+                    types.record_rejection(non_literal_control_operand_rejection(
+                        rule_name, ctrl, operand,
+                    ));
+                    return Some(ControlOperator::Range((None, None)));
+                };
                 let window = match ctrl {
                     Ctl::EQ => (Some((v, false)), Some((v, false))),
                     Ctl::LE => (None, Some((v, false))),
@@ -2923,29 +2945,38 @@ fn parse_control_operator(
                 &operator.type2,
                 cli,
             )),
-            token::ControlOperator::EQ => ControlOperator::Range((
-                Some(type2_to_number_literal(&operator.type2)),
-                Some(type2_to_number_literal(&operator.type2)),
-            )),
             // TODO: this would be MUCH nicer (for error displaying, etc) to handle this in its own dedicated way
             //       which might be necessary once we support other control operators anyway
-            token::ControlOperator::NE => ControlOperator::Range((
-                Some(type2_to_number_literal(&operator.type2) + 1),
-                Some(type2_to_number_literal(&operator.type2) - 1),
-            )),
-            token::ControlOperator::LE => ControlOperator::Range((
-                lower_bound,
-                Some(type2_to_number_literal(&operator.type2)),
-            )),
-            token::ControlOperator::LT => ControlOperator::Range((
-                lower_bound,
-                Some(type2_to_number_literal(&operator.type2) - 1),
-            )),
-            token::ControlOperator::GE => {
-                ControlOperator::Range((Some(type2_to_number_literal(&operator.type2)), None))
-            }
-            token::ControlOperator::GT => {
-                ControlOperator::Range((Some(type2_to_number_literal(&operator.type2) + 1), None))
+            token::ControlOperator::EQ
+            | token::ControlOperator::NE
+            | token::ControlOperator::LE
+            | token::ControlOperator::LT
+            | token::ControlOperator::GE
+            | token::ControlOperator::GT => {
+                let value = match control_operand_integer(rule_name, ctrl, &operator.type2) {
+                    Ok(value) => value,
+                    Err(msg) => {
+                        types.record_rejection(msg);
+                        return ControlOperator::Range((None, None));
+                    }
+                };
+                match ctrl {
+                    token::ControlOperator::EQ => {
+                        ControlOperator::Range((Some(value), Some(value)))
+                    }
+                    token::ControlOperator::NE => {
+                        ControlOperator::Range((Some(value + 1), Some(value - 1)))
+                    }
+                    token::ControlOperator::LE => {
+                        ControlOperator::Range((lower_bound, Some(value)))
+                    }
+                    token::ControlOperator::LT => {
+                        ControlOperator::Range((lower_bound, Some(value - 1)))
+                    }
+                    token::ControlOperator::GE => ControlOperator::Range((Some(value), None)),
+                    token::ControlOperator::GT => ControlOperator::Range((Some(value + 1), None)),
+                    _ => unreachable!("guarded by the enclosing arm"),
+                }
             }
             token::ControlOperator::SIZE => {
                 // A size counts whole bytes. A float operand is refused rather than cast through a
@@ -2965,14 +2996,23 @@ fn parse_control_operator(
                 // `b - 1`, so `(0...0)` is empty (max -1 < min 0) without spelling a negative.
                 let (base_range, spelled) = match &operator.type2 {
                     Type2::ParenthesizedType { pt, .. } => {
-                        assert_eq!(pt.type_choices.len(), 1);
+                        if pt.type_choices.len() != 1 {
+                            types.record_rejection(non_literal_size_operand_rejection(
+                                rule_name,
+                                &operator.type2,
+                            ));
+                            return ControlOperator::Range((None, None));
+                        }
                         let inner_type = &pt.type_choices.first().unwrap().type1;
                         let min = match int_literal_to_i128(&inner_type.type2) {
                             Some(value) => Some(value),
-                            None => unimplemented!(
-                                "unsupported type in range control operator: {:?}",
-                                operator
-                            ),
+                            None => {
+                                types.record_rejection(non_literal_size_operand_rejection(
+                                    rule_name,
+                                    &operator.type2,
+                                ));
+                                return ControlOperator::Range((None, None));
+                            }
                         };
                         match &inner_type.operator {
                             // if there was only one value instead of a range, we take that value to be the max
@@ -2982,17 +3022,28 @@ fn parse_control_operator(
                                 RangeCtlOp::RangeOp { is_inclusive, .. } => {
                                     let value = match int_literal_to_i128(&op.type2) {
                                         Some(value) => value,
-                                        None => unimplemented!(
-                                            "unsupported type in range control operator: {:?}",
-                                            operator
-                                        ),
+                                        None => {
+                                            types.record_rejection(
+                                                non_literal_size_operand_rejection(
+                                                    rule_name,
+                                                    &operator.type2,
+                                                ),
+                                            );
+                                            return ControlOperator::Range((None, None));
+                                        }
                                     };
                                     // `(a...b)` EXCLUDES b (RFC 8610 §3.2), as in the value
                                     // range arm above: the largest admitted size is b-1.
                                     let max = Some(if is_inclusive { value } else { value - 1 });
                                     (ControlOperator::Range((min, max)), [min, Some(value)])
                                 }
-                                RangeCtlOp::CtlOp { .. } => panic!(""),
+                                RangeCtlOp::CtlOp { .. } => {
+                                    types.record_rejection(non_literal_size_operand_rejection(
+                                        rule_name,
+                                        &operator.type2,
+                                    ));
+                                    return ControlOperator::Range((None, None));
+                                }
                             },
                         }
                     }
@@ -3001,10 +3052,13 @@ fn parse_control_operator(
                             ControlOperator::Range((None, Some(value))),
                             [Some(value), None],
                         ),
-                        None => unimplemented!(
-                            "unsupported type in range control operator: {:?}",
-                            operator
-                        ),
+                        None => {
+                            types.record_rejection(non_literal_size_operand_rejection(
+                                rule_name,
+                                &operator.type2,
+                            ));
+                            return ControlOperator::Range((None, None));
+                        }
                     },
                 };
                 // A size counts bytes (or characters), so a negative authored bound has no
@@ -3045,9 +3099,8 @@ fn parse_control_operator(
                             ControlOperator::Range((None, Some(h))) => {
                                 ControlOperator::Range((Some(0), Some(uint_size_max(*h))))
                             }
-                            _ => panic!(
-                                "unexpected partial range in size control operator: {:?}",
-                                operator
+                            _ => unreachable!(
+                                "every `.size` operand lowers to a window with a maximum: {operator:?}"
                             ),
                         }
                     }
@@ -5949,7 +6002,9 @@ fn parse_group_type<'a>(
                                 // panicking here.
                             }
                             Some(MemberKey::NonMemberKey { .. }) => {
-                                panic!("unsupported table map key (1): {:?}", ge)
+                                unreachable!(
+                                    "the cddl parser never constructs MemberKey::NonMemberKey: {ge:?}"
+                                )
                             }
                         }
                     }
@@ -6139,7 +6194,9 @@ fn group_entry_to_field_name(
                     })
                 }
                 MemberKey::NonMemberKey { .. } => {
-                    panic!("Please open a github issue with repro steps")
+                    unreachable!(
+                        "the cddl parser never constructs MemberKey::NonMemberKey: {entry:?}"
+                    )
                 }
             },
             None => type_to_field_name(&ge.entry_type).unwrap_or_else(|| {
