@@ -549,10 +549,7 @@ code_anchor = "Type2::ChoiceFromInlineGroup"
 # B3-024A closes the top-level scalar/text/null fixed representation gap with nominal TypeChoices.
 # ---- doc-level notable findings (rendered as a narrative section; not per-id) ----
 [[finding]]
-text = "Unsupported constructs `panic!` instead of erroring gracefully — valid CDDL using an unsupported construct crashes the generator (the two catch-all arms + the control-op panic). A graceful 'unsupported construct X' error would be friendlier (relates to tests/robustness)."
-
-[[finding]]
-text = "Misleading panic message — the control-op catch-all says 'not seen in RFC-8610' even for RFC-8610 operators like `.bits`/`.regexp` (they're in the spec, just unimplemented here)."
+text = "Unsupported constructs `panic!` instead of erroring gracefully — valid CDDL using an unsupported construct crashes the generator (the two catch-all arms). A graceful 'unsupported construct X' error would be friendlier (relates to tests/robustness)."
 
 [[finding]]
 text = "Both the IMPLICIT cut on `:`/bareword keys and the EXPLICIT `^` cut are parsed but their semantics are silently dropped, not enforced — a potential correctness gap (`// TODO: Do we need to handle cuts` in parse_group_type). The explicit-cut example still generates (a literal-key `k ^ => v` routes to the record path; see the memberkey.cut note), so this is a semantics gap, not a generation gap."

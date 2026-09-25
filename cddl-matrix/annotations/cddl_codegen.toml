@@ -2309,12 +2309,12 @@ evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
 [[support]]
 id = "ctl.abnf"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok"
+evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=fail rust=ok"
 
 [[support]]
 id = "ctl.abnfb"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok"
+evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=fail rust=ok"
 
 [[support]]
 id = "ctl.and"
@@ -2324,47 +2324,47 @@ evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); rub
 [[support]]
 id = "ctl.b32"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.b45"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.b64c"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.b64c-sloppy"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.b64u"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.b64u-sloppy"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.base10"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.bits"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.cat"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.cbor"
@@ -2392,7 +2392,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "ctl.det"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.eq"
@@ -2406,7 +2406,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "ctl.feature"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.ge"
@@ -2429,32 +2429,32 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "ctl.h32"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.hex"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.hexlc"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.hexuc"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.join"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok"
+evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=fail rust=ok"
 
 [[support]]
 id = "ctl.json"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.le"
@@ -2491,17 +2491,17 @@ evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); rub
 [[support]]
 id = "ctl.plus"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.printf"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=fail rust=ok"
+evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=fail rust=ok"
 
 [[support]]
 id = "ctl.regexp"
 status = "unsupported"
-evidence = "probe (control-op): cddl-codegen panic (exit 101); ruby=ok rust=ok"
+evidence = "probe (control-op): cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok"
 
 [[support]]
 id = "ctl.sdnv"

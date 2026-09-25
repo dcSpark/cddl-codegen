@@ -6,26 +6,3 @@ expression: catalog
 # PANIC = tracked-known gap (the matrix's `panic (exit 101)` verdict). Flipping it to `error (graceful)`
 # is a FIX (re-bless); a new panic, or a panic decaying to a silently-wrong `ok`, is a regression.
 # Generate-only: captures panic-class gaps only, not compile-class. Source: cddl-matrix/project_robustness.ts.
-
-ctl.abnf                           PANIC
-ctl.abnfb                          PANIC
-ctl.b32                            PANIC
-ctl.b45                            PANIC
-ctl.b64c-sloppy                    PANIC
-ctl.b64c                           PANIC
-ctl.b64u-sloppy                    PANIC
-ctl.b64u                           PANIC
-ctl.base10                         PANIC
-ctl.bits                           PANIC
-ctl.cat                            PANIC
-ctl.det                            PANIC
-ctl.feature                        PANIC
-ctl.h32                            PANIC
-ctl.hex                            PANIC
-ctl.hexlc                          PANIC
-ctl.hexuc                          PANIC
-ctl.join                           PANIC
-ctl.json                           PANIC
-ctl.plus                           PANIC
-ctl.printf                         PANIC
-ctl.regexp                         PANIC

@@ -463,6 +463,67 @@ fn generic_control_operator_body_rejects_gracefully() {
 }
 
 #[test]
+fn unsupported_control_operator_rejects_gracefully_in_every_position() {
+    for (tag, spec, op, count) in [
+        ("rule", "x = tstr .regexp \"a\"\n", ".regexp", 1),
+        ("member", "x = [a: tstr .regexp \"a\"]\n", ".regexp", 1),
+        ("element", "x = [* tstr .regexp \"a\"]\n", ".regexp", 1),
+        (
+            "map_key",
+            "x = { tstr .regexp \"a\" => uint }\n",
+            ".regexp",
+            1,
+        ),
+        (
+            "map_value",
+            "x = { * tstr => tstr .regexp \"a\" }\n",
+            ".regexp",
+            1,
+        ),
+        (
+            "choice_arm",
+            "x = uint / tstr .regexp \"a\"\n",
+            ".regexp",
+            1,
+        ),
+        (
+            "tag_content",
+            "x = #6.1(tstr .regexp \"a\")\n",
+            ".regexp",
+            1,
+        ),
+        (
+            "cbor_payload",
+            "x = bytes .cbor (tstr .regexp \"a\")\n",
+            ".regexp",
+            1,
+        ),
+        (
+            "generic_arg",
+            "g<T> = [T]\ny = g<tstr .regexp \"a\">\n",
+            ".regexp",
+            1,
+        ),
+        ("pcre", "x = tstr .pcre \"a\"\n", ".pcre", 1),
+        ("bits_member", "x = [a: uint .bits 3]\n", ".bits", 1),
+        (
+            "two_nodes",
+            "x = [a: tstr .regexp \"a\", b: tstr .regexp \"b\"]\n",
+            ".regexp",
+            2,
+        ),
+    ] {
+        let msg = expect_graceful_rejection(tag, spec, &["--wasm=false"]);
+        assert_eq!(
+            msg.matches(&format!("the `{op}` control operator is unsupported"))
+                .count(),
+            count,
+            "{tag}: {msg}"
+        );
+    }
+}
+
+#[test]
 fn newtype_on_record_or_group_choice_rejects_gracefully() {
     for (tag, spec, needle) in [
         (

@@ -3042,24 +3042,9 @@ fn parse_control_operator(
             ))
         }
         RangeCtlOp::CtlOp { ctrl, .. } => match ctrl {
-            token::ControlOperator::CBORSEQ
-            | token::ControlOperator::WITHIN
-            | token::ControlOperator::AND => {
-                // `.within` / `.and` are LIVE (`uint .within int`, `uint .and (0..9)`);
-                // `.cbor-seq` is unreachable — the cddl parser rejects it at parse/lex (matrix
-                // `ctl.cborseq` evidence), so no red fixture is constructible for it, but it
-                // converts alongside for one graceful arm. Follows the `.size`-on-`int` sibling
-                // below: `record_rejection` + an inert full-range placeholder, drained into a
-                // graceful `Err` by finalize before generation ever runs.
-                types.record_rejection(format!(
-                    "{}the `{ctrl}` control operator is unsupported",
-                    reject_rule_prefix(rule_name)
-                ));
-                ControlOperator::Range((None, None))
-            }
             token::ControlOperator::DEFAULT => match type2_to_fixed_value(&operator.type2) {
                 Some(value) => ControlOperator::Default(value),
-                // Same graceful shape as the `.within`/`.and` arm above: record the rejection and
+                // Same graceful shape as the catch-all arm below: record the rejection and
                 // hand back the inert full-range placeholder, which `finalize` drains into an
                 // `Err` before generation runs. One message — the operand never reaches the head
                 // check, which has nothing to say about a non-value.
@@ -3291,10 +3276,21 @@ fn parse_control_operator(
                     }
                 }
             }
-            _ => panic!(
-                "Unknown (not seen in RFC-8610) range control operator: {}",
-                ctrl
-            ),
+            // Every other control operator is unsupported: `.within` / `.and` (LIVE — `uint
+            // .within int`, `uint .and (0..9)`), `.bits`, `.regexp`, `.pcre`, the RFC 9165
+            // additional controls (`.cat`, `.det`, `.plus`, `.abnf`, `.b64u`, `.hex`, `.join`,
+            // `.json`, `.printf`, …), and `.cbor-seq` (unreachable: the cddl parser rejects it at
+            // parse/lex, matrix `ctl.cborseq` evidence). A wildcard rather than a list because the
+            // cddl crate gates most of these variants behind cargo features. Follows the
+            // `.size`-on-`int` sibling above: `record_rejection` + an inert full-range placeholder,
+            // drained into a graceful `Err` by finalize before generation ever runs.
+            _ => {
+                types.record_rejection(format!(
+                    "{}the `{ctrl}` control operator is unsupported",
+                    reject_rule_prefix(rule_name)
+                ));
+                ControlOperator::Range((None, None))
+            }
         },
     }
 }

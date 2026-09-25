@@ -150,7 +150,7 @@ enum Attribution {
     /// [`CONTROL_NAME`] GENERATES here, so anything a refused name does differently is the name's
     /// doing. These are the product's live columns.
     Swept,
-    /// The context refuses or aborts for its OWN reasons — identically for the supported control
+    /// The context refuses for its OWN reasons — identically for the supported control
     /// head — so no cell of it says anything about the name. Excluded, with the control's verdict
     /// recorded so [`every_context_owned_exclusion_is_still_context_owned`] fails loudly if the
     /// underlying behaviour changes.
@@ -164,9 +164,6 @@ enum Attribution {
 enum ControlVerdict {
     /// A graceful `Err` containing this substring.
     Refuses(&'static str),
-    /// A `panic!` containing this substring — a name-INDEPENDENT abort, which is a finding on the
-    /// SHAPE axis rather than on this one. Each such row's reason names where it is pinned.
-    Aborts(&'static str),
 }
 
 /// One syntactic context: a one-rule spec with `%N%` standing for the type name under test.
@@ -388,10 +385,9 @@ const CONTEXTS: &[Context] = &[
         seam: "ident_to_primitive",
         cddl: "x = %N% .bits uint\n",
         attribution: Attribution::ContextOwned {
-            control: ControlVerdict::Aborts("range control operator: .bits"),
-            reason: "`.bits` is an unimplemented control operator and aborts before its head is \
-                     looked at. Name-INDEPENDENT; already a PANIC catalog row \
-                     (tests/matrix_panic/ctl.bits.cddl).",
+            control: ControlVerdict::Refuses("the `.bits` control operator is unsupported"),
+            reason: "`.bits` is refused for the OPERATOR, whatever its head is — same shape as \
+                     `.within` below. Pinned by tests/matrix_reject/ctl.bits.cddl.",
         },
     },
     Context {
@@ -399,10 +395,9 @@ const CONTEXTS: &[Context] = &[
         seam: "ident_to_primitive",
         cddl: "x = %N% .regexp \"a\"\n",
         attribution: Attribution::ContextOwned {
-            control: ControlVerdict::Aborts("range control operator: .regexp"),
-            reason: "`.regexp` is an unimplemented control operator and aborts before its head is \
-                     looked at. Name-INDEPENDENT; already a PANIC catalog row \
-                     (tests/matrix_panic/ctl.regexp.cddl).",
+            control: ControlVerdict::Refuses("the `.regexp` control operator is unsupported"),
+            reason: "`.regexp` is refused for the OPERATOR, whatever its head is — same shape as \
+                     `.within` below. Pinned by tests/matrix_reject/ctl.regexp.cddl.",
         },
     },
     Context {
@@ -773,7 +768,7 @@ fn every_swept_context_is_live() {
 /// An exclusion is a structural claim ("this column says nothing about the name"), and a claim that
 /// silently stops holding is a coverage hole that reads as a decision. So the control head is run
 /// there too, and its verdict must match what the row recorded — which means the day one of those
-/// name-independent aborts is FIXED, this test fails and the column joins the product.
+/// name-independent refusals stops firing, this test fails and the column joins the product.
 #[test]
 fn every_context_owned_exclusion_is_still_context_owned() {
     let mut stale: Vec<String> = Vec::new();
@@ -791,7 +786,6 @@ fn every_context_owned_exclusion_is_still_context_owned() {
             let outcome = run(CONTROL_NAME, ctx);
             let ok = match (control, &outcome) {
                 (ControlVerdict::Refuses(sub), Outcome::Refused(e)) => e.contains(sub),
-                (ControlVerdict::Aborts(sub), Outcome::Aborted(m)) => m.contains(sub),
                 _ => false,
             };
             if !ok {
@@ -802,7 +796,6 @@ fn every_context_owned_exclusion_is_still_context_owned() {
                     ctx.id,
                     match control {
                         ControlVerdict::Refuses(sub) => format!("refuses with `{sub}`"),
-                        ControlVerdict::Aborts(sub) => format!("aborts with `{sub}`"),
                     },
                     outcome.describe()
                 ));

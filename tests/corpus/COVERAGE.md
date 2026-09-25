@@ -287,39 +287,39 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 | operator | | evidence |
 |----------|---|----------|
-| `.abnf` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
-| `.abnfb` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.abnf` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.abnfb` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
 | `.and` | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
-| `.b32` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
-| `.b45` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
-| `.b64c` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
-| `.b64c-sloppy` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
-| `.b64u` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
-| `.b64u-sloppy` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
-| `.base10` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
-| `.bits` | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
-| `.cat` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.b32` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.b45` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.b64c` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.b64c-sloppy` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.b64u` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.b64u-sloppy` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.base10` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.bits` | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.cat` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
 | `.cbor` | ✅ | `cbor_in_bytes.cddl` |
 | `.cborseq` | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
 | `.default` | ✅ | `default_value.cddl` |
-| `.det` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.det` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
 | `.eq` | ✅ | `comparison_controls.cddl` |
-| `.feature` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.feature` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
 | `.ge` | ✅ | `comparison_controls.cddl` |
 | `.gt` | ✅ | `comparison_controls.cddl` |
-| `.h32` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
-| `.hex` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
-| `.hexlc` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
-| `.hexuc` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
-| `.join` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
-| `.json` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.h32` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.hex` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.hexlc` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.hexuc` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.join` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.json` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
 | `.le` | ✅ | `sized_int.cddl` |
 | `.lt` | ✅ | `comparison_controls.cddl` |
 | `.ne` | ✅ | `comparison_controls.cddl` |
 | `.oid` _(RFC9090)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
-| `.plus` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
-| `.printf` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
-| `.regexp` | ➖ | probe (control-op): cddl-codegen panic (exit 101) |
+| `.plus` _(RFC9165)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.printf` _(RFC9741)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
+| `.regexp` | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
 | `.sdnv` _(RFC9090)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
 | `.sdnvseq` _(RFC9090)_ | ➖ | probe (control-op): cddl-codegen rejected at parse/lex (exit 1) |
 | `.size` | ✅ | `bounded_bytes.cddl` |
@@ -436,13 +436,12 @@ corpus and marked unsupported by the matrix is therefore two different shapes, n
 
 ## Notable findings
 
-1. Unsupported constructs `panic!` instead of erroring gracefully — valid CDDL using an unsupported construct crashes the generator (the two catch-all arms + the control-op panic). A graceful 'unsupported construct X' error would be friendlier (relates to tests/robustness).
-2. Misleading panic message — the control-op catch-all says 'not seen in RFC-8610' even for RFC-8610 operators like `.bits`/`.regexp` (they're in the spec, just unimplemented here).
-3. Both the IMPLICIT cut on `:`/bareword keys and the EXPLICIT `^` cut are parsed but their semantics are silently dropped, not enforced — a potential correctness gap (`// TODO: Do we need to handle cuts` in parse_group_type). The explicit-cut example still generates (a literal-key `k ^ => v` routes to the record path; see the memberkey.cut note), so this is a semantics gap, not a generation gap.
-4. Socket NAMES aren't really implemented — `$`/`$$` are stripped to plain identifiers, so `$x` silently aliases to `x`. The `/=` half of the plug idiom IS honored: every `/=` statement for one name contributes its arms to a single type-choice rule, in statement order, generating byte-identically to the folded spelling (`tests/corpus/assignt_extend.cddl`; pinned by `incremental_type_choice_extension_equals_the_folded_spelling`). The `//=` group half stays refused gracefully — in either statement order — because merging its arms mints the multi-choice plain-group shape that is itself unsupported (see the assigng.extend note).
-5. Float works in every position under every profile, `--preserve-encodings` included: the CBOR head width (`0xf9`/`0xfa`/`0xfb`) is an `Option<cbor_event::Sz>` encoding variable, and a float window is enforced on the same value in both profiles. The corpus carries floats accordingly — `tests/corpus/optional_fixed_float.cddl` (an optional fixed FLOAT member, presence bit plus width) and `homogeneous_array.cddl`'s `float_holder` (per-element widths). Spec-anchored wire vectors live in the `golden_hex_preserve` / `golden_hex_canonical` KAT suites.
-6. Methodology — the support probe is EXECUTION-GATED (generate + `cargo test` of the emitted round-trip surface), not exit-code-only, so a spec that exits 0 but emits code that does not compile (or does not round-trip) is correctly ➖. A row whose generated code names USER-SUPPLIED items (the extern/raw-bytes sentinels, a @custom_serialize/@custom_deserialize pair) gets that code written for it rather than an exemption — the probe appends a name-parameterized definition from tests/def_templates/ into the crate roots and then runs the ordinary verdict on both faces plus, under the json profile, the emitted json-gen crate. Only a row whose missing piece is a whole OTHER CRATE stays exempt (see cddl-matrix/README.md § the execution-gate discussion).
-7. Single-field STRUCT maps are supported: `{ a: uint }` is a 1-field struct (a bareword key is sugar for the equivalent text-string value key), identical in wire shape to the multi-field `{ a: uint, b: text }` form. MIXED struct+table maps (`{ a: uint, * k => v }`) remain unsupported — a map is detected as EITHER a struct or a homogenous table, never both (now rejected gracefully). Candidate cddl-codegen feature.
+1. Unsupported constructs `panic!` instead of erroring gracefully — valid CDDL using an unsupported construct crashes the generator (the two catch-all arms). A graceful 'unsupported construct X' error would be friendlier (relates to tests/robustness).
+2. Both the IMPLICIT cut on `:`/bareword keys and the EXPLICIT `^` cut are parsed but their semantics are silently dropped, not enforced — a potential correctness gap (`// TODO: Do we need to handle cuts` in parse_group_type). The explicit-cut example still generates (a literal-key `k ^ => v` routes to the record path; see the memberkey.cut note), so this is a semantics gap, not a generation gap.
+3. Socket NAMES aren't really implemented — `$`/`$$` are stripped to plain identifiers, so `$x` silently aliases to `x`. The `/=` half of the plug idiom IS honored: every `/=` statement for one name contributes its arms to a single type-choice rule, in statement order, generating byte-identically to the folded spelling (`tests/corpus/assignt_extend.cddl`; pinned by `incremental_type_choice_extension_equals_the_folded_spelling`). The `//=` group half stays refused gracefully — in either statement order — because merging its arms mints the multi-choice plain-group shape that is itself unsupported (see the assigng.extend note).
+4. Float works in every position under every profile, `--preserve-encodings` included: the CBOR head width (`0xf9`/`0xfa`/`0xfb`) is an `Option<cbor_event::Sz>` encoding variable, and a float window is enforced on the same value in both profiles. The corpus carries floats accordingly — `tests/corpus/optional_fixed_float.cddl` (an optional fixed FLOAT member, presence bit plus width) and `homogeneous_array.cddl`'s `float_holder` (per-element widths). Spec-anchored wire vectors live in the `golden_hex_preserve` / `golden_hex_canonical` KAT suites.
+5. Methodology — the support probe is EXECUTION-GATED (generate + `cargo test` of the emitted round-trip surface), not exit-code-only, so a spec that exits 0 but emits code that does not compile (or does not round-trip) is correctly ➖. A row whose generated code names USER-SUPPLIED items (the extern/raw-bytes sentinels, a @custom_serialize/@custom_deserialize pair) gets that code written for it rather than an exemption — the probe appends a name-parameterized definition from tests/def_templates/ into the crate roots and then runs the ordinary verdict on both faces plus, under the json profile, the emitted json-gen crate. Only a row whose missing piece is a whole OTHER CRATE stays exempt (see cddl-matrix/README.md § the execution-gate discussion).
+6. Single-field STRUCT maps are supported: `{ a: uint }` is a 1-field struct (a bareword key is sugar for the equivalent text-string value key), identical in wire shape to the multi-field `{ a: uint, b: text }` form. MIXED struct+table maps (`{ a: uint, * k => v }`) remain unsupported — a map is detected as EITHER a struct or a homogenous table, never both (now rejected gracefully). Candidate cddl-codegen feature.
 
 ## Summary
 
