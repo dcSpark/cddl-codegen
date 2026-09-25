@@ -376,13 +376,13 @@ body_md = '''- **The arm-position axis's classifier is a compile-time forcing fu
   `robustness_tests::option_collapse_reads_rule_position_directives` for the vocabulary at the rule
   slot. What no sweep can assert is the EXCLUSION set — which directives a variant position
   legitimately consumes — because that is a statement about future fields, not about present ones:
-  `comment_ast::RuleMetadata::non_variant_directives`'s exhaustive destructuring makes a new
-  `RuleMetadata` field fail to compile until its author classifies it as rule-level or variant-legal,
-  and its sibling `all_directives` (the never-spliced-group refusal's list) inherits that same
-  forcing function by building on it. Replacing either destructuring with a hand list silently
-  removes the property.
-  Reopening signal for adding a runtime assertion of the exclusion set: a `RuleMetadata` field lands
-  bound to `_` in that destructuring without a variant-position cell proving it is variant-legal.
+  `comment_ast::RuleMetadata::directives`'s exhaustive destructuring plus `Directive::is_variant_legal`'s
+  exhaustive match make a new `RuleMetadata` field fail to compile until its author classifies it as
+  rule-level or variant-legal, and `all_directives` (the never-spliced-group refusal's list) inherits
+  that same forcing function by building on it. Replacing either exhaustive construct with a hand
+  list silently removes the property.
+  Reopening signal for adding a runtime assertion of the exclusion set: a directive is classified
+  `true` in `Directive::is_variant_legal` without a variant-position cell proving it is variant-legal.
 
 '''
 control_kind = "gate"

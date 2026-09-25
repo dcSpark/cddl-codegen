@@ -2,8 +2,7 @@ use std::collections::BTreeSet;
 
 use nom::{
     IResult, Parser,
-    branch::alt,
-    bytes::complete::{tag, take_while, take_while1},
+    bytes::complete::{take_while, take_while1},
     multi::many0,
 };
 
@@ -281,13 +280,12 @@ pub struct RuleMetadata {
 /// The matrix-facing projection of comment metadata.  This deliberately lives beside the parser:
 /// a matrix feature id is credited only after the real grammar has accepted and merged a directive.
 ///
-/// The exhaustive [`RuleMetadata`] destructure in [`RuleMetadata::matrix_dsl_facts`] is intentional.
-/// Adding a metadata field makes the compiler force its author to decide whether that field has a
-/// matrix feature, rather than leaving a second hand-maintained directive table quietly stale.
+/// Every directive's id derives from its `directives!` spelling; the field-to-directive
+/// classification is the exhaustive destructure in [`RuleMetadata::directives`].
 #[allow(dead_code)] // consumed by the library-linked `comment_dsl` example, not the bin crate
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MatrixDslFacts {
-    pub ids: Vec<&'static str>,
+    pub ids: Vec<String>,
     pub key_demand: Option<DemandSet>,
     pub newtype_getter: Option<Option<String>>,
     pub duplicates: Option<DuplicatesPolicy>,
@@ -297,7 +295,12 @@ pub struct MatrixDslFacts {
     pub doc: Option<String>,
 }
 
-/// Merge field rules without cross-field verification; directive folds verify once at the end.
+/// The field-wise merge rules, WITHOUT the cross-field [`RuleMetadata::verify`]: flags OR, a
+/// single-valued field set on both sides is the duplicate-key panic, and `@used_as_key` demand
+/// unions. Both merge paths use it — [`merge_metadata`] (comment line into comment line) and
+/// [`rule_metadata`]'s fold (directive into directive within one line) — so the rules exist once.
+/// The fold must not verify per step: `@newtype @no_alias @name a @name b` reports the duplicate
+/// `@name` (the per-directive rule) rather than the cross-field conflict, as it always has.
 fn merge_fields(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
     macro_rules! exclusive {
         ($field:ident) => {
@@ -349,6 +352,109 @@ fn single(set: impl FnOnce(&mut RuleMetadata)) -> RuleMetadata {
     metadata
 }
 
+/// Declares the rule-metadata directive vocabulary ONCE: each row is a [`Directive`] variant, its
+/// `@`-spelling, and the parser for the argument text that follows the spelling. The macro derives
+/// the enum, [`Directive::ALL`] (dispatch order), [`Directive::spelling`], the argument dispatch,
+/// and [`KNOWN_RULE_METADATA_TAGS`] from those rows, so none of them can fall out of lockstep.
+///
+/// `cddl-matrix/no_silent_directive.ts` and `cddl-matrix/verify.ts` read the vocabulary from the
+/// `Variant = "@spelling"` rows of the `directives!` invocation below; keep that row shape.
+macro_rules! directives {
+    ($($variant:ident = $spelling:literal => $args:expr,)*) => {
+        /// One rule-metadata directive. Declaration order is dispatch order (see
+        /// [`whitespace_then_directive`]) and the order [`RuleMetadata::directives`] reports.
+        #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+        pub enum Directive {
+            $($variant,)*
+        }
+
+        impl Directive {
+            /// Every directive, in declaration (= dispatch) order.
+            pub const ALL: &'static [Directive] = &[$(Directive::$variant,)*];
+
+            /// The `@`-token an author writes.
+            pub fn spelling(self) -> &'static str {
+                match self {
+                    $(Directive::$variant => $spelling,)*
+                }
+            }
+
+            /// Parse this directive's argument text (the input right after its spelling) into the
+            /// single-directive metadata it contributes.
+            fn parse_args(self, input: &str) -> IResult<&str, RuleMetadata> {
+                match self {
+                    $(Directive::$variant => ($args)(input),)*
+                }
+            }
+        }
+
+        /// The complete `@`-token vocabulary the rule-metadata DSL recognizes, surfaced as data for
+        /// the extern-interface strict `@`-scan (`api::scan_extern_import_seam`), which hard-errors
+        /// on any `@`-token outside this set. Because dispatch prefix-matches, the scan treats a
+        /// known tag as a PREFIX of the scanned token — `@namefoo` credits `@name` in both places.
+        /// Derived from the `directives!` rows, so it cannot drift from what parses.
+        ///
+        /// Adding a directive is the START of a checklist, not the whole of it: once the directive
+        /// is also DOCUMENTED in `docs/docs/comment_dsl.mdx`, `cddl-matrix/verify.ts`'s forward
+        /// completeness lint hard-fails until it has a `features/cddl_codegen.toml` row and a
+        /// minted verdict, and that lint is FULL-tier — so a local/fast tier stays green while the
+        /// full tier is red. The whole chain (feature row, decode-catalog row, ingredients, the
+        /// vendor-count pin) is written down in `cddl-matrix/README.md` § "Registering a new vendor
+        /// (CDDL_CODEGEN) feature row"; read it before deferring any part of it.
+        pub const KNOWN_RULE_METADATA_TAGS: &[&str] = &[$($spelling,)*];
+    };
+}
+
+directives! {
+    Name = "@name" => name_args,
+    RustName = "@rust_name" => rust_name_args,
+    Newtype = "@newtype" => newtype_args,
+    NoAlias = "@no_alias" => no_alias_args,
+    UsedAsKey = "@used_as_key" => used_as_key_args,
+    UsedAsElem = "@used_as_elem" => used_as_elem_args,
+    Copy = "@copy" => copy_args,
+    RawBytesFlavor = "@raw_bytes_flavor" => raw_bytes_flavor_args,
+    Ignore = "@ignore" => ignore_args,
+    Duplicates = "@duplicates" => duplicates_args,
+    CustomJson = "@custom_json" => custom_json_args,
+    NoJsonSchemaExport = "@no_json_schema_export" => no_json_schema_export_args,
+    CustomSerialize = "@custom_serialize" => custom_serialize_args,
+    CustomDeserialize = "@custom_deserialize" => custom_deserialize_args,
+    CustomEncodings = "@custom_encodings" => custom_encodings_args,
+    CustomWireMajor = "@custom_wire_major" => custom_wire_major_args,
+    ExternCompanions = "@extern_companions" => extern_companions_args,
+    Doc = "@doc" => doc_args,
+}
+
+impl Directive {
+    /// Whether a type-choice VARIANT position legitimately consumes this directive: `@name` names
+    /// the variant and `@doc` documents it (see `parsing::create_variants_from_type_choices`, which
+    /// reads exactly those two fields and discards the rest). Exhaustive on purpose — a new
+    /// directive fails to compile here until its author classifies it, the forcing function a
+    /// hand-maintained exclusion list cannot provide.
+    pub fn is_variant_legal(self) -> bool {
+        match self {
+            Directive::Name | Directive::Doc => true,
+            Directive::RustName
+            | Directive::Newtype
+            | Directive::NoAlias
+            | Directive::UsedAsKey
+            | Directive::UsedAsElem
+            | Directive::Copy
+            | Directive::RawBytesFlavor
+            | Directive::Ignore
+            | Directive::Duplicates
+            | Directive::CustomJson
+            | Directive::NoJsonSchemaExport
+            | Directive::CustomSerialize
+            | Directive::CustomDeserialize
+            | Directive::CustomEncodings
+            | Directive::CustomWireMajor
+            | Directive::ExternCompanions => false,
+        }
+    }
+}
+
 impl RuleMetadata {
     fn verify(&self) {
         if self.newtype.is_some() && self.no_alias {
@@ -357,113 +463,10 @@ impl RuleMetadata {
         }
     }
 
-    /// The `@`-spellings of every rule-level directive set on this metadata, EXCLUDING the two a
-    /// type-choice VARIANT position legitimately consumes (`@name` names the variant, `@doc`
-    /// documents it — see `parsing::create_variants_from_type_choices`, which reads exactly those
-    /// two fields and discards the rest).
-    ///
-    /// Exists for one caller: the non-last-arm rejection in `parsing::parse_type_choices`. The
-    /// exhaustive destructuring below is load-bearing — a new `RuleMetadata` field fails to compile
-    /// here until its author decides whether it is rule-level (add it) or variant-legal (bind it to
-    /// `_`), which is the forcing function a hand-maintained list cannot provide.
-    pub fn non_variant_directives(&self) -> Vec<&'static str> {
-        let Self {
-            name: _,
-            comment: _,
-            rust_name,
-            newtype,
-            no_alias,
-            key_demand,
-            used_as_elem,
-            copy,
-            raw_bytes_flavor,
-            ignore,
-            duplicates,
-            custom_json,
-            no_json_schema_export,
-            custom_serialize,
-            custom_deserialize,
-            custom_encodings,
-            custom_wire_major,
-            extern_companions,
-        } = self;
-        let mut found = Vec::new();
-        if rust_name.is_some() {
-            found.push("@rust_name");
-        }
-        if newtype.is_some() {
-            found.push("@newtype");
-        }
-        if *no_alias {
-            found.push("@no_alias");
-        }
-        if key_demand.is_some() {
-            found.push("@used_as_key");
-        }
-        if *used_as_elem {
-            found.push("@used_as_elem");
-        }
-        if *copy {
-            found.push("@copy");
-        }
-        if *raw_bytes_flavor {
-            found.push("@raw_bytes_flavor");
-        }
-        if *ignore {
-            found.push("@ignore");
-        }
-        if duplicates.is_some() {
-            found.push("@duplicates");
-        }
-        if *custom_json {
-            found.push("@custom_json");
-        }
-        if *no_json_schema_export {
-            found.push("@no_json_schema_export");
-        }
-        if custom_serialize.is_some() {
-            found.push("@custom_serialize");
-        }
-        if custom_deserialize.is_some() {
-            found.push("@custom_deserialize");
-        }
-        if custom_encodings.is_some() {
-            found.push("@custom_encodings");
-        }
-        if custom_wire_major.is_some() {
-            found.push("@custom_wire_major");
-        }
-        if extern_companions.is_some() {
-            found.push("@extern_companions");
-        }
-        found
-    }
-
-    /// Every directive set on this metadata, `non_variant_directives` plus the two it excludes.
-    ///
-    /// Exists for one caller: the never-spliced plain-group refusal in `IntermediateTypes::finalize`.
-    /// That site reports what an author wrote into a slot where NOTHING is honored — a group no rule
-    /// splices emits neither a struct nor a field — so unlike the variant case there is no directive
-    /// the position legitimately consumes, and the list must be total.
-    pub fn all_directives(&self) -> Vec<&'static str> {
-        let mut found = self.non_variant_directives();
-        if self.name.is_some() {
-            found.push("@name");
-        }
-        if self.comment.is_some() {
-            found.push("@doc");
-        }
-        found.sort_unstable();
-        found
-    }
-
-    /// Project accepted metadata into the cddl-matrix DSL feature ids and the argument-bearing
-    /// facts whose spelling used to be duplicated by `corpus_detect.ts`.  This is an authority
-    /// boundary, not another parser: callers receive facts only after `metadata_from_comments`
-    /// has run the real `nom` grammar and its merge/verification rules.
-    #[allow(dead_code)] // see MatrixDslFacts: examples link lib.rs while tests compile main.rs too
-    pub fn matrix_dsl_facts(&self) -> MatrixDslFacts {
-        // Keep this exhaustive.  A new metadata field must be consciously classified here.
+    /// Every directive set on this metadata, in [`Directive::ALL`] order. The ONE field-to-directive
+    /// classification: the exhaustive destructure makes a new `RuleMetadata` field fail to compile
+    /// until its author maps it to a [`Directive`], and every directive list below derives from it.
+    pub fn directives(&self) -> Vec<Directive> {
         let Self {
             name,
             rust_name,
@@ -484,93 +487,120 @@ impl RuleMetadata {
             extern_companions,
             comment,
         } = self;
-        let mut ids = Vec::new();
-        if name.is_some() {
-            ids.push("dsl.name");
-        }
-        if rust_name.is_some() {
-            ids.push("dsl.rust_name");
-        }
-        if newtype.is_some() {
-            ids.push("dsl.newtype");
-        }
-        if *no_alias {
-            ids.push("dsl.no_alias");
-        }
-        if let Some(demand) = key_demand {
-            ids.push(match (demand.hash, demand.ord) {
-                (true, true) => "dsl.used_as_key.hash_ord",
-                (true, false) => "dsl.used_as_key.hash",
-                (false, true) => "dsl.used_as_key.ord",
-                (false, false) => "dsl.used_as_key",
-            });
-        }
-        if *used_as_elem {
-            ids.push("dsl.used_as_elem");
-        }
-        if *copy {
-            ids.push("dsl.copy");
-        }
-        if *raw_bytes_flavor {
-            ids.push("dsl.raw_bytes_flavor");
-        }
-        if *ignore {
-            ids.push("dsl.ignore");
-        }
-        if let Some(policy) = duplicates {
-            ids.push(match policy {
-                DuplicatesPolicy::Preserve => "dsl.duplicates.preserve",
-                DuplicatesPolicy::Reject => "dsl.duplicates.reject",
-            });
-        }
-        if *custom_json {
-            ids.push("dsl.custom_json");
-        }
-        if *no_json_schema_export {
-            ids.push("dsl.no_json_schema_export");
-        }
-        if custom_serialize.is_some() {
-            ids.push("dsl.custom_serialize");
-        }
-        if custom_deserialize.is_some() {
-            ids.push("dsl.custom_deserialize");
-        }
-        if custom_encodings.is_some() {
-            ids.push("dsl.custom_encodings");
-        }
-        if custom_wire_major.is_some() {
-            ids.push("dsl.custom_wire_major");
-        }
-        if extern_companions.is_some() {
-            ids.push("dsl.extern_companions");
-        }
-        if comment.is_some() {
-            ids.push("dsl.doc");
-        }
+        let mut found: Vec<Directive> = [
+            (name.is_some(), Directive::Name),
+            (rust_name.is_some(), Directive::RustName),
+            (newtype.is_some(), Directive::Newtype),
+            (*no_alias, Directive::NoAlias),
+            (key_demand.is_some(), Directive::UsedAsKey),
+            (*used_as_elem, Directive::UsedAsElem),
+            (*copy, Directive::Copy),
+            (*raw_bytes_flavor, Directive::RawBytesFlavor),
+            (*ignore, Directive::Ignore),
+            (duplicates.is_some(), Directive::Duplicates),
+            (*custom_json, Directive::CustomJson),
+            (*no_json_schema_export, Directive::NoJsonSchemaExport),
+            (custom_serialize.is_some(), Directive::CustomSerialize),
+            (custom_deserialize.is_some(), Directive::CustomDeserialize),
+            (custom_encodings.is_some(), Directive::CustomEncodings),
+            (custom_wire_major.is_some(), Directive::CustomWireMajor),
+            (extern_companions.is_some(), Directive::ExternCompanions),
+            (comment.is_some(), Directive::Doc),
+        ]
+        .into_iter()
+        .filter_map(|(set, directive)| set.then_some(directive))
+        .collect();
+        found.sort();
+        found
+    }
+
+    /// The `@`-spellings of every rule-level directive set on this metadata, EXCLUDING the ones a
+    /// type-choice VARIANT position legitimately consumes ([`Directive::is_variant_legal`]).
+    ///
+    /// Exists for the non-last-arm rejections in `parsing` (`parse_type_choices` and the inline
+    /// `T / null` lowering).
+    pub fn non_variant_directives(&self) -> Vec<&'static str> {
+        self.directives()
+            .into_iter()
+            .filter(|directive| !directive.is_variant_legal())
+            .map(Directive::spelling)
+            .collect()
+    }
+
+    /// Every directive set on this metadata, sorted by spelling.
+    ///
+    /// Exists for the refusals that report what an author wrote into a slot where NOTHING is
+    /// honored (e.g. the never-spliced plain-group refusal in `IntermediateTypes::finalize`), so
+    /// unlike the variant case the list must be total.
+    pub fn all_directives(&self) -> Vec<&'static str> {
+        let mut found: Vec<&'static str> = self
+            .directives()
+            .into_iter()
+            .map(Directive::spelling)
+            .collect();
+        found.sort_unstable();
+        found
+    }
+
+    /// Project accepted metadata into the cddl-matrix DSL feature ids and the argument-bearing
+    /// facts whose spelling used to be duplicated by `corpus_detect.ts`.  This is an authority
+    /// boundary, not another parser: callers receive facts only after `metadata_from_comments`
+    /// has run the real `nom` grammar and its merge/verification rules.
+    ///
+    /// A directive's feature id is `dsl.<spelling without @>`, refined by its argument for the two
+    /// directives whose matrix rows are per-argument (`@used_as_key` flavors, `@duplicates`
+    /// policies).
+    #[allow(dead_code)] // see MatrixDslFacts: examples link lib.rs while tests compile main.rs too
+    pub fn matrix_dsl_facts(&self) -> MatrixDslFacts {
+        let mut ids: Vec<String> = self
+            .directives()
+            .into_iter()
+            .map(|directive| {
+                let base = format!("dsl.{}", &directive.spelling()[1..]);
+                let refinement = match directive {
+                    Directive::UsedAsKey => {
+                        self.key_demand
+                            .and_then(|demand| match (demand.hash, demand.ord) {
+                                (true, true) => Some("hash_ord"),
+                                (true, false) => Some("hash"),
+                                (false, true) => Some("ord"),
+                                (false, false) => None,
+                            })
+                    }
+                    Directive::Duplicates => self.duplicates.map(|policy| match policy {
+                        DuplicatesPolicy::Preserve => "preserve",
+                        DuplicatesPolicy::Reject => "reject",
+                    }),
+                    _ => None,
+                };
+                match refinement {
+                    Some(refinement) => format!("{base}.{refinement}"),
+                    None => base,
+                }
+            })
+            .collect();
         ids.sort_unstable();
         MatrixDslFacts {
             ids,
-            key_demand: *key_demand,
-            newtype_getter: newtype.clone(),
-            duplicates: *duplicates,
-            custom_encodings: custom_encodings.clone(),
-            custom_wire_major: *custom_wire_major,
-            extern_companions: extern_companions.clone(),
-            doc: comment.clone(),
+            key_demand: self.key_demand,
+            newtype_getter: self.newtype.clone(),
+            duplicates: self.duplicates,
+            custom_encodings: self.custom_encodings.clone(),
+            custom_wire_major: self.custom_wire_major,
+            extern_companions: self.extern_companions.clone(),
+            doc: self.comment.clone(),
         }
     }
 }
 
-fn tag_name(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = tag("@name")(input)?;
+fn name_args(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = take_while(char::is_whitespace)(input)?;
     let (input, name) = take_while1(|ch| !char::is_whitespace(ch))(input)?;
 
     Ok((input, single(|m| m.name = Some(name.to_string()))))
 }
 
-fn tag_rust_name(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = tag("@rust_name")(input)?;
+fn rust_name_args(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = take_while(char::is_whitespace)(input)?;
     let (input, rust_name) = take_while1(|ch| !char::is_whitespace(ch))(input)?;
 
@@ -590,8 +620,7 @@ fn is_rust_ident(s: &str) -> bool {
     chars.all(|ch| ch.is_alphanumeric() || ch == '_')
 }
 
-fn tag_newtype(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = tag("@newtype")(input)?;
+fn newtype_args(input: &str) -> IResult<&str, RuleMetadata> {
     // to get around type annotations
     fn parse_newtype(input: &str) -> IResult<&str, RuleMetadata> {
         let (input, _) = take_while(char::is_whitespace)(input)?;
@@ -620,14 +649,11 @@ fn tag_newtype(input: &str) -> IResult<&str, RuleMetadata> {
     }
 }
 
-fn tag_no_alias(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = tag("@no_alias")(input)?;
-
+fn no_alias_args(input: &str) -> IResult<&str, RuleMetadata> {
     Ok((input, single(|m| m.no_alias = true)))
 }
 
-fn tag_used_as_key(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = tag("@used_as_key")(input)?;
+fn used_as_key_args(input: &str) -> IResult<&str, RuleMetadata> {
     // Parse the optional flavor words (`hash`, `ord`) that follow, up to the next `@tag` or end of
     // the comment. Strict vocabulary: any other word is a PANIC. The comment parser otherwise swallows
     // nom errors (`metadata_from_comments`) and `many0` ignores leftovers, so a soft parse failure here
@@ -662,32 +688,23 @@ fn tag_used_as_key(input: &str) -> IResult<&str, RuleMetadata> {
     Ok((rest, single(|m| m.key_demand = Some(demand))))
 }
 
-fn tag_used_as_elem(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = tag("@used_as_elem")(input)?;
-
+fn used_as_elem_args(input: &str) -> IResult<&str, RuleMetadata> {
     Ok((input, single(|m| m.used_as_elem = true)))
 }
 
-fn tag_copy(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = tag("@copy")(input)?;
-
+fn copy_args(input: &str) -> IResult<&str, RuleMetadata> {
     Ok((input, single(|m| m.copy = true)))
 }
 
-fn tag_raw_bytes_flavor(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = tag("@raw_bytes_flavor")(input)?;
-
+fn raw_bytes_flavor_args(input: &str) -> IResult<&str, RuleMetadata> {
     Ok((input, single(|m| m.raw_bytes_flavor = true)))
 }
 
-fn tag_ignore(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = tag("@ignore")(input)?;
-
+fn ignore_args(input: &str) -> IResult<&str, RuleMetadata> {
     Ok((input, single(|m| m.ignore = true)))
 }
 
-fn tag_duplicates(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = tag("@duplicates")(input)?;
+fn duplicates_args(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = take_while(char::is_whitespace)(input)?;
     // `@duplicates` requires exactly one argument from a strict vocabulary. A missing or unknown
     // argument is a PANIC (matching `@used_as_key`'s unknown-flavor handling): the comment parser
@@ -711,20 +728,15 @@ fn tag_duplicates(input: &str) -> IResult<&str, RuleMetadata> {
     Ok((rest, single(|m| m.duplicates = Some(policy))))
 }
 
-fn tag_custom_json(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = tag("@custom_json")(input)?;
-
+fn custom_json_args(input: &str) -> IResult<&str, RuleMetadata> {
     Ok((input, single(|m| m.custom_json = true)))
 }
 
-fn tag_no_json_schema_export(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = tag("@no_json_schema_export")(input)?;
-
+fn no_json_schema_export_args(input: &str) -> IResult<&str, RuleMetadata> {
     Ok((input, single(|m| m.no_json_schema_export = true)))
 }
 
-fn tag_custom_serialize(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = tag("@custom_serialize")(input)?;
+fn custom_serialize_args(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = take_while(char::is_whitespace)(input)?;
     let (input, custom_serialize) = take_while1(|ch| !char::is_whitespace(ch))(input)?;
 
@@ -734,8 +746,7 @@ fn tag_custom_serialize(input: &str) -> IResult<&str, RuleMetadata> {
     ))
 }
 
-fn tag_custom_deserialize(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = tag("@custom_deserialize")(input)?;
+fn custom_deserialize_args(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = take_while(char::is_whitespace)(input)?;
     let (input, custom_deserialize) = take_while1(|ch| !char::is_whitespace(ch))(input)?;
 
@@ -745,8 +756,7 @@ fn tag_custom_deserialize(input: &str) -> IResult<&str, RuleMetadata> {
     ))
 }
 
-fn tag_custom_wire_major(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = tag("@custom_wire_major")(input)?;
+fn custom_wire_major_args(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = take_while(char::is_whitespace)(input)?;
     // Exactly one REQUIRED argument from a strict vocabulary (the `@custom_encodings` contract, and
     // panicking for the same reason: `metadata_from_comments` swallows nom errors, so a soft failure
@@ -773,8 +783,7 @@ fn tag_custom_wire_major(input: &str) -> IResult<&str, RuleMetadata> {
     }
 }
 
-fn tag_custom_encodings(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = tag("@custom_encodings")(input)?;
+fn custom_encodings_args(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = take_while(char::is_whitespace)(input)?;
     // Exactly one REQUIRED argument from a strict vocabulary, whitespace-free (house style — the
     // argument reader is `take_while1(!ws)`). A missing or malformed argument is a PANIC (matching
@@ -823,8 +832,7 @@ fn is_rust_path(path: &str) -> bool {
     !path.is_empty() && path.split("::").all(is_rust_ident)
 }
 
-fn tag_extern_companions(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = tag("@extern_companions")(input)?;
+fn extern_companions_args(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = take_while(char::is_whitespace)(input)?;
     // Exactly one REQUIRED argument, in a strict shape. A missing or malformed argument is a PANIC
     // (matching `@duplicates`/`@used_as_key`): the comment parser otherwise swallows nom errors
@@ -876,8 +884,7 @@ fn tag_extern_companions(input: &str) -> IResult<&str, RuleMetadata> {
     ))
 }
 
-fn tag_comment(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, _) = tag("@doc")(input)?;
+fn doc_args(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, comment) = take_while1(|c| c != '@')(input)?;
 
     Ok((
@@ -886,86 +893,27 @@ fn tag_comment(input: &str) -> IResult<&str, RuleMetadata> {
     ))
 }
 
-fn whitespace_then_tag(input: &str) -> IResult<&str, RuleMetadata> {
+fn whitespace_then_directive(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, _) = take_while(char::is_whitespace)(input)?;
-    let (input, result) = alt((
-        tag_name,
-        tag_rust_name,
-        tag_newtype,
-        tag_no_alias,
-        tag_used_as_key,
-        tag_used_as_elem,
-        tag_copy,
-        tag_raw_bytes_flavor,
-        tag_ignore,
-        tag_duplicates,
-        tag_custom_json,
-        // No prefix relation with any sibling tag (nom `tag` = prefix match): `@no_alias` is not a
-        // prefix of `@no_json_schema_export` (they diverge at `a` vs `j`) and vice versa, so the
-        // `alt` order between the two is free.
-        tag_no_json_schema_export,
-        tag_custom_serialize,
-        tag_custom_deserialize,
-        // No prefix relation with either half of the pair above, nor with `@custom_json`: all four
-        // share `@custom_` and diverge at the 8th char (`s`/`d`/`j`/`e`), so the `alt` order among
-        // them is free.
-        tag_custom_encodings,
-        // `@custom_wire_major` shares the `@custom_` prefix with the four above and diverges at the
-        // 8th char (`w`), so its `alt` position among them is free.
-        tag_custom_wire_major,
-        tag_extern_companions,
-        tag_comment,
-    ))
-    .parse(input)?;
-
-    Ok((input, result))
+    for &directive in Directive::ALL {
+        if let Some(rest) = input.strip_prefix(directive.spelling()) {
+            return directive.parse_args(rest);
+        }
+    }
+    Err(nom::Err::Error(nom::error::Error::new(
+        input,
+        nom::error::ErrorKind::Tag,
+    )))
 }
 
 fn rule_metadata(input: &str) -> IResult<&str, RuleMetadata> {
-    let (input, parsed) = many0(whitespace_then_tag).parse(input)?;
-    let metadata = parsed
+    let (input, parsed) = many0(whitespace_then_directive).parse(input)?;
+    let merged = parsed
         .iter()
         .fold(RuleMetadata::default(), |acc, one| merge_fields(&acc, one));
-    metadata.verify();
-    Ok((input, metadata))
+    merged.verify();
+    Ok((input, merged))
 }
-
-/// The complete `@`-token vocabulary the rule-metadata DSL recognizes — the `tag("@…")` literals in
-/// `whitespace_then_tag`'s `alt`, surfaced as data for the extern-interface strict `@`-scan
-/// (`api::scan_extern_import_seam`), which hard-errors on any `@`-token outside this set. Because the
-/// tags prefix-match (nom `tag`), the scan treats a known tag as a PREFIX of the scanned token —
-/// `@namefoo` credits `@name` in both places. Keep in lockstep with the `tag_*` fns above. The
-/// matrix detector now consumes parsed [`RuleMetadata`] through [`RuleMetadata::matrix_dsl_facts`];
-/// its exhaustive destructure is the compile-time prompt for a new metadata field, with no second
-/// directive-vocabulary table or `tag("@…")`-literal tripwire.
-///
-/// Adding a directive here is the START of a checklist, not the whole of it: once the directive is
-/// also DOCUMENTED in `docs/docs/comment_dsl.mdx`, `cddl-matrix/verify.ts`'s forward completeness
-/// lint hard-fails until it has a `features/cddl_codegen.toml` row and a minted verdict, and that
-/// lint is FULL-tier — so a local/fast tier stays green while the full tier is red. The whole chain
-/// (feature row, decode-catalog row, ingredients, the vendor-count pin) is written down in
-/// `cddl-matrix/README.md` § "Registering a new vendor (CDDL_CODEGEN) feature row"; read it before
-/// deferring any part of it.
-pub const KNOWN_RULE_METADATA_TAGS: &[&str] = &[
-    "@name",
-    "@rust_name",
-    "@newtype",
-    "@no_alias",
-    "@used_as_key",
-    "@used_as_elem",
-    "@copy",
-    "@raw_bytes_flavor",
-    "@ignore",
-    "@duplicates",
-    "@custom_json",
-    "@no_json_schema_export",
-    "@custom_serialize",
-    "@custom_deserialize",
-    "@custom_encodings",
-    "@custom_wire_major",
-    "@extern_companions",
-    "@doc",
-];
 
 impl<'a> From<Option<&'a cddl::ast::Comments<'a>>> for RuleMetadata {
     fn from(comments: Option<&'a cddl::ast::Comments<'a>>) -> RuleMetadata {
@@ -1641,7 +1589,7 @@ mod tests {
 
     // `@no_json_schema_export`: the bare no-arg directive parses standalone, and — because it is
     // argument-less — a neighbouring directive on the same line is still reachable in BOTH orders (the
-    // prefix-match `alt` has no sibling that shadows it). `@custom_json` is the deliberate neighbour:
+    // prefix-match dispatch has no sibling that shadows it). `@custom_json` is the deliberate neighbour:
     // the two are orthogonal and legally combinable ("I supply the JSON impls, and this type is not a
     // published schema root"), so the pair must parse to both flags rather than conflict.
     #[test]
@@ -1851,5 +1799,63 @@ mod tests {
         assert!(merge_metadata(&lhs, &rhs).no_json_schema_export);
         assert!(merge_metadata(&rhs, &lhs).no_json_schema_export);
         assert!(merge_metadata(&lhs, &lhs).no_json_schema_export);
+    }
+
+    /// Dispatch takes the FIRST spelling that prefixes the input (`whitespace_then_directive`), which is
+    /// order-independent only while no spelling is a prefix of another.
+    #[test]
+    fn no_directive_spelling_prefixes_another() {
+        for a in Directive::ALL {
+            for b in Directive::ALL {
+                assert!(
+                    a == b || !b.spelling().starts_with(a.spelling()),
+                    "{} is a prefix of {}: dispatch order would decide which one parses",
+                    a.spelling(),
+                    b.spelling()
+                );
+            }
+        }
+    }
+
+    /// Each directive's canonical spelling parses to metadata that reports exactly that directive:
+    /// the spelling (dispatch), the argument parser, and the field classification in
+    /// `RuleMetadata::directives` agree. The exhaustive match forces a row for a new directive.
+    #[test]
+    fn every_directive_round_trips_through_its_field() {
+        fn canonical(directive: Directive) -> &'static str {
+            match directive {
+                Directive::Name => "@name foo",
+                Directive::RustName => "@rust_name Foo",
+                Directive::Newtype => "@newtype",
+                Directive::NoAlias => "@no_alias",
+                Directive::UsedAsKey => "@used_as_key",
+                Directive::UsedAsElem => "@used_as_elem",
+                Directive::Copy => "@copy",
+                Directive::RawBytesFlavor => "@raw_bytes_flavor",
+                Directive::Ignore => "@ignore",
+                Directive::Duplicates => "@duplicates reject",
+                Directive::CustomJson => "@custom_json",
+                Directive::NoJsonSchemaExport => "@no_json_schema_export",
+                Directive::CustomSerialize => "@custom_serialize ser",
+                Directive::CustomDeserialize => "@custom_deserialize de",
+                Directive::CustomEncodings => "@custom_encodings sz",
+                Directive::CustomWireMajor => "@custom_wire_major text",
+                Directive::ExternCompanions => "@extern_companions dep_wasm=FooList",
+                Directive::Doc => "@doc prose",
+            }
+        }
+        for &directive in Directive::ALL {
+            let (rest, metadata) = rule_metadata(canonical(directive)).unwrap();
+            assert_eq!(rest, "", "{directive:?}");
+            assert_eq!(metadata.directives(), vec![directive]);
+            assert_eq!(metadata.all_directives(), vec![directive.spelling()]);
+        }
+        assert_eq!(
+            KNOWN_RULE_METADATA_TAGS,
+            Directive::ALL
+                .iter()
+                .map(|d| d.spelling())
+                .collect::<Vec<_>>()
+        );
     }
 }

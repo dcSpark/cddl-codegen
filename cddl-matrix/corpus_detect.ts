@@ -413,7 +413,7 @@ function selfCheck() {
     const malformed = featuresIn("; @duplicates broken\n; @newtype\nx = uint").dsl;
     if (malformed.size) throw new Error("selfCheck: a malformed directive invalidates its whole owner block");
   }
-  // DSL-prose residual: comment_ast's sequential many0(whitespace_then_tag) parser —
+  // DSL-prose residual: comment_ast's sequential many0(whitespace_then_directive) parser —
   // a real directive id buried in trailing prose after a NON-@doc directive must NOT be credited
   // (comment_ast's many0 stops at the first non-directive token). @used_as_key goes further: its
   // flavor loop PANICS on a non-flavor word, so trailing prose there kills the whole credit (the
@@ -454,7 +454,7 @@ function selfCheck() {
     if (!n.has("dsl.no_json_schema_export") || !n.has("dsl.no_alias")) throw new Error("selfCheck: @no_json_schema_export must not shadow (or be shadowed by) the @no_alias prefix sibling");
   }
   // the asymmetric @doc grammar: @doc's prose runs to the next `@`, so a directive AFTER @doc prose
-  // IS still parsed (comment_ast.rs tag_comment = take_while1(c != '@')). A naive stop-at-first rule
+  // IS still parsed (comment_ast.rs doc_args = take_while1(c != '@')). A naive stop-at-first rule
   // would miss the @newtype here.
   {
     const r = featuresIn("x = uint ; @doc explains things then @newtype").dsl;

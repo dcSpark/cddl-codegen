@@ -1512,14 +1512,14 @@ const CDDL_CODEGEN_PSEUDO = new Set(["comment_dsl", "sentinel"]);
 const dslSource = readFileSync(`${CODEGEN_DIR}/src/comment_ast.rs`, "utf8") + "\n" +
   readFileSync(`${CODEGEN_DIR}/src/parsing.rs`, "utf8");
 // Structured extraction of the vendor surface (shared by the backward lint below and the forward lint):
-// matching the tag("@…")/MARKER constructs rather than substring-searching the whole source means a
+// matching the directives! rows/MARKER constructs rather than substring-searching the whole source means a
 // directive that survives only in a comment or unrelated string no longer passes the backward lint.
-const dslDirectives = [...dslSource.matchAll(/tag\("(@[a-z_]+)"\)/g)].map(m => m[1]);
+const dslDirectives = [...dslSource.matchAll(/^\s*[A-Z][A-Za-z]* = "(@[a-z_]+)" =>/gm)].map(m => m[1]);
 const dslMarkers = [...dslSource.matchAll(/MARKER[^"]*"(_CDDL_CODEGEN_[^"]+)"/g)].map(m => m[1]);
 // Flavor words: arguments some directives accept AFTER the tag (e.g. `@used_as_key hash`/`ord`,
 // `@duplicates preserve`/`reject`), parsed as literal match arms in comment_ast.rs. Two arm shapes
 // exist: the DemandSet flag form (`"hash" => demand.hash = true`) and the enum-value form
-// (`"preserve" => DuplicatesPolicy::Preserve`). These aren't `tag("@…")` directives, so a sibling
+// (`"preserve" => DuplicatesPolicy::Preserve`). These aren't `directives!` rows, so a sibling
 // FEATURE row whose alt is `<directive> <flavor…>` (mode-narrowed derive families, argument-required
 // policies) resolves to the vendor source only once these words are recognized too. The vocabulary is
 // deliberately ONE set across directives (the lint's job is anti-fabrication, not per-directive
@@ -1562,7 +1562,7 @@ for (const f of features) {
   fabricated.push({ id: f.id, production: prod ?? null });
 }
 
-// FORWARD lint (CDDL_CODEGEN): every USER-FACING @directive (comment_ast.rs tag("@…")) and *_MARKER
+// FORWARD lint (CDDL_CODEGEN): every USER-FACING @directive (`comment_ast.rs` `directives!` row) and *_MARKER
 // (parsing.rs) must be modelled by a feature — completeness in the vendor source's direction (mirrors the
 // prelude lint). "User-facing" = documented in comment_dsl.mdx: that gate excludes INTERNAL markers
 // cddl-codegen injects itself (e.g. _CDDL_CODEGEN_SCOPE_MARKER_, used for module scoping, never written by

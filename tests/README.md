@@ -3157,8 +3157,8 @@ dir, so the wasm and json-gen crates are compared too.
 
 Three axes, each with its own authority:
 
-- **Directive** — extracted at run time from `comment_ast.rs`'s `KNOWN_RULE_METADATA_TAGS`. A
-  directive there with no canonical-spelling row or no witness-profile row in the gate's own tables
+- **Directive** — extracted at run time from the `directives!` rows in `comment_ast.rs` (from which `KNOWN_RULE_METADATA_TAGS` derives).
+  A directive there with no canonical-spelling row or no witness-profile row in the gate's own tables
   FAILS it: a new directive must demand classification rather than silently skip the product.
 - **Shape** — hand-enumerated (shapes change far more slowly than directives). The mandatory parse
   paths, the extras each of which proved interesting in a prior delivery, and the arm-position axis

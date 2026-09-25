@@ -6,7 +6,7 @@
 #
 # PINNED SOURCE (the backward-lint condition — every feature must resolve to a real source, like prelude
 # features resolve to cddl.prelude): the `alt` token is the literal directive/marker, and verify.ts
-# asserts it appears in the in-repo source — `src/comment_ast.rs` (the `tag("@…")` handlers) for the
+# asserts it appears in the in-repo source — `src/comment_ast.rs` (the `directives!` rows) for the
 # `comment_dsl` directives, `src/parsing.rs` (the *_MARKER consts) for the `sentinel` typenames. Same-repo
 # means the source is "pinned" for free and structurally can't drift from the implementation. verify.ts
 # also runs the FORWARD lint: every directive/marker in those files must have a feature here.

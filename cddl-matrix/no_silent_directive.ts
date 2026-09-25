@@ -22,7 +22,7 @@
  * accepted-no-op inventory — each entry carries a one-line justification.
  *
  * Three axes, each with its own authority:
- *   - DIRECTIVE: extracted at run time from `src/comment_ast.rs`'s `KNOWN_RULE_METADATA_TAGS`, so a
+ *   - DIRECTIVE: extracted at run time from `src/comment_ast.rs`'s `directives!` rows, so a
  *     new directive DEMANDS classification (a canonical-spelling row and a witness-profile row)
  *     rather than silently skipping the product. That forcing function is the point.
  *   - SHAPE: hand-enumerated below — the parse paths a rule body can take. Each shape carries a
@@ -74,14 +74,13 @@ const PROFILES: Record<ProfileId, string[]> = {
 
 // ---- axis 2: the directives (authority = comment_ast.rs) --------------------------------------
 
-/** Extract `KNOWN_RULE_METADATA_TAGS` from the authority. Deliberately NOT the `tag("@…")` literals
- *  corpus_detect.ts reads: this gate wants the RULE-POSITION vocabulary, which that const is, and
- *  reading a different spelling keeps the two gates from sharing a single point of rot. */
+/** Extract directive spellings from the `directives!` rows in the authority. The ≥10 floor is the
+ *  rot guard: if the row shape changes, fail loudly rather than silently skipping the vocabulary. */
 function knownRuleMetadataTags(): string[] {
   const src = readFileSync(join(CODEGEN_DIR, "src", "comment_ast.rs"), "utf8");
-  const block = src.match(/pub const KNOWN_RULE_METADATA_TAGS: &\[&str\] = &\[([\s\S]*?)\n\];/);
-  if (!block) throw new Error("no_silent_directive: could not find KNOWN_RULE_METADATA_TAGS in src/comment_ast.rs");
-  const tags = [...block[1].matchAll(/"(@[a-z_]+)"/g)].map(m => m[1]);
+  const block = src.match(/^directives! \{\n([\s\S]*?)\n\}/m);
+  if (!block) throw new Error("no_silent_directive: could not find directives! rows in src/comment_ast.rs");
+  const tags = [...block[1].matchAll(/^\s*[A-Z][A-Za-z]* = "(@[a-z_]+)" =>/gm)].map(m => m[1]);
   if (tags.length < 10) throw new Error(`no_silent_directive: extracted only ${tags.length} directive(s) — the extraction went vacuous`);
   return tags;
 }
@@ -984,7 +983,7 @@ function classifyDirectives(): string[] {
   if (problems.length)
     throw new Error(
       `no_silent_directive: the directive axis is out of lockstep with comment_ast.rs's ` +
-      `KNOWN_RULE_METADATA_TAGS:\n${problems.join("\n")}\n\nClassify each one: give it the spelling a ` +
+      `directives! rows:\n${problems.join("\n")}\n\nClassify each one: give it the spelling a ` +
       `spec author writes (with a VALID argument where the argument is required — comment_ast panics ` +
       `otherwise) and the cheapest flag profile under which its surface exists. Skipping the ` +
       `classification is what this check exists to prevent.`,
