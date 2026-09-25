@@ -2298,8 +2298,18 @@ impl GenerationScope {
         };
         for (scope, content) in self.serialize_scopes.iter_mut() {
             push_base_serialize_imports(content);
-            if let Some(common_import) = cli.common_import_override.as_ref() {
-                content.push_import(format!("{}::serialization", common_import), "*", None);
+            // The runtime serialization module: the root file DEFINES it in-crate (prelude), so
+            // only a non-root scope or a `--common-import-override` root imports it. Its exports
+            // are mostly traits (`Deserialize`, `SerializeEmbeddedGroup`, `ToCBORBytes`, …) that
+            // `Type::deserialize(raw)`-style paths and method calls use without naming, so no
+            // name-scan can prove the glob unused; like the anonymous `Serialize` import above it
+            // is emitted allowed, and a scope that uses none of it (every deserialize refused)
+            // stays warning-free.
+            if cli.common_import_override.is_some() || *scope != *ROOT_SCOPE {
+                content.raw(format!(
+                    "#[allow(unused_imports)]\nuse {}::serialization::*;",
+                    cli.common_import_rust()
+                ));
             }
             // Only import cbor_encodings where a cbor_encodings.rs is actually emitted for this
             // scope (same condition as its `pub mod` declaration / generated_files): a scope with
@@ -2307,13 +2317,6 @@ impl GenerationScope {
             // so importing it would be an unresolved import (E0432).
             if cli.preserve_encodings && self.cbor_encodings_scopes.contains_key(scope) {
                 content.push_import("super::cbor_encodings", "*", None);
-            }
-            if *scope != *ROOT_SCOPE {
-                content.push_import(
-                    format!("{}::serialization", cli.common_import_rust()),
-                    "*",
-                    None,
-                );
             }
         }
 

@@ -6,11 +6,12 @@ expression: content
 // https://github.com/dcSpark/cddl-codegen
 
 #[allow(unused_imports)]
+use crate::generated::serialization::*;
+#[allow(unused_imports)]
 use cbor_event::se::Serialize as _;
 
 use super::*;
 use crate::generated::error::*;
-use crate::generated::serialization::*;
 use cbor_event::de::Deserializer;
 use cbor_event::se::Serializer;
 

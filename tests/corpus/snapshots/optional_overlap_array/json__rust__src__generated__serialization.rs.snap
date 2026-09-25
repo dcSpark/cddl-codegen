@@ -9,7 +9,6 @@ expression: content
 use cbor_event::se::Serialize as _;
 
 use super::*;
-use cbor_event::de::Deserializer;
 use cbor_event::se::Serializer;
 
 impl cbor_event::se::Serialize for OptionalOverlapArray {

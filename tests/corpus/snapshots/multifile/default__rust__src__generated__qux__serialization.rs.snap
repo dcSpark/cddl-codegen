@@ -6,6 +6,8 @@ expression: content
 // https://github.com/dcSpark/cddl-codegen
 
 extern crate alloc;
+#[allow(unused_imports)]
+use crate::generated::serialization::*;
 use alloc::collections::BTreeMap;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -14,7 +16,6 @@ use cbor_event::se::Serialize as _;
 
 use super::*;
 use crate::generated::error::*;
-use crate::generated::serialization::*;
 use cbor_event::de::Deserializer;
 use cbor_event::se::Serializer;
 

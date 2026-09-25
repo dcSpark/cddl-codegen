@@ -83,8 +83,8 @@
 //! unused: a type can only be used by naming it, so "ident absent from the module family" ⇒ unused.
 //! That implication does NOT hold for traits (`use std::io::Write;` is exercised by `w.write_all(..)`
 //! — the ident `Write` never appears). So name-scan pruning is restricted to concrete-type / macro
-//! candidates: the built-in [`ALLOWLIST`] (collection helpers + `--preserve-encodings` encoding
-//! enums) plus the per-run [`PruneConfig::extra_candidates`] — the wasm prelude names (`JsError` /
+//! candidates: the built-in [`ALLOWLIST`] (collection helpers, `--preserve-encodings` encoding
+//! enums, and `cbor_event`'s `Deserializer`) plus the per-run [`PruneConfig::extra_candidates`] — the wasm prelude names (`JsError` /
 //! `JsValue` concrete types, the `wasm_bindgen` attribute macro exercised only via `#[wasm_bindgen]`,
 //! whose ident the scan sees), the `--wasm-*-macro` leaf names (each exercised only via `name!(…)`),
 //! and the cross-scope generator-minted type idents `scope_references` over-imports. Everything
@@ -157,7 +157,9 @@ use syn::{Item, ItemUse, UseTree};
 /// The built-in concrete-type import names this pass may remove by name-scan, always available (the
 /// per-run [`PruneConfig::extra_candidates`] add to these). These are exactly the blindly-pushed
 /// types the emission sites in `generation/` add unconditionally (or gated only on spec-global
-/// facts): the collection helpers plus the three `--preserve-encodings` encoding enums. Every
+/// facts): the collection helpers plus the three `--preserve-encodings` encoding enums, plus
+/// `cbor_event::de::Deserializer`, which the serialization prelude imports into every
+/// `serialization.rs` and only a generated `Deserialize` impl (or the root's static prelude) names. Every
 /// entry must be a concrete type (never a trait/macro/glob), or the "ident absent from the module
 /// family ⇒ unused" implication that makes name-scanning sound breaks — the three encoding enums are
 /// concrete enums (`static/serialization_preserve.rs`) only ever consumed by being named.
@@ -176,6 +178,7 @@ const ALLOWLIST: &[&str] = &[
     "LenEncoding",
     "StringEncoding",
     "TagPresenceEncoding",
+    "Deserializer",
 ];
 
 /// The concrete-type names the static `error` module (`static/error.rs`) binds into a module's

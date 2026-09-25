@@ -6269,7 +6269,8 @@ fn wasm_any_cbor_submodule_import_compiles() {
 }
 
 /// Generated serialization files bring the method-call-only Serialize trait into scope without
-/// an unused-import warning, including scopes with no call to the trait method.
+/// an unused-import warning, including scopes with no call to the trait method and a non-root
+/// scope whose every deserialize is refused.
 #[test]
 fn serialization_trait_import_is_warning_free() {
     if !tool_exists("cargo") {
@@ -6283,10 +6284,15 @@ fn serialization_trait_import_is_warning_free() {
     std::fs::create_dir_all(&inputs).unwrap();
     std::fs::write(
         inputs.join("lib.cddl"),
-        "refused = [? a: uint, b: uint]\narrholder = [m: [* refused]]\n",
+        "refused = [? a: uint, b: uint]\narrholder = [m: [* refused]]\nscoped_holder = [s: scoped_refused]\n",
     )
     .unwrap();
     std::fs::write(inputs.join("map.cddl"), "map_rec = { a: uint, b: text }\n").unwrap();
+    std::fs::write(
+        inputs.join("refused_scope.cddl"),
+        "scoped_refused = [? a: uint, b: uint]\n",
+    )
+    .unwrap();
     std::fs::write(
         inputs.join("embedded.cddl"),
         "grp = (a: uint, b: text)\nouter = [grp, c: uint]\n",
@@ -6335,6 +6341,17 @@ fn serialization_trait_import_is_warning_free() {
                 );
             }
         }
+        let scoped =
+            std::fs::read_to_string(out.join("rust/src/generated/refused_scope/serialization.rs"))
+                .unwrap();
+        assert!(
+            !scoped.contains("impl Deserialize for"),
+            "{tag}: test scope unexpectedly has a deserialize impl:\n{scoped}"
+        );
+        assert!(
+            scoped.contains("#[allow(unused_imports)]\nuse crate::generated::serialization::*;"),
+            "{tag}: trait-bearing runtime glob must be allowed:\n{scoped}"
+        );
         let check = tool_cmd("cargo")
             .args(["test", "--no-run"])
             .current_dir(out.join("rust"))

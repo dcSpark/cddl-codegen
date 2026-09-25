@@ -7,13 +7,14 @@ expression: content
 
 #[allow(unused_imports)]
 use cbor_event::se::Serialize as _;
+#[allow(unused_imports)]
+use extern_dep_crate::serialization::*;
 
 use super::cbor_encodings::*;
 use super::*;
 use cbor_event::de::Deserializer;
 use cbor_event::se::Serializer;
 use extern_dep_crate::error::*;
-use extern_dep_crate::serialization::*;
 
 impl cbor_event::se::Serialize for Baz {
     fn serialize<'se>(
