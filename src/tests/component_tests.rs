@@ -1689,11 +1689,12 @@ fn wit_package_name_collision_is_rejected() {
 
 /// INTERFACE level: two type names colliding inside one interface. Reachable today because the
 /// synthesized `any-cbor` alias shares the namespace with every user type, so a rule named
-/// `any_cbor` in a spec that also uses `any` collides with it.
+/// `AnyCBOR` in a spec that also uses `any` collides with it. (`any_cbor` itself camel-cases to the
+/// reserved runtime name `AnyCbor` and is refused before the WIT detector runs.)
 #[test]
 fn wit_interface_type_name_collision_is_rejected() {
     let err = generate_error(
-        "any_cbor = { x: uint }\n\
+        "AnyCBOR = { x: uint }\n\
          holder = { m: any }\n",
     )
     .expect("the colliding spec generated");
