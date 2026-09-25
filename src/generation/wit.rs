@@ -292,7 +292,7 @@ pub(crate) struct WitPackage {
 
 /// A dependency type as this package refers to it: the interface it lives in, the package that
 /// interface belongs to, and the WIT name the dependency gave it.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub(crate) struct ImportedDepType {
     /// The extern-deps directory name the dependency is declared under.
     pub dep: String,
