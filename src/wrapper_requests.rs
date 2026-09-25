@@ -102,7 +102,7 @@ pub fn parse_sidecar(contents: &str, file: &str) -> Result<Vec<WrapperRequestEnt
             // and traps on an in-place regen — so any comment here is either a stale old-format
             // sidecar or a stray hand edit.
             if trimmed.starts_with("//") {
-                return Err(hard_error(
+                return Err(SHAPES_TABLE.refusal(
                     file,
                     "unexpected comment inside `BORROWED_SHAPES`",
                     trimmed,
@@ -111,7 +111,7 @@ pub fn parse_sidecar(contents: &str, file: &str) -> Result<Vec<WrapperRequestEnt
             const_item.push_str(line);
             const_item.push('\n');
             if trimmed.ends_with("];") {
-                entries.extend(parse_const_item(&const_item, file)?);
+                entries.extend(shape_entries(SHAPES_TABLE.parse_item(&const_item, file)?));
                 in_const = false;
                 const_item.clear();
             }
@@ -124,7 +124,7 @@ pub fn parse_sidecar(contents: &str, file: &str) -> Result<Vec<WrapperRequestEnt
                 // The compile-checked existence half; the dep validates via shapes, so the `use`
                 // lines are only checked for well-formedness, never cross-referenced here.
             } else {
-                return Err(hard_error(
+                return Err(SHAPES_TABLE.refusal(
                     file,
                     "unexpected line inside `mod borrowed`",
                     trimmed,
@@ -137,7 +137,7 @@ pub fn parse_sidecar(contents: &str, file: &str) -> Result<Vec<WrapperRequestEnt
             continue;
         }
         if trimmed.starts_with("//") {
-            return Err(hard_error(file, "unexpected comment", trimmed));
+            return Err(SHAPES_TABLE.refusal(file, "unexpected comment", trimmed));
         }
         if trimmed == "#[allow(unused_imports)]" || trimmed == "#[allow(dead_code)]" {
             continue;
@@ -154,26 +154,26 @@ pub fn parse_sidecar(contents: &str, file: &str) -> Result<Vec<WrapperRequestEnt
         // The const table, accumulated as a whole item then parsed. `rustfmt` lays it out by size:
         // an empty table collapses whole onto one line (`… = &[];`), a single short row may collapse
         // onto a wrapped initializer (`… =\n    &[(…)];`), and a longer table keeps the `= &[`
-        // opener with one row per line — parse_const_item handles all of them uniformly.
+        // opener with one row per line — `TableGrammar::parse_item` handles all of them uniformly.
         if trimmed.starts_with("pub(crate) const BORROWED_SHAPES") {
             const_item.push_str(line);
             const_item.push('\n');
             if trimmed.ends_with("];") {
-                entries.extend(parse_const_item(&const_item, file)?);
+                entries.extend(shape_entries(SHAPES_TABLE.parse_item(&const_item, file)?));
                 const_item.clear();
             } else {
                 in_const = true;
             }
             continue;
         }
-        return Err(hard_error(file, "unexpected item", trimmed));
+        return Err(SHAPES_TABLE.refusal(file, "unexpected item", trimmed));
     }
 
     if in_mod {
-        return Err(hard_error(file, "unterminated `mod borrowed` block", ""));
+        return Err(SHAPES_TABLE.refusal(file, "unterminated `mod borrowed` block", ""));
     }
     if in_const {
-        return Err(hard_error(
+        return Err(SHAPES_TABLE.refusal(
             file,
             "unterminated `BORROWED_SHAPES` table (missing `];`)",
             "",
@@ -183,39 +183,13 @@ pub fn parse_sidecar(contents: &str, file: &str) -> Result<Vec<WrapperRequestEnt
     Ok(entries)
 }
 
-/// Parse the complete `BORROWED_SHAPES` const item (header, `=`, `&[ … ];`) into entries. The
-/// header up to the initializer `=` must be exactly the frozen declaration (whitespace-normalized —
-/// rustfmt may wrap the initializer onto the next line); the initializer must be a `&[ … ]` array
-/// expression. The first `=` in the item IS the initializer's: the type annotation contains none,
-/// and shape strings (which can contain `=>`) only occur after it.
-fn parse_const_item(item: &str, file: &str) -> Result<Vec<WrapperRequestEntry>, String> {
-    let Some(eq) = item.find('=') else {
-        return Err(hard_error(
-            file,
-            "malformed `BORROWED_SHAPES` item (missing `=`)",
-            item,
-        ));
-    };
-    let header: String = item[..eq].split_whitespace().collect::<Vec<_>>().join(" ");
-    if header != "pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)]" {
-        return Err(hard_error(
-            file,
-            "unexpected `BORROWED_SHAPES` declaration (the type must be exactly `&[(&str, &str, &str)]`)",
-            &header,
-        ));
-    }
-    let init = item[eq + 1..].trim();
-    let Some(body) = init
-        .strip_prefix("&[")
-        .and_then(|rest| rest.trim_end().strip_suffix("];"))
-    else {
-        return Err(hard_error(
-            file,
-            "malformed `BORROWED_SHAPES` initializer (expected `&[ … ];`)",
-            init,
-        ));
-    };
-    parse_const_body(body, file)
+/// Map `SHAPES_TABLE` rows (three fields each, enforced by the table's arity) to entries.
+fn shape_entries(rows: Vec<Vec<String>>) -> impl Iterator<Item = WrapperRequestEntry> {
+    rows.into_iter().map(|fields| WrapperRequestEntry {
+        dep: fields[0].clone(),
+        name: fields[1].clone(),
+        shape: fields[2].clone(),
+    })
 }
 
 /// Strip the edit-preservation overlay scaffolding (`comment_preserve.rs` marker structures) to a
@@ -280,83 +254,176 @@ fn flatten_overlay_blocks(contents: &str, file: &str, flag: &str) -> Result<Vec<
     Ok(out)
 }
 
-/// Tokenize the raw `BORROWED_SHAPES` array body (everything between `= &[` and `];`) into entries.
-/// Strict tuple grammar: `( "<dep>" , "<name>" , "<shape>" )` with an optional trailing comma,
-/// tuples separated by commas. Comments never reach here (own-line ones hard-error in the caller;
-/// a trailing `// …` after a row surfaces as an unexpected token below). Any deviation — a
-/// non-triple tuple, an unterminated literal, a stray token — is a hard error (a mangled sidecar
-/// must be loud).
-fn parse_const_body(body: &str, file: &str) -> Result<Vec<WrapperRequestEntry>, String> {
-    let chars: Vec<char> = body.chars().collect();
-    let mut i = 0;
-    let mut entries = Vec::new();
-    loop {
-        i = skip_trivia(&chars, i);
-        if i >= chars.len() {
-            break;
+/// The const-table half of a sidecar grammar. The two sidecars' tables differ only in these fields,
+/// so one reader serves both, and every refusal names the flag, file kind and table it came from.
+struct TableGrammar {
+    /// The CLI flag that consumes the sidecar, which leads every refusal.
+    flag: &'static str,
+    /// The generated file the sidecar must be, named in every refusal's remedy.
+    file_kind: &'static str,
+    /// The const's name, as the refusals spell it.
+    const_name: &'static str,
+    /// Every accepted declaration up to the initializer `=`, whitespace-normalized.
+    headers: &'static [&'static str],
+    /// The refusal for a declaration outside `headers`.
+    header_refusal: &'static str,
+    /// Every accepted number of string literals per row.
+    arities: &'static [usize],
+    /// The refusal for a row whose length is outside `arities`.
+    arity_refusal: &'static str,
+}
+
+/// `borrowed_collections.rs`: `("<dep>", "<name>", "<shape>")` rows.
+const SHAPES_TABLE: TableGrammar = TableGrammar {
+    flag: "--wrapper-requests",
+    file_kind: "borrowed_collections.rs",
+    const_name: "BORROWED_SHAPES",
+    headers: &["pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)]"],
+    header_refusal: "unexpected `BORROWED_SHAPES` declaration (the type must be exactly `&[(&str, &str, &str)]`)",
+    arities: &[3],
+    arity_refusal: "malformed BORROWED_SHAPES row (a row must be exactly three string literals: dep, name, shape)",
+};
+
+/// `borrowed_key_types.rs`. Two declarations are accepted: the frozen two-column `&[(&str, &str)]`
+/// (all rows bare — byte-identical to pre-flavor sidecars) and the three-column
+/// `&[(&str, &str, &str)]` (rows carry a flavor token). Rows of either length are accepted under
+/// either declaration, so an old two-column-typed table with only bare rows and a new
+/// three-column-typed table both round-trip.
+const KEY_TYPES_TABLE: TableGrammar = TableGrammar {
+    flag: "--key-requests",
+    file_kind: "borrowed_key_types.rs",
+    const_name: "BORROWED_KEY_TYPES",
+    headers: &[
+        "pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)]",
+        "pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str, &str)]",
+    ],
+    header_refusal: "unexpected `BORROWED_KEY_TYPES` declaration (the type must be `&[(&str, &str)]` or `&[(&str, &str, &str)]`)",
+    arities: &[2, 3],
+    arity_refusal: "malformed BORROWED_KEY_TYPES row (a row must be two string literals — dep, ident — or three, adding a flavor)",
+};
+
+impl TableGrammar {
+    /// The sidecar grammar's refusal funnel: builds the diagnostic, which every call site returns as
+    /// the `Err` of its own `Result`. Not diverging — a refusal here travels the generator's error
+    /// channel so `--config`'s mid-run wrapper can name the crates it had already regenerated before
+    /// it.
+    fn refusal(&self, file: &str, what: &str, offending: &str) -> String {
+        let (flag, file_kind) = (self.flag, self.file_kind);
+        if offending.is_empty() {
+            return format!(
+                "{flag} {file}: {what}. The sidecar must be an unmodified, tool-generated `{file_kind}`."
+            );
         }
-        if chars[i] != '(' {
-            return Err(hard_error(
+        format!(
+            "{flag} {file}: {what}: {offending:?}. The sidecar must be an unmodified, \
+             tool-generated `{file_kind}`."
+        )
+    }
+
+    /// Parse the complete const item (header, `=`, `&[ … ];`) into rows of string literals. The
+    /// header up to the initializer `=` must be one of the frozen declarations (whitespace-normalized
+    /// — rustfmt may wrap the initializer onto the next line); the initializer must be a `&[ … ]`
+    /// array expression. The first `=` in the item IS the initializer's: the type annotation contains
+    /// none, and row strings (a shape can contain `=>`) only occur after it.
+    fn parse_item(&self, item: &str, file: &str) -> Result<Vec<Vec<String>>, String> {
+        let name = self.const_name;
+        let Some(eq) = item.find('=') else {
+            return Err(self.refusal(
                 file,
-                "unexpected token in BORROWED_SHAPES (expected a `(...)` row)",
-                &tail_snippet(&chars, i),
+                &format!("malformed `{name}` item (missing `=`)"),
+                item,
             ));
+        };
+        let header: String = item[..eq].split_whitespace().collect::<Vec<_>>().join(" ");
+        if !self.headers.contains(&header.as_str()) {
+            return Err(self.refusal(file, self.header_refusal, &header));
         }
-        i += 1; // consume '('
-        let mut fields = Vec::new();
+        let init = item[eq + 1..].trim();
+        let Some(body) = init
+            .strip_prefix("&[")
+            .and_then(|rest| rest.trim_end().strip_suffix("];"))
+        else {
+            return Err(self.refusal(
+                file,
+                &format!("malformed `{name}` initializer (expected `&[ … ];`)"),
+                init,
+            ));
+        };
+        self.parse_body(body, file)
+    }
+
+    /// Tokenize the raw array body (everything between `= &[` and `];`) into rows. Strict tuple
+    /// grammar: `( "<a>" , "<b>" [, "<c>"] )` with an optional trailing comma, tuples separated by
+    /// commas, each row's length one of `arities`. Comments never reach here (own-line ones
+    /// hard-error in the caller; a trailing `// …` after a row surfaces as an unexpected token
+    /// below). Any deviation — a wrong-length tuple, an unterminated literal, a stray token — is a
+    /// hard error (a mangled sidecar must be loud).
+    fn parse_body(&self, body: &str, file: &str) -> Result<Vec<Vec<String>>, String> {
+        let name = self.const_name;
+        let chars: Vec<char> = body.chars().collect();
+        let mut i = 0;
+        let mut rows = Vec::new();
         loop {
             i = skip_trivia(&chars, i);
-            if i < chars.len() && chars[i] == ')' {
-                i += 1; // consume ')'
+            if i >= chars.len() {
                 break;
             }
-            if i >= chars.len() || chars[i] != '"' {
-                return Err(hard_error(
+            if chars[i] != '(' {
+                return Err(self.refusal(
                     file,
-                    "malformed BORROWED_SHAPES row (expected a string literal)",
+                    &format!("unexpected token in {name} (expected a `(...)` row)"),
                     &tail_snippet(&chars, i),
                 ));
             }
-            let (s, next) = parse_string_literal(&chars, i, file)?;
-            fields.push(s);
-            i = next;
+            i += 1; // consume '('
+            let mut fields = Vec::new();
+            loop {
+                i = skip_trivia(&chars, i);
+                if i < chars.len() && chars[i] == ')' {
+                    i += 1; // consume ')'
+                    break;
+                }
+                if i >= chars.len() || chars[i] != '"' {
+                    return Err(self.refusal(
+                        file,
+                        &format!("malformed {name} row (expected a string literal)"),
+                        &tail_snippet(&chars, i),
+                    ));
+                }
+                let (s, next) = read_str_lenient(&chars, i).ok_or_else(|| {
+                    self.refusal(file, &format!("unterminated string literal in {name}"), "")
+                })?;
+                fields.push(s);
+                i = skip_trivia(&chars, next);
+                if i < chars.len() && chars[i] == ',' {
+                    i += 1; // field separator (or trailing comma before ')')
+                } else if i < chars.len() && chars[i] == ')' {
+                    i += 1; // consume ')'
+                    break;
+                } else {
+                    return Err(self.refusal(
+                        file,
+                        &format!("malformed {name} row (expected `,` or `)`)"),
+                        &tail_snippet(&chars, i),
+                    ));
+                }
+            }
+            if !self.arities.contains(&fields.len()) {
+                return Err(self.refusal(file, self.arity_refusal, &format!("{fields:?}")));
+            }
+            rows.push(fields);
+            // Optional comma between rows.
             i = skip_trivia(&chars, i);
             if i < chars.len() && chars[i] == ',' {
-                i += 1; // field separator (or trailing comma before ')')
-            } else if i < chars.len() && chars[i] == ')' {
-                i += 1; // consume ')'
-                break;
-            } else {
-                return Err(hard_error(
-                    file,
-                    "malformed BORROWED_SHAPES row (expected `,` or `)`)",
-                    &tail_snippet(&chars, i),
-                ));
+                i += 1;
             }
         }
-        if fields.len() != 3 {
-            return Err(hard_error(
-                file,
-                "malformed BORROWED_SHAPES row (a row must be exactly three string literals: dep, name, shape)",
-                &format!("{fields:?}"),
-            ));
-        }
-        entries.push(WrapperRequestEntry {
-            dep: fields[0].clone(),
-            name: fields[1].clone(),
-            shape: fields[2].clone(),
-        });
-        // Optional comma between rows.
-        i = skip_trivia(&chars, i);
-        if i < chars.len() && chars[i] == ',' {
-            i += 1;
-        }
+        Ok(rows)
     }
-    Ok(entries)
 }
 
 /// Advance past whitespace only. Deliberately does NOT skip `//` comments: the emitter writes none
-/// inside the const body (the column legend lives in the banner), so a comment reaching the
+/// inside a const body (the column legends live in the banners), so a comment reaching the
 /// tokenizer is stray content that must surface as an unexpected-token hard error.
 fn skip_trivia(chars: &[char], mut i: usize) -> usize {
     while i < chars.len() && chars[i].is_whitespace() {
@@ -365,38 +432,10 @@ fn skip_trivia(chars: &[char], mut i: usize) -> usize {
     i
 }
 
-/// Parse a Rust string literal starting at `chars[start]` (which must be `"`), returning the
-/// unescaped contents and the index just past the closing quote. The strict form of
-/// [`read_str_lenient`], with the same escape handling: an unterminated literal is a hard error.
-fn parse_string_literal(
-    chars: &[char],
-    start: usize,
-    file: &str,
-) -> Result<(String, usize), String> {
-    debug_assert_eq!(chars[start], '"');
-    read_str_lenient(chars, start)
-        .ok_or_else(|| hard_error(file, "unterminated string literal in BORROWED_SHAPES", ""))
-}
-
 /// A short forward snippet of the remaining input, for error messages.
 fn tail_snippet(chars: &[char], i: usize) -> String {
     let end = (i + 40).min(chars.len());
     chars[i..end].iter().collect::<String>()
-}
-
-/// The W1 grammar's refusal funnel: builds the diagnostic, which every call site returns as the
-/// `Err` of its own `Result`. Not diverging — a refusal here travels the generator's error channel
-/// so `--config`'s mid-run wrapper can name the crates it had already regenerated before it.
-fn hard_error(file: &str, what: &str, offending: &str) -> String {
-    if offending.is_empty() {
-        return format!(
-            "--wrapper-requests {file}: {what}. The sidecar must be an unmodified, tool-generated `borrowed_collections.rs`."
-        );
-    }
-    format!(
-        "--wrapper-requests {file}: {what}: {offending:?}. The sidecar must be an unmodified, \
-         tool-generated `borrowed_collections.rs`."
-    )
 }
 
 // ===== pre-finalize seeding of `used_as_key` from `--wrapper-requests` map shapes ============
@@ -735,7 +774,7 @@ fn parse_key_flavor(token: &str, file: &str) -> Result<DemandSet, String> {
             "hash" => demand.hash = true,
             "ord" => demand.ord = true,
             _ => {
-                return Err(key_hard_error(
+                return Err(KEY_TYPES_TABLE.refusal(
                     file,
                     "unknown key-demand flavor in BORROWED_KEY_TYPES row",
                     token,
@@ -744,7 +783,7 @@ fn parse_key_flavor(token: &str, file: &str) -> Result<DemandSet, String> {
         }
     }
     if demand == DemandSet::default() {
-        return Err(key_hard_error(
+        return Err(KEY_TYPES_TABLE.refusal(
             file,
             "empty key-demand flavor in BORROWED_KEY_TYPES row",
             token,
@@ -804,7 +843,7 @@ pub fn parse_key_types_sidecar(contents: &str, file: &str) -> Result<Vec<KeyType
         }
         if in_const {
             if trimmed.starts_with("//") {
-                return Err(key_hard_error(
+                return Err(KEY_TYPES_TABLE.refusal(
                     file,
                     "unexpected comment inside `BORROWED_KEY_TYPES`",
                     trimmed,
@@ -813,7 +852,10 @@ pub fn parse_key_types_sidecar(contents: &str, file: &str) -> Result<Vec<KeyType
             const_item.push_str(line);
             const_item.push('\n');
             if trimmed.ends_with("];") {
-                entries.extend(parse_key_const_item(&const_item, file)?);
+                entries.extend(key_entries(
+                    KEY_TYPES_TABLE.parse_item(&const_item, file)?,
+                    file,
+                )?);
                 in_const = false;
                 const_item.clear();
             }
@@ -824,7 +866,7 @@ pub fn parse_key_types_sidecar(contents: &str, file: &str) -> Result<Vec<KeyType
             continue;
         }
         if trimmed.starts_with("//") {
-            return Err(key_hard_error(file, "unexpected comment", trimmed));
+            return Err(KEY_TYPES_TABLE.refusal(file, "unexpected comment", trimmed));
         }
         if trimmed == "#[allow(dead_code)]" || trimmed == "#[allow(unused_imports)]" {
             continue;
@@ -846,17 +888,20 @@ pub fn parse_key_types_sidecar(contents: &str, file: &str) -> Result<Vec<KeyType
             const_item.push_str(line);
             const_item.push('\n');
             if trimmed.ends_with("];") {
-                entries.extend(parse_key_const_item(&const_item, file)?);
+                entries.extend(key_entries(
+                    KEY_TYPES_TABLE.parse_item(&const_item, file)?,
+                    file,
+                )?);
                 const_item.clear();
             } else {
                 in_const = true;
             }
             continue;
         }
-        return Err(key_hard_error(file, "unexpected item", trimmed));
+        return Err(KEY_TYPES_TABLE.refusal(file, "unexpected item", trimmed));
     }
     if in_const {
-        return Err(key_hard_error(
+        return Err(KEY_TYPES_TABLE.refusal(
             file,
             "unterminated `BORROWED_KEY_TYPES` table (missing `];`)",
             "",
@@ -865,134 +910,23 @@ pub fn parse_key_types_sidecar(contents: &str, file: &str) -> Result<Vec<KeyType
     Ok(entries)
 }
 
-/// Parse the complete `BORROWED_KEY_TYPES` const item into entries. The header up to the initializer
-/// `=` must be exactly the frozen declaration (whitespace-normalized — rustfmt may wrap the
-/// initializer); the initializer must be a `&[ … ]` array of `("<dep>", "<ident>")` pairs.
-fn parse_key_const_item(item: &str, file: &str) -> Result<Vec<KeyTypeEntry>, String> {
-    let Some(eq) = item.find('=') else {
-        return Err(key_hard_error(
-            file,
-            "malformed `BORROWED_KEY_TYPES` item (missing `=`)",
-            item,
-        ));
-    };
-    let header: String = item[..eq].split_whitespace().collect::<Vec<_>>().join(" ");
-    // Two forms are accepted: the frozen two-column `&[(&str, &str)]` (all rows bare — byte-identical to
-    // pre-flavor sidecars) and the three-column `&[(&str, &str, &str)]` (rows carry a flavor token). The
-    // body parser tolerates 2- or 3-tuple rows regardless, so an old two-column-typed table with only
-    // bare rows and a new three-column-typed table both round-trip.
-    if header != "pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)]"
-        && header != "pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str, &str)]"
-    {
-        return Err(key_hard_error(
-            file,
-            "unexpected `BORROWED_KEY_TYPES` declaration (the type must be `&[(&str, &str)]` or `&[(&str, &str, &str)]`)",
-            &header,
-        ));
-    }
-    let init = item[eq + 1..].trim();
-    let Some(body) = init
-        .strip_prefix("&[")
-        .and_then(|rest| rest.trim_end().strip_suffix("];"))
-    else {
-        return Err(key_hard_error(
-            file,
-            "malformed `BORROWED_KEY_TYPES` initializer (expected `&[ … ];`)",
-            init,
-        ));
-    };
-    parse_key_const_body(body, file)
-}
-
-/// Tokenize the `BORROWED_KEY_TYPES` array body into `("<dep>", "<ident>")` pairs. Strict tuple
-/// grammar: exactly two string literals per `(...)` row, optional trailing commas. Any deviation is a
-/// hard error (a mangled sidecar must be loud).
-fn parse_key_const_body(body: &str, file: &str) -> Result<Vec<KeyTypeEntry>, String> {
-    let chars: Vec<char> = body.chars().collect();
-    let mut i = 0;
-    let mut entries = Vec::new();
-    loop {
-        i = skip_trivia(&chars, i);
-        if i >= chars.len() {
-            break;
-        }
-        if chars[i] != '(' {
-            return Err(key_hard_error(
-                file,
-                "unexpected token in BORROWED_KEY_TYPES (expected a `(...)` row)",
-                &tail_snippet(&chars, i),
-            ));
-        }
-        i += 1;
-        let mut fields = Vec::new();
-        loop {
-            i = skip_trivia(&chars, i);
-            if i < chars.len() && chars[i] == ')' {
-                i += 1;
-                break;
-            }
-            if i >= chars.len() || chars[i] != '"' {
-                return Err(key_hard_error(
-                    file,
-                    "malformed BORROWED_KEY_TYPES row (expected a string literal)",
-                    &tail_snippet(&chars, i),
-                ));
-            }
-            let (s, next) = parse_string_literal(&chars, i, file)?;
-            fields.push(s);
-            i = next;
-            i = skip_trivia(&chars, i);
-            if i < chars.len() && chars[i] == ',' {
-                i += 1;
-            } else if i < chars.len() && chars[i] == ')' {
-                i += 1;
-                break;
+/// Map `KEY_TYPES_TABLE` rows to entries. The optional 3rd column is the comparison/hash flavor; a
+/// two-column (old) row is `bare`.
+fn key_entries(rows: Vec<Vec<String>>, file: &str) -> Result<Vec<KeyTypeEntry>, String> {
+    rows.into_iter()
+        .map(|fields| {
+            let demand = if fields.len() == 3 {
+                parse_key_flavor(&fields[2], file)?
             } else {
-                return Err(key_hard_error(
-                    file,
-                    "malformed BORROWED_KEY_TYPES row (expected `,` or `)`)",
-                    &tail_snippet(&chars, i),
-                ));
-            }
-        }
-        if fields.len() != 2 && fields.len() != 3 {
-            return Err(key_hard_error(
-                file,
-                "malformed BORROWED_KEY_TYPES row (a row must be two string literals — dep, ident — or three, adding a flavor)",
-                &format!("{fields:?}"),
-            ));
-        }
-        // The optional 3rd column is the comparison/hash flavor; a two-column (old) row is `bare`.
-        let demand = if fields.len() == 3 {
-            parse_key_flavor(&fields[2], file)?
-        } else {
-            DemandSet::BARE
-        };
-        entries.push(KeyTypeEntry {
-            dep: fields[0].clone(),
-            ident: fields[1].clone(),
-            demand,
-        });
-        i = skip_trivia(&chars, i);
-        if i < chars.len() && chars[i] == ',' {
-            i += 1;
-        }
-    }
-    Ok(entries)
-}
-
-/// The key-channel twin of [`hard_error`], and non-diverging for the same reason: a sidecar refusal
-/// belongs on the generator's error channel, where `--config`'s mid-run wrapper can see it.
-fn key_hard_error(file: &str, what: &str, offending: &str) -> String {
-    if offending.is_empty() {
-        return format!(
-            "--key-requests {file}: {what}. The sidecar must be an unmodified, tool-generated `borrowed_key_types.rs`."
-        );
-    }
-    format!(
-        "--key-requests {file}: {what}: {offending:?}. The sidecar must be an unmodified, \
-         tool-generated `borrowed_key_types.rs`."
-    )
+                DemandSet::BARE
+            };
+            Ok(KeyTypeEntry {
+                dep: fields[0].clone(),
+                ident: fields[1].clone(),
+                demand,
+            })
+        })
+        .collect()
 }
 
 /// Read one `--wrapper-requests` / `--key-requests` sidecar, or `None` when the consumer has not
@@ -1792,6 +1726,25 @@ pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str, &str)] = &[
         assert_refusal(
             parse_key_types_sidecar(bad, "borrowed_key_types.rs"),
             "unknown key-demand flavor",
+        );
+    }
+
+    /// An unterminated literal in the KEY table is refused in the key channel's own words: flag,
+    /// table and file kind. (The two tables share one reader, so a refusal cannot borrow the other
+    /// sidecar's wording.)
+    #[test]
+    fn key_types_rejects_unterminated_literal() {
+        let bad = r#"#[allow(dead_code)]
+pub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] = &[
+    ("wr_dep", "idx_foo),
+];
+"#;
+        let err = parse_key_types_sidecar(bad, "borrowed_key_types.rs").unwrap_err();
+        assert_eq!(
+            err,
+            "--key-requests borrowed_key_types.rs: unterminated string literal in \
+             BORROWED_KEY_TYPES. The sidecar must be an unmodified, tool-generated \
+             `borrowed_key_types.rs`."
         );
     }
 
