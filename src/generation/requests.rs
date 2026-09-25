@@ -584,10 +584,259 @@ fn primitive_from_cddl_name(name: &str) -> Option<Primitive> {
     })
 }
 
+/// Whether `c` can appear in a shape-column leaf token (a CDDL ident or a prelude/sized-int name).
+/// The one owner of the leaf-token alphabet, shared by the strict parser's leaf arm and
+/// `requested_shape_leaf_resolutions`' diagnostic walk so the two cannot tokenize a shape
+/// differently.
+fn is_shape_ident_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_' || c == '-'
+}
+
+/// The sidecar row a requested shape came from. Carried by [`ShapeParser`] only to make its
+/// refusals actionable: every message names the consumer, the sidecar path, the whole shape, and
+/// the listed wrapper name.
+struct ShapeRow<'a> {
+    consumer: &'a str,
+    path: &'a str,
+    shape: &'a str,
+    listed_name: &'a str,
+}
+
+/// Cursor over one shape column in the W1 shape-column grammar that [`render_wrapper_shape`]
+/// emits. The dep's IR is passed to [`Self::fragment`] rather than stored, so the parser owns only
+/// the input and its error context.
+struct ShapeParser<'a> {
+    chars: Vec<char>,
+    pos: usize,
+    row: ShapeRow<'a>,
+}
+
+impl<'a> ShapeParser<'a> {
+    fn new(row: ShapeRow<'a>) -> Self {
+        Self {
+            chars: row.shape.chars().collect(),
+            pos: 0,
+            row,
+        }
+    }
+
+    fn skip_ws(&mut self) {
+        while self.pos < self.chars.len() && self.chars[self.pos].is_whitespace() {
+            self.pos += 1;
+        }
+    }
+
+    /// Consume `s` if the input continues with it.
+    fn eat(&mut self, s: &str) -> bool {
+        let want: Vec<char> = s.chars().collect();
+        if self.chars[self.pos..].starts_with(&want) {
+            self.pos += want.len();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// The `malformed shape` refusal, naming what the parser expected at this point.
+    fn malformed(&self, what: &str) -> String {
+        let ShapeRow {
+            consumer,
+            path,
+            shape,
+            listed_name,
+        } = self.row;
+        format!(
+            "--wrapper-requests {consumer} ({path}): malformed shape {shape:?} (wrapper \
+             {listed_name:?}): {what}."
+        )
+    }
+
+    /// The occurrence marker after a collection's opening bracket; `expected` is the `malformed`
+    /// clause when there is none.
+    fn occurrence(&mut self, expected: &str) -> Result<(Option<i128>, Option<i128>), String> {
+        read_occurrence(&self.chars, &mut self.pos).ok_or_else(|| self.malformed(expected))
+    }
+
+    /// Read a leaf token (possibly empty) in the [`is_shape_ident_char`] alphabet.
+    fn leaf_token(&mut self) -> String {
+        let start = self.pos;
+        while self.pos < self.chars.len() && is_shape_ident_char(self.chars[self.pos]) {
+            self.pos += 1;
+        }
+        self.chars[start..self.pos].iter().collect()
+    }
+
+    /// Parse the whole shape column: one fragment, then optionally one top-level policy marker, then
+    /// end of input.
+    fn parse(mut self, types: &IntermediateTypes) -> Result<RustType, String> {
+        let mut rt = self.fragment(types, 0)?;
+        self.skip_ws();
+        let ShapeRow {
+            consumer,
+            path,
+            shape,
+            listed_name,
+        } = self.row;
+        // Collection fragments consume their own trailing duplicate-policy marker, including when
+        // they are nested. That keeps the parser aligned with the recursive renderer: a nested
+        // preserve map must rebuild its PairMap identity before its parent structural name is
+        // reconstructed.
+        let rest: String = self.chars[self.pos..].iter().collect();
+        if rest == REJECT_MARKER {
+            if !matches!(rt.conceptual_type, ConceptualRustType::Array(_)) {
+                return Err(format!(
+                    "--wrapper-requests {consumer} ({path}): `@duplicates reject` on the non-array shape \
+                     {shape:?} (wrapper {listed_name:?}) — the reject policy only applies to set/array \
+                     collections."
+                ));
+            }
+            rt.config.duplicates = Some(crate::comment_ast::DuplicatesPolicy::Reject);
+            self.pos = self.chars.len();
+        } else if rest == PRESERVE_MARKER {
+            if !matches!(rt.conceptual_type, ConceptualRustType::Map(_, _)) {
+                return Err(format!(
+                    "--wrapper-requests {consumer} ({path}): `@duplicates preserve` on the non-map shape \
+                     {shape:?} (wrapper {listed_name:?}) — the preserve pair-map twin only applies to \
+                     table collections."
+                ));
+            }
+            rt.config.duplicates = Some(crate::comment_ast::DuplicatesPolicy::Preserve);
+            self.pos = self.chars.len();
+        }
+        if self.pos != self.chars.len() {
+            return Err(format!(
+                "--wrapper-requests {consumer} ({path}): trailing content after the shape {shape:?} \
+                 (wrapper {listed_name:?})."
+            ));
+        }
+        Ok(rt)
+    }
+
+    fn fragment(&mut self, types: &IntermediateTypes, depth: usize) -> Result<RustType, String> {
+        if depth > MAX_SHAPE_DEPTH {
+            let ShapeRow {
+                consumer,
+                path,
+                shape,
+                listed_name,
+            } = self.row;
+            return Err(format!(
+                "--wrapper-requests {consumer} ({path}): the requested wrapper {listed_name:?} \
+                 (shape {shape:?}) nests collections deeper than the supported limit of \
+                 {MAX_SHAPE_DEPTH}. Real wrapper shapes nest only a few levels; this is almost \
+                 certainly a malformed hand-edited sidecar."
+            ));
+        }
+        self.skip_ws();
+        if self.pos >= self.chars.len() {
+            return Err(self.malformed("unexpected end of shape"));
+        }
+        if self.eat("[") {
+            self.skip_ws();
+            let occ = self
+                .occurrence("expected an array occurrence (`*`, `+`, `?`, `*N`, `N*`, or `N*M`)")?;
+            self.skip_ws();
+            let inner = self.fragment(types, depth + 1)?;
+            self.skip_ws();
+            if !self.eat("]") {
+                return Err(self.malformed("expected `]`"));
+            }
+            let mut rt = RustType::new(ConceptualRustType::Array(Box::new(inner))).with_bounds(occ);
+            self.skip_ws();
+            if self.eat(REJECT_MARKER) {
+                rt.config.duplicates = Some(crate::comment_ast::DuplicatesPolicy::Reject);
+            }
+            return Ok(rt);
+        }
+        if self.eat("{") {
+            self.skip_ws();
+            let occ = self
+                .occurrence("expected a table occurrence (`*`, `+`, `?`, `*N`, `N*`, or `N*M`)")?;
+            self.skip_ws();
+            let key = self.fragment(types, depth + 1)?;
+            self.skip_ws();
+            if !self.eat("=>") {
+                return Err(self.malformed("expected `=>`"));
+            }
+            self.skip_ws();
+            let value = self.fragment(types, depth + 1)?;
+            self.skip_ws();
+            if !self.eat("}") {
+                return Err(self.malformed("expected `}`"));
+            }
+            let mut rt = RustType::new(ConceptualRustType::Map(Box::new(key), Box::new(value)));
+            rt = match occ {
+                (None, None) => rt,
+                bounds => rt.with_bounds(bounds),
+            };
+            self.skip_ws();
+            if self.eat(PRESERVE_MARKER) {
+                rt.config.duplicates = Some(crate::comment_ast::DuplicatesPolicy::Preserve);
+            }
+            return Ok(rt);
+        }
+        // A named or primitive leaf: read the ident token.
+        let token = self.leaf_token();
+        if token.is_empty() {
+            return Err(self.malformed("expected an element type name"));
+        }
+        self.leaf(types, token)
+    }
+
+    /// Resolve one leaf token against the dep's IR.
+    fn leaf(&self, types: &IntermediateTypes, token: String) -> Result<RustType, String> {
+        let ShapeRow {
+            consumer,
+            path,
+            shape,
+            listed_name,
+        } = self.row;
+        if let Some(p) = primitive_from_cddl_name(&token) {
+            return Ok(RustType::new(ConceptualRustType::Primitive(p)));
+        }
+        // A reserved CDDL keyword (`biguint`, `bigint`, …) or reserved Rust type name
+        // (`option` → `Option`) as a leaf token would trip `RustIdent::new`'s internal asserts
+        // — an internal panic reachable only from a hand-edited sidecar (a real consumer never
+        // emits these). Pre-check through the reservation rule's one owner
+        // (`RustIdent::reserved_reason`, the same predicate `new` asserts on) so external
+        // input surfaces the feature's own hard error instead of the assert.
+        if RustIdent::reserved_reason(&token).is_some() {
+            return Err(format!(
+                "--wrapper-requests {consumer} ({path}): the requested wrapper {listed_name:?} \
+                 (shape {shape:?}) uses the reserved identifier {token:?} as a wrapper element; \
+                 reserved CDDL keywords and reserved Rust type names cannot be wrapper elements."
+            ));
+        }
+        let ident = RustIdent::new(CDDLIdent::new(token.clone()));
+        if !dep_owns_element(types, &ident) {
+            return Err(format!(
+                "--wrapper-requests {consumer} ({path}): the requested wrapper {listed_name:?} \
+                 (shape {shape:?}) references the element type {token:?}, which this dep does not \
+                 own. The consumer's extern stub for this dep and the dep's own spec disagree — \
+                 the request cannot be satisfied."
+            ));
+        }
+        // Resolve through the pipeline's one alias-substitution rule (`resolve_alias`, shared
+        // with `new_type` so this path cannot drift from pipeline resolution): a leaf left as
+        // a bare `Rust(ident)` naming an alias (`stake_credential = credential`, `policy_id =
+        // script_hash`) panics downstream lookups (`is_enum`, exposability, member naming)
+        // that assume `Rust(ident)` names a registered struct. The `Alias` wrapper the rule
+        // keeps for rust-alias-generating rules preserves the requested ident for structural
+        // naming (the consumer derived `StakeCredentialList` from the alias name) while
+        // resolving storage/exposability through the target, matching what the dep's own
+        // generation of the same CDDL shape would produce. `dep_owns_element` already required
+        // a spec-registered ident, so `new_type`'s unregistered-reserved prelude fallback (the
+        // one mutable part) cannot be needed here.
+        Ok(types
+            .resolve_alias(&AliasIdent::Rust(ident.clone()))
+            .unwrap_or_else(|| RustType::new(ConceptualRustType::Rust(ident))))
+    }
+}
+
 /// Reconstruct a requested wrapper's `RustType` from its canonical shape column, resolving each
 /// named leaf against the DEP's own IR after the same normalization (`RustIdent::new`, which
 /// camel-cases and folds `-`/`_`) type-name derivation uses. A leaf the dep does not own is a hard
-/// error (criterion 8 #1). `consumer`/`path`/`listed_name` are threaded only for actionable errors.
+/// error (criterion 8 #1). `consumer`/`path`/`listed_name` are used only for actionable errors.
 fn parse_requested_shape(
     types: &IntermediateTypes,
     shape: &str,
@@ -595,231 +844,19 @@ fn parse_requested_shape(
     path: &str,
     listed_name: &str,
 ) -> Result<RustType, String> {
-    let chars: Vec<char> = shape.chars().collect();
-    let mut pos = 0;
-    let mut rt = parse_shape_fragment(
-        types,
-        &chars,
-        &mut pos,
+    ShapeParser::new(ShapeRow {
         consumer,
         path,
         shape,
         listed_name,
-        0,
-    )?;
-    while pos < chars.len() && chars[pos].is_whitespace() {
-        pos += 1;
-    }
-    // Collection fragments consume their own trailing duplicate-policy marker, including when they
-    // are nested. That keeps the parser aligned with the recursive renderer: a nested preserve map
-    // must rebuild its PairMap identity before its parent structural name is reconstructed.
-    let rest: String = chars[pos..].iter().collect();
-    if rest == REJECT_MARKER {
-        if !matches!(rt.conceptual_type, ConceptualRustType::Array(_)) {
-            return Err(format!(
-                "--wrapper-requests {consumer} ({path}): `@duplicates reject` on the non-array shape \
-                 {shape:?} (wrapper {listed_name:?}) — the reject policy only applies to set/array \
-                 collections."
-            ));
-        }
-        rt.config.duplicates = Some(crate::comment_ast::DuplicatesPolicy::Reject);
-        pos = chars.len();
-    } else if rest == PRESERVE_MARKER {
-        if !matches!(rt.conceptual_type, ConceptualRustType::Map(_, _)) {
-            return Err(format!(
-                "--wrapper-requests {consumer} ({path}): `@duplicates preserve` on the non-map shape \
-                 {shape:?} (wrapper {listed_name:?}) — the preserve pair-map twin only applies to \
-                 table collections."
-            ));
-        }
-        rt.config.duplicates = Some(crate::comment_ast::DuplicatesPolicy::Preserve);
-        pos = chars.len();
-    }
-    if pos != chars.len() {
-        return Err(format!(
-            "--wrapper-requests {consumer} ({path}): trailing content after the shape {shape:?} \
-             (wrapper {listed_name:?})."
-        ));
-    }
-    Ok(rt)
+    })
+    .parse(types)
 }
 
-/// Depth cap for `parse_shape_fragment`'s recursion. Real wrapper shapes nest 2–3 deep; 32 is a
+/// Depth cap for [`ShapeParser::fragment`]'s recursion. Real wrapper shapes nest 2–3 deep; 32 is a
 /// generous ceiling that turns a pathological hand-edited sidecar (thousands of `[* [* …]]` levels)
 /// into an actionable hard error instead of a stack-overflow abort.
 const MAX_SHAPE_DEPTH: usize = 32;
-
-#[allow(clippy::too_many_arguments)]
-fn parse_shape_fragment(
-    types: &IntermediateTypes,
-    chars: &[char],
-    pos: &mut usize,
-    consumer: &str,
-    path: &str,
-    shape: &str,
-    listed_name: &str,
-    depth: usize,
-) -> Result<RustType, String> {
-    let skip_ws = |pos: &mut usize| {
-        while *pos < chars.len() && chars[*pos].is_whitespace() {
-            *pos += 1;
-        }
-    };
-    let bad = |what: &str| -> String {
-        format!(
-            "--wrapper-requests {consumer} ({path}): malformed shape {shape:?} (wrapper \
-             {listed_name:?}): {what}."
-        )
-    };
-    if depth > MAX_SHAPE_DEPTH {
-        return Err(format!(
-            "--wrapper-requests {consumer} ({path}): the requested wrapper {listed_name:?} \
-             (shape {shape:?}) nests collections deeper than the supported limit of \
-             {MAX_SHAPE_DEPTH}. Real wrapper shapes nest only a few levels; this is almost \
-             certainly a malformed hand-edited sidecar."
-        ));
-    }
-    skip_ws(pos);
-    if *pos >= chars.len() {
-        return Err(bad("unexpected end of shape"));
-    }
-    match chars[*pos] {
-        '[' => {
-            *pos += 1;
-            skip_ws(pos);
-            let occ = read_occurrence(chars, pos).ok_or_else(|| {
-                bad("expected an array occurrence (`*`, `+`, `?`, `*N`, `N*`, or `N*M`)")
-            })?;
-            skip_ws(pos);
-            let inner = parse_shape_fragment(
-                types,
-                chars,
-                pos,
-                consumer,
-                path,
-                shape,
-                listed_name,
-                depth + 1,
-            )?;
-            skip_ws(pos);
-            if *pos >= chars.len() || chars[*pos] != ']' {
-                return Err(bad("expected `]`"));
-            }
-            *pos += 1;
-            let mut rt = RustType::new(ConceptualRustType::Array(Box::new(inner))).with_bounds(occ);
-            skip_ws(pos);
-            let marker: Vec<char> = REJECT_MARKER.chars().collect();
-            if chars[*pos..].starts_with(&marker) {
-                *pos += marker.len();
-                rt.config.duplicates = Some(crate::comment_ast::DuplicatesPolicy::Reject);
-            }
-            Ok(rt)
-        }
-        '{' => {
-            *pos += 1;
-            skip_ws(pos);
-            let occ = read_occurrence(chars, pos).ok_or_else(|| {
-                bad("expected a table occurrence (`*`, `+`, `?`, `*N`, `N*`, or `N*M`)")
-            })?;
-            skip_ws(pos);
-            let key = parse_shape_fragment(
-                types,
-                chars,
-                pos,
-                consumer,
-                path,
-                shape,
-                listed_name,
-                depth + 1,
-            )?;
-            skip_ws(pos);
-            if !(chars.get(*pos) == Some(&'=') && chars.get(*pos + 1) == Some(&'>')) {
-                return Err(bad("expected `=>`"));
-            }
-            *pos += 2;
-            skip_ws(pos);
-            let value = parse_shape_fragment(
-                types,
-                chars,
-                pos,
-                consumer,
-                path,
-                shape,
-                listed_name,
-                depth + 1,
-            )?;
-            skip_ws(pos);
-            if *pos >= chars.len() || chars[*pos] != '}' {
-                return Err(bad("expected `}`"));
-            }
-            *pos += 1;
-            let mut rt = RustType::new(ConceptualRustType::Map(Box::new(key), Box::new(value)));
-            rt = match occ {
-                (None, None) => rt,
-                bounds => rt.with_bounds(bounds),
-            };
-            skip_ws(pos);
-            let marker: Vec<char> = PRESERVE_MARKER.chars().collect();
-            if chars[*pos..].starts_with(&marker) {
-                *pos += marker.len();
-                rt.config.duplicates = Some(crate::comment_ast::DuplicatesPolicy::Preserve);
-            }
-            Ok(rt)
-        }
-        _ => {
-            // A named or primitive leaf: read the ident token.
-            let start = *pos;
-            while *pos < chars.len()
-                && (chars[*pos].is_ascii_alphanumeric() || chars[*pos] == '_' || chars[*pos] == '-')
-            {
-                *pos += 1;
-            }
-            if *pos == start {
-                return Err(bad("expected an element type name"));
-            }
-            let token: String = chars[start..*pos].iter().collect();
-            if let Some(p) = primitive_from_cddl_name(&token) {
-                return Ok(RustType::new(ConceptualRustType::Primitive(p)));
-            }
-            // A reserved CDDL keyword (`biguint`, `bigint`, …) or reserved Rust type name
-            // (`option` → `Option`) as a leaf token would trip `RustIdent::new`'s internal asserts
-            // — an internal panic reachable only from a hand-edited sidecar (a real consumer never
-            // emits these). Pre-check through the reservation rule's one owner
-            // (`RustIdent::reserved_reason`, the same predicate `new` asserts on) so external
-            // input surfaces the feature's own hard error instead of the assert.
-            if RustIdent::reserved_reason(&token).is_some() {
-                return Err(format!(
-                    "--wrapper-requests {consumer} ({path}): the requested wrapper {listed_name:?} \
-                     (shape {shape:?}) uses the reserved identifier {token:?} as a wrapper element; \
-                     reserved CDDL keywords and reserved Rust type names cannot be wrapper elements."
-                ));
-            }
-            let ident = RustIdent::new(CDDLIdent::new(token.clone()));
-            if !dep_owns_element(types, &ident) {
-                return Err(format!(
-                    "--wrapper-requests {consumer} ({path}): the requested wrapper {listed_name:?} \
-                     (shape {shape:?}) references the element type {token:?}, which this dep does not \
-                     own. The consumer's extern stub for this dep and the dep's own spec disagree — \
-                     the request cannot be satisfied."
-                ));
-            }
-            // Resolve through the pipeline's one alias-substitution rule (`resolve_alias`, shared
-            // with `new_type` so this path cannot drift from pipeline resolution): a leaf left as
-            // a bare `Rust(ident)` naming an alias (`stake_credential = credential`, `policy_id =
-            // script_hash`) panics downstream lookups (`is_enum`, exposability, member naming)
-            // that assume `Rust(ident)` names a registered struct. The `Alias` wrapper the rule
-            // keeps for rust-alias-generating rules preserves the requested ident for structural
-            // naming (the consumer derived `StakeCredentialList` from the alias name) while
-            // resolving storage/exposability through the target, matching what the dep's own
-            // generation of the same CDDL shape would produce. `dep_owns_element` already required
-            // a spec-registered ident, so `new_type`'s unregistered-reserved prelude fallback (the
-            // one mutable part) cannot be needed here.
-            Ok(types
-                .resolve_alias(&AliasIdent::Rust(ident.clone()))
-                .unwrap_or_else(|| RustType::new(ConceptualRustType::Rust(ident))))
-        }
-    }
-}
 
 /// Read the occurrence grammar emitted by [`render_wrapper_shape`], advancing past it.
 fn read_occurrence(chars: &[char], pos: &mut usize) -> Option<(Option<i128>, Option<i128>)> {
@@ -962,11 +999,9 @@ fn requested_shape_leaf_resolutions(types: &IntermediateTypes, shape: &str) -> V
     let mut out = Vec::new();
     let mut i = 0;
     while i < chars.len() {
-        if chars[i].is_ascii_alphanumeric() || chars[i] == '_' || chars[i] == '-' {
+        if is_shape_ident_char(chars[i]) {
             let start = i;
-            while i < chars.len()
-                && (chars[i].is_ascii_alphanumeric() || chars[i] == '_' || chars[i] == '-')
-            {
+            while i < chars.len() && is_shape_ident_char(chars[i]) {
                 i += 1;
             }
             let token: String = chars[start..i].iter().collect();
@@ -987,7 +1022,7 @@ fn requested_shape_leaf_resolutions(types: &IntermediateTypes, shape: &str) -> V
 
 /// One leaf's resolution phrase: a registered struct, a kept alias (rust alias preserving the ident),
 /// or a transparent (`@no_alias` / passthrough) substitution to its base. Consults `type_aliases()`,
-/// the same table `parse_shape_fragment`'s leaf arm resolves through.
+/// the same table `ShapeParser::leaf` resolves through.
 fn describe_leaf_resolution(types: &IntermediateTypes, token: &str, ident: &RustIdent) -> String {
     match types.type_aliases().get(&AliasIdent::Rust(ident.clone())) {
         Some(info) => {
