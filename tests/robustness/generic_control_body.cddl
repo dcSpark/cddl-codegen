@@ -1,0 +1,3 @@
+; generic_control_operator_body_rejects_gracefully pins a generic control body.
+x<T> = uint .le 5
+y = x<uint>

@@ -606,6 +606,14 @@ fn reject_ignore_not_applicable(types: &mut IntermediateTypes, name: &RustIdent)
     ));
 }
 
+fn reject_newtype_on_nominal_rule(types: &mut IntermediateTypes, name: &RustIdent, shape: &str) {
+    let source_name = source_rule_name_of(types, name);
+    types.record_rejection(format!(
+        "@newtype on `{source_name}`: {shape} already generates its own named type, so the \
+         directive has no inner type to wrap. Remove @newtype."
+    ));
+}
+
 /// Strip the `Alias` node a TRANSPARENT-ALIAS REGISTRATION cannot store, carrying the stripped
 /// rule's wire-codec metadata across the strip. Returns the stripped base and the rule the metadata
 /// was inherited from (`None` when nothing was inherited).
@@ -4149,10 +4157,16 @@ fn parse_type(
                 }
                 match control {
                     Some(control) => {
-                        assert!(
-                            generic_params.is_none(),
-                            "Generics combined with range specifiers not supported"
-                        );
+                        if generic_params.is_some() {
+                            types.record_rejection(format!(
+                                "generic rule `{type_name}`: a control operator or range (`.size`/`.le`/`.cbor`/`.default`/…) \
+                                 as the whole body of a generic definition is not supported — such a body registers no \
+                                 struct for the generic arguments to substitute into. Name the constrained type as its own \
+                                 non-generic rule and reference it from a supported generic body. \
+                                 {SUPPORTED_GENERIC_DEF_BODIES}"
+                            ));
+                            return;
+                        }
                         match control {
                             ControlOperator::Range(min_max) => {
                                 // when declared top-level we make a new type as the default behavior like before
@@ -9712,10 +9726,13 @@ fn parse_group_choice(
             if rule_metadata.ignore {
                 reject_ignore_not_applicable(types, name);
             }
-            assert!(
-                rule_metadata.newtype.is_none(),
-                "Can only use @newtype on primtives + heterogenious arrays/maps"
-            );
+            if rule_metadata.newtype.is_some() {
+                reject_newtype_on_nominal_rule(
+                    types,
+                    name,
+                    "a record rule (an array or map of members, `[a: uint, b: tstr]`)",
+                );
+            }
             // Heterogenous map or array with defined key/value pairs in the cddl like a struct
             let record = parse_record_from_group_choice(
                 types,
@@ -9783,14 +9800,24 @@ pub fn parse_group(
             ));
             return;
         }
-        assert!(parent_rule_metadata.newtype.is_none());
+        if parent_rule_metadata.newtype.is_some() {
+            reject_newtype_on_nominal_rule(
+                types,
+                name,
+                "a group-choice rule (`[ a // b ]`, `{ a // b }`)",
+            );
+            return;
+        }
         // Generate Enum object that is not exposed to wasm, since wasm can't expose
         // fully featured rust enums via wasm_bindgen
 
         // TODO: We don't support generating SerializeEmbeddedGroup for group choices which is necessary for plain groups
         // It would not be as trivial to add as we do the outer group's array/map tag writing inside the variant match
         // to avoid having to always generate SerializeEmbeddedGroup when not necessary.
-        assert!(!types.is_plain_group(name));
+        assert!(
+            !types.is_plain_group(name),
+            "a plain group with group choices is refused by the plain-group pre-scan before parsing"
+        );
 
         // Handle group with choices by generating an enum then generating a group for every choice
         //

@@ -1,0 +1,2 @@
+; newtype_on_record_or_group_choice_rejects_gracefully pins a nominal record.
+x = [a: uint, b: tstr] ; @newtype

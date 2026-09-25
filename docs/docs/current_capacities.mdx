@@ -161,7 +161,8 @@ sidebar_position: 3
   type (`bar<V> = foo<V, uint>`), a `T / null` optional collapse (`foo<T> = T / null` — spell the
   `/ null` at each use site), group choices (`g<T> = [ (a: T) // (b: uint) ]` — give each arm its
   own named group), and a non-tag-set type choice (`xs<a> = #6.258([+ a]) / [* a]`, whose arms
-  differ by more than the tag). A `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule is likewise rejected
+  differ by more than the tag). A control operator or range as the whole body of a generic definition (`foo<T> = uint .le 5`) is rejected gracefully because it registers no struct for its arguments.
+  A `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule is likewise rejected
   if given generic parameters — a raw-bytes type is its own bytes and has no element type for a
   parameter to name (a `_CDDL_CODEGEN_EXTERN_TYPE_` rule may be generic, since it names an
   arbitrary hand-written type).

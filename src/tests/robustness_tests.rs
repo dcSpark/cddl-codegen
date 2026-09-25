@@ -438,6 +438,52 @@ fn size_operand_shape_rejects_gracefully() {
     }
 }
 
+#[test]
+fn generic_control_operator_body_rejects_gracefully() {
+    for (tag, spec) in [
+        ("comparison", "x<T> = uint .le 5\ny = x<uint>\n"),
+        ("bare", "x<T> = uint .le 5\n"),
+        ("size", "x<T> = bytes .size 2\ny = x<uint>\n"),
+        ("cbor", "x<T> = bytes .cbor T\ny = x<uint>\n"),
+        ("default", "x<T> = uint .default 1\ny = x<uint>\n"),
+    ] {
+        let msg = expect_graceful_rejection(tag, spec, &["--wasm=false"]);
+        assert!(
+            msg.contains("generic rule `X`: a control operator or range"),
+            "{tag}: {msg}"
+        );
+    }
+    expect_generates(
+        "generic_member_control",
+        "x<T> = [a: uint .le 5, b: T]\ny = x<uint>\n",
+        &["--wasm=false"],
+    );
+}
+
+#[test]
+fn newtype_on_record_or_group_choice_rejects_gracefully() {
+    for (tag, spec, needle) in [
+        (
+            "array",
+            "x = [a: uint, b: tstr] ; @newtype\n",
+            "@newtype on `x`: a record rule",
+        ),
+        (
+            "map",
+            "x = { a: uint, b: tstr } ; @newtype\n",
+            "@newtype on `x`: a record rule",
+        ),
+        (
+            "choice",
+            "x = [a: uint // b: tstr] ; @newtype\n",
+            "@newtype on `x`: a group-choice rule",
+        ),
+    ] {
+        let msg = expect_graceful_rejection(tag, spec, &["--wasm=false"]);
+        assert!(msg.contains(needle), "{tag}: {msg}");
+    }
+}
+
 /// Child half of the warning-capture regression. `warn!` writes directly to stderr, so an
 /// in-process assertion cannot observe it without changing the production logging seam.
 #[test]
