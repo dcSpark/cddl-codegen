@@ -64,8 +64,7 @@ function rejectExpectedLabel(evidence: string): string | null {
     evidence.includes("compiles but emitted round-trip tests fail")
   )
     return "ok";
-  // A construct that panics the generator even though it's off-profile (e.g. type2.tag_head_type is
-  // out_of_profile WITH panic evidence) still panics under generate-only.
+  // A construct that panics the generator even though it is off-profile still panics under generate-only.
   if (evidence.includes("panic (exit 101)")) return "PANIC";
   return null;
 }
@@ -176,7 +175,7 @@ for (const a of matrix.annotations.cddl_codegen) {
   else if (a.status === "unsupported" && isPanicEvidence(evidence))
     panic.push({ id: a.id, example: ex });
   // Reject catalog: non-panic unsupported rows (parse-rejected, generates-but-doesn't-compile) plus
-  // every out_of_profile row (which can itself be panic-class, e.g. type2.tag_head_type).
+  // every out_of_profile row (which can itself be panic-class).
   else if (
     (a.status === "unsupported" && !isPanicEvidence(evidence)) ||
     a.status === "out_of_profile"

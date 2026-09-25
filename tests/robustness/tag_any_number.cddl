@@ -1,0 +1,2 @@
+; unsupported_tag_heads_reject_gracefully pins a tag without a number.
+x = #6(uint)

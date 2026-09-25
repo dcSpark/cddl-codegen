@@ -49,6 +49,7 @@ contain.occurrence-target.type2.value.optional_array error (graceful) rejection-
 contain.occurrence-target.type2.value.plus_array error (graceful) rejection-lines=1
 contain.occurrence-target.type2.value.table_map error (graceful) rejection-lines=1
 contain.occurrence-target.type2.value.zero_array error (graceful) rejection-lines=1
+contain.tag-content.type2.tag      error (graceful) rejection-lines=1
 contain.top-level.type2.unwrap     error (graceful) rejection-lines=1
 ctl.and                            error (graceful) rejection-lines=1
 ctl.cborseq                        error (graceful) rejection-lines=1
@@ -64,5 +65,5 @@ type2.choice_from_group            error (graceful) rejection-lines=1
 type2.choice_from_inline_group     error (graceful) rejection-lines=1
 type2.major                        error (graceful) rejection-lines=1
 type2.major7                       error (graceful) rejection-lines=1
-type2.tag_head_type                PANIC
+type2.tag_head_type                error (graceful) rejection-lines=1
 type2.unwrap                       error (graceful) rejection-lines=1

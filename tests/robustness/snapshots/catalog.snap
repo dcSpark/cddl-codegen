@@ -95,6 +95,8 @@ recursive_union_keyed_table_nominal ok
 self_recursive             error (graceful)
 single_bareword_map_field  ok
 table_domain_plain_group   error (graceful)
+tag_any_number             error (graceful)
+tag_nested_rule_body       error (graceful)
 tagged_literal             ok
 tagged_prelude_constant    ok
 undefined_generic          error (graceful)

@@ -517,14 +517,26 @@ pub fn rule_ident(cddl_rule: &cddl::ast::Rule) -> RustIdent {
     }
 }
 
-/// Extract the literal tag number cddl-codegen needs. The cddl AST models a tag as a `TagConstraint`
-/// (RFC 9682 allows type-valued `#6.<type>(...)` heads); cddl-codegen is tag-parametric and needs a
-/// concrete number. Returns None for an absent tag; panics on a non-literal head — unsupported.
-fn tag_literal(tag: &Option<token::TagConstraint<'_>>) -> Option<usize> {
-    tag.as_ref().map(|t| {
-        t.as_literal()
-            .expect("non-literal tag heads (#6.<type>(...)) are not supported") as usize
-    })
+/// The literal tag number of a `#6.N(…)` head, or a rejection for a non-literal head.
+fn tag_number(
+    tag: &Option<token::TagConstraint<'_>>,
+    rule_name: Option<&RustIdent>,
+) -> Result<usize, String> {
+    match tag {
+        Some(token::TagConstraint::Literal(n)) => Ok(*n as usize),
+        Some(token::TagConstraint::Type(raw)) => Err(format!(
+            "{}a type-valued tag number (`#6.<{raw}>(…)`, RFC 9682) is unsupported — the \
+             generated codec writes and checks one literal tag number. Write the tag number as a \
+             literal (`#6.24(…)`).",
+            reject_rule_prefix(rule_name)
+        )),
+        None => Err(format!(
+            "{}a tag with no tag number (`#6(…)`, which matches any tag) is unsupported — the \
+             generated codec writes and checks one literal tag number. Write the tag number \
+             (`#6.24(…)`).",
+            reject_rule_prefix(rule_name)
+        )),
+    }
 }
 
 /// The transparent tag-set idiom: two type-choice arms whose built `RustType`s are equal but for
@@ -4636,10 +4648,21 @@ fn parse_type(
         }
         Type2::TaggedData { tag, t, .. } => {
             if outer_tag.is_some() {
-                panic!("doubly nested tags are not supported");
+                types.record_rejection(format!(
+                    "{}a tag directly inside a rule body's tag (`#6.1(#6.2(…))`) is unsupported — the \
+                     rule's wrapper owns exactly one tag head. Name the inner tagged value as its own rule \
+                     and tag that (`inner = #6.2(uint)`, then `outer = #6.1(inner)`).",
+                    reject_rule_prefix(Some(type_name))
+                ));
+                return;
             }
-            let tag_unwrap =
-                tag_literal(tag).expect("not sure what empty tag here would mean - unsupported");
+            let tag_unwrap = match tag_number(tag, Some(type_name)) {
+                Ok(n) => n,
+                Err(msg) => {
+                    types.record_rejection(msg);
+                    return;
+                }
+            };
             match t.type_choices.len() {
                 1 => {
                     let inner_type = &t.type_choices.first().unwrap();
@@ -4661,7 +4684,7 @@ fn parse_type(
                         parent_visitor,
                         type_name,
                         &t.type_choices,
-                        tag_literal(tag),
+                        Some(tag_unwrap),
                         generic_params,
                         cli,
                     );
@@ -6950,7 +6973,13 @@ fn rust_type_from_type2(
         }
         // unsure if we need to handle the None case - when does this happen?
         Type2::TaggedData { tag, t, .. } => {
-            let tag_unwrap = tag_literal(tag).expect("tagged data without tag not supported");
+            let tag_unwrap = match tag_number(tag, None) {
+                Ok(n) => n,
+                Err(msg) => {
+                    types.record_rejection_once_at(type2, "tag-head", msg);
+                    return ConceptualRustType::Fixed(FixedValue::Null).into();
+                }
+            };
             // Build the plain tagged inline occurrence — NO registry default is applied here. An inline
             // `#6.258([* a])` nominalizes into a shape-derived `Set<Elem>` wrapper (Phase 2.4), but that
             // minting happens at the ONE post-collapse seam (`IntermediateTypes::nominalize_inline_sets`,

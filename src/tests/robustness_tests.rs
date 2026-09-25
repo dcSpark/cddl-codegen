@@ -196,7 +196,7 @@ fn unsupported_construct_panic_catalog() {
 /// (projected by `cddl-matrix/project_robustness.ts`). These are constructs the matrix marks off-limits
 /// that mint NO test elsewhere: non-panic `unsupported` rows (parse-rejected control ops like
 /// `ctl.cborseq`/`ctl.oid`/`ctl.sdnv`; generates-but-doesn't-compile shapes like `prelude.any`) plus the
-/// `out_of_profile` rows (which can themselves be panic-class, e.g. `type2.tag_head_type`). The catalog
+/// `out_of_profile` rows (which can themselves be panic-class). The catalog
 /// is heterogeneous by construction — under this generate-only pass a parse-reject records
 /// `error (graceful)`, a generates-but-doesn't-compile row records `ok`, an out-of-profile panic records
 /// `PANIC` — so the drift assertion is the snapshot itself, not a uniform outcome.
@@ -482,6 +482,51 @@ fn newtype_on_record_or_group_choice_rejects_gracefully() {
         let msg = expect_graceful_rejection(tag, spec, &["--wasm=false"]);
         assert!(msg.contains(needle), "{tag}: {msg}");
     }
+}
+
+#[test]
+fn unsupported_tag_heads_reject_gracefully() {
+    for (tag, spec, needle) in [
+        (
+            "nested",
+            "x = #6.1(#6.2(uint))\n",
+            "a tag directly inside a rule body's tag",
+        ),
+        (
+            "deep",
+            "x = #6.1(#6.2(#6.3(uint)))\n",
+            "a tag directly inside a rule body's tag",
+        ),
+        (
+            "nested_record",
+            "x = #6.1(#6.2([a: uint]))\n",
+            "a tag directly inside a rule body's tag",
+        ),
+        ("any", "x = #6(uint)\n", "a tag with no tag number"),
+        (
+            "any_member",
+            "x = [a: #6(uint)]\n",
+            "a tag with no tag number",
+        ),
+        (
+            "typed",
+            "n = uint\nx = #6.<n>(int)\n",
+            "a type-valued tag number (`#6.<n>(…)`",
+        ),
+        (
+            "typed_member",
+            "n = uint\nx = [a: #6.<n>(int)]\n",
+            "a type-valued tag number (`#6.<n>(…)`",
+        ),
+    ] {
+        let msg = expect_graceful_rejection(tag, spec, &["--wasm=false"]);
+        assert_eq!(msg.matches(needle).count(), 1, "{tag}: {msg}");
+    }
+    expect_generates(
+        "nested_tag_named",
+        "inner = #6.2(uint)\nx = #6.1(inner)\n",
+        &["--wasm=false"],
+    );
 }
 
 /// Child half of the warning-capture regression. `warn!` writes directly to stderr, so an

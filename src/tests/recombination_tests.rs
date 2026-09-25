@@ -1359,14 +1359,11 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // outcome category by tests/robustness/unwrap_member.cddl. The `parse_type` table it mirrors
     // is deliberately a SEPARATE table (its texts are matrix `code_anchor`s), so the two can be
     // reworded independently.
-    (
-        "non-literal tag heads (#6.<type>(...)) are not supported",
-        "type-valued tag head (RFC 9682); pinned by tests/matrix_reject/type2.tag_head_type.cddl (PANIC row in the reject catalog)",
-    ),
-    (
-        "doubly nested tags are not supported",
-        "tag directly inside a tag; pinned by tests/matrix_panic/contain.tag-content.type2.tag.cddl",
-    ),
+    // (retired when tag heads and nested tags became graceful rejections) The former type-valued
+    // tag-head and doubly nested tag classes now record rejections. Their messages are pinned by
+    // `unsupported_tag_heads_reject_gracefully`; outcome categories are pinned by
+    // `type2.tag_head_type` and `contain.tag-content.type2.tag` in the matrix reject catalog.
+    // The `#6(…)` any-tag head shared the tag-head helper and converts with them.
     // (retired when a `.cbor` payload over a bare FIXED value gained default-profile SUPPORT) The
     // `assertion left: ";" right: ""` class was the value-less `Fixed` deserialize branch refusing
     // any caller-supplied before/after text, met by the `.cbor` payload arm's staging expression —

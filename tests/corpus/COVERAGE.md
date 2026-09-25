@@ -237,7 +237,7 @@ makes the ➖ boundary rows visible. Sections are derived: **profile → product
 
 | construct | | description | evidence |
 |-----------|---|-------------|----------|
-| `type2.tag_head_type` | ➖ | Tagged data item, type-valued tag number (#6.<T>) | out of profile — cddl-codegen panic (exit 101) |
+| `type2.tag_head_type` | ➖ | Tagged data item, type-valued tag number (#6.<T>) | out of profile — cddl-codegen rejected at parse/lex (exit 1) |
 
 ## cddl-codegen vendor profile (comment DSL + sentinels — not RFC 8610)
 

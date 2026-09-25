@@ -1060,7 +1060,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "type2.tag_head_type"
 status = "out_of_profile"
-evidence = "probe: cddl-codegen panic (exit 101); ruby=ok rust=ok (out of profile: feature profile RFC9682 is newer than cddl-codegen target RFC8610)"
+evidence = "probe: cddl-codegen rejected at parse/lex (exit 1); ruby=ok rust=ok (out of profile: feature profile RFC9682 is newer than cddl-codegen target RFC8610)"
 
 [[support]]
 id = "type2.typename"
@@ -2297,7 +2297,7 @@ emission.preserve.evidence = "probe (emission=preserve): cddl-codegen exit 0; co
 [[support]]
 id = "contain.tag-content.type2.tag"
 status = "unsupported"
-evidence = "probe (cell): cddl-codegen exit 101; ruby=ok rust=ok"
+evidence = "probe (cell): cddl-codegen exit 1; ruby=ok rust=ok"
 
 [[support]]
 id = "contain.top-level.type2.unwrap"
