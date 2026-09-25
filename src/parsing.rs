@@ -7081,6 +7081,79 @@ fn generic_instance_or_new_type(
     }
 }
 
+/// A heterogeneous inline array or map in a TYPE position (`f: [a: uint, b: tstr]`, `f: { a:
+/// uint }`) is a record, and a record needs a nominal name. The `@name` comment on the composite is
+/// the naming door; it reaches here from the type2's own comment slot or, at member position, from
+/// the entry slot one level further out (`anon_composite_member_name`). With no name the position
+/// is refused once per node (`rejection_kind`, `rejection`) with an inert placeholder, so
+/// `finalize` reports it beside anything else the walk finds. `rewalk_from` is the rejection mark
+/// taken before a classification walk over the same entries (the array arm's `parse_group_type`),
+/// so a diagnostic both walks record is reported once.
+#[allow(clippy::too_many_arguments)]
+fn lower_anonymous_record(
+    types: &mut IntermediateTypes,
+    parent_visitor: &ParentVisitor,
+    type2: &Type2,
+    group: &Group,
+    rep: Representation,
+    rejection_kind: &'static str,
+    rejection: &str,
+    rewalk_from: Option<crate::intermediate::RejectionMark>,
+    cli: &Cli,
+) -> RustType {
+    let mut rule_metadata = RuleMetadata::from(
+        get_comment_after(parent_visitor, &CDDLType::from(type2), None).as_ref(),
+    );
+    if rule_metadata.name.is_none() {
+        rule_metadata.name = anon_composite_member_name(parent_visitor, type2);
+    }
+    let Some(name) = rule_metadata.name.as_ref() else {
+        types.record_rejection_once_at(type2, rejection_kind, rejection.to_owned());
+        return ConceptualRustType::Fixed(FixedValue::Null).into();
+    };
+    let cddl_ident = CDDLIdent::new(name);
+    let rust_ident = RustIdent::new(cddl_ident.clone());
+    let construction_mark = types.rejection_mark();
+    parse_group(
+        types,
+        parent_visitor,
+        group,
+        &rust_ident,
+        rep,
+        None,
+        None,
+        &rule_metadata,
+        cli,
+    );
+    if let Some(classification_mark) = rewalk_from {
+        types.drop_rewalk_repeats(classification_mark, construction_mark);
+    }
+    types.new_type(&cddl_ident, cli)
+}
+
+/// Materialize the plain group a type references with representation `rep` (`[* kv]`, `[kv]`, a
+/// record field `kv`), resolving an alias first: an alias is transparent, so `kv_alias` must
+/// register the group exactly like `kv` — matching the bare `Rust(ident)` only left the group
+/// unregistered and the emitted alias chain dangling on a struct that was never defined. A generic
+/// parameter is substituted later and left alone. Returns the resolved ident when the type names
+/// one, for a caller that classifies it further.
+fn materialize_plain_group_ref<'t>(
+    types: &mut IntermediateTypes,
+    parent_visitor: &ParentVisitor,
+    ty: &'t RustType,
+    rep: Representation,
+    cli: &Cli,
+) -> Option<&'t RustIdent> {
+    if ty.generic_param_binding.is_some() {
+        return None;
+    }
+    let ConceptualRustType::Rust(ident) = ty.conceptual_type.resolve_alias_shallow() else {
+        return None;
+    };
+    types.set_rep_if_plain_group(parent_visitor, ident, rep, cli);
+    Some(ident)
+}
+
 fn rust_type_from_type2(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
@@ -7133,23 +7206,13 @@ fn rust_type_from_type2(
                         cli,
                     ) {
                         GroupParsingType::HomogenousArray(element_type, bounds) => {
-                            // Resolve aliases before stamping: an alias is transparent (one wire
-                            // form, a value IS the aliased type), so `[* kv_alias]` must materialize
-                            // the plain group exactly like `[* kv]` does. Matching the bare
-                            // `Rust(ident)` only would leave the group unregistered and the emitted
-                            // alias chain dangling on a struct that was never defined. Same pattern
-                            // as the `WrappedBasicGroup` sibling below.
-                            if element_type.generic_param_binding.is_none()
-                                && let ConceptualRustType::Rust(element_ident) =
-                                    element_type.conceptual_type.resolve_alias_shallow()
-                            {
-                                types.set_rep_if_plain_group(
-                                    parent_visitor,
-                                    element_ident,
-                                    Representation::Array,
-                                    cli,
-                                );
-                            }
+                            materialize_plain_group_ref(
+                                types,
+                                parent_visitor,
+                                &element_type,
+                                Representation::Array,
+                                cli,
+                            );
                             with_optional_bounds(
                                 ConceptualRustType::Array(Box::new(element_type)).into(),
                                 bounds,
@@ -7157,78 +7220,33 @@ fn rust_type_from_type2(
                         }
                         GroupParsingType::FlatGroupArray(_, _)
                         | GroupParsingType::HomogenousMap(_, _, _) => unreachable!(),
-                        GroupParsingType::Heterogenous => {
-                            let mut rule_metadata = RuleMetadata::from(
-                                get_comment_after(parent_visitor, &CDDLType::from(type2), None)
-                                    .as_ref(),
-                            );
-                            // At MEMBER position the naming comment lands one level further out than
-                            // `get_comment_after(type2)` reaches, so ask for that slot explicitly.
-                            if rule_metadata.name.is_none() {
-                                rule_metadata.name =
-                                    anon_composite_member_name(parent_visitor, type2);
-                            }
-                            // A heterogeneous inline array in a type position becomes a struct, and a
-                            // struct needs a name. The `@name` comment on the type2 is the naming
-                            // door — but it only reaches here from positions whose comment slot
-                            // `get_comment_after(type2)` (plus the member-position slot above) can
-                            // reach, so at the others there is no
-                            // name to be had. That is a rejection, not an abort: record it with the
-                            // remedy the message has always advertised and continue with an inert
-                            // placeholder, so `finalize` reports it alongside anything else the walk
-                            // finds. Wording is unchanged from the panic it replaces (both halves of
-                            // the remedy are still the working ones) minus the AST dump, which was
-                            // never actionable for a user reading their own CDDL.
-                            let name = match rule_metadata.name.as_ref() {
-                                Some(name) => name,
-                                None => {
-                                    types.record_rejection_once_at(
-                                        type2,
-                                        "anonymous-inline-array",
-                                        "Anonymous groups not allowed: an inline array is used where a \
-                                         type is required. Either create an explicit \
-                                         rule (`foo = [0, bytes]`, then reference `foo`) or give it \
-                                         a name using the `@name` notation."
-                                            .to_string(),
-                                    );
-                                    return ConceptualRustType::Fixed(FixedValue::Null).into();
-                                }
-                            };
-                            let cddl_ident = CDDLIdent::new(name);
-                            let rust_ident = RustIdent::new(cddl_ident.clone());
-                            let construction_mark = types.rejection_mark();
-                            parse_group(
-                                types,
-                                parent_visitor,
-                                group,
-                                &rust_ident,
-                                Representation::Array,
-                                None,
-                                None,
-                                &rule_metadata,
-                                cli,
-                            );
-                            types.drop_rewalk_repeats(classification_mark, construction_mark);
-                            // we aren't returning an array, but rather a struct where the fields are ordered
-                            types.new_type(&cddl_ident, cli)
-                        }
+                        GroupParsingType::Heterogenous => lower_anonymous_record(
+                            types,
+                            parent_visitor,
+                            type2,
+                            group,
+                            Representation::Array,
+                            "anonymous-inline-array",
+                            "Anonymous groups not allowed: an inline array is used where a type is \
+                             required. Either create an explicit rule (`foo = [0, bytes]`, then \
+                             reference `foo`) or give it a name using the `@name` notation.",
+                            // The classification walk above visited these entries once already.
+                            Some(classification_mark),
+                            cli,
+                        ),
                         GroupParsingType::WrappedBasicGroup(basic_type) => {
                             // A member-position anonymous array wrapping a plain-group reference
                             // (e.g. `bytes .cbor [coords]`, or a field `x = [coords]`) must promote
                             // the referenced plain group to an Array-rep Record struct, exactly like
                             // the `HomogenousArray` sibling above. Without this the group is never
                             // emitted and the returned type dangles on a bare, non-existent struct.
-                            if basic_type.generic_param_binding.is_none()
-                                && let ConceptualRustType::Rust(element_ident) =
-                                    basic_type.conceptual_type.resolve_alias_shallow()
-                            {
-                                types.set_rep_if_plain_group(
-                                    parent_visitor,
-                                    element_ident,
-                                    Representation::Array,
-                                    cli,
-                                );
-                            }
+                            materialize_plain_group_ref(
+                                types,
+                                parent_visitor,
+                                &basic_type,
+                                Representation::Array,
+                                cli,
+                            );
                             basic_type
                         }
                     }
@@ -7282,48 +7300,22 @@ fn rust_type_from_type2(
                         // The entry-slot `@name` is available only where this anonymous composite
                         // is the member's whole type up to operator-free tag wrappers; elsewhere it
                         // remains an honest rejection rather than leaking parent metadata inward.
-                        GroupParsingType::Heterogenous => {
-                            let mut rule_metadata = RuleMetadata::from(
-                                get_comment_after(parent_visitor, &CDDLType::from(type2), None)
-                                    .as_ref(),
-                            );
-                            if rule_metadata.name.is_none() {
-                                rule_metadata.name =
-                                    anon_composite_member_name(parent_visitor, type2);
-                            }
-                            let name = match rule_metadata.name.as_ref() {
-                                Some(name) => name,
-                                None => {
-                                    types.record_rejection_once_at(
-                                        type2,
-                                        "anonymous-inline-map",
-                                        "Anonymous groups not allowed: a heterogeneous inline map is \
-                                         used where a type is required. Give the map a nominal owner: \
-                                         create an explicit rule (`m = { a: int, b: uint }`, then \
-                                         reference `m`). A valid fixed-field record whose map is the \
-                                         member's whole type can instead use the scoped `@name` notation; \
-                                         dynamic/keyless bodies are validated separately and may still \
-                                         require another supported spelling."
-                                            .to_string(),
-                                    );
-                                    return ConceptualRustType::Fixed(FixedValue::Null).into();
-                                }
-                            };
-                            let cddl_ident = CDDLIdent::new(name);
-                            let rust_ident = RustIdent::new(cddl_ident.clone());
-                            parse_group(
-                                types,
-                                parent_visitor,
-                                group,
-                                &rust_ident,
-                                Representation::Map,
-                                None,
-                                None,
-                                &rule_metadata,
-                                cli,
-                            );
-                            types.new_type(&cddl_ident, cli)
-                        }
+                        GroupParsingType::Heterogenous => lower_anonymous_record(
+                            types,
+                            parent_visitor,
+                            type2,
+                            group,
+                            Representation::Map,
+                            "anonymous-inline-map",
+                            "Anonymous groups not allowed: a heterogeneous inline map is used where \
+                             a type is required. Give the map a nominal owner: create an explicit \
+                             rule (`m = { a: int, b: uint }`, then reference `m`). A valid \
+                             fixed-field record whose map is the member's whole type can instead \
+                             use the scoped `@name` notation; dynamic/keyless bodies are validated \
+                             separately and may still require another supported spelling.",
+                            None,
+                            cli,
+                        ),
                         GroupParsingType::WrappedBasicGroup(_)
                         | GroupParsingType::FlatGroupArray(_, _)
                         | GroupParsingType::HomogenousArray(_, _) => unreachable!(),
@@ -8373,19 +8365,10 @@ fn parse_record_from_group_choice(
             }
             // does not exist for fixed values importantly
             let mut field_type = group_entry_to_type(types, parent_visitor, group_entry, cli);
-            // Resolve aliases before stamping: an alias is transparent (one wire form, a value IS
-            // the aliased type), so a field spelled through one (`t = [ c: uint, kv_alias ]`) must
-            // materialize the plain group exactly like the direct `kv` reference does. Matching the
-            // bare `Rust(ident)` only left the group unregistered while `is_basic` — which DOES
-            // shallow-resolve — still selected the splicing emission downstream, so the run aborted
-            // on a struct that was never defined. Same pattern as the `WrappedBasicGroup` arm in
-            // `rust_type_from_type2`.
-            if field_type.generic_param_binding.is_none()
-                && let ConceptualRustType::Rust(ident) =
-                field_type.conceptual_type.resolve_alias_shallow()
-            {
-                types.set_rep_if_plain_group(parent_visitor, ident, rep, cli);
-            }
+            // A field spelled through an alias (`t = [ c: uint, kv_alias ]`) materializes the plain
+            // group exactly like the direct `kv` reference: `is_basic`, which DOES shallow-resolve,
+            // selects the splicing emission downstream.
+            materialize_plain_group_ref(types, parent_visitor, &field_type, rep, cli);
             let mut optional_field = group_entry_optional(group_entry);
             // A count-permitting occurrence (`*`, `+`, `n*m` with bounds ≠ 1*1) on an ARRAY-record
             // field would be silently narrowed to a single mandatory item — a generated decoder
@@ -9870,14 +9853,14 @@ fn parse_group_choice(
             reject_ignore_not_applicable(types, name);
         }
         // The named and aliased plain-group spellings reach this seam without the member-position
-        // walker that normally materializes a plain group. Resolve aliases first so they materialize
-        // the referenced group with Array representation too.
-        if element_type.generic_param_binding.is_none()
-            && let ConceptualRustType::Rust(element_ident) =
-                element_type.conceptual_type.resolve_alias_shallow()
-        {
-            types.set_rep_if_plain_group(parent_visitor, element_ident, Representation::Array, cli);
-        }
+        // walker that normally materializes a plain group, so materialize it here.
+        materialize_plain_group_ref(
+            types,
+            parent_visitor,
+            element_type,
+            Representation::Array,
+            cli,
+        );
         // Every repetition must advance the outer decoder. The materialized IR, rather than a
         // syntactic optionality guess, decides whether an embedded decode consumes an item.
         if element_type.expanded_mandatory_field_count(types) == 0 {
@@ -9923,20 +9906,15 @@ fn parse_group_choice(
             // path (`rust_type_from_type2`'s `Type2::Array` arm) and the record path both do. Without
             // this the element ident stays an unregistered plain group and `is_enum`/`for_rust_member`
             // trip their "must be a struct or a generic instance" assert at generation time.
-            // Aliases resolve first — an alias is transparent, so `a = [* kv_alias]` materializes
-            // the group exactly like `a = [* kv]`. Without the resolution the run exited 0 having
-            // emitted `pub type KvAlias = Kv;` with no `Kv` anywhere: a crate that does not compile.
-            if element_type.generic_param_binding.is_none()
-                && let ConceptualRustType::Rust(element_ident) =
-                    element_type.conceptual_type.resolve_alias_shallow()
-            {
-                types.set_rep_if_plain_group(
-                    parent_visitor,
-                    element_ident,
-                    Representation::Array,
-                    cli,
-                );
-            }
+            // `a = [* kv_alias]` materializes the group exactly like `a = [* kv]`; unresolved, the
+            // run exited 0 having emitted `pub type KvAlias = Kv;` with no `Kv` anywhere.
+            materialize_plain_group_ref(
+                types,
+                parent_visitor,
+                &element_type,
+                Representation::Array,
+                cli,
+            );
             // A named homogeneous-array rule does not travel through the member `Type1`
             // walker below, so validate its exact occurrence count here as well. Keep the
             // effective rule policy: exact reject sets stay BoundedOrderedSet rather than
@@ -10286,21 +10264,17 @@ pub fn parse_group(
                     // keyless arm — a supported shape whose referenced struct owns its own keys —
                     // into the no-key rejection.
                     let serialize_as_embedded =
-                        if ty.generic_param_binding.is_none()
-                            && let ConceptualRustType::Rust(ident) =
-                            ty.conceptual_type.resolve_alias_shallow()
-                        {
-                            // we might need to generate it if not used elsewhere
-                            types.set_rep_if_plain_group(parent_visitor, ident, rep, cli);
+                        match materialize_plain_group_ref(types, parent_visitor, &ty, rep, cli) {
                             // manual match in case we expand operaitons later
-                            types.is_plain_group(ident)
-                                && !ty.encodings.iter().any(|enc| match enc {
-                                    CBOREncodingOperation::Tagged(_) => true,
-                                    CBOREncodingOperation::OptionallyTagged(_) => true,
-                                    CBOREncodingOperation::CBORBytes => true,
-                                })
-                        } else {
-                            false
+                            Some(ident) => {
+                                types.is_plain_group(ident)
+                                    && !ty.encodings.iter().any(|enc| match enc {
+                                        CBOREncodingOperation::Tagged(_) => true,
+                                        CBOREncodingOperation::OptionallyTagged(_) => true,
+                                        CBOREncodingOperation::CBORBytes => true,
+                                    })
+                            }
+                            None => false,
                         };
                     // A single-entry arm registers no record at all — its type goes straight into
                     // the variant — so the name settled here is the ONLY name it ever claims.
