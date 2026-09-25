@@ -84,8 +84,10 @@ fn generated_files_error_after_removing_local_provider(cli: &Cli, provider: &Rus
                 .is_some(),
             "the test provider must have been locally minted"
         );
+        let extern_projection =
+            crate::generation::extern_interface::project_extern_interface(types, cli);
         scope
-            .generated_files(types, raw_bytes, cli)
+            .generated_files(types, raw_bytes, &extern_projection, cli)
             .expect_err(
                 "generated_files must reject an unclosed registry before returning a source map",
             )

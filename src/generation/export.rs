@@ -1088,9 +1088,20 @@ impl GenerationScope {
             print_required_reexports("wasm/src/lib.rs", &self.required_wasm_reexports);
         }
 
+        // The extern-interface projection, computed ONCE for this export: `generated_files` derives
+        // the compiled self-check from it and the write tail renders the `extern-interface/` tree
+        // from it, so the two share one membership computation.
+        let extern_projection =
+            crate::generation::extern_interface::project_extern_interface(types, cli);
+
         // All generated files come from the single producer the snapshot tests also use, so the
         // shipped output and the tested output can't drift.
-        let mut files = self.generated_files(types, export_raw_bytes_encoding_trait, cli)?;
+        let mut files = self.generated_files(
+            types,
+            export_raw_bytes_encoding_trait,
+            &extern_projection,
+            cli,
+        )?;
 
         // `generated_files` produces serialization.rs generated-only; the shipped root one has the
         // static serialization prelude prepended and is rustfmt'd together (exactly as before).
@@ -1260,7 +1271,8 @@ impl GenerationScope {
             required_wasm_reexports: self.required_wasm_reexports.clone(),
             static_crate,
             extern_interface_files: crate::generation::extern_interface::extern_interface_files(
-                types, cli,
+                &extern_projection,
+                types,
             ),
             no_std_check_files: crate::generation::no_std_check::no_std_check_files(cli),
         }
@@ -1382,6 +1394,7 @@ impl GenerationScope {
         &self,
         types: &IntermediateTypes,
         export_raw_bytes_encoding_trait: bool,
+        extern_projection: &crate::generation::extern_interface::ExternProjection,
         cli: &Cli,
     ) -> std::io::Result<BTreeMap<String, String>> {
         self.component_collision_check()?;
@@ -1685,7 +1698,7 @@ impl GenerationScope {
         // UNCONDITIONALLY in every mode, exactly like the extern-interface export it guards (not
         // wasm-gated, no suppress flag — a flag would just manufacture the stale-export state the
         // design prevents). It is DERIVED FROM THE SAME PROJECTION as that export
-        // (`extern_interface_check_entries` shares `project_extern_interface` with the file emitter),
+        // (`extern_interface_check_entries` reads the one `ExternProjection` the file emitter renders),
         // so the export and its self-check cannot drift. Each exported name is asserted here to be a
         // real, correctly-typed surface in THIS crate: opaque rows must implement `Serialize` (and
         // `Deserialize` where the dep generates one — the projection weakens the bound per type via
@@ -1694,8 +1707,9 @@ impl GenerationScope {
         // projection bug — therefore fails THIS crate's own build, naming the type.
         {
             use crate::generation::extern_interface::ExternCheckKind;
-            let entries =
-                crate::generation::extern_interface::extern_interface_check_entries(types, cli);
+            let entries = crate::generation::extern_interface::extern_interface_check_entries(
+                extern_projection,
+            );
             let common = cli.common_import_rust();
             // The generated `Serialize` bound differs by mode: only the CANONICAL runtime
             // (`--preserve-encodings --canonical-form`) carries a custom `serialization::Serialize`

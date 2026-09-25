@@ -1176,7 +1176,9 @@ pub fn generated_strings(
         // Per tests/README.md § "Design rules", keep this emission-site assertion outside guarded
         // branches.
         assert_rejections_drained(types);
-        gen_scope.generated_files(types, raw_bytes, cli)
+        let extern_projection =
+            crate::generation::extern_interface::project_extern_interface(types, cli);
+        gen_scope.generated_files(types, raw_bytes, &extern_projection, cli)
     })?
     .map_err(Into::into)
 }
@@ -1191,7 +1193,8 @@ pub fn extern_interface_strings(
     cli: &Cli,
 ) -> Result<std::collections::BTreeMap<String, String>, Box<dyn std::error::Error>> {
     with_types(cli, |types, _| {
-        crate::generation::extern_interface::extern_interface_files(types, cli)
+        let projection = crate::generation::extern_interface::project_extern_interface(types, cli);
+        crate::generation::extern_interface::extern_interface_files(&projection, types)
     })
 }
 

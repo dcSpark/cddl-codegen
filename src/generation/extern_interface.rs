@@ -764,25 +764,22 @@ struct ExcludedRule {
     root: String,
 }
 
-/// Project the finalized IR into the dep-side extern-interface export, keyed by path RELATIVE to
-/// `<output>` (`extern-interface/<dep_key>/<scope-path>/mod.cddl`, sibling of `rust/`). One rule per
-/// exported name; the dep's own extern-deps scopes are skipped (depth-1 rule). INFALLIBLE by design:
-/// a rule whose projection fails (custom-serialize transparent alias, unrenderable shape, or — via
-/// reference-closure — a reference to an unexportable name) is EXCLUDED-WITH-RECORD and generation
-/// still succeeds, so a leaf/test spec that will never be a dependency still regenerates cleanly.
-/// The failure surfaces later, only at a consumer that actually references an excluded ident.
-///
-/// The projection `match` over `RustStructType` is EXHAUSTIVE (no `_ =>` arm) so a future variant
-/// forces an explicit export-spelling decision at compile time.
+/// Render the dep-side extern-interface files from one [`ExternProjection`], keyed by path RELATIVE
+/// to `<output>` (`extern-interface/<dep_key>/<scope-path>/mod.cddl`, sibling of `rust/`).
+/// `types` selects the v2 header when the finalized IR uses CDDL `any`.
 pub(crate) fn extern_interface_files(
+    projection: &ExternProjection,
     types: &IntermediateTypes,
-    cli: &Cli,
 ) -> BTreeMap<String, String> {
-    let (dep_key, included, excluded) = project_extern_interface(types, cli);
     // Conditional v2 header: bump the whole export to v2 exactly when its IR contains
     // CDDL `any` (the new spelling). Whole-export granularity — an `any`-bearing dep's every file
     // carries v2, so a consumer predating `any` support fails at the seam regardless of which file it imports.
-    render_export_files(&dep_key, &included, &excluded, types.uses_any_cbor())
+    render_export_files(
+        &projection.dep_key,
+        &projection.included,
+        &projection.excluded,
+        types.uses_any_cbor(),
+    )
 }
 
 /// One entry of the dep-side compiled self-check: the exported name, its scope-path
@@ -801,31 +798,41 @@ pub(crate) struct ExternCheckEntry {
 /// The self-check entries for every INCLUDED export row (excluded rows are asserted nothing — the
 /// export never advertises them). Same projection as [`extern_interface_files`].
 pub(crate) fn extern_interface_check_entries(
-    types: &IntermediateTypes,
-    cli: &Cli,
+    projection: &ExternProjection,
 ) -> Vec<ExternCheckEntry> {
-    let (_dep_key, included, _excluded) = project_extern_interface(types, cli);
-    included
-        .into_iter()
+    projection
+        .included
+        .iter()
         .map(|(ident, inc)| ExternCheckEntry {
-            components: inc.components,
+            components: inc.components.clone(),
             kind: inc.check,
-            ident,
+            ident: ident.clone(),
         })
         .collect()
 }
 
-/// The shared projection walk: finalized IR → the included / excluded rule maps (plus the dep key).
-/// Both the CDDL export ([`extern_interface_files`]) and the compiled self-check
-/// ([`extern_interface_check_entries`]) consume this, so membership is computed once.
-fn project_extern_interface(
-    types: &IntermediateTypes,
-    cli: &Cli,
-) -> (
-    String,
-    BTreeMap<RustIdent, IncludedRule>,
-    BTreeMap<RustIdent, ExcludedRule>,
-) {
+/// One export's projection: the dep key plus the included / excluded rule maps.
+///
+/// Computed ONCE per export by [`project_extern_interface`] and handed to both the CDDL export
+/// ([`extern_interface_files`]) and the compiled self-check ([`extern_interface_check_entries`]), so
+/// the two cannot disagree about membership and the walk (which renders every exported body) runs
+/// once rather than once per consumer.
+pub(crate) struct ExternProjection {
+    dep_key: String,
+    included: BTreeMap<RustIdent, IncludedRule>,
+    excluded: BTreeMap<RustIdent, ExcludedRule>,
+}
+
+/// Project the finalized IR into one dep-side [`ExternProjection`]. One rule is staged per exported
+/// name; the dep's own extern-deps scopes are skipped (depth-1 rule). INFALLIBLE by design: a rule
+/// whose projection fails (custom-serialize transparent alias, unrenderable shape, or — via
+/// reference-closure — a reference to an unexportable name) is EXCLUDED-WITH-RECORD and generation
+/// still succeeds, so a leaf/test spec that will never be a dependency still regenerates cleanly.
+/// The failure surfaces later, only at a consumer that actually references an excluded ident.
+///
+/// The projection `match` over `RustStructType` is EXHAUSTIVE (no `_ =>` arm) so a future variant
+/// forces an explicit export-spelling decision at compile time.
+pub(crate) fn project_extern_interface(types: &IntermediateTypes, cli: &Cli) -> ExternProjection {
     let dep_key = cli.lib_name_code();
     let mut included: BTreeMap<RustIdent, IncludedRule> = BTreeMap::new();
     let mut excluded: BTreeMap<RustIdent, ExcludedRule> = BTreeMap::new();
@@ -1202,7 +1209,11 @@ fn project_extern_interface(
         );
     }
 
-    (dep_key, included, excluded)
+    ExternProjection {
+        dep_key,
+        included,
+        excluded,
+    }
 }
 
 /// A per-rule projection: `Ok((body, extra annotations, referenced rule idents))` or an `Err` the
