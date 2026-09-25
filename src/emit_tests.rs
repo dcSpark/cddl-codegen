@@ -682,114 +682,156 @@ pub fn emit_generated_tests(
             continue;
         }
         let mut alias = FailureAlias::default();
-        let reject = match rust_struct.variant() {
-            RustStructType::Record(record) => {
-                record_deser_reject(types, &name, record, !cli.preserve_encodings, &mut alias)
-            }
-            RustStructType::TypeChoice { variants } => {
-                choice_construct_reject(types, &name, variants, false, &mut alias)
-            }
-            RustStructType::GroupChoice { variants, .. } => {
-                choice_construct_reject(types, &name, variants, true, &mut alias)
-            }
-            RustStructType::Wrapper {
-                wrapped,
-                min_max,
-                float_min_max,
-            } => match float_min_max {
-                Some(window) => wrapper_construct_reject_float(&name, wrapped, window, &mut alias),
-                None => min_max
-                    .or_else(|| {
-                        wrapped
-                            .exact_byte_array_len_checked()
-                            .and(wrapped.config.bounds)
-                    })
-                    .and_then(|mm| {
-                        wrapper_construct_reject(types, ident, &name, wrapped, mm, &mut alias)
-                    }),
-            },
-            _ => None,
-        };
-        if let Some(lines) = reject
-            && !lines.is_empty()
-        {
+        if let Some(test) = reject_test_fn(types, cli, ident, &name, rust_struct, &mut alias) {
             failure_alias_used |= alias.used;
-            fns.push(format!(
-                "#[test]\nfn reject_{}() {{\n{}\n}}\n",
-                convert_to_snake_case(&name),
-                lines
-            ));
+            fns.push(test);
         }
-
-        // The source rule name for this type (None when it isn't a top-level rule or its name can't
-        // be faithfully snake↔camel reversed — see `conformance_rule_name`, which is loud about the
-        // latter). Computed unconditionally: it names both the flag-gated conformance validate line
-        // AND the env-gated minted-bytes dump (which needs no CLI flag — see `roundtrip_body`), so it
-        // must be available even without `--emit-tests-conformance`.
-        let rule_name = conformance_rule_name(types, ident);
-        let rule_name = rule_name.as_deref();
-        // `--emit-tests-conformance`: only under the flag does the emitted round-trip call the cddl
-        // validator on the minted bytes.
-        let conf = cli.emit_tests_conformance.then_some(rule_name).flatten();
-
-        // value-equality is meaningless under preserve-encodings: `back` carries encoding structs
-        // populated from the wire while the minted value has ctor defaults (see roundtrip_body).
-        // The encoding-fidelity oracle asserts the GENERATED preserve contract, so it must not run
-        // on a type whose wire format is (partly) user-supplied via `@custom_serialize` /
-        // `@custom_deserialize`: a hand-written custom deserializer that rejects a valid irregular
-        // encoding is the user's choice, not a generator bug. Round-trip/value-eq assertions still
-        // run (the custom baseline round-trips); only the mutated-variant assertions are gated off.
-        let uses_custom = struct_uses_custom_ser(types, rust_struct);
-        let rt = RtEmit {
-            value_eq: !cli.preserve_encodings,
-            preserve: cli.preserve_encodings && !uses_custom,
-            canonical: cli.canonical_form && !uses_custom,
-            json_schema,
-        };
-        let roundtrip = match rust_struct.variant() {
-            RustStructType::Record(record) => {
-                record_roundtrip(types, &name, record, conf, rule_name, rt)
-            }
-            RustStructType::TypeChoice { variants } => {
-                choice_roundtrip(types, &name, variants, false, conf, rule_name, rt)
-            }
-            RustStructType::GroupChoice { variants, .. } => {
-                choice_roundtrip(types, &name, variants, true, conf, rule_name, rt)
-            }
-            RustStructType::Wrapper { .. } => wrapper_roundtrip(types, ident, conf, rule_name, rt),
-            // c-style enums have no standalone Serialize/Deserialize impls (they serialize inline
-            // in their containing types) — they're exercised wherever a record embeds them
-            RustStructType::CStyleEnum { .. } => None,
-            // Rust-side tables/arrays are transparent `pub type` aliases — a PERMANENT skip, not a
-            // TODO: `pub type X = Vec<T>` has no standalone `Serialize` (cbor_event implements it
-            // for `String` but not `Vec`/`BTreeMap`, and the orphan rule forbids adding it here),
-            // and `from_cbor_bytes` on the alias routes through cbor_event's generic impls rather
-            // than the generated element loop — so a standalone round-trip could not exercise
-            // generated code even if it compiled. The generator-emitted wire path exists only at
-            // EMBED sites, which mint via their containing record (e.g. `bool_holder`).
-            RustStructType::Table { .. } | RustStructType::Array { .. } => {
-                crate::warn!(
-                    "cddl-codegen --emit-tests: {name} is a transparent table/array alias — no standalone round-trip exists (embed-site coverage only)"
-                );
-                None
-            }
-            // reference user-supplied code; the generated crate can't exercise them standalone
-            RustStructType::Extern | RustStructType::RawBytesType => None,
-        };
-        if let Some(lines) = roundtrip
-            && !lines.is_empty()
-        {
-            fns.push(format!(
-                "#[test]\nfn roundtrip_{}() {{\n{}\n}}\n",
-                convert_to_snake_case(&name),
-                lines
-            ));
+        if let Some(test) = roundtrip_test_fn(types, cli, ident, &name, rust_struct, json_schema) {
+            fns.push(test);
         }
     }
 
     if fns.is_empty() {
         return None;
     }
+    Some(generated_test_module(
+        types,
+        cli,
+        submodules,
+        &fns,
+        failure_alias_used,
+        json_schema,
+    ))
+}
+
+/// The `reject_<type>` test for one type, or `None` when it has no reject lines. `alias` records
+/// whether those lines name the module's failure alias.
+fn reject_test_fn(
+    types: &IntermediateTypes,
+    cli: &Cli,
+    ident: &RustIdent,
+    name: &str,
+    rust_struct: &RustStruct,
+    alias: &mut FailureAlias,
+) -> Option<String> {
+    let reject = match rust_struct.variant() {
+        RustStructType::Record(record) => {
+            record_deser_reject(types, name, record, !cli.preserve_encodings, alias)
+        }
+        RustStructType::TypeChoice { variants } => {
+            choice_construct_reject(types, name, variants, false, alias)
+        }
+        RustStructType::GroupChoice { variants, .. } => {
+            choice_construct_reject(types, name, variants, true, alias)
+        }
+        RustStructType::Wrapper {
+            wrapped,
+            min_max,
+            float_min_max,
+        } => match float_min_max {
+            Some(window) => wrapper_construct_reject_float(name, wrapped, window, alias),
+            None => min_max
+                .or_else(|| {
+                    wrapped
+                        .exact_byte_array_len_checked()
+                        .and(wrapped.config.bounds)
+                })
+                .and_then(|mm| wrapper_construct_reject(types, ident, name, wrapped, mm, alias)),
+        },
+        _ => None,
+    };
+    reject.filter(|lines| !lines.is_empty()).map(|lines| {
+        format!(
+            "#[test]\nfn reject_{}() {{\n{}\n}}\n",
+            convert_to_snake_case(name),
+            lines
+        )
+    })
+}
+
+/// The `roundtrip_<type>` test for one type, or `None` when nothing was minted for it.
+fn roundtrip_test_fn(
+    types: &IntermediateTypes,
+    cli: &Cli,
+    ident: &RustIdent,
+    name: &str,
+    rust_struct: &RustStruct,
+    json_schema: bool,
+) -> Option<String> {
+    // The source rule name for this type (None when it isn't a top-level rule or its name can't
+    // be faithfully snake↔camel reversed — see `conformance_rule_name`, which is loud about the
+    // latter). Computed unconditionally: it names both the flag-gated conformance validate line
+    // AND the env-gated minted-bytes dump (which needs no CLI flag — see `roundtrip_body`), so it
+    // must be available even without `--emit-tests-conformance`.
+    let rule_name = conformance_rule_name(types, ident);
+    let rule_name = rule_name.as_deref();
+    // `--emit-tests-conformance`: only under the flag does the emitted round-trip call the cddl
+    // validator on the minted bytes.
+    let conf = cli.emit_tests_conformance.then_some(rule_name).flatten();
+
+    // value-equality is meaningless under preserve-encodings: `back` carries encoding structs
+    // populated from the wire while the minted value has ctor defaults (see roundtrip_body).
+    // The encoding-fidelity oracle asserts the GENERATED preserve contract, so it must not run
+    // on a type whose wire format is (partly) user-supplied via `@custom_serialize` /
+    // `@custom_deserialize`: a hand-written custom deserializer that rejects a valid irregular
+    // encoding is the user's choice, not a generator bug. Round-trip/value-eq assertions still
+    // run (the custom baseline round-trips); only the mutated-variant assertions are gated off.
+    let uses_custom = struct_uses_custom_ser(types, rust_struct);
+    let rt = RtEmit {
+        value_eq: !cli.preserve_encodings,
+        preserve: cli.preserve_encodings && !uses_custom,
+        canonical: cli.canonical_form && !uses_custom,
+        json_schema,
+    };
+    let roundtrip = match rust_struct.variant() {
+        RustStructType::Record(record) => {
+            record_roundtrip(types, name, record, conf, rule_name, rt)
+        }
+        RustStructType::TypeChoice { variants } => {
+            choice_roundtrip(types, name, variants, false, conf, rule_name, rt)
+        }
+        RustStructType::GroupChoice { variants, .. } => {
+            choice_roundtrip(types, name, variants, true, conf, rule_name, rt)
+        }
+        RustStructType::Wrapper { .. } => wrapper_roundtrip(types, ident, conf, rule_name, rt),
+        // c-style enums have no standalone Serialize/Deserialize impls (they serialize inline
+        // in their containing types) — they're exercised wherever a record embeds them
+        RustStructType::CStyleEnum { .. } => None,
+        // Rust-side tables/arrays are transparent `pub type` aliases — a PERMANENT skip, not a
+        // TODO: `pub type X = Vec<T>` has no standalone `Serialize` (cbor_event implements it
+        // for `String` but not `Vec`/`BTreeMap`, and the orphan rule forbids adding it here),
+        // and `from_cbor_bytes` on the alias routes through cbor_event's generic impls rather
+        // than the generated element loop — so a standalone round-trip could not exercise
+        // generated code even if it compiled. The generator-emitted wire path exists only at
+        // EMBED sites, which mint via their containing record (e.g. `bool_holder`).
+        RustStructType::Table { .. } | RustStructType::Array { .. } => {
+            crate::warn!(
+                "cddl-codegen --emit-tests: {name} is a transparent table/array alias — no standalone round-trip exists (embed-site coverage only)"
+            );
+            None
+        }
+        // reference user-supplied code; the generated crate can't exercise them standalone
+        RustStructType::Extern | RustStructType::RawBytesType => None,
+    };
+    roundtrip.filter(|lines| !lines.is_empty()).map(|lines| {
+        format!(
+            "#[test]\nfn roundtrip_{}() {{\n{}\n}}\n",
+            convert_to_snake_case(name),
+            lines
+        )
+    })
+}
+
+/// The `#[cfg(test)]` module around the per-type test functions: the `std` restore, imports, and
+/// each flag-gated helper module.
+fn generated_test_module(
+    types: &IntermediateTypes,
+    cli: &Cli,
+    submodules: &[String],
+    fns: &[String],
+    failure_alias_used: bool,
+    json_schema: bool,
+) -> String {
     // `--emit-tests-conformance`: the sub-module the emitted `cddl_conformance::validate(..)` calls
     // resolve to. It reuses the shared oracle helpers appended at crate root from
     // `tests/deser_test_conformance.rs` (do NOT duplicate the validator logic) and reads the source
@@ -868,10 +910,10 @@ pub fn emit_generated_tests(
     } else {
         String::new()
     };
-    Some(format!(
+    format!(
         "#[cfg(test)]\n#[allow(clippy::all)]\n{unused_imports_allow}mod cddl_generated_tests {{\n{STD_RESTORE}    use super::*;\n    use super::serialization::*;\n{bounded_failure_import}{any_import}{scope_globs}{conformance_mod}{json_schema_mod}{fidelity_mod}{}\n}}\n",
         fns.join("\n")
-    ))
+    )
 }
 
 /// The emitted test module's own `std` restore, so `cargo test --no-default-features --lib` works on
