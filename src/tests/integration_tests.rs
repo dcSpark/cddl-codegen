@@ -2482,6 +2482,31 @@ fn unused_generated_variable_scan_flags_named_binding() {
     );
 }
 
+/// Scan rustc/cargo stderr for generated source-shape warnings: redundant parentheses and
+/// needless `mut`. Every occurrence in these purely-generated crates is emitter imprecision.
+pub(crate) fn generated_style_warning_lines(stderr: &str) -> Vec<String> {
+    const CLASSES: &[&str] = &[
+        "warning: unnecessary parentheses",
+        "warning: variable does not need to be mutable",
+    ];
+    stderr
+        .lines()
+        .filter(|line| CLASSES.iter().any(|class| line.contains(class)))
+        .map(|line| line.trim().to_string())
+        .collect()
+}
+
+#[test]
+fn generated_style_warning_scan_flags_parens_and_mut() {
+    let parens = "warning: unnecessary parentheses around `while` condition\n --> src/generated/serialization.rs:363:19";
+    let needless_mut =
+        "warning: variable does not need to be mutable\n --> src/generated/serialization.rs:420:17";
+    assert_eq!(generated_style_warning_lines(parens).len(), 1);
+    assert_eq!(generated_style_warning_lines(needless_mut).len(), 1);
+    assert!(generated_style_warning_lines("   Compiling foo v0.1.0\n    Finished").is_empty());
+    assert!(generated_style_warning_lines("warning: unused import: `alloc::vec::Vec`").is_empty());
+}
+
 /// Fail if a nested cargo run over a purely-generated crate reported an unused import or an unused
 /// variable. Both scans above own their classes; this is the call shape for the CROSS-CRATE gates,
 /// which is where the scans' other home (`feature_corpus_compiles`) is blind: the corpus cells never
@@ -3218,8 +3243,9 @@ fn feature_corpus_compiles_shard(shard: usize) {
             // v2 broadens that scan from the allowlist-only set to EVERY generated-crate unused import
             // (super::*/error::* globs, cross-scope type imports, wasm macro/prelude imports).
             // v3 adds `unused variable` warnings; v4 removes the trait-import exemption.
+            // v5 adds redundant-parentheses and needless-mut warnings (`generated_style_warning_lines`).
             // Bump on any future change to the scan's verdict.
-            argv_for_key.push("lint=unused-imports-v4".to_string());
+            argv_for_key.push("lint=unused-imports-v5".to_string());
             let outcome = gate_cache::run_cached(
                 "feature_corpus_compiles",
                 &label,
@@ -3264,6 +3290,14 @@ fn feature_corpus_compiles_shard(shard: usize) {
                             failures.push(format!(
                                 "{label} ({crate_sub}): generated-code unused-variable residue — generator emitted a named binding it never uses:\n{}",
                                 unused_vars.join("\n")
+                            ));
+                            ok = false;
+                        }
+                        let style_warnings = generated_style_warning_lines(&stderr);
+                        if !style_warnings.is_empty() {
+                            failures.push(format!(
+                                "{label} ({crate_sub}): generated-code style-lint residue — generator emitted redundant parentheses or a needless `mut`:\n{}",
+                                style_warnings.join("\n")
                             ));
                             ok = false;
                         }
@@ -3742,7 +3776,8 @@ fn feature_corpus_compiles_no_annotate_shard(shard: usize) {
                 .iter()
                 .find(|(s, f, _, _)| s == &stem && f == flavor);
             // Same lint marker string as the base leg's: the two share
-            // `unused_generated_import_lines`/`unused_generated_variable_lines`, so a change to
+            // `unused_generated_import_lines`/`unused_generated_variable_lines`/
+            // `generated_style_warning_lines`, so a change to
             // either scan's verdict must invalidate both legs' cached PASSes in one edit. The
             // known-red pin joins the key so retiring (or re-classing) an entry re-runs its cell
             // instead of reading a cached verdict taken under the old expectation.
@@ -3750,7 +3785,7 @@ fn feature_corpus_compiles_no_annotate_shard(shard: usize) {
                 "cwd=rust".to_string(),
                 "cargo".to_string(),
                 "check".to_string(),
-                "lint=unused-imports-v4".to_string(),
+                "lint=unused-imports-v5".to_string(),
             ];
             argv_for_key.push(match known_red {
                 Some((_, _, class, _)) => format!("known-red={class}"),
@@ -3818,6 +3853,14 @@ fn feature_corpus_compiles_no_annotate_shard(shard: usize) {
                         failures.push(format!(
                             "{label} (rust): generated-code unused-variable residue — generator emitted a named binding it never uses:\n{}",
                             unused_vars.join("\n")
+                        ));
+                        ok = false;
+                    }
+                    let style_warnings = generated_style_warning_lines(&stderr);
+                    if !style_warnings.is_empty() {
+                        failures.push(format!(
+                            "{label} (rust): generated-code style-lint residue — generator emitted redundant parentheses or a needless `mut`:\n{}",
+                            style_warnings.join("\n")
                         ));
                         ok = false;
                     }

@@ -664,7 +664,7 @@ the command sequence in path-normalized form (scratch paths are run- or checkout
 carry the command SHAPE — subcommand + crate role within the hashed tree — never a literal
 scratch path, which would make every key unique to its run), and a schema version. A gate whose
 cached closure ALSO asserts something beyond the cargo exit code versions that extra verdict logic
-into the key as an explicit argv marker (`feature_corpus_compiles`' `lint=unused-imports-v4`), so
+into the key as an explicit argv marker (`feature_corpus_compiles`' `lint=unused-imports-v5`), so
 changing what the closure checks re-runs every previously-cached cell instead of laundering old
 PASSes past the new check. Soundness
 rests on the same enforced determinism
@@ -3682,7 +3682,8 @@ a named binding rustc reports unused in a purely-generated crate is generator im
 count-match arm that should bind `_`). This catches a
 warning-severity under-prune (or unused-binding emission) the compile-error gates (E0412/E0433,
 over-prune only) cannot see. The scan is versioned into the gate-cache key via a
-`lint=unused-imports-v4` marker so a change to its verdict re-runs every cached cell.
+`lint=unused-imports-v5` marker so a change to its verdict re-runs every cached cell.
+It also fails on ANY `unnecessary parentheses` or `variable does not need to be mutable` warning (`generated_style_warning_lines`), the emitted-shape classes the occurrence fixture once carried.
 
 Those two scans reach beyond this gate's own cells, in two shapes. The corpus cells never generate
 under the cross-crate workspace flags, so both scans also run — through

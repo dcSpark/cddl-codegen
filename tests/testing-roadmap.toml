@@ -6025,7 +6025,7 @@ kind = "work"
 body_md = '''- **`unused_imports` on generated crates — the conservative intermediate-module keep and the matrix-probe warning blind spot.** The rustc-warning DETECTOR is live and BROAD — the generated-code unused-import scan
   (`unused_generated_import_lines`) inside `feature_corpus_compiles` fails on ANY `unused import`
   warning in the purely-generated crates, and (v3) its sibling `unused_generated_variable_lines`
-  fails on ANY `unused variable` warning too, cache-key-versioned by the `lint=unused-imports-v4`
+  fails on ANY `unused variable` warning too, cache-key-versioned by the `lint=unused-imports-v5`
   marker (current state in `tests/README.md`'s description of that gate). The variables half was
   added on a consumer-reported instance (the constant count-arm `Some(x) => 1` binding): the corpus
   held the provoking shape all along (33 committed-snapshot instances), so the escape mechanism was
