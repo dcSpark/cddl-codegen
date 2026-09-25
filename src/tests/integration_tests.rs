@@ -23723,7 +23723,7 @@ fn workspace_key_requests_scoped_contract() {
 
 /// `--workspace-dep` is honored MODE-INDEPENDENTLY, including its startup validation: under
 /// `--wasm=false`, a `--workspace-dep` naming something that is not an extern dependency must still
-/// exit NONZERO naming the unknown dep (the `load_workspace_deps` panic), never a silent ignore.
+/// exit NONZERO naming the unknown dep (the `load_workspace_deps` error), never a silent ignore.
 /// This pins the chosen posture for the "silently ignored under --wasm=false" gap — pre-fix this
 /// exact invocation exited 0 because `load_workspace_deps` was only called under `if cli.wasm`.
 #[test]
@@ -23811,9 +23811,114 @@ fn extern_wrapper_index_is_validated_under_wasm_false() {
     let stderr = String::from_utf8_lossy(&o.stderr);
     assert!(
         stderr.contains("unexpected line"),
-        "the rejection must show the index file was read and parsed (the `unexpected line` panic); \
+        "the rejection must show the index file was read and parsed (the `unexpected line` error); \
          stderr:\n{stderr}"
     );
+}
+
+/// Startup flag validation failures use the generator's ordinary error channel, including
+/// under `--wasm=false`, and must leave no output directory behind. Tier: local and later.
+#[test]
+fn startup_flag_validation_errors_exit_one_without_panic() {
+    let scratch_name = format!("cddl_codegen_startup_flags_{:016x}", checkout_hash());
+    let _scratch_lock = acquire_scratch_lock(&scratch_name);
+    let root = std::env::temp_dir().join(scratch_name);
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let index = root.join("malformed-collections.rs");
+    std::fs::write(&index, "struct NotAReExport;\n").unwrap();
+    let malformed_index_flag = format!("--extern-wrapper-index=wr_dep={}", index.display());
+    let mut failures = Vec::new();
+    let mut check_case =
+        |name: &str, out: &std::path::Path, result: std::process::Output, needle: &str| {
+            let stderr = String::from_utf8_lossy(&result.stderr);
+            if result.status.code() != Some(1)
+                || !stderr.starts_with("Error: ")
+                || stderr.contains("panicked")
+                || !stderr.contains(needle)
+                || out.exists()
+            {
+                failures.push(format!(
+                    "{name}: status={:?}, output_exists={}, stderr={stderr}",
+                    result.status.code(),
+                    out.exists()
+                ));
+            }
+        };
+
+    let cases: &[(&str, &str, &[&str], &str)] = &[
+        (
+            "extern_wasm_unknown",
+            "tests/extern-deps-wasm/inputs",
+            &[
+                "--wasm=true",
+                "--common-import-override=extern_dep_crate",
+                "--extern-wasm-crate=not_a_dep=whatever_wasm",
+            ],
+            "not an extern dependency",
+        ),
+        (
+            "workspace_unknown",
+            "tests/workspace-requests/consumer_inputs_flavored",
+            &[
+                "--lib-name=flavored-consumer",
+                "--workspace-dep=not_a_real_dep",
+                "--wasm=false",
+            ],
+            "not_a_real_dep",
+        ),
+        (
+            "workspace_unmapped",
+            "tests/workspace-requests/consumer_inputs_flavored",
+            &[
+                "--lib-name=flavored-consumer",
+                "--workspace-dep=wr_dep",
+                "--wasm=false",
+            ],
+            "has no --extern-wasm-crate mapping",
+        ),
+        (
+            "wrapper_unknown",
+            "tests/workspace-requests/consumer_inputs_flavored",
+            &[
+                "--lib-name=flavored-consumer",
+                "--extern-wrapper-index=not_a_real_dep=/nonexistent/collections.rs",
+                "--wasm=false",
+            ],
+            "--extern-wrapper-index names dependency",
+        ),
+        (
+            "wrapper_unreadable",
+            "tests/workspace-requests/consumer_inputs_flavored",
+            &[
+                "--lib-name=flavored-consumer",
+                "--extern-wrapper-index=wr_dep=/nonexistent/collections.rs",
+                "--wasm=false",
+            ],
+            "cannot read the index file",
+        ),
+        (
+            "wrapper_malformed",
+            "tests/workspace-requests/consumer_inputs_flavored",
+            &[
+                "--lib-name=flavored-consumer",
+                malformed_index_flag.as_str(),
+                "--wasm=false",
+            ],
+            "unexpected line",
+        ),
+    ];
+    for (name, input, flags, needle) in cases {
+        let out = root.join(format!("out-{name}"));
+        let result = codegen_cmd()
+            .arg(format!("--input={input}"))
+            .arg(format!("--output={}", out.display()))
+            .args(*flags)
+            .output()
+            .unwrap();
+        check_case(name, &out, result, needle);
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
 /// Regression: a requested wrapper whose element is an ALIAS in the dep's spec — a named-type

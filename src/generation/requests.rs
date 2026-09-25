@@ -526,29 +526,32 @@ pub(crate) fn split_shape_policy_marker(shape: &str) -> (&str, Option<&str>) {
 /// the deferral imports and the sidecar's `use` lines both need the wasm crate name, so a missing
 /// mapping is a hard error rather than a silent fallback. Mirrors `load_extern_wrapper_indices`'
 /// startup hardening. The accessor already rejected empty / `=`-bearing values.
-pub(super) fn load_workspace_deps(types: &IntermediateTypes, cli: &Cli) -> BTreeSet<String> {
+pub(super) fn load_workspace_deps(
+    types: &IntermediateTypes,
+    cli: &Cli,
+) -> Result<BTreeSet<String>, String> {
     let deps = cli.workspace_deps();
     if deps.is_empty() {
-        return BTreeSet::new();
+        return Ok(BTreeSet::new());
     }
     let extern_dep_names = types.extern_dep_names();
     let wasm_crate_map = cli.extern_wasm_crate_map();
     for dep in &deps {
         if !extern_dep_names.contains(dep) {
-            panic!(
+            return Err(format!(
                 "--workspace-dep names dependency {dep:?}, which is not an extern dependency in this \
                  spec. Known extern dependencies: {extern_dep_names:?}"
-            );
+            ));
         }
         if !wasm_crate_map.contains_key(dep) {
-            panic!(
+            return Err(format!(
                 "--workspace-dep {dep:?} has no --extern-wasm-crate mapping; workspace deferral needs \
                  the dep's wasm crate name for its imports and the borrowed-collections sidecar. Add \
                  --extern-wasm-crate {dep}=<wasm_crate>."
-            );
+            ));
         }
     }
-    deps
+    Ok(deps)
 }
 
 // ===== W2 dep side (`--wrapper-requests`): shape reconstruction + structural naming ===============
@@ -1036,23 +1039,23 @@ fn inner_collection_shapes(rt: &RustType) -> Vec<String> {
 pub(super) fn load_extern_wrapper_indices(
     types: &IntermediateTypes,
     cli: &Cli,
-) -> BTreeMap<String, BTreeSet<String>> {
+) -> Result<BTreeMap<String, BTreeSet<String>>, String> {
     let files = cli.extern_wrapper_index_files();
     if files.is_empty() {
-        return BTreeMap::new();
+        return Ok(BTreeMap::new());
     }
     let extern_dep_names = types.extern_dep_names();
     let mut out = BTreeMap::new();
     for (dep, path) in files {
         if !extern_dep_names.contains(&dep) {
-            panic!(
+            return Err(format!(
                 "--extern-wrapper-index names dependency {dep:?}, which is not an extern dependency \
                  in this spec. Known extern dependencies: {extern_dep_names:?}"
-            );
+            ));
         }
-        let contents = std::fs::read_to_string(&path).unwrap_or_else(|e| {
-            panic!("--extern-wrapper-index {dep}={path}: cannot read the index file: {e}")
-        });
+        let contents = std::fs::read_to_string(&path).map_err(|e| {
+            format!("--extern-wrapper-index {dep}={path}: cannot read the index file: {e}")
+        })?;
         let mut names = BTreeSet::new();
         for line in contents.lines() {
             // The grammar's one owner is `wrapper_requests::classify_collection_index_line`; the
@@ -1062,16 +1065,18 @@ pub(super) fn load_extern_wrapper_indices(
                 crate::wrapper_requests::CollectionIndexLine::Export(name) => {
                     names.insert(name);
                 }
-                crate::wrapper_requests::CollectionIndexLine::Unknown => panic!(
-                    "--extern-wrapper-index {dep}={path}: unexpected line {:?}; the index is a \
-                     generated `collections.rs` of `pub use <path>::<Name>;` re-export lines",
-                    line.trim()
-                ),
+                crate::wrapper_requests::CollectionIndexLine::Unknown => {
+                    return Err(format!(
+                        "--extern-wrapper-index {dep}={path}: unexpected line {:?}; the index is a \
+                         generated `collections.rs` of `pub use <path>::<Name>;` re-export lines",
+                        line.trim()
+                    ));
+                }
             }
         }
         out.insert(dep, names);
     }
-    out
+    Ok(out)
 }
 
 #[cfg(test)]

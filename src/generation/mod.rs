@@ -849,8 +849,8 @@ pub struct GenerationScope {
     /// on which types the rust face gives a `Deserialize` impl — a `from-cbor-bytes` static the tool
     /// never emits cannot collide with anything, and projecting with an empty no-deserialize set
     /// REJECTS a spec whose no-`Deserialize` type happens to carry a field named `from_cbor_bytes`.
-    /// Recorded here and drained by `generated_files`/`export`, the two producers that already carry
-    /// a graceful error channel. Empty off `--component`.
+    /// Recorded here and drained by `generated_files`/`export` (`component_collision_check`),
+    /// which report it together with `component_import_errors`. Empty off `--component`.
     component_name_collisions: Vec<String>,
     /// The dependency WIT packages `--component-extern-wit` names, read once at the top of
     /// `generate()` and handed to every consumer of the projection.
@@ -1016,14 +1016,14 @@ impl GenerationScope {
         // dependency (or an index file with a malformed line) is a hard error either way, mirroring
         // `--extern-wasm-crate` — a typo that silently disabled deferral would reintroduce the link
         // error. Both parse once, up front, so the data is available at every emitter's mint point.
-        self.workspace_deps = load_workspace_deps(types, cli);
+        self.workspace_deps = load_workspace_deps(types, cli)?;
         // Which idents get no `Deserialize`, decided for the whole IR before anything is emitted.
         // A verdict every face then CONSULTS (`deserialize_generated`) rather than accumulates:
         // the emission walk's ident order is alphabetical and unrelated to reference order, so a
         // container asking about a contained type mid-walk would otherwise get an order-dependent
         // answer. See `seed_no_deserialize_verdicts`.
         self.seed_no_deserialize_verdicts(types, cli);
-        let extern_wrapper_index = load_extern_wrapper_indices(types, cli);
+        let extern_wrapper_index = load_extern_wrapper_indices(types, cli)?;
         if cli.wasm {
             self.extern_wrapper_index = extern_wrapper_index;
         }
@@ -1062,9 +1062,9 @@ impl GenerationScope {
                     {
                         // wasm-bindgen doesn't support const or static vars so we must do a function
                         let (ty, val) = match constant {
-                            FixedValue::Null => panic!("null constants not supported"),
-                            FixedValue::Undefined => panic!(
-                                "undefined constants are nominal unit values, not wasm primitives"
+                            FixedValue::Null | FixedValue::Undefined => unreachable!(
+                                "a Rust-ident alias with a bare Fixed base is rejected by register_type_alias \
+                                 (record_bare_fixed_rule_rejection) before generation"
                             ),
                             FixedValue::Bool(b) => ("bool", b.to_string()),
                             FixedValue::Nint(i) => ("i32", i.to_string()),
@@ -2357,14 +2357,14 @@ impl GenerationScope {
                     let names_extern_dep = extern_dep_names.contains(dep);
                     let names_common_override = common_override == Some(dep.as_str());
                     if !names_extern_dep && !names_common_override {
-                        panic!(
+                        return Err(format!(
                             "--extern-wasm-crate names crate {dep:?}, which is not an extern \
                              dependency in this spec and is not the --common-import-override crate \
                              ({:?}). Accepted keys are the declared extern dependencies {:?} plus \
                              the --common-import-override crate (which routes the built-in Int's \
                              wasm face).",
                             common_override, extern_dep_names
-                        );
+                        ));
                     }
                 }
             }
@@ -2554,8 +2554,9 @@ impl GenerationScope {
             // the `from-cbor-bytes` seam of a type that has no `Deserialize` impl to bridge to.
             let no_deserialize = self.no_deserialize_idents();
             // The dependencies' committed WIT packages, read ONCE for the whole component face.
-            // A read failure is recorded rather than returned for the same reason a collision is:
-            // `generate` populates state and has no error channel, and the two producers below it do.
+            // A read failure is recorded rather than returned so the component face reports every
+            // seam error of the run together: component_collision_check joins these with the WIT
+            // name collisions into one error, drained by both producers (generated_files and export).
             match crate::component_wit_deps::load(cli) {
                 Ok(dep_wits) => self.component_dep_wits = dep_wits,
                 Err(msg) => self.component_import_errors.push(msg),
@@ -2565,8 +2566,8 @@ impl GenerationScope {
             // a collision the rust and wasm faces resolve by scoping is a broken WIT package. The
             // `<resource>.<resource>` member case in particular survives BOTH resolve and encode and
             // fails only at binary validation, which is why the tool catches it rather than leaving
-            // it to a downstream one. Recorded rather than returned: `generate` populates state and
-            // has no error channel; the two producers below it do.
+            // it to a downstream one. Recorded rather than returned, like the load error above, so
+            // one run reports every collision and import error together (component_collision_check).
             self.component_name_collisions =
                 wit::wit_name_collisions(types, cli, &no_deserialize, &self.component_dep_wits);
             let package = wit::project(types, cli, &no_deserialize, &self.component_dep_wits);

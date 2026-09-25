@@ -1641,7 +1641,8 @@ facets, each with its own pins:
   mode-independent — an unknown dep or a malformed index line is a hard error under
   `--wasm=false`, even though the deferral it feeds is wasm-gated — pinned by
   `extern_wrapper_index_is_validated_under_wasm_false` (both malformation classes exit nonzero in
-  rust-only mode).
+  rust-only mode). These startup refusals are graceful errors (exit 1 with an `Error:` line), pinned by
+  `startup_flag_validation_errors_exit_one_without_panic`.
 
 The whole surface is pinned by three sibling gates plus the parser's unit suite
 (`src/wrapper_requests.rs` — both the strict sidecar grammars and the lenient shape-key
