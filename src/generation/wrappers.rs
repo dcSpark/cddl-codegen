@@ -1304,7 +1304,8 @@ pub(super) fn generate_wrapper_struct(
         } else {
             unreachable!("a set nominal always wraps a homogeneous occurrence array")
         };
-        let inner_is_plain_vec = inner_ty.starts_with("Vec<");
+        let inner_carrier = SetNominalInner::of(field_type);
+        let inner_is_plain_vec = inner_carrier == SetNominalInner::Vec;
         let owned_iter_body = if inner_is_plain_vec {
             format!("{self_var}.into_iter()")
         } else {
@@ -1323,9 +1324,7 @@ pub(super) fn generate_wrapper_struct(
         // delegating to the inner uniqueness twin's runtime door and re-wrapping each accepted set via
         // `new`. Only the `OrderedSet`/`NonEmptyOrderedSet` inners have this door (the `Vec`/`NonEmptyVec`
         // preserve inners do not), so gate on the twin inner, not merely on `!inner_is_plain_vec`.
-        let inner_is_ordered_set =
-            inner_ty.starts_with("OrderedSet<") || inner_ty.starts_with("NonEmptyOrderedSet<");
-        if inner_is_ordered_set {
+        if inner_carrier == SetNominalInner::OrderedSet {
             ergo.push_str(&format!(
                 "\nimpl {type_name} {{\n    /// Empty input is `Ok(None)` (the optional set field is absent); a non-empty input goes through\n    /// the inner uniqueness door wrapped in `Some`, so ONLY a duplicate surfaces as `Err`.\n    pub fn try_opt_from(vec: Vec<{elem_ty}>) -> Result<Option<Self>, DeserializeError> {{\n        Ok(<{inner_ty}>::try_opt_from(vec)?.map({type_name}::new))\n    }}\n}}\n"
             ));
@@ -1367,6 +1366,35 @@ pub(super) fn generate_wrapper_struct(
         gen_scope
             .rust_serialize(types, type_name)
             .push_impl(deser_impl);
+    }
+}
+
+/// The carrier a set nominal wraps, as far as its ergonomic impls care. Mirrors the branch order of
+/// the array arm of `RustType::for_rust_member`, which spells the carrier: an exact length (`[T; N]`)
+/// or a bounded window (`BoundedVec` / `BoundedOrderedSet`) wins over the loose/min-one twins.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SetNominalInner {
+    /// `Vec<T>`: already has the `Vec` conversions and a borrowed/owned iterator.
+    Vec,
+    /// `OrderedSet<T>` / `NonEmptyOrderedSet<T>`: the only inners with a `try_opt_from` door.
+    OrderedSet,
+    /// `NonEmptyVec<T>`, an exact array, or a bounded carrier.
+    Other,
+}
+
+impl SetNominalInner {
+    fn of(field_type: &RustType) -> Self {
+        if field_type.exact_homogeneous_array_len_checked().is_some()
+            || field_type.bounded_array_u64_bounds().is_some()
+        {
+            Self::Other
+        } else if field_type.is_reject_ordered_set() {
+            Self::OrderedSet
+        } else if field_type.is_non_empty_array() {
+            Self::Other
+        } else {
+            Self::Vec
+        }
     }
 }
 
