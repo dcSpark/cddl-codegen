@@ -4679,7 +4679,23 @@ pub(super) fn codegen_struct(
             .captured_dynamic_rows()
             .filter(|row| row.is_array_tail())
         {
-            if let Some(line) = value_bounds_check_line(segment.element(), "*element", true) {
+            let element = segment.element();
+            // An exact byte-string element is carried as `[u8; N]`: the carrier already enforces
+            // its length, and `value_bounds_check_line` would emit the `Vec<u8>` -> array handover
+            // that only a loose constructor argument needs.
+            if element.exact_byte_array_len_checked().is_some() {
+                continue;
+            }
+            // A length window reads `element.len()`, auto-derefing the `&` the loop binds; a scalar
+            // window compares the copied value `*element`. `*element.len()` would parse as
+            // `*(element.len())`, a deref of `usize` (E0614).
+            let element_expr = match element.resolve_alias_shallow() {
+                ConceptualRustType::Primitive(Primitive::Bytes | Primitive::Str)
+                | ConceptualRustType::Array(_)
+                | ConceptualRustType::Map(_, _) => "element",
+                _ => "*element",
+            };
+            if let Some(line) = value_bounds_check_line(element, element_expr, true) {
                 native_new.line(format!("for element in &{} {{", segment.field_name));
                 native_new.line(&line);
                 native_new.line("}");

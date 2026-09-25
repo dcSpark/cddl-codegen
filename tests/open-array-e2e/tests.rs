@@ -799,6 +799,36 @@ mod open_array {
     }
 
     #[test]
+    fn multiple_segment_constructor_checks_byte_and_text_element_lengths() {
+        let built = MultiLooseLengthBounded::new(
+            vec![vec![0xaa, 0xbb], vec![0xaa, 0xbb, 0xcc]],
+            vec!["x".to_owned(), "xy".to_owned()],
+        )
+        .expect("every chunk and label is inside its .size window");
+        let rebuilt = MultiLooseLengthBounded::from_cbor_bytes(&built.to_cbor_bytes()).unwrap();
+        assert_eq!(rebuilt.chunks, vec![vec![0xaa, 0xbb], vec![0xaa, 0xbb, 0xcc]]);
+        assert_eq!(rebuilt.labels, vec!["x".to_owned(), "xy".to_owned()]);
+
+        for (chunks, labels, why) in [
+            (vec![vec![0xaa]], vec![], "a one-byte chunk is below .size (2..3)"),
+            (vec![vec![0; 4]], vec![], "a four-byte chunk is above .size (2..3)"),
+            (vec![], vec![String::new()], "an empty label is below .size (1..2)"),
+            (vec![], vec!["xyz".to_owned()], "a three-byte label is above .size (1..2)"),
+        ] {
+            MultiLooseLengthBounded::new(chunks, labels).expect_err(why);
+        }
+
+        assert_decode_reject_reason::<MultiLooseLengthBounded>(
+            &bytes("81 44 00000000"),
+            "4 not in range 2 - 3",
+        );
+        assert_decode_reject_reason::<MultiLooseLengthBounded>(
+            &bytes("81 63 78797a"),
+            "3 not in range 1 - 2",
+        );
+    }
+
+    #[test]
     fn multiple_variable_segments_before_fixed_suffix_do_not_redistribute_wrong_interleavings() {
         let valid = MultiSuffix::from_cbor_bytes(&bytes("84 07 01 6178 41aa")).unwrap();
         assert_eq!(valid.numbers, vec![1]);

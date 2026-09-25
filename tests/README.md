@@ -2350,7 +2350,7 @@ unproven possible-next boundaries remain refusals. User docs: `docs/docs/output_
   bytes: empty/populated/zero-skippable runs, positive-minimum separators, exact-before-variable,
   below/above windows, wrong interleaving, fixed suffixes, trailing-extra rejection, and nested stream
   position, plus present/absent optional chains and their nested stream position.
-  It also pins complete-carrier construction and multi-segment element-bound rejection.
+  It also pins complete-carrier construction and multi-segment element-bound rejection, for integer value windows and byte/text length windows.
 - **Preserve/canonical e2e** — `tests/open-array-preserve-e2e`
   (`integration_tests::open_array_preserve_e2e`, compiled) proves a non-canonical middle repeated
   element, exact same-major segment, finite fixed-domain retry chain, and two independently

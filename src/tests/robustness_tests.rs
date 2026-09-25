@@ -1429,6 +1429,31 @@ fn uint_size_at_least_eight_bytes_is_plain_u64() {
     );
 }
 
+/// An exact `bytes .size N` segment element is carried as `[u8; N]`, so the multi-segment
+/// constructor has no length to check for it. It once received the loose-door `Vec<u8>` handover
+/// spelled over `*element` (`let *element: [u8; 4] = …`), which rustfmt refused.
+#[test]
+fn multi_segment_exact_byte_element_generates() {
+    let files = expect_generates(
+        "multi_segment_exact_byte_element",
+        "mx = [\n  * bytes .size 4 ; @name xs\n  , * uint .le 7 ; @name us\n]\n",
+        &["--wasm=false"],
+    );
+    let src = &files["rust/src/generated/mod.rs"];
+    assert!(
+        src.contains("pub xs: Vec<[u8; 4]>"),
+        "expected the exact-array carrier, got:\n{src}"
+    );
+    assert!(
+        !src.contains("element.try_into"),
+        "the carrier already enforces the length:\n{src}"
+    );
+    assert!(
+        src.contains("if *element > 7 {"),
+        "the scalar segment keeps its value check:\n{src}"
+    );
+}
+
 /// `uint .size (l..h)`: RFC 8610 §3.8.1 makes the controller a type of admitted sizes, and on
 /// `uint` each size N is a MAXIMUM (`uint .size N` is `0...256**N`). A value matches when it fits
 /// in some N of `l..h`, so the ranged form is exactly `uint .size h` and the lower size never

@@ -85,6 +85,10 @@ multi_loose_value_bounded = [
   * uint .le 5 ; @name numbers
   , * tstr ; @name labels
 ]
+multi_loose_length_bounded = [
+  * bytes .size (2..3) ; @name chunks
+  , * tstr .size (1..2) ; @name labels
+]
 multi_exact_variable = [
   2*2 uint ; @name first
   , * uint ; @name later
