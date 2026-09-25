@@ -672,6 +672,72 @@ fn size_on_unsizable_head_rejects_gracefully() {
     }
     rows.extend([
         (
+            "alias_float_member",
+            "f = float64\nx = [a: f .size 3]\n".to_string(),
+            "f",
+        ),
+        (
+            "alias_float_forward",
+            "x = [a: f .size 3]\nf = float64\n".to_string(),
+            "f",
+        ),
+        (
+            "alias_float_paren",
+            "f = float64\nx = [a: (f) .size 3]\n".to_string(),
+            "f",
+        ),
+        (
+            "alias_float_chain",
+            "f = float64\ng = f\nx = [a: g .size 3]\n".to_string(),
+            "g",
+        ),
+        (
+            "alias_float_element",
+            "f = float64\nx = [* f .size 3]\n".to_string(),
+            "f",
+        ),
+        (
+            "alias_float_map_value",
+            "f = float64\nx = { * tstr => f .size 3 }\n".to_string(),
+            "f",
+        ),
+        (
+            "alias_float_choice_arm",
+            "f = float64\nx = tstr / f .size 3\n".to_string(),
+            "f",
+        ),
+        (
+            "alias_float_cbor_payload",
+            "f = float64\nx = bytes .cbor (f .size 3)\n".to_string(),
+            "f",
+        ),
+        (
+            "alias_float_generic_arg",
+            "f = float64\ng<T> = [T]\ny = g<f .size 3>\n".to_string(),
+            "f",
+        ),
+        ("bool_member", "x = [a: bool .size 1]\n".to_string(), "bool"),
+        (
+            "alias_bool_member",
+            "b = bool\nx = [a: b .size 1]\n".to_string(),
+            "b",
+        ),
+        (
+            "alias_uint_member",
+            "u = uint\nx = [a: u .size 2]\n".to_string(),
+            "u",
+        ),
+        (
+            "alias_choice_member",
+            "c = tstr / float64\nx = [a: c .size 3]\n".to_string(),
+            "c",
+        ),
+        (
+            "alias_record_member",
+            "r = [a: uint]\nx = [b: r .size 2]\n".to_string(),
+            "r",
+        ),
+        (
             "float_member",
             "x = [a: float64 .size 3]\n".to_string(),
             "float64",
@@ -726,6 +792,43 @@ fn size_on_unsizable_head_rejects_gracefully() {
             assert!(msg.contains("rule `y`"), "{msg}");
         }
     }
+    for (tag, spec, choice) in [
+        (
+            "choice_rule",
+            "x = (tstr / float64) .size 3\n",
+            "(tstr / float64)",
+        ),
+        (
+            "choice_member",
+            "x = [a: (tstr / float64) .size 3]\n",
+            "(tstr / float64)",
+        ),
+        (
+            "choice_nested",
+            "x = ((tstr / float64)) .size 3\n",
+            "(tstr / float64)",
+        ),
+        (
+            "choice_uint",
+            "x = (tstr / uint) .size 3\n",
+            "(tstr / uint)",
+        ),
+        (
+            "choice_bool",
+            "x = (tstr / bool) .size 3\n",
+            "(tstr / bool)",
+        ),
+    ] {
+        let msg = expect_graceful_rejection(tag, spec, &["--wasm=false"]);
+        assert_eq!(
+            msg.matches(&format!(
+                "`.size` on the type choice `{choice}` is unsupported"
+            ))
+            .count(),
+            1,
+            "{tag}: {msg}"
+        );
+    }
     for (tag, spec) in [
         ("text", "x = tstr .size 3\n"),
         ("unsigned", "x = uint .size 2\n"),
@@ -734,9 +837,18 @@ fn size_on_unsizable_head_rejects_gracefully() {
             "x = [a: tstr .size 3, b: bytes .size (1..3), c: uint .size 2]\n",
         ),
         ("parenthesized", "x = (uint) .size 2\n"),
+        ("alias_text_forward", "x = [a: t .size 2]\nt = tstr\n"),
+        ("alias_bytes_paren", "t = bytes\nx = [a: (t) .size 3]\n"),
+        ("per_arm_sizes", "x = [a: (tstr .size 3 / bytes .size 3)]\n"),
     ] {
         expect_generates(tag, spec, &["--wasm=false"]);
     }
+    let alias_text = expect_generates(
+        "alias_text_member",
+        "t = tstr\nx = [a: t .size 2]\n",
+        &["--wasm=false"],
+    );
+    assert!(alias_text.values().any(|src| src.contains("a.len() != 2")));
     for (tag, spec, needle) in [
         (
             "signed",
@@ -747,6 +859,11 @@ fn size_on_unsizable_head_rejects_gracefully() {
             "unmapped",
             "x = tdate .size 4\n",
             "a range or `.size` control operator on `tdate` is unsupported",
+        ),
+        (
+            "bool_rule",
+            "x = bool .size 1\n",
+            "a range or `.size` control operator on `bool` is unsupported",
         ),
     ] {
         let msg = expect_graceful_rejection(tag, spec, &["--wasm=false"]);

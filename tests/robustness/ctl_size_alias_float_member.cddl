@@ -1,0 +1,4 @@
+; size_on_unsizable_head_rejects_gracefully pins the member-route refusal of `.size` on a named head that is not a byte or text string.
+; An alias to a float once carried an integer window into generation and panicked.
+f = float64
+x = [a: f .size 3]

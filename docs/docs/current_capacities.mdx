@@ -178,6 +178,8 @@ sidebar_position: 3
   `tstr .size (1.5..2)`, even an integral `uint .size 2.0`) is **rejected gracefully** instead of
   being truncated into an integer window. The exclusive form `(a...b)` admits sizes up to `b-1`.
   `.size` applies to `uint` and to byte and text strings only (RFC 8610 §3.8.1). On a float or `nint` head (`float64 .size 4`, `nint .size 1`) or a literal head (`1.0 .size 3`, `3 .size 1`, `"a" .size 1`) it is **rejected gracefully**, in every position.
+  A `.size` on a type choice (`(tstr / float64) .size 3`) is **rejected gracefully** too: write it on each arm (`tstr .size 3 / bytes .size 3`).
+  A `.size` on a type name outside rule position (`f = float64`, `[a: f .size 3]`) is read as a byte or text length, so it generates only when the name resolves to `bytes` or `tstr` (`t = tstr`, `[a: t .size 3]`) and is otherwise **rejected gracefully**.
   A negative size (`bytes .size -1`, `uint .size (-1..2)`) and a window that admits no size
   (`uint .size (0...0)`, `bytes .size (3..1)`) are also **rejected gracefully**, on every head
   and in rule and member positions alike. A byte or text length window stays a byte/text carrier

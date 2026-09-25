@@ -2093,17 +2093,25 @@ pub(crate) fn unsizable_size_head_rejections(cddl_rule: &cddl::ast::Rule) -> Vec
             ctrl: token::ControlOperator,
             controller: &'b Type2<'a>,
         ) -> cddl::visitor::Result<std::fmt::Error> {
-            if ctrl == token::ControlOperator::SIZE
-                && let Some(head) = unsizable_size_head(target)
-            {
-                self.found.push(format!(
-                    "rule `{}`: `.size` on `{head}` is unsupported — RFC 8610 §3.8.1 defines \
-                     `.size` for `uint` and for byte and text strings (`uint .size 2`, `bytes \
-                     .size 4`, `tstr .size (1..63)`); a float or negative-integer type has no \
-                     size to control, and a literal value is already exactly one value. Remove \
-                     the control, or apply it to one of those types.",
-                    self.rule
-                ));
+            if ctrl == token::ControlOperator::SIZE {
+                if let Some(head) = unsizable_size_head(target) {
+                    self.found.push(format!(
+                        "rule `{}`: `.size` on `{head}` is unsupported — RFC 8610 §3.8.1 defines \
+                         `.size` for `uint` and for byte and text strings (`uint .size 2`, `bytes \
+                         .size 4`, `tstr .size (1..63)`); a float or negative-integer type has no \
+                         size to control, and a literal value is already exactly one value. Remove \
+                         the control, or apply it to one of those types.",
+                        self.rule
+                    ));
+                } else if let Some(choice) = size_head_type_choice(target) {
+                    self.found.push(format!(
+                        "rule `{}`: `.size` on the type choice `{choice}` is unsupported — the \
+                         control is not distributed over the choice's arms, so it would be \
+                         dropped. Write `.size` on each arm that takes one (`tstr .size 3 / bytes \
+                         .size 3`), or remove the control.",
+                        self.rule
+                    ));
+                }
             }
             cddl::visitor::walk_control_operator(self, target, controller)
         }
@@ -2157,6 +2165,19 @@ fn unsizable_size_head(head: &Type2) -> Option<String> {
             }
         }
         _ => None,
+    }
+}
+
+/// A `.size` head that is a parenthesized type CHOICE (`(tstr / float64) .size 3`), looking through
+/// bare single-type parentheses (`((tstr / bytes)) .size 3`). Returns the choice as written.
+fn size_head_type_choice(head: &Type2) -> Option<String> {
+    let Type2::ParenthesizedType { pt, .. } = head else {
+        return None;
+    };
+    match pt.type_choices.as_slice() {
+        [only] if only.type1.operator.is_none() => size_head_type_choice(&only.type1.type2),
+        [_] => None,
+        _ => Some(head.to_string()),
     }
 }
 
@@ -6626,6 +6647,59 @@ fn anon_composite_member_name<'a>(
     group_entry_rule_metadata(entry, optional_comma).name
 }
 
+/// `.size` in member position on a NAMED head (`f = float64`, `[a: f .size 3]`; also through bare
+/// parentheses, `[a: (f) .size 3]`) whose type is not a byte or text string. The `.size` window is
+/// computed from the head as WRITTEN, so a name only gets the length reading; on any other type it
+/// was attached as a value window that aborted at generation (float), did not compile (`bool`),
+/// mis-enforced (`u = uint` read as `== N`) or was dropped (records, arrays, choices). Prelude
+/// heads are the pre-scan's and the `.size` arm's; a generic parameter keeps its own refusal at
+/// substitution; an operand already refused left the inert `(None, None)` window.
+fn member_size_named_head_rejection(
+    type1: &Type1,
+    base_type: &RustType,
+    window: (Option<i128>, Option<i128>),
+) -> Option<String> {
+    if window == (None, None) {
+        return None;
+    }
+    let op = type1.operator.as_ref()?;
+    if !matches!(
+        op.operator,
+        RangeCtlOp::CtlOp {
+            ctrl: token::ControlOperator::SIZE,
+            ..
+        }
+    ) {
+        return None;
+    }
+    let mut head = &type1.type2;
+    while let Type2::ParenthesizedType { pt, .. } = head
+        && let [only] = pt.type_choices.as_slice()
+        && only.type1.operator.is_none()
+    {
+        head = &only.type1.type2;
+    }
+    let Type2::Typename { ident, .. } = head else {
+        return None;
+    };
+    if ident_to_primitive(&CDDLIdent::new(ident.to_string())).is_some()
+        || base_type.generic_param_binding.is_some()
+        || matches!(
+            base_type.conceptual_type.resolve_alias_shallow(),
+            ConceptualRustType::Primitive(Primitive::Bytes | Primitive::Str)
+        )
+    {
+        return None;
+    }
+    Some(format!(
+        "`.size` on `{ident}` is unsupported — a `.size` written on a type name is read as a byte \
+         or text length, and `{ident}` is not a byte or text string (RFC 8610 §3.8.1 gives a size \
+         only to `uint` and to byte and text strings). Write `.size` on the prelude type itself \
+         (`uint .size 2`, `bytes .size 4`), in the rule that defines `{ident}` or at this use, or \
+         remove the control."
+    ))
+}
+
 fn rust_type_from_type1(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
@@ -6637,6 +6711,12 @@ fn rust_type_from_type1(
         .as_ref()
         .map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op, None, cli));
     let base_type = rust_type_from_type2(types, parent_visitor, &type1.type2, cli);
+    if let Some(ControlOperator::Range(window)) = &control
+        && let Some(msg) = member_size_named_head_rejection(type1, &base_type, *window)
+    {
+        types.record_rejection(msg);
+        return base_type;
+    }
     let result = match control {
         Some(ControlOperator::CBOR(ty)) => {
             // The MEMBER route to the rule-position `.cbor` head check in `parse_type`: RFC 8610
