@@ -1426,8 +1426,8 @@ fn rest_entry_key_has_fixed_image(types: &IntermediateTypes, domain: &RustType, 
                 }
                 RustStructType::Wrapper {
                     wrapped,
-                    min_max: None,
                     float_min_max: None,
+                    ..
                 } if depth < 2 => rest_entry_key_has_fixed_image(types, wrapped, depth + 1),
                 _ => false,
             },
@@ -1544,7 +1544,7 @@ fn rest_entry_key_candidates(
             };
             let RustStructType::Wrapper {
                 wrapped,
-                min_max: None,
+                min_max,
                 float_min_max: None,
             } = rust_struct.variant()
             else {
@@ -1553,11 +1553,31 @@ fn rest_entry_key_candidates(
             if rust_struct.tag().is_some() {
                 return vec![(initial, None)];
             }
-            let Some(wrapped_initial) = valid_value(types, wrapped) else {
-                return Vec::new();
+            // A bounded wrapper without a uint/text image (bytes) cannot collide with a fixed key,
+            // so it keeps its generic in-window mint.
+            if min_max.is_some() && !rest_entry_key_has_fixed_image(types, wrapped, depth + 1) {
+                return vec![(initial, None)];
+            }
+            // A bounded wrapper's initial inner is already minted inside its window; searching from
+            // the unbounded wrapped baseline could start outside it.
+            let wrapped_initial = match (min_max, &initial) {
+                (Some(_), MintValue::Wrapper { inner, .. }) => (**inner).clone(),
+                _ => {
+                    let Some(wrapped_initial) = valid_value(types, wrapped) else {
+                        return Vec::new();
+                    };
+                    wrapped_initial
+                }
             };
             rest_entry_key_candidates(types, wrapped, wrapped_initial, false, limit, depth + 1)
                 .into_iter()
+                .filter(|(_, image)| {
+                    min_max.is_none_or(|window| {
+                        image
+                            .as_ref()
+                            .is_none_or(|image| wrapper_key_image_in_window(window, image))
+                    })
+                })
                 .filter_map(|(mint, image)| {
                     image.map(|image| {
                         let MintValue::Wrapper {
@@ -1598,9 +1618,23 @@ fn rest_entry_key_candidates(
     }
 }
 
+/// Whether a bounded wrapper's `new()` accepts a candidate key image. Integer images are CDDL
+/// values, the space the wrapper window is written in. A text candidate keeps its initial's length,
+/// which the wrapper mint already placed inside a `.size` window.
+fn wrapper_key_image_in_window(window: Bounds, image: &FixedValue) -> bool {
+    match image {
+        FixedValue::Uint(value) => {
+            !crate::generation::bounds_reject_value(&window, i128::from(*value))
+        }
+        FixedValue::Nint(value) => !crate::generation::bounds_reject_value(&window, *value),
+        _ => true,
+    }
+}
+
 /// The one extra entry a round-trip mutation adds through a protected row's checked `insert_<row>`
 /// door must avoid declared and forbidden fixed keys plus images already minted into baseline map
-/// rows. Integer, text, `int`, untagged choice, and unbounded wrapper keys search cheap streams.
+/// rows. Integer, text, `int`, untagged choice, and wrapper keys (a bounded wrapper inside its own
+/// window) search cheap streams; a bounded bytes wrapper keeps its generic mint.
 /// Bytes and bool keep their generic mint: record fixed keys are uint/text only, and a unique-map
 /// duplicate replaces an existing entry rather than failing.
 fn mint_checked_rest_entry_key(

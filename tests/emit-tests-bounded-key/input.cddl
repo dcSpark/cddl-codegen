@@ -57,3 +57,18 @@ holder_declared_newtype_rest = { 0: uint, * rest_key_newtype => text }
 
 ; A union with only composite key variants keeps its valid bytes mint for checked insertion.
 holder_composite_choice_rest = { a: uint, * (bytes / [* uint]) => text }
+
+; A bounded `@newtype` rest key searches inside the wrapper's own window, at both window sides and
+; for a `.size`-bounded text key. The first candidate of each collides with the declared key.
+rest_key_le = uint .le 5 ; @newtype
+holder_declared_bounded_newtype_le_rest = { 0: uint, * rest_key_le => text }
+rest_key_ge = uint .ge 5 ; @newtype
+holder_declared_bounded_newtype_ge_rest = { 5: uint, * rest_key_ge => text }
+rest_key_sized_text = tstr .size 1 ; @newtype
+holder_declared_bounded_newtype_text_rest = { "a": uint, * rest_key_sized_text => text }
+; A window whose only value is declared leaves no entry key: the checked insertion is skipped loudly.
+rest_key_zero = uint .le 0 ; @newtype
+holder_declared_exhausted_newtype_rest = { 0: uint, * rest_key_zero => text }
+; A bounded bytes key has no uint/text image, so it keeps its generic in-window mint.
+rest_key_bounded_bytes = bytes .size (1..3) ; @newtype
+holder_declared_bounded_bytes_newtype_rest = { 0: uint, * rest_key_bounded_bytes => text }

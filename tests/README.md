@@ -3814,7 +3814,8 @@ classes — `widen_float` included, via the `any`-range composite — exercise c
 window is minted inside that window through one canonical `FixedValue` CDDL-value projection; N64
 candidate selection still uses cheap magnitude endpoints, while acceptance independently applies the
 original value-space bounds; a checked rest insertion whose domain is a union, text, `int` or
-unbounded `@newtype` key skips declared, forbidden and baseline keys), and
+`@newtype` key skips declared, forbidden and baseline keys, a bounded `@newtype` key staying inside
+its own window (an exhausted window skips the insertion loudly)), and
 `feature_corpus_roundtrips_nondefault_profiles` (full tier, corpus × preserve breadth); the canonical
 differential runs once at whole-program scale via the `canonical` fixture's `--emit-tests`.
 

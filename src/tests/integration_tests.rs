@@ -14986,6 +14986,11 @@ fn emit_tests_bounded_map_key_execute() {
         "roundtrip_holder_declared_sized_text_rest",
         "roundtrip_holder_declared_newtype_rest",
         "roundtrip_holder_composite_choice_rest",
+        "roundtrip_holder_declared_bounded_newtype_le_rest",
+        "roundtrip_holder_declared_bounded_newtype_ge_rest",
+        "roundtrip_holder_declared_bounded_newtype_text_rest",
+        "roundtrip_holder_declared_exhausted_newtype_rest",
+        "roundtrip_holder_declared_bounded_bytes_newtype_rest",
     ] {
         assert!(
             src.contains(&format!("fn {ty}(")),
@@ -15065,6 +15070,22 @@ fn emit_tests_bounded_map_key_execute() {
             "declared newtype key",
         ),
         (
+            "v.insert_rest(RestKeyLe::try_from(1).unwrap(),\"a\".repeat(1)).unwrap();",
+            "bounded newtype key below its max",
+        ),
+        (
+            "v.insert_rest(RestKeyGe::try_from(6).unwrap(),\"a\".repeat(1)).unwrap();",
+            "bounded newtype key above its min",
+        ),
+        (
+            "insert_rest(RestKeySizedText::try_from(\"b\".to_owned()).unwrap(),",
+            "sized text newtype key",
+        ),
+        (
+            "insert_rest(RestKeyBoundedBytes::try_from(vec![0u8;1]).unwrap(),",
+            "bounded bytes newtype key keeps its generic mint",
+        ),
+        (
             "v.insert_rest(BytesOrArrU64::new_bytes(vec![0u8;1]),\"a\".repeat(1)).unwrap();",
             "composite choice key",
         ),
@@ -15074,6 +15095,10 @@ fn emit_tests_bounded_map_key_execute() {
             "checked rest insertion must skip {collision}\n{src}"
         );
     }
+    assert!(
+        !flat.contains("RestKeyZero::try_from(0).unwrap(),\"a\""),
+        "an exhausted bounded newtype window must skip the checked insertion, never mint the declared key"
+    );
     // Vacuity guard: the `.ne 0` table's keys must actually START above the excluded value. Without
     // this the gate could pass by minting the map EMPTY (or by the table vanishing from the
     // fixture) — a green that asserts nothing about the key window.
