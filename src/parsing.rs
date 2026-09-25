@@ -3294,7 +3294,10 @@ fn parse_control_operator(
                     return ControlOperator::Range((None, None));
                 }
                 match type2 {
-                    Type2::Typename { ident, .. } if ident.to_string() == "uint" => {
+                    // `uint`, `(uint)`, or a transparent alias of it (`u = uint`): the same window
+                    // `uint .size N` gets, so `[a: u .size 2]` means `0..=65535` rather than a
+                    // length. `resolved_head_primitive` is the reading the member route attaches.
+                    _ if resolved_head_primitive(types, type2).is_some_and(is_uint_primitive) => {
                         // .size 3 means 24 bits
                         match &base_range {
                             // RFC 8610 §3.8.1: the controller is a type of admitted sizes, and on
@@ -3357,6 +3360,31 @@ fn parse_control_operator(
                 ControlOperator::Range((None, None))
             }
         },
+    }
+}
+
+/// An unsigned integer primitive: `uint` itself, or the narrower carrier a `uint` window collapses
+/// onto (`u8 = uint .size 1`). `.size` on one of these is the `uint` reading, a maximum byte count.
+fn is_uint_primitive(primitive: Primitive) -> bool {
+    matches!(
+        primitive,
+        Primitive::U8 | Primitive::U16 | Primitive::U32 | Primitive::U64
+    )
+}
+
+/// The inclusive value domain of an integer primitive, or `None` for a non-integer one.
+fn integer_primitive_domain(primitive: Primitive) -> Option<(i128, i128)> {
+    match primitive {
+        Primitive::U8 => Some((0, u8::MAX as i128)),
+        Primitive::U16 => Some((0, u16::MAX as i128)),
+        Primitive::U32 => Some((0, u32::MAX as i128)),
+        Primitive::U64 => Some((0, u64::MAX as i128)),
+        Primitive::I8 => Some((i8::MIN as i128, i8::MAX as i128)),
+        Primitive::I16 => Some((i16::MIN as i128, i16::MAX as i128)),
+        Primitive::I32 => Some((i32::MIN as i128, i32::MAX as i128)),
+        Primitive::I64 => Some((i64::MIN as i128, i64::MAX as i128)),
+        Primitive::N64 => Some((-(u64::MAX as i128) - 1, -1)),
+        _ => None,
     }
 }
 
@@ -6692,13 +6720,14 @@ fn anon_composite_member_name<'a>(
 }
 
 /// `.size` in member position on a NAMED head (`f = float64`, `[a: f .size 3]`; also through bare
-/// parentheses, `[a: (f) .size 3]`) whose type is not a byte or text string. The `.size` window is
-/// computed from the head as WRITTEN, so a name only gets the length reading; on any other type it
-/// was attached as a value window that aborted at generation (float), did not compile (`bool`),
-/// mis-enforced (`u = uint` read as `== N`) or was dropped (records, arrays, choices). Prelude
+/// parentheses, `[a: (f) .size 3]`) whose type is neither a byte or text string nor a uint.
+/// A byte/text head takes the length reading and a uint head takes the `uint` reading instead
+/// (`u = uint`, `[a: u .size 2]`). On any other type the value window aborted at generation
+/// (float), did not compile (`bool`), or was dropped (records, arrays, choices). Prelude
 /// heads are the pre-scan's and the `.size` arm's; a generic parameter keeps its own refusal at
 /// substitution; an operand already refused left the inert `(None, None)` window.
 fn member_size_named_head_rejection(
+    types: &IntermediateTypes,
     type1: &Type1,
     base_type: &RustType,
     window: (Option<i128>, Option<i128>),
@@ -6728,6 +6757,7 @@ fn member_size_named_head_rejection(
     };
     if ident_to_primitive(&CDDLIdent::new(ident.to_string())).is_some()
         || base_type.generic_param_binding.is_some()
+        || resolved_head_primitive(types, head).is_some_and(is_uint_primitive)
         || matches!(
             base_type.conceptual_type.resolve_alias_shallow(),
             ConceptualRustType::Primitive(Primitive::Bytes | Primitive::Str)
@@ -6755,7 +6785,7 @@ fn rust_type_from_type1(
         .map(|op| parse_control_operator(types, parent_visitor, &type1.type2, op, None, cli));
     let base_type = rust_type_from_type2(types, parent_visitor, &type1.type2, cli);
     if let Some(ControlOperator::Range(window)) = &control
-        && let Some(msg) = member_size_named_head_rejection(type1, &base_type, *window)
+        && let Some(msg) = member_size_named_head_rejection(types, type1, &base_type, *window)
     {
         types.record_rejection(msg);
         return base_type;
@@ -6784,14 +6814,14 @@ fn rust_type_from_type1(
             Type2::Typename { ident, .. } => {
                 match ident_to_primitive(&CDDLIdent::new(ident.to_string())) {
                     Some(p) => range_to_primitive(low, high, p),
-                    None => base_type.with_bounds((low, high)),
+                    None => with_resolved_head_window(base_type, (low, high)),
                 }
             }
             // the base value will be a constant due to incomplete parsing earlier for explicit ranges
             // e.g. foo = 0..255
             Type2::IntValue { .. } => range_to_primitive(low, high, Primitive::I64),
             Type2::UintValue { .. } => range_to_primitive(low, high, Primitive::U64),
-            _ => base_type.with_bounds((low, high)),
+            _ => with_resolved_head_window(base_type, (low, high)),
         },
         // member-position float window (`[f: 0.5..10.5]`, `[g: float64 .lt 10.5]`): attach the
         // NaN-safe window to the primitive so the field's ctor/setter/deserialize enforce it.
@@ -6834,6 +6864,34 @@ fn rust_type_from_type1(
         types.record_rejection(exact_homogeneous_array_length_rejection(length));
     }
     result
+}
+
+/// Attach an integer window to a head that is not a prelude name (`u = uint`, `[a: u .size 2]`;
+/// `[a: (uint) .le 5]`), reading it against the type the head RESOLVES to, as `range_to_primitive`
+/// reads a prelude head's: a byte/text length goes through `length_window`, and on an integer
+/// primitive a side its domain already implies is dropped (`u8_alias .size 2` checks nothing,
+/// `u .size 9` spans every uint) instead of emitting a comparison the carrier cannot fail or a
+/// literal it cannot hold. An exclusion and every other type keep the window as written.
+fn with_resolved_head_window(
+    base_type: RustType,
+    window: (Option<i128>, Option<i128>),
+) -> RustType {
+    let window = match base_type.conceptual_type.resolve_alias_shallow() {
+        ConceptualRustType::Primitive(primitive @ (Primitive::Bytes | Primitive::Str)) => {
+            length_window(*primitive, window)
+        }
+        ConceptualRustType::Primitive(primitive)
+            if let Some((min, max)) = integer_primitive_domain(*primitive)
+                && !matches!(window, (Some(l), Some(h)) if l > h) =>
+        {
+            (
+                window.0.filter(|low| *low > min),
+                window.1.filter(|high| *high < max),
+            )
+        }
+        _ => window,
+    };
+    base_type.with_bounds(window)
 }
 
 /// The window a byte/text `.size` checks. A CBOR length never exceeds `u64::MAX`, so an upper

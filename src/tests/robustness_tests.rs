@@ -723,8 +723,8 @@ fn size_on_unsizable_head_rejects_gracefully() {
             "b",
         ),
         (
-            "alias_uint_member",
-            "u = uint\nx = [a: u .size 2]\n".to_string(),
+            "alias_uint_newtype",
+            "u = uint ; @newtype\nx = [a: u .size 2]\n".to_string(),
             "u",
         ),
         (
@@ -849,6 +849,85 @@ fn size_on_unsizable_head_rejects_gracefully() {
         &["--wasm=false"],
     );
     assert!(alias_text.values().any(|src| src.contains("a.len() != 2")));
+    for (tag, spec, needle, present) in [
+        (
+            "alias_uint_member",
+            "u = uint\nx = [a: u .size 2]\n",
+            "if a > 65535",
+            true,
+        ),
+        (
+            "alias_uint_forward",
+            "x = [a: u .size 2]\nu = uint\n",
+            "if a > 65535",
+            true,
+        ),
+        (
+            "alias_uint_paren",
+            "u = uint\nx = [a: (u) .size 2]\n",
+            "if a > 65535",
+            true,
+        ),
+        (
+            "prelude_uint_paren",
+            "x = [a: (uint) .size 2]\n",
+            "if a > 65535",
+            true,
+        ),
+        (
+            "alias_uint_range",
+            "u = uint\nx = [a: u .size (1..2)]\n",
+            "if a > 65535",
+            true,
+        ),
+        (
+            "alias_uint_full",
+            "u = uint\nx = [a: u .size 9]\n",
+            "18446744073709551615",
+            false,
+        ),
+        (
+            "alias_u8_wider",
+            "u = uint .size 1\nx = [a: u .size 2]\n",
+            "65535",
+            false,
+        ),
+        (
+            "alias_u8_le",
+            "u = uint .size 1\nx = [a: u .le 300]\n",
+            "300",
+            false,
+        ),
+        (
+            "alias_bytes_full",
+            "t = bytes\nx = [a: t .size (0..18446744073709551615)]\n",
+            "18446744073709551615",
+            false,
+        ),
+    ] {
+        let src = expect_generates(tag, spec, &["--wasm=false"])
+            .into_values()
+            .collect::<String>();
+        assert_eq!(src.contains(needle), present, "{tag}: {src}");
+    }
+    for (tag, spec) in [
+        ("alias_uint_element", "u = uint\nx = [* u .size 2]\n"),
+        (
+            "alias_uint_map_key",
+            "u = uint\nx = { * u .size 2 => tstr }\n",
+        ),
+        ("alias_uint_choice_arm", "u = uint\nx = tstr / u .size 2\n"),
+        (
+            "alias_uint_cbor_payload",
+            "u = uint\nx = bytes .cbor (u .size 2)\n",
+        ),
+        (
+            "alias_uint_generic_arg",
+            "u = uint\ng<T> = [T]\ny = g<u .size 2>\n",
+        ),
+    ] {
+        expect_generates(tag, spec, &["--wasm=false"]);
+    }
     for (tag, spec, needle) in [
         (
             "signed",
@@ -864,6 +943,11 @@ fn size_on_unsizable_head_rejects_gracefully() {
             "bool_rule",
             "x = bool .size 1\n",
             "a range or `.size` control operator on `bool` is unsupported",
+        ),
+        (
+            "alias_uint_rule",
+            "u = uint\nx = u .size 2\n",
+            "a range or `.size` control operator on `u` is unsupported",
         ),
     ] {
         let msg = expect_graceful_rejection(tag, spec, &["--wasm=false"]);

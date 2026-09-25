@@ -34155,6 +34155,10 @@ g = f
 fw = [a: f .lt 3, b: (f) .ge 1.5, c: g .eq 2, d: (float64) .le 4]
 fc = tstr / f .lt 3
 fm = { * tstr => f .le 3 }
+u = uint
+u8a = uint .size 1
+uw = [a: u .size 2, b: (u) .size (1..2), c: u8a .size 2, d: (uint) .size 2, e: u .size 9]
+uk = { * u .size 2 => tstr }
 ";
     let input = root.join("input.cddl");
     std::fs::write(&input, spec).unwrap();
