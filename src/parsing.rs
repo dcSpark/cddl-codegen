@@ -6655,6 +6655,7 @@ fn rust_type_from_type2(
             match group.group_choices.len() {
                 1 => {
                     let group_choice = &group.group_choices.first().unwrap();
+                    let classification_mark = types.rejection_mark();
                     match parse_group_type(
                         types,
                         parent_visitor,
@@ -6728,6 +6729,7 @@ fn rust_type_from_type2(
                             };
                             let cddl_ident = CDDLIdent::new(name);
                             let rust_ident = RustIdent::new(cddl_ident.clone());
+                            let construction_mark = types.rejection_mark();
                             parse_group(
                                 types,
                                 parent_visitor,
@@ -6739,6 +6741,7 @@ fn rust_type_from_type2(
                                 &rule_metadata,
                                 cli,
                             );
+                            types.drop_rewalk_repeats(classification_mark, construction_mark);
                             // we aren't returning an array, but rather a struct where the fields are ordered
                             types.new_type(&cddl_ident, cli)
                         }
@@ -9372,6 +9375,7 @@ fn parse_group_choice(
     } else {
         rule_metadata
     };
+    let classification_mark = types.rejection_mark();
     let group_parsing_type = parse_group_type(
         types,
         parent_visitor,
@@ -9381,6 +9385,7 @@ fn parse_group_choice(
         generic_params.is_some(),
         cli,
     );
+    let construction_mark = types.rejection_mark();
     if let GroupParsingType::FlatGroupArray(element_type, bounds) = &group_parsing_type {
         // A transparent collection alias would inherit Vec's standalone codec and nest each group
         // value. The wrapper owns the structural Array's existing flat embedded-group codec.
@@ -9665,6 +9670,7 @@ fn parse_group_choice(
                 tag.is_some(),
                 cli,
             );
+            types.drop_rewalk_repeats(classification_mark, construction_mark);
             // We need to store this in IntermediateTypes so we can refer from one struct to another.
             RustStruct::new_record(name.clone(), tag, Some(&rule_metadata), record)
         }

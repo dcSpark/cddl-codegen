@@ -440,6 +440,11 @@ impl Default for IntermediateTypes<'_> {
     }
 }
 
+/// A position in [`IntermediateTypes`]' recorded diagnostics; see
+/// [`IntermediateTypes::drop_rewalk_repeats`].
+#[derive(Clone, Copy, Debug)]
+pub struct RejectionMark(usize);
+
 /// The imports needed by each scope, plus the named idents the wasm boundary actually uses.
 ///
 /// `wasm_boundary_idents` deliberately records same-scope references too. Import placement needs
@@ -574,6 +579,27 @@ impl<'a> IntermediateTypes<'a> {
     pub fn record_rejection(&mut self, msg: String) {
         self.rejection_observations += 1;
         self.rejections.push(msg);
+    }
+
+    /// A position in the recorded diagnostics, for [`Self::drop_rewalk_repeats`].
+    pub fn rejection_mark(&self) -> RejectionMark {
+        RejectionMark(self.rejections.len())
+    }
+
+    /// Remove repeated diagnostics from a construction walk after classifying the same AST nodes.
+    /// Each first-walk occurrence removes at most one equal second-walk occurrence.
+    pub fn drop_rewalk_repeats(&mut self, walk: RejectionMark, rewalk: RejectionMark) {
+        let mut first_walk: BTreeMap<String, usize> = BTreeMap::new();
+        for msg in &self.rejections[walk.0..rewalk.0] {
+            *first_walk.entry(msg.clone()).or_insert(0) += 1;
+        }
+        let second_walk = self.rejections.split_off(rewalk.0);
+        for msg in second_walk {
+            match first_walk.get_mut(&msg) {
+                Some(remaining) if *remaining > 0 => *remaining -= 1,
+                _ => self.rejections.push(msg),
+            }
+        }
     }
 
     /// Record one semantic rejection observation at `node`, while emitting its diagnostic only on
