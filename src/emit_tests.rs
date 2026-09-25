@@ -2134,6 +2134,9 @@ fn dynamic_row_cases(
                     per_row_entry_mints.push(mint);
                 }
             }
+            // Array rest tail: a loose `* t` starts empty, while a `+ t` baseline already holds its
+            // first element through `new`; both gain one more element here through the non-shrinking
+            // `.push` API so serialization/deserialization executes the tail loop.
             crate::intermediate::RestKind::ArrayTail { element, .. } => {
                 // Exact static tails are already fully represented in the baseline `[T; N]`.
                 // They have no length-preserving `push` operation, and attempting one would
