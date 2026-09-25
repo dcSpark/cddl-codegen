@@ -1686,7 +1686,9 @@ impl GenerationScope {
             // named aliases are not re-descended).
             if cli.wasm {
                 for (alias_ident, alias_info) in types.type_aliases() {
-                    if matches!(alias_ident, AliasIdent::Rust(_)) && alias_info.gen_wasm_alias {
+                    if matches!(alias_ident, AliasIdent::Rust(_))
+                        && alias_info.declared_wasm_alias()
+                    {
                         let base = &alias_info.base_type;
                         // The base type's OWN top-level map carries the rule's `@duplicates` policy
                         // (`with_duplicates_policy` at registration) — a named/instantiated

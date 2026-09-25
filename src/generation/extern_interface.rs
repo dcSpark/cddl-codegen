@@ -1077,7 +1077,7 @@ pub(crate) fn project_extern_interface(types: &IntermediateTypes, cli: &Cli) -> 
                         .rust_struct(bound)
                         .is_some_and(|rs| rs.config().set_nominal)
         );
-        let projected: RuleProjection = if set_nominal_ref && !alias_info.gen_rust_alias {
+        let projected: RuleProjection = if set_nominal_ref && !alias_info.declared_rust_alias() {
             // A `@no_alias` binding to a set nominal materializes NO rust name at all: the opaque row
             // above names the BINDING (the nominal itself is unspellable — it is minted from the
             // instantiation and has no source rule), so exporting it would hand the consumer a
@@ -1126,9 +1126,9 @@ pub(crate) fn project_extern_interface(types: &IntermediateTypes, cli: &Cli) -> 
         // no rust type — nothing for the self-check to `use`, so it asserts nothing (`None`). The opaque
         // set-nominal row asserts `Serialize` on the concrete `pub type` (the same bound the pass-1
         // Wrapper arm uses), since the alias resolves to a Serialize-implementing nominal.
-        let kind = if set_nominal_ref && alias_info.gen_rust_alias {
+        let kind = if set_nominal_ref && alias_info.declared_rust_alias() {
             ExternCheckKind::Serialize
-        } else if alias_info.gen_rust_alias {
+        } else if alias_info.declared_rust_alias() {
             ExternCheckKind::Use
         } else {
             ExternCheckKind::None

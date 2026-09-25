@@ -86,8 +86,8 @@ impl std::fmt::Display for ModuleScope {
 #[derive(Debug)]
 pub struct AliasInfo {
     pub base_type: RustType,
-    pub gen_rust_alias: bool,
-    pub gen_wasm_alias: bool,
+    gen_rust_alias: bool,
+    gen_wasm_alias: bool,
     pub rule_metadata: Option<RuleMetadata>,
     /// The named ident this alias was resolved from, when a plain-typename rule (`ptm = mp`) had its
     /// `Alias(mp, …)` wrapper stripped to inline the type for serialization. The rust `base_type` is
@@ -118,7 +118,7 @@ pub struct AliasInfo {
 }
 
 impl AliasInfo {
-    pub fn new_manual(base_type: RustType, gen_rust_alias: bool, gen_wasm_alias: bool) -> Self {
+    fn new_manual(base_type: RustType, gen_rust_alias: bool, gen_wasm_alias: bool) -> Self {
         Self {
             base_type,
             gen_rust_alias,
@@ -128,6 +128,45 @@ impl AliasInfo {
             synthesized_collection: false,
             wire_metadata_inherited_from: None,
         }
+    }
+
+    /// A metadata-less alias that declares no `pub type` on either face (the CDDL prelude names).
+    pub fn transparent(base_type: RustType) -> Self {
+        Self::new_manual(base_type, false, false)
+    }
+
+    /// A metadata-less alias that declares a Rust `pub type` only.
+    /// The wasm face resolves through the base type (collection-rule and generic-extern aliases).
+    pub fn rust_only(base_type: RustType) -> Self {
+        Self::new_manual(base_type, true, false)
+    }
+
+    /// A metadata-less alias declared on both faces (a named generic-set binding).
+    pub fn rust_and_wasm(base_type: RustType) -> Self {
+        Self::new_manual(base_type, true, true)
+    }
+
+    /// `@no_alias` suppresses both declared aliases, whatever the constructor chose.
+    pub fn suppress_declared_aliases(&mut self) {
+        self.gen_rust_alias = false;
+        self.gen_wasm_alias = false;
+    }
+
+    /// Route an anonymous collection instance through its wasm wrapper passthrough.
+    /// See `converge_anonymous_collection_instance_wasm` for the structural wrapper route.
+    pub fn enable_wasm_passthrough(&mut self) {
+        self.gen_wasm_alias = true;
+    }
+
+    /// The stored Rust declaration before custom-pair suppression by `emits_rust_alias`.
+    /// Read this only where a pair-carrying alias must still count as declared.
+    pub fn declared_rust_alias(&self) -> bool {
+        self.gen_rust_alias
+    }
+
+    /// The stored wasm declaration before custom-pair suppression by `emits_wasm_alias`.
+    pub fn declared_wasm_alias(&self) -> bool {
+        self.gen_wasm_alias
     }
 
     pub fn new_from_metadata(base_type: RustType, rule_metadata: RuleMetadata) -> Self {
@@ -2724,7 +2763,7 @@ impl<'a> IntermediateTypes<'a> {
         let mut aliases = BTreeMap::<AliasIdent, AliasInfo>::new();
         let mut insert_alias = |name: &str, rust_type: RustType| {
             let ident = AliasIdent::new(CDDLIdent::new(name));
-            aliases.insert(ident, AliasInfo::new_manual(rust_type, false, false));
+            aliases.insert(ident, AliasInfo::transparent(rust_type));
         };
         insert_alias("uint", ConceptualRustType::Primitive(Primitive::U64).into());
         insert_alias("nint", ConceptualRustType::Primitive(Primitive::N64).into());
@@ -3132,8 +3171,7 @@ impl<'a> IntermediateTypes<'a> {
         // kind-walk, a named binding to a generic set nominal) honors the directive too. Idempotent
         // for `new_from_metadata`, which already derived both flags from the same bit.
         if self.no_alias_rules.contains(&alias) {
-            info.gen_rust_alias = false;
-            info.gen_wasm_alias = false;
+            info.suppress_declared_aliases();
         }
         if let ConceptualRustType::Alias(_ident, _ty) = &info.base_type.conceptual_type {
             panic!(
@@ -3571,10 +3609,7 @@ impl<'a> IntermediateTypes<'a> {
                         map_type.tag(tag)
                     };
                 }
-                self.register_type_alias(
-                    rust_struct.ident.clone(),
-                    AliasInfo::new_manual(map_type, true, false),
-                )
+                self.register_type_alias(rust_struct.ident.clone(), AliasInfo::rust_only(map_type))
             }
             RustStructType::Array {
                 element_type,
@@ -3600,7 +3635,7 @@ impl<'a> IntermediateTypes<'a> {
                 }
                 self.register_type_alias(
                     rust_struct.ident.clone(),
-                    AliasInfo::new_manual(array_type, true, false),
+                    AliasInfo::rust_only(array_type),
                 )
             }
             RustStructType::Wrapper {
@@ -3699,7 +3734,7 @@ impl<'a> IntermediateTypes<'a> {
             if gets_wrapper
                 && let Some(alias) = self.type_aliases.get_mut(&AliasIdent::Rust(ident.clone()))
             {
-                alias.gen_wasm_alias = true;
+                alias.enable_wasm_passthrough();
             }
             self.anonymous_collection_instances.insert(ident);
         }
@@ -5233,10 +5268,8 @@ impl<'a> IntermediateTypes<'a> {
                         }
                         self.register_type_alias(
                             instance_ident,
-                            AliasInfo::new_manual(
+                            AliasInfo::rust_and_wasm(
                                 ConceptualRustType::Rust(canonical_ident).into(),
-                                true,
-                                true,
                             ),
                         );
                     }
@@ -5262,11 +5295,7 @@ impl<'a> IntermediateTypes<'a> {
                     // but wasm_bindgen can't work with it directly we assume the user will supply the correct mappings
                     self.register_type_alias(
                         instance_ident,
-                        AliasInfo::new_manual(
-                            ConceptualRustType::Rust(real_ident).into(),
-                            true,
-                            false,
-                        ),
+                        AliasInfo::rust_only(ConceptualRustType::Rust(real_ident).into()),
                     );
                 }
             }
@@ -7755,7 +7784,7 @@ impl<'a> IntermediateTypes<'a> {
         // `BTreeMap`.
         for (alias_ident, alias_info) in self.type_aliases() {
             if matches!(alias_ident, AliasIdent::Rust(_))
-                && (alias_info.gen_rust_alias || alias_info.gen_wasm_alias)
+                && (alias_info.declared_rust_alias() || alias_info.declared_wasm_alias())
             {
                 alias_info.base_type.conceptual_type.visit_types(self, f);
             }
