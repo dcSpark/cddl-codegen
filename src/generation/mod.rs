@@ -790,12 +790,13 @@ pub struct GenerationScope {
     /// read. Recording is idempotent (the same wrapper is probed from several sites); two DISTINCT
     /// shapes deriving the SAME structural name is a hard error (the `MapAToBToC` reverse-ambiguity).
     borrowed_wrappers: BTreeMap<RustIdent, (String, String)>,
-    /// W2 dep side: while `Some`, `wasm()` / `record_collection_wrapper` route the wrapper being
-    /// emitted into this scope (the `requested_collections` module) instead of `types.scope(ident)` —
-    /// the requested wrappers are not in the dep's IR, so they have no natural scope. Set only around
+    /// `--wrapper-requests` (dependency side): while `Some`, route the wrapper being emitted by
+    /// `wasm()` / `record_collection_wrapper` into this scope (the `requested_collections` module)
+    /// instead of `types.scope(ident)` — the requested wrappers are not in the dep's IR, so they
+    /// have no natural scope. Set only around
     /// the requested-wrapper emission in `emit_requested_collections`; `None` everywhere else.
     requested_scope_override: Option<ModuleScope>,
-    /// W2 dep side (`--wrapper-requests`): every explicitly requested collection wrapper actually
+    /// `--wrapper-requests` (dependency side): every explicitly requested collection wrapper
     /// hosted this run, as `(structural class ident, requested RustType)`. The hosted wrappers are
     /// emitted into the `requested_collections` scope but are NOT in the dep's IR, so the per-scope wasm import walk
     /// (`scope_references`, which walks IR structs) never marks the element/key/value wasm classes each
@@ -803,28 +804,33 @@ pub struct GenerationScope {
     /// module nor a scoped extern's re-export glue. `scope_references` consumes this to mark those refs
     /// at the requested scope, mirroring the Array/Table struct-walk arms. Empty except under the flag.
     requested_wrapper_types: Vec<(RustIdent, RustType)>,
-    /// W2 dep side: attribution doc text (`Generated at the request of: …`) keyed by requested-wrapper
-    /// ident. Consulted by `create_base_wasm_struct` (and prepended by the NonEmpty emitters, which set
-    /// their own struct doc). Empty except during requested emission, so own-spec wrappers are
+    /// `--wrapper-requests` (dependency side): attribution doc text keyed by requested-wrapper
+    /// ident (`Generated at the request of: …`). Consulted by `create_base_wasm_struct` (and
+    /// prepended by the NonEmpty emitters, which set their own struct doc). Empty except during
+    /// requested emission, so own-spec wrappers are
     /// unaffected (flag-off byte-identity).
     requested_attribution: BTreeMap<RustIdent, String>,
-    /// W2 dep side: `true` when requested-wrapper emission produced a `[+ …]` / `{+ … => …}` wrapper
-    /// whose NonEmpty runtime the dep's OWN spec does not otherwise pull in. The runtime-provisioning
+    /// `--wrapper-requests` (dependency side): `true` when requested-wrapper emission produced a
+    /// `[+ …]` / `{+ … => …}` wrapper whose NonEmpty runtime the dep's OWN spec does not otherwise
+    /// pull in. The runtime-provisioning
     /// gates (`pub mod non_empty`/`non_empty_map` decl + static file copy) OR these in so the dep
     /// hosts a requested NonEmpty wrapper's `NonEmptyVec`/`NonEmptyMap` type. Never set off the flag.
     requested_non_empty_vec: bool,
-    /// W2 dep side: `true` when a requested restricted bounded-array wrapper needs the `BoundedVec`
-    /// runtime even though this dep's own spec has no bounded homogeneous array occurrence.
+    /// `--wrapper-requests` (dependency side): `true` when a requested restricted bounded-array
+    /// wrapper needs the `BoundedVec` runtime even though this dep's own spec has no bounded
+    /// homogeneous array occurrence.
     requested_bounded_vec: bool,
     requested_bounded_map: bool,
     requested_non_empty_map: bool,
-    /// W2 dep side, `@duplicates reject` twin: `true` when requested-wrapper emission produced a
-    /// reject-mode set wrapper whose `ordered_set` runtime the dep's OWN spec does not otherwise pull
-    /// in. ORed into the same runtime-provisioning gates as the NonEmpty flags. Never set off the flag.
+    /// `--wrapper-requests` (dependency side), `@duplicates reject` twin: `true` when requested
+    /// emission produced a reject-mode set wrapper whose `ordered_set` runtime the dep's OWN spec
+    /// does not otherwise pull in. ORed into the same runtime-provisioning gates as the NonEmpty
+    /// flags. Never set off the flag.
     requested_ordered_set: bool,
-    /// W2 dep side, `@duplicates preserve` pair-map twin: the map-side analog of
-    /// `requested_ordered_set`. `true` when requested-wrapper emission produced a preserve-mode table
-    /// wrapper whose `pair_map` runtime the dep's OWN spec does not otherwise pull in.
+    /// `--wrapper-requests` (dependency side), `@duplicates preserve` pair-map twin: the map-side
+    /// analog of `requested_ordered_set`. `true` when requested-wrapper emission produced a
+    /// preserve-mode table wrapper whose `pair_map` runtime the dep's OWN spec does not otherwise
+    /// pull in.
     requested_pair_map: bool,
     /// Own-spec extern re-export contract: the crate-root re-export names the hand-written thin
     /// `lib.rs` MUST provide (`pub use <your_module>::<Name>;`) for this run's emitted glue to
@@ -1768,9 +1774,10 @@ impl GenerationScope {
             }
         }
 
-        // W2 dep side (`--wrapper-requests`): now that the OWN-spec wasm wrapper walk is complete
-        // (the wrapper registry's local classes and own-spec shape projection fully populated), read the consumer
-        // sidecars, union the requested shapes, and emit each requested wrapper the dep does not
+        // `--wrapper-requests` (dependency side): now that the OWN-spec wasm wrapper walk is
+        // complete (the wrapper registry's local classes and own-spec shape projection fully
+        // populated), read the consumer sidecars, union the requested shapes, and emit each
+        // requested wrapper the dep does not
         // already produce into the `requested_collections` module. Wasm-only, and a no-op (byte
         // identical) with no `--wrapper-requests` flag.
         if cli.wasm {
@@ -2687,7 +2694,7 @@ impl GenerationScope {
     /// Generates in the appropriate scope for `ident`
     /// Used for all the generated WASM wrapper structs and associated traits
     pub fn wasm(&mut self, types: &IntermediateTypes, ident: &RustIdent) -> &mut codegen::Scope {
-        // W2 (`--wrapper-requests`): a requested wrapper is not in this dep's IR, so `types.scope`
+        // `--wrapper-requests`: a requested wrapper is not in this dep's IR, so `types.scope`
         // would fall back to the crate root. While the override is set (only around requested-wrapper
         // emission), route it into the dedicated `requested_collections` module instead.
         let scope_name = match &self.requested_scope_override {
@@ -2749,7 +2756,7 @@ fn rust_alias_doc_lines(
     {
         doc_lines.push(comment.to_owned());
     }
-    // Decision 11 (two-type design doc): a named `[+ T]` rule's alias quotes the
+    // A named `[+ T]` rule's alias quotes the
     // originating occurrence — the type name, doc comment, and TryFrom signature
     // are three redundant discovery signals for the constraint.
     if alias_info.base_type.is_non_empty_array()
@@ -3159,7 +3166,7 @@ fn create_base_rust_struct(
     manual_json_impl: bool,
     // A demand UNIONED into the struct's own `key_demand` before deriving. Set nominals pass a full
     // demand (`bare/hash/ord`) so their encodings-ignored `PartialEq/Eq/PartialOrd/Ord/Hash` are
-    // always-on — parity with `OrderedSet`'s unconditional derives (rethink fact 5), never dependent
+    // always-on — parity with `OrderedSet`'s unconditional derives, never dependent
     // on whether the rule is used as a map key. `None` everywhere else (byte-identical).
     force_demand: Option<DemandSet>,
     cli: &Cli,
@@ -3568,8 +3575,9 @@ pub fn rust_crate_struct_scope_from_wasm(
 /// that would otherwise abort generation. This is the ONE owner of that visibility literal and of
 /// the `#[rustfmt::skip]` workaround, for BOTH ordinary tuple-struct emission sites: every wasm
 /// wrapper (via `WasmWrapper::push_inner_field`) and the rust-crate wrapper under the default
-/// profile (`wrappers.rs`). B5-404 scalar windows bypass this helper to remain private. The two
-/// callers here are different crates, but the emitted shape — `pub struct <N>(pub(crate) <Type>);`
+/// profile (`wrappers.rs`). Checked scalar wrappers (`requires_checked_try_from`) bypass this
+/// helper to remain private. The two callers here are different crates, but the emitted shape —
+/// `pub struct <N>(pub(crate) <Type>);`
 /// — and therefore the rustfmt hazard are identical, so the predicate and fallback shape have one home.
 ///
 /// `pub(crate)`, not private: on the wasm side wasm_bindgen ignores non-pub fields so the ABI/API
@@ -3868,7 +3876,7 @@ fn create_base_wasm_struct<'a>(
         .derive("Clone")
         .derive("Debug")
         .attr("wasm_bindgen");
-    // W2 (`--wrapper-requests`): a requested wrapper carries a `/// Generated at the request of: …`
+    // `--wrapper-requests`: a requested wrapper carries a `/// Generated at the request of: …`
     // attribution doc. Set here so the loose list / map emitters (which set no struct doc of their
     // own) carry it; the NonEmpty emitters set their own struct doc and PREPEND this text via
     // `requested_attribution_prefix` (a `.doc()` call replaces, not appends). Empty map off the flag,

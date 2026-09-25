@@ -245,7 +245,8 @@ pub(super) fn generate_wrapper_struct(
         Some(Some(name)) => name.as_str(),
         _ => "get",
     };
-    // A SET NOMINAL (Phase 2.2) does NOT emit the inherent `get()`: a 0-arg `get(&self)` shadows the
+    // A SET NOMINAL (a named tag-258 set rule, see `output_format.mdx` "Nominal tag-258 set types")
+    // does NOT emit the inherent `get()`: a 0-arg `get(&self)` shadows the
     // inner `OrderedSet::get(index)` reached through `Deref`, turning every indexed read into a
     // compile error (E0061 — method probing stops at the inherent name). `Deref` covers inner access.
     // An explicit `@newtype <name>` custom getter is still emitted (a custom name doesn't shadow
@@ -556,7 +557,7 @@ pub(super) fn generate_wrapper_struct(
         types,
         type_name,
         true,
-        // Set nominals mandate always-on encodings-ignored comparison derives (rethink fact 5).
+        // Set nominals mandate always-on encodings-ignored comparison derives, like `OrderedSet`'s.
         if set_nominal { Some(set_demand) } else { None },
         cli,
     );
@@ -857,8 +858,9 @@ pub(super) fn generate_wrapper_struct(
     let encoding_name = RustIdent::new(CDDLIdent::new(format!("{type_name}Encoding")));
     let enc_fields = if cli.preserve_encodings {
         // Ordinary wrappers retain `pub(crate)`, matching the default profile's tuple field: hand-written
-        // modules outside the generated subtree can legitimately need their carrier. B5-404 scalar
-        // windows differ: their private field makes `TryFrom` the only public construction door.
+        // modules outside the generated subtree can legitimately need their carrier. Checked scalar
+        // wrappers (`requires_checked_try_from`) differ: their private field makes `TryFrom` the
+        // only public construction door.
         // (Named-field shape, so it is NOT routed through `push_overwidth_guarded_tuple_field`: the
         // rustfmt#5703 hazard that helper guards needs a visibility token on a TUPLE field, and a
         // named field of any width is unaffected. The default profile's tuple shape below does go
@@ -915,7 +917,7 @@ pub(super) fn generate_wrapper_struct(
         Some(enc_fields)
     } else {
         // Ordinary wrappers use the shared crate-private tuple policy (including its rustfmt
-        // workaround); B5-404 scalar windows are short primitive/bytes carriers and stay private.
+        // workaround); checked scalar wrappers are short primitive/bytes carriers and stay private.
         let inner_type = codegen::Type::new(field_type.for_rust_member(types, false, cli));
         if checked_scalar {
             s.tuple_field(None, inner_type);
@@ -1290,7 +1292,7 @@ pub(super) fn generate_wrapper_struct(
         .push_impl(s_impl)
         .push_impl(from_impl)
         .push_impl(from_inner_impl);
-    // Set-nominal ergonomics (Phase 2.2), for parity with what a transparent `OrderedSet`/`Vec` alias
+    // Set-nominal ergonomics, for parity with what a transparent `OrderedSet`/`Vec` alias
     // offered directly: `Deref`/`DerefMut` to the inner collection (`OrderedSet` mutation stays
     // checked, so `DerefMut` cannot break uniqueness), borrowed + owned `IntoIterator`, and Vec
     // conversions. The wrapper path already emits `From<inner>`/`From<Self> for inner` and `new()`.

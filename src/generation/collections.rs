@@ -70,12 +70,12 @@ impl GenerationScope {
     ///
     /// Returns `true` when the wrapper is deferred — the caller must emit NO local class and skip
     /// `record_collection_wrapper`, so the deferred wrapper leaves the crate's own `collections.rs`
-    /// index (R3e). The ident is recorded in the registry's deferred-provider map, mapped to the dependency's
-    /// `collections` module scope, so `scope_references` routes a plain
-    /// `use <dep_wasm>::collections::<Name>;` into every referencing module (R3b) and the keys()
-    /// accessors construct via `.into()` cross-crate (R3d). Returns `false` (mint locally) when: the
+    /// index. The ident is recorded in the registry's deferred-provider map, mapped to the
+    /// dependency's `collections` module scope, so `scope_references` routes a plain
+    /// `use <dep_wasm>::collections::<Name>;` into every referencing module and the keys()
+    /// accessors construct via `.into()` cross-crate. Returns `false` (mint locally) when: the
     /// flag is unused; the ident is not the structural name of these constituents (a rule-declared
-    /// wrapper — never suppressed); the constituents are mixed / not all one dependency (R3c); or an
+    /// wrapper — never suppressed); the constituents are mixed / not all one dependency; or an
     /// all-extern-of-one-dep candidate is absent from that dep's index (local + one stderr warning
     /// naming the wrapper).
     ///
@@ -98,7 +98,7 @@ impl GenerationScope {
         // wrapper. Only meaningful when the rule's ident coincides with the structural name (the
         // common `name != structural` case is already screened below); in workspace mode a
         // rule-declared wrapper is the consumer's OWN class and must NEVER defer — instead it triggers
-        // the shadowing warning (criterion 9).
+        // the shadowing warning.
         rule_declared: bool,
         cli: &Cli,
     ) -> bool {
@@ -155,17 +155,17 @@ impl GenerationScope {
         }
         // Fast out only when NEITHER deferral mechanism is active. (Flag-off byte-identity: with both
         // sets empty this is the same early `false` as before — the workspace branch below is dead
-        // code, criterion 10.)
+        // code.)
         if self.extern_wrapper_index.is_empty() && self.workspace_deps.is_empty() {
             return false;
         }
         // Workspace mode (`--workspace-dep`): an all-one-workspace-dep wrapper DEFERS UNCONDITIONALLY,
         // before any index consult. The placement decision is factored as one function over the
-        // transitive element-owner set (plan decision 4: today "exactly one owner ∈ workspace deps →
+        // transitive element-owner set (today "exactly one owner ∈ workspace deps →
         // Borrow"; "latest of the element owners" can replace this body later without touching call
         // sites). Ownerless / mixed-dep wrappers fall through to the shipped index/local logic below
-        // (criterion 2). A rule-declared wrapper that would otherwise borrow is the consumer's own
-        // class: warn (criterion 9) and fall through, never suppress it.
+        // unchanged. A rule-declared wrapper that would otherwise borrow is the consumer's own
+        // class: warn and fall through, never suppress it.
         if !self.workspace_deps.is_empty()
             && let WrapperPlacement::Borrow(dep) = wrapper_placement(
                 &transitive_owner_set(types, constituents),
@@ -247,7 +247,7 @@ impl GenerationScope {
             }
         } else {
             // Has named constituents: a defer candidate only if they ALL resolve to extern types of
-            // the SAME dependency (R3c: any consumer-owned or cross-dependency constituent -> local,
+            // the SAME dependency (any consumer-owned or cross-dependency constituent -> local,
             // silent here — the mint-seam backstop is what speaks if the emitted NAME is dep-indexed).
             let mut single: Option<String> = None;
             for d in &constituent_deps {
@@ -385,9 +385,9 @@ impl GenerationScope {
     /// * the ident≠structural screen — `arr_idx_foo_list = [* idx_foo_list]` derives the structural
     ///   name `IdxFooListList` from its element, so the rule's own ident `ArrIdxFooList` is not a
     ///   defer candidate at all, yet `ArrIdxFooList` is the name of the class actually emitted;
-    /// * the R3c constituent screen — a wrapper whose constituents include a CONSUMER-owned type
-    ///   (or types of two different dependencies) is local-and-silent by design, which is right
-    ///   about the DEFERRAL and says nothing about the NAME.
+    /// * the one-dependency constituent screen — a wrapper whose constituents include a
+    ///   CONSUMER-owned type (or types of two different dependencies) is local-and-silent by
+    ///   design, which is right about the DEFERRAL and says nothing about the NAME.
     ///
     /// In both, the emitted class collides with a dep-indexed name and nothing at the defer seam
     /// can see it. Closing the family at the mint seam covers those two arms and any future one,
@@ -433,7 +433,7 @@ impl GenerationScope {
         element_type: RustType,
         array_type_ident: &RustIdent,
         // `true` when `array_type_ident` is an explicit RULE ident (`foo_list = [* foo]`), so a
-        // structural-name coincidence never workspace-defers the consumer's own class (criterion 9).
+        // structural-name coincidence never workspace-defers the consumer's own class.
         rule_declared: bool,
         cli: &Cli,
     ) {
@@ -520,7 +520,7 @@ impl GenerationScope {
         element_type: RustType,
         wrapper_ident: &RustIdent,
         // `true` when `wrapper_ident` is an explicit RULE ident (`foo = [+ foo]`), so a structural-name
-        // coincidence never workspace-defers the consumer's own class (criterion 9).
+        // coincidence never workspace-defers the consumer's own class.
         rule_declared: bool,
         cli: &Cli,
     ) {
@@ -579,7 +579,7 @@ impl GenerationScope {
         });
         let self_named = loose_list.as_deref() == Some(wrapper_ident.as_ref());
         let mut wrapper = create_base_wasm_struct(self, wrapper_ident, false, cli);
-        // Decision 11 (two-type design doc): quote the originating CDDL occurrence so the type
+        // Quote the originating CDDL occurrence so the type
         // name, the doc comment, and the try_from signature are three redundant discovery signals.
         let entry_doc = if self_named {
             "The rule name coincides with the loose builder name, so no `try_from` source class \
@@ -587,7 +587,7 @@ impl GenerationScope {
         } else {
             "Enter via `try_from` or `new(first)`."
         };
-        // W2 (`--wrapper-requests`): a requested NonEmpty wrapper sets its own struct doc (above /
+        // `--wrapper-requests`: a requested NonEmpty wrapper sets its own struct doc (above /
         // below), which would clobber the attribution doc `create_base_wasm_struct` injects, so
         // prepend the attribution here. Empty prefix (the common case) leaves output byte-identical.
         let attr_prefix = self.requested_attribution_prefix(wrapper_ident);
@@ -902,8 +902,8 @@ impl GenerationScope {
         // the established loose/non-empty ordered-set twins.
         bounds: Option<(u64, u64)>,
         // `true` when `wrapper_ident` is an explicit RULE ident (`foo = [* bar] ; @duplicates
-        // reject`), so a structural-name coincidence never workspace-defers the consumer's own class
-        // (criterion 9).
+        // reject`), so a structural-name coincidence never workspace-defers the consumer's own
+        // class.
         rule_declared: bool,
         cli: &Cli,
     ) {
@@ -1422,7 +1422,7 @@ impl GenerationScope {
         value_type: RustType,
         wrapper_ident: &RustIdent,
         // `true` when `wrapper_ident` is an explicit RULE ident (`m = {+ k => v}`), so a
-        // structural-name coincidence never workspace-defers the consumer's own class (criterion 9).
+        // structural-name coincidence never workspace-defers the consumer's own class.
         rule_declared: bool,
         // `@duplicates preserve`: the wrapped rust core is `NonEmptyPairMap<K, V>` (a non-empty vec of
         // pairs, duplicate-permitting), not the loose `NonEmptyMap` — so `new`/`try_from` construct the
@@ -2165,7 +2165,7 @@ pub(super) fn push_table_accessors(
     } else {
         ""
     };
-    // R3d: decide the keys-list wrapper's deferral BEFORE emitting keys() — the keys-list emitter
+    // Decide the keys-list wrapper's deferral BEFORE emitting keys() — the keys-list emitter
     // (`generate_array_type`) may run AFTER this map class, so consulting the registry's deferred map alone
     // would miss it. `try_defer_wrapper` is idempotent, so this both records the decision (the later
     // emitter re-runs it, suppresses, and the import is routed) and drives the `.into()` here.
@@ -2184,7 +2184,7 @@ pub(super) fn push_table_accessors(
             "{receiver}{key_clone}{key_loosen}.collect::<Vec<_>>()"
         ));
     } else if keys_deferred {
-        // R3d: the keys-list wrapper is deferred to a dependency (`--extern-wrapper-index`); its tuple
+        // The keys-list wrapper is deferred to a dependency (`--extern-wrapper-index`); its tuple
         // field is private cross-crate, so build it through `From<Vec<_>>` (`.into()`) instead of
         // tuple-struct syntax.
         keys.line(format!(
@@ -2315,7 +2315,7 @@ pub(super) fn is_loose_table_owner(types: &IntermediateTypes, owner: &RustIdent)
 }
 
 /// Where a collection wrapper is hosted, given its transitive element owners. Factored as one
-/// function so the placement rule can generalize (plan decision 4): today `Borrow(dep)` iff the
+/// function so the placement rule can generalize: today `Borrow(dep)` iff the
 /// wrapper has EXACTLY ONE owner, that owner is a named dependency, and that dependency is a
 /// `--workspace-dep`; every other case (ownerless, mixed-dep, a lone non-workspace owner, any
 /// consumer-owned leaf) is `Local`. The future rule ("latest of the element owners" / least upper

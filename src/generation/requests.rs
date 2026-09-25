@@ -1,8 +1,9 @@
 use super::*;
 
 impl GenerationScope {
-    /// W2 (`--wrapper-requests`): the attribution doc for `ident` as a paragraph PREFIX (trailing
-    /// blank line) to prepend to an emitter-set struct doc, or `""` when the wrapper is not requested.
+    /// `--wrapper-requests` (dependency side): the attribution doc for `ident` as a paragraph
+    /// PREFIX (trailing blank line) to prepend to an emitter-set struct doc, or `""` when the
+    /// wrapper is not requested.
     /// Used by the NonEmpty emitters, whose `.doc()` call would otherwise clobber the attribution
     /// `create_base_wasm_struct` injects.
     pub(super) fn requested_attribution_prefix(&self, ident: &RustIdent) -> String {
@@ -12,8 +13,9 @@ impl GenerationScope {
             .unwrap_or_default()
     }
 
-    /// W2 dep side (`--wrapper-requests`): read each consumer's committed `borrowed_collections.rs`,
-    /// take the entries addressed to THIS dep (dep column == the normalized `--lib-name`), union the
+    /// `--wrapper-requests` (dependency side): read each consumer's committed
+    /// `borrowed_collections.rs`, take the entries addressed to THIS dep (dep column == the
+    /// normalized `--lib-name`), union the
     /// requested collection-wrapper shapes across consumers, and emit every requested wrapper the dep
     /// does not already produce into `wasm/src/generated/requested_collections.rs` (indexed via
     /// `record_collection_wrapper`, each carrying a sorted-requester attribution doc). Called once,
@@ -23,8 +25,9 @@ impl GenerationScope {
     /// Determinism: everything is keyed/sorted (`BTreeMap`/`BTreeSet`), so the union and the emission
     /// order depend on neither the flag order nor the consumers' regen order.
     ///
-    /// The sidecar readers' refusals and the W2 diagnostics this function owns all come back as
-    /// `Err`: they travel to `generate_to_disk`'s caller, so `main` reports them as `Error: …`
+    /// The sidecar readers' refusals and the `--wrapper-requests` diagnostics this function owns
+    /// all come back as `Err`: they travel to `generate_to_disk`'s caller, so `main` reports them
+    /// as `Error: …`
     /// (exit 1) and `--config`'s mid-run wrapper can name the crates already regenerated.
     pub(super) fn emit_requested_collections(
         &mut self,
@@ -33,7 +36,7 @@ impl GenerationScope {
     ) -> Result<(), String> {
         let request_files = cli.wrapper_requests();
         if request_files.is_empty() {
-            // No flag => no file, byte-identical to today (acceptance criterion 10 analog).
+            // No flag => no file, byte-identical to a run without the feature.
             return Ok(());
         }
         let my_lib = cli.lib_name_code();
@@ -96,7 +99,7 @@ impl GenerationScope {
                 }
                 let canonical = render_wrapper_shape(&rt);
                 let structural = requested_structural_name(types, &rt, consumer, path)?;
-                // Cross-check the derived structural name against the listed name (criterion 8 #2).
+                // Cross-check the derived structural name against the listed name (hard error).
                 if structural != entry.name {
                     let leaves = requested_shape_leaf_resolutions(types, &entry.shape);
                     let leaf_note = if leaves.is_empty() {
@@ -146,7 +149,7 @@ impl GenerationScope {
         }
 
         // Decide, per unioned shape, whether the dep already produces it (skip), produces it under a
-        // different rule name (criterion 8 #3, hard error), or must emit it.
+        // different rule name (hard error), or must emit it.
         let mut to_emit: Vec<(&String, &Unioned)> = Vec::new();
         for (canonical, u) in &union {
             match self
@@ -361,7 +364,7 @@ impl GenerationScope {
             .then(|| format!("{}::pair_map", cli.common_import_wasm()));
 
         // Ensure the module exists even when nothing is emitted (all requests satisfied by own spec /
-        // addressed elsewhere) — stable presence, stable diffs (plan decision 1). When non-empty, the
+        // addressed elsewhere) — stable presence, stable diffs. When non-empty, the
         // wrappers reference the dep's own element WASM wrappers (which live at the generated root or a
         // sibling module); `use super::*;` reaches them, mirroring the emit-tests glob. The per-scope
         // import loop later adds the common wasm imports (wasm_bindgen/JsError/OrderedHashMap/…).
@@ -431,7 +434,8 @@ fn primitive_cddl_name(p: &Primitive) -> &'static str {
     }
 }
 
-/// Render a collection wrapper's CDDL shape fragment in the canonical W1 shape-column grammar —
+/// Render a collection wrapper's CDDL shape fragment in the canonical `borrowed_collections.rs`
+/// shape-column grammar —
 /// `[* foo]` / `[+ foo]` / `[*5 foo]` / `[2* foo]` / `[2*5 foo]` for loose, non-empty, and bounded
 /// lists, `{* k => v}` / `{+ k => v}` for maps, nesting recursively. Element idents are the dependency's own spec spelling
 /// (snake_case of the rust ident, matching the extern-stub naming a dep re-parses after
@@ -487,7 +491,8 @@ pub(crate) fn render_wrapper_shape(rt: &RustType) -> String {
     }
 }
 
-/// The occurrence marker of a collection shape in the W1 shape-column grammar (`*`, `+`, `?`,
+/// The occurrence marker of a collection shape in the `borrowed_collections.rs` shape-column
+/// grammar (`*`, `+`, `?`,
 /// `*5`, `2*`, `2*5`), shared by the list and map arms of [`render_wrapper_shape`].
 fn render_occurrence(bounds: Option<(Option<i128>, Option<i128>)>) -> String {
     match bounds {
@@ -521,7 +526,7 @@ pub(crate) fn split_shape_policy_marker(shape: &str) -> (&str, Option<&str>) {
     (shape, None)
 }
 
-/// Validate `--workspace-dep` values (plan decision 6) and return the set. Each named dep must be a
+/// Validate `--workspace-dep` values and return the set. Each named dep must be a
 /// configured extern dependency (`extern_dep_names()`) AND have an `--extern-wasm-crate` mapping —
 /// the deferral imports and the sidecar's `use` lines both need the wasm crate name, so a missing
 /// mapping is a hard error rather than a silent fallback. Mirrors `load_extern_wrapper_indices`'
@@ -554,7 +559,7 @@ pub(super) fn load_workspace_deps(
     Ok(deps)
 }
 
-// ===== W2 dep side (`--wrapper-requests`): shape reconstruction + structural naming ===============
+// ===== `--wrapper-requests` (dependency side): shape reconstruction + structural naming =========
 
 /// Reverse of `primitive_cddl_name`: the `Primitive` a shape-column leaf denotes, or `None` for a
 /// named-type leaf. Only the exact spellings `render_wrapper_shape` emits for primitive leaves are
@@ -602,7 +607,8 @@ struct ShapeRow<'a> {
     listed_name: &'a str,
 }
 
-/// Cursor over one shape column in the W1 shape-column grammar that [`render_wrapper_shape`]
+/// Cursor over one shape column in the `borrowed_collections.rs` shape-column grammar that
+/// [`render_wrapper_shape`]
 /// emits. The dep's IR is passed to [`Self::fragment`] rather than stored, so the parser owns only
 /// the input and its error context.
 struct ShapeParser<'a> {
@@ -836,7 +842,7 @@ impl<'a> ShapeParser<'a> {
 /// Reconstruct a requested wrapper's `RustType` from its canonical shape column, resolving each
 /// named leaf against the DEP's own IR after the same normalization (`RustIdent::new`, which
 /// camel-cases and folds `-`/`_`) type-name derivation uses. A leaf the dep does not own is a hard
-/// error (criterion 8 #1). `consumer`/`path`/`listed_name` are used only for actionable errors.
+/// error. `consumer`/`path`/`listed_name` are used only for actionable errors.
 fn parse_requested_shape(
     types: &IntermediateTypes,
     shape: &str,
@@ -1043,7 +1049,7 @@ fn describe_leaf_resolution(types: &IntermediateTypes, token: &str, ident: &Rust
 }
 
 /// The immediate nested collection shapes of a requested wrapper (canonical form), used for the
-/// inner-closure integrity check (criterion 8 #5). Only ONE level: deeper nesting is covered
+/// inner-closure integrity check. Only ONE level: deeper nesting is covered
 /// transitively because each level is a separately-requested (and separately-checked) entry.
 fn inner_collection_shapes(rt: &RustType) -> Vec<String> {
     let is_collection = |rt: &RustType| {

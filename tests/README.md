@@ -1435,7 +1435,7 @@ against the hand pair's `OrderedHashMap`-flavored wrapper contract.
 covers the two `try_defer_wrapper` arms that decline BEFORE any index is consulted, so the class
 they mint collides with a dep-indexed name that the defer seam never saw: the ident≠structural
 screen (`arr_idx_foo_list = [* idx_foo_list]` derives `IdxFooListList` but emits `ArrIdxFooList`)
-and the R3c constituent screen (`idx_hash_list = [* idx_hash]` over a consumer-owned element, ident
+and the one-dependency constituent screen (`idx_hash_list = [* idx_hash]` over a consumer-owned element, ident
 and structural name both `IdxHashList`). Both mint exactly as before — the cell asserts the classes
 and their own-index rows — and both are now announced by the mint-seam backstop
 (`warn_local_mint_shadows_index`, keyed on the EMITTED ident rather than on the arm that declined),
@@ -1460,7 +1460,7 @@ from its axes, and each owns a distinct element ident, so one generated crate ca
 
 Three participation facts the grid encodes rather than assumes: a reject set participates in every
 mode like the loose and NonEmpty twins (one seam, so an inline occurrence defers/borrows and a
-rule-declared one is either the index mode's name-only unification or criterion 9's local shadow),
+rule-declared one is either the index mode's name-only unification or the rule-declared local shadow),
 and a reject wrapper that DEFERS borrows the dependency's `try_from` door with it, so the
 loose-source companion belongs only to the rows that mint locally; an exact static list has the same
 split — a local or requested `[T; N]` wasm class owns its loose `<Elem>List` Vec-to-array source,
@@ -1899,7 +1899,7 @@ encoding-fields sibling `error_annotation_wrapper_and_plain_group_single_name` i
 locationless resident being the `from_cbor_bytes` `TrailingData` path (pinned by
 `error_display_formatting`'s TrailingData no-location case).
 
-For B5-404's named bounded integer/byte/text carriers, decode no longer emits a second range check:
+For checked scalar wrappers (named bounded integer/byte/text carriers), decode no longer emits a second range check:
 it calls the wrapper's public `TryFrom` door. `integration_bounded_scalar_newtypes_have_private_checked_carriers`
 pins both diagnostic polarities at the generated-source seam: with field annotations the handoff
 clears the constructor location before the outer closure supplies it once; with
