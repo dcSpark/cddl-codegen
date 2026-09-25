@@ -721,8 +721,9 @@ body_md = '''- **A new complete-carrier constructor path can restore cardinality
   cardinality, but the constructor path did not walk its elements through the value-bound check.
   The older `bounded_non_empty_open_array_tail_is_checked_on_every_constructor_face` control covered
   only the one-segment first-element ABI, so it stayed green. The fix reuses
-  `value_bounds_check_line(..., "*element", true)` for every complete segment carrier, and
-  `tests/open-array-e2e`'s `MultiValueBounded` and `MultiLooseValueBounded` vectors now require
+  `value_bounds_check_line` for every complete segment carrier (`element` for a byte/text length
+  window, `*element` for a scalar one), and `tests/open-array-e2e`'s `MultiValueBounded`,
+  `MultiLooseValueBounded` and `MultiLooseLengthBounded` vectors now require
   native construction to reject the out-of-range element through both non-empty and loose complete
   carriers.
 
