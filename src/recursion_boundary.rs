@@ -177,46 +177,87 @@ fn record_members<'a>(
         .collect()
 }
 
-/// Reachability closure, computed per node so an SCC can be read off it. Sorted containers
-/// throughout, so every set this module reports is invariant under rule ordering.
-fn reachability(edges: &BTreeMap<RustIdent, BTreeSet<RustIdent>>) -> ReachMap {
-    let mut reach: ReachMap = BTreeMap::new();
-    for start in edges.keys() {
-        let mut seen = BTreeSet::new();
-        let mut stack = vec![start.clone()];
-        while let Some(node) = stack.pop() {
-            for next in edges.get(&node).into_iter().flatten() {
-                if seen.insert(next.clone()) {
-                    stack.push(next.clone());
-                }
-            }
-        }
-        reach.insert(start.clone(), seen);
-    }
-    reach
-}
-
-type ReachMap = BTreeMap<RustIdent, BTreeSet<RustIdent>>;
-
 /// The strongly-connected components of `edges` that actually contain a cycle (a self-loop counts),
 /// each as a sorted member set. Deduplicated, and ordered by their smallest member.
+///
+/// Tarjan's algorithm, iterative so a long chain of rules cannot overflow the stack. Nodes are the
+/// map's keys; an ident with no entry has no outgoing edge, so it can never close a cycle.
 fn cyclic_components(edges: &BTreeMap<RustIdent, BTreeSet<RustIdent>>) -> Vec<BTreeSet<RustIdent>> {
-    let reach = reachability(edges);
+    struct Mark {
+        index: usize,
+        low: usize,
+        on_stack: bool,
+    }
+    let mut marks: BTreeMap<&RustIdent, Mark> = BTreeMap::new();
+    let mut stack: Vec<&RustIdent> = Vec::new();
     let mut components: BTreeSet<BTreeSet<RustIdent>> = BTreeSet::new();
-    for (node, reachable) in &reach {
-        if !reachable.contains(node) {
+    for root in edges.keys() {
+        if marks.contains_key(root) {
             continue;
         }
-        let component: BTreeSet<RustIdent> = reachable
-            .iter()
-            .filter(|other| {
-                reach
-                    .get(*other)
-                    .is_some_and(|back| back.contains(node) && back.contains(*other))
-            })
-            .cloned()
-            .collect();
-        components.insert(component);
+        let index = marks.len();
+        marks.insert(
+            root,
+            Mark {
+                index,
+                low: index,
+                on_stack: true,
+            },
+        );
+        stack.push(root);
+        let mut work = vec![(root, edges[root].iter())];
+        while let Some((node, successors)) = work.last_mut() {
+            let node: &RustIdent = node;
+            if let Some(next) = successors.find(|next| edges.contains_key(*next)) {
+                match marks.get(next) {
+                    None => {
+                        let index = marks.len();
+                        marks.insert(
+                            next,
+                            Mark {
+                                index,
+                                low: index,
+                                on_stack: true,
+                            },
+                        );
+                        stack.push(next);
+                        work.push((next, edges[next].iter()));
+                    }
+                    Some(seen) if seen.on_stack => {
+                        let index = seen.index;
+                        if let Some(mark) = marks.get_mut(node) {
+                            mark.low = mark.low.min(index);
+                        }
+                    }
+                    Some(_) => {}
+                }
+                continue;
+            }
+            work.pop();
+            let (index, low) = (marks[node].index, marks[node].low);
+            if let Some((parent, _)) = work.last()
+                && let Some(mark) = marks.get_mut(*parent)
+            {
+                mark.low = mark.low.min(low);
+            }
+            if low != index {
+                continue;
+            }
+            let mut component = BTreeSet::new();
+            while let Some(member) = stack.pop() {
+                if let Some(mark) = marks.get_mut(member) {
+                    mark.on_stack = false;
+                }
+                component.insert(member.clone());
+                if member == node {
+                    break;
+                }
+            }
+            // A one-member component is a cycle only through a self-loop.
+            if component.len() > 1 || edges[node].contains(node) {
+                components.insert(component);
+            }
+        }
     }
     components.into_iter().collect()
 }
@@ -412,4 +453,66 @@ pub fn classify(types: &IntermediateTypes, already_forced: &BTreeSet<RustIdent>)
 
     verdict.refusals.sort();
     verdict
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cyclic_components;
+    use crate::intermediate::{CDDLIdent, RustIdent};
+    use std::collections::{BTreeMap, BTreeSet};
+
+    fn ident(name: &str) -> RustIdent {
+        RustIdent::new(CDDLIdent::new(name))
+    }
+    fn set(names: &[&str]) -> BTreeSet<RustIdent> {
+        names.iter().map(|name| ident(name)).collect()
+    }
+    fn graph(edges: &[(&str, &[&str])]) -> BTreeMap<RustIdent, BTreeSet<RustIdent>> {
+        edges
+            .iter()
+            .map(|(from, to)| (ident(from), set(to)))
+            .collect()
+    }
+
+    /// Only components that close a cycle are reported: a node that merely REACHES a cycle is not
+    /// on it, a lone node is on one only through a self-loop, and an ident with no entry (a leaf)
+    /// never is.
+    #[test]
+    fn cyclic_components_are_exactly_the_cycle_closing_sccs() {
+        let edges = graph(&[
+            ("a", &["b"]),
+            ("b", &["a"]),
+            ("c", &["a"]),
+            ("d", &["d"]),
+            ("e", &["f"]),
+            ("f", &["e", "g"]),
+            ("h", &[]),
+        ]);
+        assert_eq!(
+            cyclic_components(&edges),
+            vec![set(&["a", "b"]), set(&["d"]), set(&["e", "f"])]
+        );
+    }
+
+    /// Two cycles joined by a one-way edge stay two components, and a ring is one.
+    #[test]
+    fn cyclic_components_split_one_way_bridges_and_keep_rings_whole() {
+        let edges = graph(&[
+            ("a", &["b"]),
+            ("b", &["a", "c"]),
+            ("c", &["d"]),
+            ("d", &["c"]),
+        ]);
+        assert_eq!(
+            cyclic_components(&edges),
+            vec![set(&["a", "b"]), set(&["c", "d"])]
+        );
+        let names: Vec<String> = (0..2000).map(|i| format!("r{i:04}")).collect();
+        let ring: BTreeMap<RustIdent, BTreeSet<RustIdent>> = (0..names.len())
+            .map(|i| (ident(&names[i]), set(&[&names[(i + 1) % names.len()]])))
+            .collect();
+        let components = cyclic_components(&ring);
+        assert_eq!(components.len(), 1);
+        assert_eq!(components[0].len(), 2000);
+    }
 }
