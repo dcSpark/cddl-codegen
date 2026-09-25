@@ -632,6 +632,20 @@ pub(crate) struct WitParam {
     pub rust_type: Option<RustType>,
 }
 
+impl WitParam {
+    /// A SYNTHESIZED parameter: one that corresponds to no IR type (`rust_type: None`) and whose
+    /// rust name is its WIT name (`bytes`, `json`, `present`, `v`, an accumulator filler's `k`/`v`).
+    pub(crate) fn synthetic(name: &str, ty: WitType, validates: bool) -> Self {
+        WitParam {
+            name: name.to_owned(),
+            rust_name: name.to_owned(),
+            ty,
+            validates,
+            rust_type: None,
+        }
+    }
+}
+
 /// An interface-level free function (no `self`).
 #[derive(Clone, Debug)]
 pub(crate) struct WitFunc {
@@ -1412,15 +1426,9 @@ fn synthesized_type(def: &WitTypeDef) -> bool {
 fn any_cbor_kind_func() -> WitFunc {
     WitFunc {
         name: ANY_CBOR_KIND_FUNC_NAME.to_owned(),
-        params: vec![WitParam {
-            name: "v".to_owned(),
-            rust_name: "v".to_owned(),
-            ty: WitType::AnyCbor,
-            // The bytes are decoded through `AnyCbor::from_cbor_bytes`, which is exactly the
-            // boundary re-check this flag marks.
-            validates: true,
-            rust_type: None,
-        }],
+        // `validates`: the bytes are decoded through `AnyCbor::from_cbor_bytes`, which is exactly
+        // the boundary re-check this flag marks.
+        params: vec![WitParam::synthetic("v", WitType::AnyCbor, true)],
         result: Some(WitType::AnyCborKind),
         fallible: true,
         op: WitFuncOp::AnyCborKind,
@@ -1440,26 +1448,14 @@ fn any_cbor_json_funcs(cli: &Cli) -> Vec<WitFunc> {
     vec![
         WitFunc {
             name: ANY_CBOR_TO_JSON_FUNC_NAME.to_owned(),
-            params: vec![WitParam {
-                name: "v".to_owned(),
-                rust_name: "v".to_owned(),
-                ty: WitType::AnyCbor,
-                validates: true,
-                rust_type: None,
-            }],
+            params: vec![WitParam::synthetic("v", WitType::AnyCbor, true)],
             result: Some(WitType::Str),
             fallible: true,
             op: WitFuncOp::CborToJson,
         },
         WitFunc {
             name: ANY_CBOR_FROM_JSON_FUNC_NAME.to_owned(),
-            params: vec![WitParam {
-                name: "json".to_owned(),
-                rust_name: "json".to_owned(),
-                ty: WitType::Str,
-                validates: true,
-                rust_type: None,
-            }],
+            params: vec![WitParam::synthetic("json", WitType::Str, true)],
             result: Some(WitType::AnyCbor),
             fallible: true,
             op: WitFuncOp::CborFromJson,
@@ -1633,13 +1629,11 @@ fn project_raw_bytes_bridge(name: &str, ident: &RustIdent) -> WitResource {
             WitMember {
                 name: "from-raw-bytes".to_owned(),
                 is_static: true,
-                params: vec![WitParam {
-                    name: "bytes".to_owned(),
-                    rust_name: "bytes".to_owned(),
-                    ty: WitType::List(Box::new(WitType::U8)),
-                    validates: false,
-                    rust_type: None,
-                }],
+                params: vec![WitParam::synthetic(
+                    "bytes",
+                    WitType::List(Box::new(WitType::U8)),
+                    false,
+                )],
                 // The `ok` type is the OWNING resource, filled in by the renderer and the emitter
                 // exactly as `from-cbor-bytes`'s is.
                 result: None,
@@ -1682,13 +1676,7 @@ fn project_record(
                 members.push(WitMember {
                     name: format!("set-{field_name}"),
                     is_static: false,
-                    params: vec![WitParam {
-                        name: "present".to_owned(),
-                        rust_name: "present".to_owned(),
-                        ty: WitType::Bool,
-                        validates: false,
-                        rust_type: None,
-                    }],
+                    params: vec![WitParam::synthetic("present", WitType::Bool, false)],
                     result: None,
                     fallible: false,
                     op: WitMemberOp::PresenceSetter {
@@ -2149,13 +2137,7 @@ fn choice_variant_shape(
                     params
                 }
                 None if ty.is_fixed_value() => Vec::new(),
-                None => vec![WitParam {
-                    name: convert_to_kebab_case(&variant.name_as_var()),
-                    rust_name: variant.name_as_var(),
-                    ty: map_rust_type(ty, ctx)?,
-                    validates: wit_param_validates(ty, ctx.types),
-                    rust_type: Some(ty.clone()),
-                }],
+                None => vec![field_param(&variant.name_as_var(), ty, ctx)?],
             };
             let reads = if ty.is_fixed_value() {
                 Vec::new()
@@ -2280,13 +2262,11 @@ fn bytes_members(deserializable: bool, cli: &Cli) -> Vec<WitMember> {
         members.push(WitMember {
             name: "from-cbor-bytes".to_owned(),
             is_static: true,
-            params: vec![WitParam {
-                name: "bytes".to_owned(),
-                rust_name: "bytes".to_owned(),
-                ty: WitType::List(Box::new(WitType::U8)),
-                validates: false,
-                rust_type: None,
-            }],
+            params: vec![WitParam::synthetic(
+                "bytes",
+                WitType::List(Box::new(WitType::U8)),
+                false,
+            )],
             // The `ok` type is the OWNING resource, which a member cannot name without carrying its
             // own owner; `op` already says so, and the renderer fills it in.
             result: None,
@@ -2332,13 +2312,7 @@ fn json_members(cli: &Cli) -> Vec<WitMember> {
         WitMember {
             name: FROM_JSON_MEMBER_NAME.to_owned(),
             is_static: true,
-            params: vec![WitParam {
-                name: "json".to_owned(),
-                rust_name: "json".to_owned(),
-                ty: WitType::Str,
-                validates: false,
-                rust_type: None,
-            }],
+            params: vec![WitParam::synthetic("json", WitType::Str, false)],
             // The `ok` type is the OWNING resource, filled in by the renderer and the emitter
             // exactly as `from-cbor-bytes`'s is.
             result: None,

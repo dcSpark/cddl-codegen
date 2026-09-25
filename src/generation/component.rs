@@ -1419,13 +1419,7 @@ impl Emitter<'_, '_> {
 
         // The filler's parameters, as ordinary `WitParam`s so they go through the SAME
         // materialization the hand-written doors do — including its re-entrancy discipline.
-        let synthetic = |name: &str, ty: &WitType| WitParam {
-            name: name.to_owned(),
-            rust_name: name.to_owned(),
-            ty: ty.clone(),
-            validates: false,
-            rust_type: None,
-        };
+        let synthetic = |name: &str, ty: &WitType| WitParam::synthetic(name, ty.clone(), false);
         let params = match acc.row() {
             Some((key, value)) => vec![synthetic("k", key), synthetic("v", value)],
             None => vec![synthetic("v", &acc.element)],
