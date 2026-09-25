@@ -3879,12 +3879,15 @@ primitive inner) read back through the getter against the minted literal. A wrap
 built via its `From<cddl_lib::Native>` impl (a convenience — the wrapper's own `new` is covered by its
 top-level entry test); if the inner has no wasm build the entry type falls back to
 decoding the rust twin's bytes with a loud skip of the ctor differential. A wrapper COLLECTION arg
-(`FooList`/`FooMap`/`&Nums`) is a `new`/`add`/`insert` block expression. **Loud skips (never silent):**
-a ctor arg with no wasm build (a name-erased wrapper collection, a `Fixed`/`Alias`/`any` inner) and
-the same-class wrapper-entry ctor differential, plus the whole module under any
+(`FooList`/`FooMap`/`&Nums`) is a `new`/`add`/`insert` block expression.
+An exact, bounded, or bounded-map wrapper collection whose element has no wasm build uses its `From<cddl_lib::Native>` bridge.
+**Loud skips (never silent):** other ctor args with no wasm build (a name-erased wrapper collection, a `Fixed`/`Alias`/`any` inner),
+the same-class wrapper-entry ctor differential, and the whole module under any
 `--wasm-*-macro` flag (those replace the wrapper method surface) — each a `crate::warn!` to stderr.
 `integration_tests::nested_exact_direct_storage_emit_tests_execute` compiles and runs both generated
 crates to prove that exact carriers of exact elements build their elements tight in the native twin.
+`integration_tests::wasm_from_core_collection_emit_tests_execute` runs the generated wasm tests for
+exact, bounded and bounded-map collections whose elements have no direct wasm build.
 
 The tagged-`any` fallback still renders its independently minted rust twin through the private
 `__AnyCborMint` spelling. The module therefore imports

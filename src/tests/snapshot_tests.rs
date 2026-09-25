@@ -1038,6 +1038,43 @@ fn emitted_tests_build_nested_exact_carriers_element_tight() {
     let _ = std::fs::remove_dir_all(root);
 }
 
+/// Restricted wasm wrapper collections construct through `From<core>` when their element has
+/// no wasm-native build. The execution gate compiles and runs the generated wasm tests.
+#[test]
+fn wasm_emitted_tests_build_restricted_collections_of_unbuildable_elements_through_from() {
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_from_core_emit_pin_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let input = root.join("input.cddl");
+    std::fs::write(
+        &input,
+        crate::tests::integration_tests::WASM_FROM_CORE_COLLECTION_CDDL,
+    )
+    .unwrap();
+    let files =
+        crate::api::generated_strings(&cli_for(&input, &["--wasm=true", "--emit-tests=true"]))
+            .expect("restricted any collection emitted-test spec must generate");
+    let wasm = files.get("wasm/src/generated/mod.rs").unwrap();
+    let flat: String = wasm.split_whitespace().collect();
+    for needle in [
+        "fnwasm_roundtrip_exact_any_holder()",
+        "fnwasm_roundtrip_bounded_any_holder()",
+        "fnwasm_roundtrip_bounded_any_map_holder()",
+        "letwasm_v=ExactAnyHolder::new(&AnyListMin2Max2::from(<[_;2]>::try_from(vec![__AnyCborMint::new_array(",
+        "letwasm_v=BoundedAnyHolder::new(&AnyListMin1Max3::from(BoundedVec::<_,1,3>::try_from(vec![__AnyCborMint::new_array(",
+        "letwasm_v=BoundedAnyMapHolder::new(&MapU64ToAnyMin1Max3::from(BoundedMap::<_,_,1,3>::try_from(",
+    ] {
+        assert!(
+            flat.contains(needle),
+            "missing {needle} in wasm emitted tests:\n{wasm}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(root);
+}
+
 /// A record with an exact-zero forbidden key and a protected LOOSE rest row takes the complete
 /// checked rest map as a native and wasm constructor argument. The wasm emitted-test projection must
 /// admit that same row, or it reports false constructor drift and silently drops both the round trip

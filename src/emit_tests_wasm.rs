@@ -39,7 +39,9 @@
 //! **Loud skips (never silent):** every shape this renderer can't faithfully express emits a
 //! `crate::warn!("cddl-codegen --emit-tests: ...")` — stderr, visible at the default verbosity — and
 //! is dropped: a ctor arg with no wasm build (a wrapper collection past a name-erasing point, a
-//! `Fixed`/`Alias`/`any` inner) and the macro-API flag configurations (whole module).
+//! `Fixed`/`Alias`/`any` inner) and the macro-API flag configurations (whole module). An exact,
+//! bounded, or bounded-map wrapper collection with such an element instead builds through its
+//! `From<core>` bridge.
 //!
 //! **Where the extern / raw-bytes skip actually lives: the RUST half, not here.** The SHARED minter
 //! (`emit_tests::mint_struct`) returns `None` for `RustStructType::Extern` (other than the reserved
@@ -513,6 +515,9 @@ fn wasm_arg(
 /// unresolved type (the alias ident for a named list/map, `<Elem>List`/`Map<K>To<V>` for an inline
 /// one) — exactly the wrapper the generator emits. `resolved` supplies the element / key+value types,
 /// which are the same whichever way the field named its collection.
+/// A restricted (exact, bounded, or bounded-map) wrapper builds through `From<core>` whenever its
+/// element has no wasm-native vector door, so an element with no wasm build of its own (e.g. `any`)
+/// does not drop the enclosing type.
 fn wasm_collection_build(
     types: &IntermediateTypes,
     field_ty: &RustType,
@@ -566,8 +571,8 @@ fn wasm_collection_build(
             }
             if field_ty.is_type_enforced_exact_homogeneous_array() {
                 let e = elem.as_ref()?;
-                let elem_expr = wasm_arg(types, e, elem_ty, scoped, cli)?;
                 if elem_ty.vec_of_self_directly_wasm_exposable(types) {
+                    let elem_expr = wasm_arg(types, e, elem_ty, scoped, cli)?;
                     return Some(format!(
                         "{wrapper}::try_from(vec![{elem_expr}; {count}]).ok().expect(\"static-array emitted-test mint\")"
                     ));
@@ -586,8 +591,8 @@ fn wasm_collection_build(
                 // A bounded wrapper has no invalid empty seed when MIN > 0. For wasm-native
                 // elements its `try_from(Vec<_>)` door is the direct, checked construction path.
                 let e = elem.as_ref()?;
-                let elem_expr = wasm_arg(types, e, elem_ty, scoped, cli)?;
                 if elem_ty.vec_of_self_directly_wasm_exposable(types) {
+                    let elem_expr = wasm_arg(types, e, elem_ty, scoped, cli)?;
                     return Some(format!(
                         "{wrapper}::try_from(vec![{elem_expr}; {count}]).ok().expect(\"bounded emitted-test mint\")"
                     ));
@@ -622,10 +627,6 @@ fn wasm_collection_build(
                 ..
             },
         ) => {
-            // cheaply-minted map keys are always primitives crossing by value (see `materialize`),
-            // so synthesize each of the `count` distinct keys as a literal; `insert` takes the value
-            // via `for_wasm_param`, so `wasm_arg` gives it the same boundary treatment.
-            let val_expr = wasm_arg(types, val, v, scoped, cli)?;
             if field_ty.is_type_enforced_bounded_map() {
                 // Positive-minimum bounded maps intentionally have no empty wasm constructor.
                 // The shared mint already entered the core through BoundedMap::TryFrom<Vec<_>>;
@@ -640,6 +641,10 @@ fn wasm_collection_build(
                     )
                 ));
             }
+            // cheaply-minted map keys are always primitives crossing by value (see `materialize`),
+            // so synthesize each of the `count` distinct keys as a literal; `insert` takes the value
+            // via `for_wasm_param`, so `wasm_arg` gives it the same boundary treatment.
+            let val_expr = wasm_arg(types, val, v, scoped, cli)?;
             if field_ty.is_type_enforced_non_empty() {
                 // restricted wrapper: `new(first_key, first_value)` seeds the first entry (no empty
                 // state), `insert` the rest. `count` is >= 1 for a `{+ k => v}` shape.

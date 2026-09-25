@@ -9618,6 +9618,69 @@ fn nested_exact_direct_storage_emit_tests_execute() {
     let _ = std::fs::remove_dir_all(root);
 }
 
+/// Shared by the emission pin in `snapshot_tests` and the execution gate below: restricted
+/// collections whose element has no wasm build still construct through `From<core>`.
+pub(crate) const WASM_FROM_CORE_COLLECTION_CDDL: &str = "\
+exact_any_holder = [xs: [2*2 any]]
+bounded_any_holder = [xs: [1*3 any]]
+bounded_any_map_holder = { xs: { 1*3 uint => any } }
+";
+
+#[test]
+fn wasm_from_core_collection_emit_tests_execute() {
+    if !tool_exists("cargo") {
+        return;
+    }
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_from_core_emit_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let input = root.join("input.cddl");
+    std::fs::write(&input, WASM_FROM_CORE_COLLECTION_CDDL).unwrap();
+    let out = root.join("crate");
+    let generate = codegen_cmd()
+        .arg(format!("--input={}", input.display()))
+        .arg(format!("--output={}", out.display()))
+        .arg("--wasm=true")
+        .arg("--emit-tests=true")
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&generate.stderr);
+    assert!(generate.status.success(), "generation failed:\n{stderr}");
+    for ident in ["ExactAnyHolder", "BoundedAnyHolder", "BoundedAnyMapHolder"] {
+        assert!(
+            !stderr.contains(&format!("no wasm round-trip for {ident}")),
+            "restricted collection must retain its wasm test for {ident}:\n{stderr}"
+        );
+    }
+    let wasm = std::fs::read_to_string(out.join("wasm/src/generated/mod.rs"))
+        .expect("generated wasm mod.rs");
+    for test in [
+        "fn wasm_roundtrip_exact_any_holder()",
+        "fn wasm_roundtrip_bounded_any_holder()",
+        "fn wasm_roundtrip_bounded_any_map_holder()",
+    ] {
+        assert!(
+            wasm.contains(test),
+            "missing {test} in wasm emitted tests:\n{wasm}"
+        );
+    }
+    let wasm_test = tool_cmd("cargo")
+        .arg("test")
+        .current_dir(out.join("wasm"))
+        .output()
+        .unwrap();
+    assert!(
+        wasm_test.status.success(),
+        "emitted wasm tests failed:\n{}\n{}",
+        String::from_utf8_lossy(&wasm_test.stdout),
+        String::from_utf8_lossy(&wasm_test.stderr)
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
 /// The default/json exact-zero fixture above proves checked parent mutation. This preserve-only
 /// fixture reaches the other half of the contract: a decoded parent grows through `insert_rest`,
 /// invalidating its old replay length and rebuilding the order without losing pre-existing entry
