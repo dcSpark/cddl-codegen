@@ -39,6 +39,7 @@ ctl_non_literal_operand    error (graceful)
 ctl_size_float_operand     error (graceful)
 ctl_size_operand_shape     error (graceful)
 ctl_size_uint_range_lower  ok
+ctl_size_unsizable_head    error (graceful)
 duplicate_rule             error (graceful)
 eb64url_member             ok
 empty                      ok

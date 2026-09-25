@@ -2067,6 +2067,91 @@ pub(crate) fn multi_choice_group_def_rejection(cddl_rule: &cddl::ast::Rule) -> O
     })
 }
 
+/// `.size` written on a head RFC 8610 §3.8.1 gives no size to, anywhere in `cddl_rule`: a float
+/// or `nint` prelude type, or a literal value. Refused in the `api::with_types` pre-scan rather
+/// than at a parse seam because the construct is reachable by routes that never consult the
+/// operator (a text/bytes literal rule body registers a fixed singleton directly; a literal map
+/// key is classified without it), and in member positions a float head reaches generation with an
+/// integer window and aborts. One message per offending node, in source order.
+pub(crate) fn unsizable_size_head_rejections(cddl_rule: &cddl::ast::Rule) -> Vec<String> {
+    struct Scan {
+        rule: String,
+        found: Vec<String>,
+    }
+    impl<'a, 'b> cddl::visitor::Visitor<'a, 'b, std::fmt::Error> for Scan {
+        fn visit_control_operator(
+            &mut self,
+            target: &'b Type2<'a>,
+            ctrl: token::ControlOperator,
+            controller: &'b Type2<'a>,
+        ) -> cddl::visitor::Result<std::fmt::Error> {
+            if ctrl == token::ControlOperator::SIZE
+                && let Some(head) = unsizable_size_head(target)
+            {
+                self.found.push(format!(
+                    "rule `{}`: `.size` on `{head}` is unsupported — RFC 8610 §3.8.1 defines \
+                     `.size` for `uint` and for byte and text strings (`uint .size 2`, `bytes \
+                     .size 4`, `tstr .size (1..63)`); a float or negative-integer type has no \
+                     size to control, and a literal value is already exactly one value. Remove \
+                     the control, or apply it to one of those types.",
+                    self.rule
+                ));
+            }
+            cddl::visitor::walk_control_operator(self, target, controller)
+        }
+        // The stock walk visits only a typename's identifier; a generic argument
+        // (`g<float64 .size 3>`) is a Type1 like any other.
+        fn visit_type2(&mut self, t2: &'b Type2<'a>) -> cddl::visitor::Result<std::fmt::Error> {
+            if let Type2::Typename {
+                generic_args: Some(args),
+                ..
+            } = t2
+            {
+                cddl::visitor::walk_generic_args(self, args)?;
+            }
+            cddl::visitor::walk_type2(self, t2)
+        }
+    }
+    let mut scan = Scan {
+        rule: cddl_rule.name(),
+        found: Vec::new(),
+    };
+    // The visitor never returns `Err`: `Scan` only collects.
+    let _ = cddl::visitor::Visitor::visit_rule(&mut scan, cddl_rule);
+    scan.found
+}
+
+/// The spelling of a `.size` head that has no size, or `None` for a sizable (or not
+/// syntactically classifiable) head. `uint`, `int` (refused by its own `.size` arm message),
+/// `bytes`/`tstr` and every non-prelude name are `None`.
+fn unsizable_size_head(head: &Type2) -> Option<String> {
+    match head {
+        Type2::FloatValue { value, .. } => Some(format!("{value:?}")),
+        Type2::UintValue { .. }
+        | Type2::IntValue { .. }
+        | Type2::TextValue { .. }
+        | Type2::UTF8ByteString { .. } => Some(head.to_string()),
+        // Display writes the decoded bytes raw; spell them as the hex literal instead.
+        Type2::B16ByteString { value, .. } | Type2::B64ByteString { value, .. } => Some(format!(
+            "h'{}'",
+            value.iter().map(|b| format!("{b:02X}")).collect::<String>()
+        )),
+        // `(float64) .size 3` is `float64 .size 3`: look through a bare single-type parenthesis.
+        Type2::ParenthesizedType { pt, .. } => match pt.type_choices.as_slice() {
+            [only] if only.type1.operator.is_none() => unsizable_size_head(&only.type1.type2),
+            _ => None,
+        },
+        Type2::Typename { ident, .. } => {
+            match ident_to_primitive(&CDDLIdent::new(ident.to_string())) {
+                Some(p) if p.is_float() => Some(ident.to_string()),
+                Some(Primitive::N64) => Some(ident.to_string()),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
 /// `@raw_bytes_flavor` on a rule that is not an extern marker. Shared verbatim by every
 /// type-rule seam that can reach the misplacement so the pinned wording cannot drift between them.
 fn raw_bytes_flavor_not_extern_rejection(type_name: &RustIdent) -> String {

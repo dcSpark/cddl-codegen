@@ -588,6 +588,109 @@ fn mixed_int_float_range_rejects_gracefully() {
     }
 }
 
+#[test]
+fn size_on_unsizable_head_rejects_gracefully() {
+    let mut rows = vec![
+        ("float_literal", "x = 1.0 .size 3\n".to_string(), "1.0"),
+        ("uint_literal", "x = 3 .size 1\n".to_string(), "3"),
+        ("text_literal", "x = \"a\" .size 1\n".to_string(), "\"a\""),
+        ("byte_literal", "x = h'00' .size 1\n".to_string(), "h'00'"),
+        ("nint", "x = nint .size 1\n".to_string(), "nint"),
+    ];
+    for name in [
+        "float16",
+        "float32",
+        "float64",
+        "float16-32",
+        "float32-64",
+        "float",
+    ] {
+        rows.push((name, format!("x = {name} .size 4\n"), name));
+    }
+    rows.extend([
+        (
+            "float_member",
+            "x = [a: float64 .size 3]\n".to_string(),
+            "float64",
+        ),
+        (
+            "text_member",
+            "x = [a: \"a\" .size 1]\n".to_string(),
+            "\"a\"",
+        ),
+        ("repeated_element", "x = [* 3 .size 1]\n".to_string(), "3"),
+        (
+            "map_key",
+            "x = { \"a\" .size 1 => uint, b: uint }\n".to_string(),
+            "\"a\"",
+        ),
+        (
+            "map_value",
+            "x = { * tstr => float64 .size 3 }\n".to_string(),
+            "float64",
+        ),
+        (
+            "choice_arm",
+            "x = tstr / float64 .size 3\n".to_string(),
+            "float64",
+        ),
+        (
+            "tag_content",
+            "x = #6.1(\"a\" .size 1)\n".to_string(),
+            "\"a\"",
+        ),
+        (
+            "cbor_payload",
+            "x = bytes .cbor (float64 .size 3)\n".to_string(),
+            "float64",
+        ),
+        (
+            "generic_arg",
+            "g<T> = [T]\ny = g<float64 .size 3>\n".to_string(),
+            "float64",
+        ),
+        (
+            "paren_head",
+            "x = [a: (float64) .size 3]\n".to_string(),
+            "float64",
+        ),
+    ]);
+    for (tag, spec, head) in rows {
+        let msg = expect_graceful_rejection(tag, &spec, &["--wasm=false"]);
+        let needle = format!("`.size` on `{head}` is unsupported");
+        assert_eq!(msg.matches(&needle).count(), 1, "{tag}: {msg}");
+        if tag == "generic_arg" {
+            assert!(msg.contains("rule `y`"), "{msg}");
+        }
+    }
+    for (tag, spec) in [
+        ("text", "x = tstr .size 3\n"),
+        ("unsigned", "x = uint .size 2\n"),
+        (
+            "member",
+            "x = [a: tstr .size 3, b: bytes .size (1..3), c: uint .size 2]\n",
+        ),
+        ("parenthesized", "x = (uint) .size 2\n"),
+    ] {
+        expect_generates(tag, spec, &["--wasm=false"]);
+    }
+    for (tag, spec, needle) in [
+        (
+            "signed",
+            "x = int .size 2\n",
+            "`.size` on a signed `int` is unsupported",
+        ),
+        (
+            "unmapped",
+            "x = tdate .size 4\n",
+            "a range or `.size` control operator on `tdate` is unsupported",
+        ),
+    ] {
+        let msg = expect_graceful_rejection(tag, spec, &["--wasm=false"]);
+        assert!(msg.contains(needle), "{tag}: {msg}");
+    }
+}
+
 /// Child half of the warning-capture regression. `warn!` writes directly to stderr, so an
 /// in-process assertion cannot observe it without changing the production logging seam.
 #[test]
@@ -2095,13 +2198,9 @@ fn every_float_prelude_name_generates_with_its_own_carrier() {
     );
 }
 
-/// The CONTROL-OPERATOR path is the one route that reaches a prelude type name without going
-/// through `IntermediateTypes::new_type` — a rule-position `x = <name> .size 4` resolves the ident
-/// through `ident_to_primitive` directly. Every float prelude name must therefore be mapped THERE
-/// too, or a constrained rule resolves to a different type than the same name resolves to
-/// everywhere else. Two names had no primitive at all on this path and aborted at a bare
-/// `ident_to_primitive` unwrap (`float16-32 .size 4`), and `float16` resolved to the SAME primitive
-/// as `float32` — a constrained rule that silently accepted the wrong value class.
+/// The CONTROL-OPERATOR path reaches a prelude type name without going through
+/// `IntermediateTypes::new_type`. Every float name must keep its own identity through a supported
+/// constraint. `.size` is refused on every float head (`size_on_unsizable_head_rejects_gracefully`).
 ///
 /// Two halves, asserted together because the second is what stops the first from recurring under a
 /// different name: every float name carries its own identity through a constraint (read off the
@@ -2121,9 +2220,8 @@ fn control_operator_path_maps_every_float_name_and_refuses_unmapped_heads() {
         ("float32-64", "f64"),
         ("float", "f64"),
     ];
-    // One vector per control-operator flavor a typename head can carry at a rule position: the
-    // `.size` window, a value comparison (the float-window route), and `.default`.
-    let ops = [".size 4", ".le 3.0", ".default 1.0"];
+    // A float typename head can carry a value comparison (the float-window route) and `.default`.
+    let ops = [".le 3.0", ".default 1.0"];
     for (name, carrier) in names {
         for op in ops {
             let spec = format!("x = {name} {op}\n");

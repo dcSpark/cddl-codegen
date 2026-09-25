@@ -1,0 +1,3 @@
+; size_on_unsizable_head_rejects_gracefully pins the pre-scan refusal of a literal, float or nint .size head.
+; A text-literal rule body once dropped the control silently.
+x = "a" .size 1

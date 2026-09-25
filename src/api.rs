@@ -1009,6 +1009,11 @@ pub fn with_types<R>(
             if let Some(msg) = parsing::multi_choice_group_def_rejection(cddl_rule) {
                 types.record_rejection(msg);
             }
+            // `.size` on a float, `nint` or literal head (RFC 8610 §3.8.1). Refused HERE, per
+            // written node, because several parse routes never consult the operator.
+            for msg in parsing::unsizable_size_head_rejections(cddl_rule) {
+                types.record_rejection(msg);
+            }
         }
         if types.has_rejections() {
             return Err(types.rejections_error());
