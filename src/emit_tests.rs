@@ -188,10 +188,24 @@ pub(crate) enum MintValue {
     AnyText { content: String },
 }
 
+/// The suffix that unwraps a fallible generated constructor (`can_fail`), or nothing.
+fn unwrap_suffix(can_fail: bool) -> &'static str {
+    if can_fail { ".unwrap()" } else { "" }
+}
+
+/// A wrapper's construction door: B5-404's checked scalar windows use `TryFrom`, other wrappers `new`.
+fn wrapper_door(checked_try_from: bool) -> &'static str {
+    if checked_try_from { "try_from" } else { "new" }
+}
+
+/// The Vec -> `[T; N]` handover a directly stored exact carrier owes.
+fn static_array_handover(len: usize, expr: &str) -> String {
+    format!("<[_; {len}]>::try_from({expr}).unwrap()")
+}
+
 /// Render a `MintValue` as the rust-crate API expression string. This reproduces, byte-for-byte,
 /// the output the fused derive-and-format code produced before the derivation/render split.
 pub(crate) fn render_rust(mv: &MintValue) -> String {
-    let unwrap = |can_fail: bool| if can_fail { ".unwrap()" } else { "" };
     match mv {
         MintValue::None => "None".to_owned(),
         MintValue::Bool => "false".to_owned(),
@@ -212,7 +226,7 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
             can_fail,
         } => {
             let a: Vec<String> = args.iter().map(render_rust).collect();
-            format!("{ident}::new({}){}", a.join(", "), unwrap(*can_fail))
+            format!("{ident}::new({}){}", a.join(", "), unwrap_suffix(*can_fail))
         }
         MintValue::Wrapper {
             ident,
@@ -221,9 +235,9 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
             checked_try_from,
         } => format!(
             "{ident}::{}({}){}",
-            if *checked_try_from { "try_from" } else { "new" },
+            wrapper_door(*checked_try_from),
             render_rust(inner),
-            unwrap(*can_fail)
+            unwrap_suffix(*can_fail)
         ),
         MintValue::CEnum { ident, variant } => format!("{ident}::{variant}"),
         MintValue::Choice {
@@ -236,7 +250,7 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
             format!(
                 "{ident}::new_{variant}({}){}",
                 a.join(", "),
-                unwrap(*can_fail)
+                unwrap_suffix(*can_fail)
             )
         }
         MintValue::TableEmpty { ident } => format!("{ident}::new()"),
@@ -374,7 +388,7 @@ fn render_rust_for_direct_storage(
     {
         // This feeds an already-typed stored carrier, but `Wrapper::from(vec.try_into())` leaves
         // the TryInto target ambiguous now that both BoundedVec and `[T; N]` are viable.
-        return format!("<[_; {len}]>::try_from({rendered}).unwrap()");
+        return static_array_handover(len, &rendered);
     }
     let render_array = |element: &RustType| {
         render_rust_array(mv, &|value| {
@@ -389,7 +403,7 @@ fn render_rust_for_direct_storage(
                     .exact_byte_array_len_checked()
                     .or_else(|| key.exact_homogeneous_array_len_checked())
                 {
-                    format!("<[_; {len}]>::try_from({expr}).unwrap()")
+                    static_array_handover(len, &expr)
                 } else {
                     expr
                 }
@@ -417,7 +431,7 @@ fn render_rust_for_direct_storage(
                         .and_then(|_| crate::intermediate::exact_array_len_from_bounds(*bounds))
                         .and_then(Result::ok);
                     if let Some(len) = static_len {
-                        format!("<[_; {len}]>::try_from({array}).unwrap()")
+                        static_array_handover(len, &array)
                     } else {
                         array
                     }
@@ -446,10 +460,7 @@ fn render_rust_for_direct_storage(
                         .map(|(value, ty)| render_rust_for_constructor_arg(types, value, ty))
                         .collect::<Vec<_>>()
                         .join(", ");
-                    format!(
-                        "{ident}::new({args}){}",
-                        if *can_fail { ".unwrap()" } else { "" }
-                    )
+                    format!("{ident}::new({args}){}", unwrap_suffix(*can_fail))
                 }
                 Some(RustStructType::Wrapper { wrapped, .. }) => {
                     let MintValue::Wrapper {
@@ -464,8 +475,8 @@ fn render_rust_for_direct_storage(
                     let inner = render_rust_for_constructor_arg(types, inner, wrapped);
                     format!(
                         "{ident}::{}({inner}){}",
-                        if *checked_try_from { "try_from" } else { "new" },
-                        if *can_fail { ".unwrap()" } else { "" }
+                        wrapper_door(*checked_try_from),
+                        unwrap_suffix(*can_fail)
                     )
                 }
                 Some(RustStructType::TypeChoice { variants })
@@ -501,10 +512,7 @@ fn render_rust_for_direct_storage(
                         .map(|(value, (ty, _))| render_rust_for_constructor_arg(types, value, ty))
                         .collect::<Vec<_>>()
                         .join(", ");
-                    format!(
-                        "{ident}::new_{variant}({args}){}",
-                        if *can_fail { ".unwrap()" } else { "" }
-                    )
+                    format!("{ident}::new_{variant}({args}){}", unwrap_suffix(*can_fail))
                 }
                 _ => rendered,
             }
