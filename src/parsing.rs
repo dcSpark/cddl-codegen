@@ -8774,16 +8774,13 @@ fn recognize_array_rest_segments(
     }
 
     let src = source_rule_name_of(types, name);
-    if in_choice_arm {
-        types.record_rejection(format!(
-            "rule `{src}`: multiple array occurrence segments inside a group-choice arm are unsupported. Give the array its own named rule and reference it from the arm."
-        ));
-        return (vec![], candidates);
-    }
-    if types.is_plain_group(name) {
-        types.record_rejection(format!(
-            "rule `{src}`: multiple array occurrence segments inside a plain group are unsupported. Give the array its own named rule and reference it from the group."
-        ));
+    if reject_row_container_placement(
+        types,
+        name,
+        &src,
+        in_choice_arm,
+        DynamicRowShape::ArraySegments,
+    ) {
         return (vec![], candidates);
     }
 
@@ -8912,20 +8909,8 @@ fn recognize_open_table(
     // A group-choice arm and a plain group are rejected for the same reasons the single rest row is
     // (an arm collapses into an enum variant, dropping the open semantics; a materialized plain group
     // exports transparently as a CLOSED group body across a crate boundary).
-    if in_choice_arm {
-        types.record_rejection(format!(
-            "rule `{src}`: an open table (`{{ * k1 => v1, * k2 => v2 }}`) inside a group-choice arm \
-             (`{{ … }} // {{ … }}`) is unsupported. Give the open table its own named rule and \
-             reference it from the arm."
-        ));
-        return rejected();
-    }
-    if types.is_plain_group(name) {
-        types.record_rejection(format!(
-            "rule `{src}`: an open table (`* k1 => v1, * k2 => v2`) inside a plain group (`{src} = \
-             ( … )`, embedded elsewhere) is unsupported. Give the open table its own named rule \
-             (`{src} = {{ * k1 => v1, * k2 => v2 }}`) and reference it by name."
-        ));
+    if reject_row_container_placement(types, name, &src, in_choice_arm, DynamicRowShape::OpenTable)
+    {
         return rejected();
     }
     let Some(typed) = open_table_row(
@@ -9073,8 +9058,7 @@ fn open_table_row(
     if reject_custom_codec_on_row_entry(
         types,
         &format!("{slot} of rule `{src}`"),
-        "Name the row's key or value type as its own rule and put the pair there (`k = text ; \
-         @custom_serialize <fn> @custom_deserialize <fn>`, then `* k => v`).",
+        MAP_ROW_CODEC_REMEDY,
         &metadata,
     ) {
         return None;
@@ -9116,6 +9100,255 @@ fn open_table_row(
     })
 }
 
+/// The four dynamic-row shapes a record body can spell, for the container-placement refusal they
+/// share: a dynamic row is open (or multi-segment) semantics a group-choice arm would collapse into
+/// an enum variant, and a materialized plain group exports transparently as a CLOSED group body
+/// across a crate boundary. Each shape keeps its own message: the texts are what a spec author acts
+/// on, and each names its own shape and remedy.
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum DynamicRowShape {
+    /// An open struct-map's trailing rest row (`{ 1: a, * k => v }`).
+    MapRest,
+    /// An open array's single occurrence-bearing member (`[ a, * t ]`).
+    ArrayTail,
+    /// Several named array occurrence segments (`[ * a ; @name x, b, * c ; @name y ]`).
+    ArraySegments,
+    /// An open table's typed row plus catch-all (`{ * k1 => v1, * k2 => v2 }`).
+    OpenTable,
+}
+
+impl DynamicRowShape {
+    fn in_choice_arm_rejection(self, src: &str) -> String {
+        match self {
+            DynamicRowShape::MapRest => format!(
+                "rule `{src}`: an open struct-map rest row (`* k => v`) inside a group-choice arm \
+                 (`{{ … }} // {{ … }}`) is unsupported. Give the open map its own named rule and \
+                 reference it from the arm."
+            ),
+            DynamicRowShape::ArrayTail => format!(
+                "rule `{src}`: an open-array rest tail (`* t`) inside a group-choice arm \
+                 (`[ … ] // [ … ]`) is unsupported. Give the open array its own named rule and reference \
+                 it from the arm."
+            ),
+            DynamicRowShape::ArraySegments => format!(
+                "rule `{src}`: multiple array occurrence segments inside a group-choice arm are unsupported. Give the array its own named rule and reference it from the arm."
+            ),
+            DynamicRowShape::OpenTable => format!(
+                "rule `{src}`: an open table (`{{ * k1 => v1, * k2 => v2 }}`) inside a group-choice arm \
+                 (`{{ … }} // {{ … }}`) is unsupported. Give the open table its own named rule and \
+                 reference it from the arm."
+            ),
+        }
+    }
+
+    fn plain_group_rejection(self, src: &str) -> String {
+        match self {
+            DynamicRowShape::MapRest => format!(
+                "rule `{src}`: an open struct-map rest row (`* k => v`) inside a plain group \
+                 (`{src} = ( … * k => v )`, embedded elsewhere) is unsupported. Give the open map its \
+                 own named rule (`{src} = {{ … * k => v }}`) and reference it by name."
+            ),
+            DynamicRowShape::ArrayTail => format!(
+                "rule `{src}`: an open-array rest tail (`* t`) inside a plain group \
+                 (`{src} = ( … * t )`, embedded elsewhere) is unsupported. Give the open array its own \
+                 named rule (`{src} = [ … * t ]`) and reference it by name."
+            ),
+            DynamicRowShape::ArraySegments => format!(
+                "rule `{src}`: multiple array occurrence segments inside a plain group are unsupported. Give the array its own named rule and reference it from the group."
+            ),
+            DynamicRowShape::OpenTable => format!(
+                "rule `{src}`: an open table (`* k1 => v1, * k2 => v2`) inside a plain group (`{src} = \
+                 ( … )`, embedded elsewhere) is unsupported. Give the open table its own named rule \
+                 (`{src} = {{ * k1 => v1, * k2 => v2 }}`) and reference it by name."
+            ),
+        }
+    }
+}
+
+/// Refuse a dynamic row placed in a group-choice arm or in a plain group (`DynamicRowShape`), in
+/// that order. Returns whether it refused.
+fn reject_row_container_placement(
+    types: &mut IntermediateTypes,
+    name: &RustIdent,
+    src: &str,
+    in_choice_arm: bool,
+    shape: DynamicRowShape,
+) -> bool {
+    let refusal = if in_choice_arm {
+        shape.in_choice_arm_rejection(src)
+    } else if types.is_plain_group(name) {
+        shape.plain_group_rejection(src)
+    } else {
+        return false;
+    };
+    types.record_rejection(refusal);
+    true
+}
+
+/// The remedy for a custom (de)serializer pair on a MAP row's entry slot (a rest row or either open
+/// table row).
+const MAP_ROW_CODEC_REMEDY: &str = "Name the row's key or value type as its own rule and put the \
+     pair there (`k = text ; @custom_serialize <fn> @custom_deserialize <fn>`, then `* k => v`).";
+
+/// The two single-row rest shapes whose entry slot honors `@name` and `@ignore`
+/// (`rest_row_directives`).
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum RestRowShape {
+    MapRest,
+    ArrayTail,
+}
+
+impl RestRowShape {
+    /// The slot's name in its directive refusals.
+    fn slot(self) -> &'static str {
+        match self {
+            RestRowShape::MapRest => "open struct-map rest row (`* k => v`)",
+            RestRowShape::ArrayTail => "open-array rest tail (`* t`)",
+        }
+    }
+
+    fn codec_remedy(self) -> &'static str {
+        match self {
+            RestRowShape::MapRest => MAP_ROW_CODEC_REMEDY,
+            RestRowShape::ArrayTail => {
+                "Name the tail element type as its own rule and put the pair there (`e = uint ; \
+                 @custom_serialize <fn> @custom_deserialize <fn>`, then `* e`)."
+            }
+        }
+    }
+
+    /// Tolerate-and-drop re-serializes no captured entries: deliberately lossy, but faithful only
+    /// for the loose `*`/`0*` form. Zero violates a positive minimum, and a zero-minimum restricted
+    /// row would lose the bounded/exact state its checked carrier holds.
+    fn ignore_restricted_rejection(self, src: &str) -> String {
+        match self {
+            RestRowShape::MapRest => format!(
+                "rule `{src}`: `@ignore` cannot apply to a restricted open struct-map rest row — \
+                 dropping every captured entry would re-serialize zero occurrences: that violates \
+                 a positive minimum, while a zero-minimum restricted window would lose the bounded \
+                 or exact state its checked carrier retains. Keep the loose `* k => v ; @ignore` \
+                 form, or drop `@ignore` to retain the checked carrier."
+            ),
+            RestRowShape::ArrayTail => format!(
+                "rule `{src}`: `@ignore` cannot apply to a restricted open-array rest tail, because \
+                 dropping every captured element would re-serialize zero occurrences: that violates \
+                 a positive minimum, while a zero-minimum restricted window would lose the bounded \
+                 or exact state its checked carrier retains. Drop `@ignore` to capture the checked \
+                 tail."
+            ),
+        }
+    }
+
+    /// `@ignore` + `--preserve-encodings` is PERMANENTLY rejected: a preserve crate's contract is
+    /// byte-exact round-trips, which a deliberately-lossy type undermines crate-wide.
+    /// `--canonical-form` implies preserve (enforced in `api.rs`), so this covers it transitively.
+    fn ignore_preserve_rejection(self, src: &str) -> String {
+        match self {
+            RestRowShape::MapRest => format!(
+                "rule `{src}`: `@ignore` (tolerate-and-drop) on an open struct-map rest row is not \
+                 supported under --preserve-encodings, because a preserve crate's contract is \
+                 byte-exact round-trips and a silently-lossy type undermines it. Drop the `@ignore` \
+                 to capture the unknown entries (the default), or use `@custom_serialize` / \
+                 `@custom_deserialize` for a genuine view type."
+            ),
+            RestRowShape::ArrayTail => format!(
+                "rule `{src}`: `@ignore` (tolerate-and-drop) on an open-array rest tail is not \
+                 supported under --preserve-encodings, because a preserve crate's contract is \
+                 byte-exact round-trips and a silently-lossy type undermines it. Drop the `@ignore` \
+                 to capture the trailing elements (the default), or use `@custom_serialize` / \
+                 `@custom_deserialize` for a genuine view type."
+            ),
+        }
+    }
+
+    /// `@ignore` + `@name`: `@name` renames the captured field, which an ignore row does not emit.
+    fn ignore_name_rejection(self, src: &str) -> String {
+        match self {
+            RestRowShape::MapRest => format!(
+                "rule `{src}`: `@ignore` and `@name` cannot both apply to an open struct-map rest \
+                 row — `@ignore` emits no field to name. Drop `@name`, or drop `@ignore` to capture \
+                 the entries into the named field."
+            ),
+            RestRowShape::ArrayTail => format!(
+                "rule `{src}`: `@ignore` and `@name` cannot both apply to an open-array rest tail — \
+                 `@ignore` emits no field to name. Drop `@name`, or drop `@ignore` to capture the \
+                 elements into the named field."
+            ),
+        }
+    }
+}
+
+/// Validate a rest row's own entry slot after its placement and slot-shape guards, and return the
+/// row's semantics and field name (`@name`, default `rest`), or `None` after recording the refusal.
+///
+/// The row declares no type of its own, so the TYPE-SCOPED directives are refused (reported, not
+/// fatal) and so is an inert custom codec pair or a `@custom_encodings` with no pair to describe.
+/// `@ignore` selects the tolerate-and-DROP flavor, which combines with nothing else on the row. The
+/// order is the contract and differs per shape only in `@duplicates`: an array tail has no keys, so
+/// it refuses `@duplicates` outright before `@ignore` is read, while a map row refuses it only beside
+/// `@ignore`, after the restricted-occurrence and preserve checks.
+fn rest_row_directives(
+    types: &mut IntermediateTypes,
+    cli: &Cli,
+    shape: RestRowShape,
+    src: &str,
+    metadata: &RuleMetadata,
+    restricted: bool,
+) -> Option<(RestSemantics, String)> {
+    let slot = shape.slot();
+    reject_type_scoped_directives(types, &format!("the {slot} of rule `{src}`"), metadata);
+    if reject_custom_codec_on_row_entry(
+        types,
+        &format!("{slot} of rule `{src}`"),
+        shape.codec_remedy(),
+        metadata,
+    ) || reject_custom_encodings_without_pair(
+        types,
+        &format!("the {slot} of rule `{src}`"),
+        metadata,
+    ) {
+        return None;
+    }
+    if shape == RestRowShape::ArrayTail && metadata.duplicates.is_some() {
+        types.record_rejection(format!(
+            "rule `{src}`: `@duplicates` does not apply to an open-array rest tail — an array tail \
+             has no keys, so there is no duplicate policy to govern. Remove `@duplicates`."
+        ));
+        return None;
+    }
+    if metadata.ignore {
+        let refusal = if restricted {
+            Some(shape.ignore_restricted_rejection(src))
+        } else if cli.preserve_encodings {
+            Some(shape.ignore_preserve_rejection(src))
+        } else if metadata.duplicates.is_some() {
+            // Only a map row reaches here with `@duplicates`: a duplicates policy governs a
+            // captured container, which `@ignore` does not create.
+            Some(format!(
+                "rule `{src}`: `@ignore` and `@duplicates` cannot both apply to an open struct-map \
+                 rest row — `@ignore` drops unknown entries, so there is no container for a \
+                 duplicates policy to govern. Keep one: `@ignore` to drop, or `@duplicates` (with \
+                 capture) to retain."
+            ))
+        } else if metadata.name.is_some() {
+            Some(shape.ignore_name_rejection(src))
+        } else {
+            None
+        };
+        if let Some(refusal) = refusal {
+            types.record_rejection(refusal);
+            return None;
+        }
+    }
+    let semantics = if metadata.ignore {
+        RestSemantics::Ignore
+    } else {
+        RestSemantics::Capture
+    };
+    let field_name = metadata.name.clone().unwrap_or_else(|| "rest".to_owned());
+    Some((semantics, field_name))
+}
+
 /// Recognize a trailing open-map rest row (`* K => V`) in a map-rep record, or reject an
 /// unsupported placement/shape gracefully. Returns the built `RestRow` (if recognized and every
 /// guard passes) and the flattened index of the rest-CANDIDATE row (so the caller's field loop
@@ -9143,28 +9376,8 @@ fn recognize_rest_row(
         return (None, None);
     };
     let src = source_rule_name_of(types, name);
-    // A rest row cannot be collapsed into an enum variant (it would drop the open-map semantics),
-    // so reject it in a group-choice arm; the row is still skipped so no fixed field is built.
-    if in_choice_arm {
-        types.record_rejection(format!(
-            "rule `{src}`: an open struct-map rest row (`* k => v`) inside a group-choice arm \
-             (`{{ … }} // {{ … }}`) is unsupported. Give the open map its own named rule and \
-             reference it from the arm."
-        ));
-        return (None, Some(candidate));
-    }
-    // A rest row inside a PLAIN GROUP (`g = ( 1: a, * k => v )`, embedded via `{ g }`) is rejected.
-    // The rest row is NOT a `RustField`, but a materialized plain
-    // group exports TRANSPARENTLY as an extern-interface group-body row rendered from `fields` only
-    // (`project_plain_group`) — so recognizing a rest here would silently project a CLOSED group
-    // across the crate boundary (the silent-lossy cross-crate class). Reject explicitly instead of
-    // relying on the incidental "map field has no key" embed rejection; point at the named-rule form.
-    if types.is_plain_group(name) {
-        types.record_rejection(format!(
-            "rule `{src}`: an open struct-map rest row (`* k => v`) inside a plain group \
-             (`{src} = ( … * k => v )`, embedded elsewhere) is unsupported. Give the open map its \
-             own named rule (`{src} = {{ … * k => v }}`) and reference it by name."
-        ));
+    // The row is still skipped when refused, so no fixed field is built from it.
+    if reject_row_container_placement(types, name, &src, in_choice_arm, DynamicRowShape::MapRest) {
         return (None, Some(candidate));
     }
     // Multiple non-fixed rows: only a single trailing rest row is supported.
@@ -9320,110 +9533,27 @@ fn recognize_rest_row(
     // tolerate-and-drops: the deserialize arms typed-consume each unknown entry and discard it (no
     // field, serialize emits declared members only, JSON/schemars/wasm are a closed struct's), and it
     // is rejected under --preserve-encodings. No front door remains here for either flavor.
-    // Read entry-level directives (`@name`, `@duplicates`, `@ignore`) from the rest row's own trailing
-    // slot —
-    // NOT rule-position handling, and the two slots are DISJOINT here: on a map TYPE rule the parser
-    // binds a trailing comment written after the closing brace to the RULE slot alone
-    // (`u = { 1: a, * k => v } ; @ignore` is refused as a rule-position `@ignore`, and this walk
-    // never sees it), so anything read below is the comment the author put on the ROW's own line.
-    // The dual-read slot is a plain GROUP rule's last entry, which is a different construct.
+    // Entry-level directives are read from the rest row's own trailing slot — NOT rule-position
+    // handling: on a map TYPE rule the parser binds a trailing comment written after the closing
+    // brace to the RULE slot alone (`u = { 1: a, * k => v } ; @ignore` is refused as a rule-position
+    // `@ignore`, and this walk never sees it). The dual-read slot is a plain GROUP rule's last entry,
+    // which is a different construct.
     let rest_metadata = group_entry_rule_metadata(candidate_ge, candidate_comma);
-    // The TYPE-SCOPED directives describe the type a name denotes, so a row entry — which declares
-    // no type of its own — reads none of them. The row's own honored family (`@name`, `@duplicates`,
-    // `@ignore`) is why this seam calls the type-scoped list ALONE rather than the whole member list.
-    // Placement/shape guards above fire FIRST, per this seam's convention.
-    reject_type_scoped_directives(
+    let Some((semantics, field_name)) = rest_row_directives(
         types,
-        &format!("the open struct-map rest row (`* k => v`) of rule `{src}`"),
+        cli,
+        RestRowShape::MapRest,
+        &src,
         &rest_metadata,
-    );
-    // A custom (de)serializer pair in this slot is inert (the row declares no type of its own) —
-    // reject it here rather than generating default wire in both directions.
-    if reject_custom_codec_on_row_entry(
-        types,
-        &format!("open struct-map rest row (`* k => v`) of rule `{src}`"),
-        "Name the row's key or value type as its own rule and put the pair there (`k = text ; \
-         @custom_serialize <fn> @custom_deserialize <fn>`, then `* k => v`).",
-        &rest_metadata,
-    ) {
+        occurrence.is_some(),
+    ) else {
         return (None, Some(candidate));
-    }
-    // …and a `@custom_encodings` declaration with no pair to describe is dropped the same way.
-    if reject_custom_encodings_without_pair(
-        types,
-        &format!("the open struct-map rest row (`* k => v`) of rule `{src}`"),
-        &rest_metadata,
-    ) {
-        return (None, Some(candidate));
-    }
-    // `@ignore` selects the tolerate-and-DROP flavor: unknown entries are typed-deserialized and
-    // discarded (no field, serialize emits declared members only). It combines with nothing else on
-    // the row, and it is incompatible with `--preserve-encodings`. Each combination is a graceful
-    // rejection naming the remedy (never a silent drop). Placement/domain guards above fire FIRST, so
-    // `@ignore` on an unsupported placement gets the placement rejection, not one of these.
-    if rest_metadata.ignore {
-        // Tolerate-and-drop re-serializes no captured entries. That is deliberately lossy but only
-        // faithful for the existing loose `*`/`0*` form: zero violates a positive minimum, and a
-        // zero-minimum restricted row would lose the bounded/exact state its checked carrier holds.
-        if occurrence.is_some() {
-            types.record_rejection(format!(
-                "rule `{src}`: `@ignore` cannot apply to a restricted open struct-map rest row — \
-                 dropping every captured entry would re-serialize zero occurrences: that violates \
-                 a positive minimum, while a zero-minimum restricted window would lose the bounded \
-                 or exact state its checked carrier retains. Keep the loose `* k => v ; @ignore` \
-                 form, or drop `@ignore` to retain the checked carrier."
-            ));
-            return (None, Some(candidate));
-        }
-        // `@ignore` + `--preserve-encodings`: a preserve crate's contract is byte-exact round-trips,
-        // which a deliberately-lossy type undermines crate-wide. `--canonical-form` implies preserve
-        // (enforced in `api.rs`), so this covers it transitively. Point at the default capture flavor
-        // and at `@custom_serialize`/`@custom_deserialize` for genuine view types.
-        if cli.preserve_encodings {
-            types.record_rejection(format!(
-                "rule `{src}`: `@ignore` (tolerate-and-drop) on an open struct-map rest row is not \
-                 supported under --preserve-encodings, because a preserve crate's contract is \
-                 byte-exact round-trips and a silently-lossy type undermines it. Drop the `@ignore` \
-                 to capture the unknown entries (the default), or use `@custom_serialize` / \
-                 `@custom_deserialize` for a genuine view type."
-            ));
-            return (None, Some(candidate));
-        }
-        // `@ignore` + `@duplicates`: a duplicates policy governs a captured container, which `@ignore`
-        // does not create (unknown entries are dropped, and dropped entries have no duplicate story).
-        if rest_metadata.duplicates.is_some() {
-            types.record_rejection(format!(
-                "rule `{src}`: `@ignore` and `@duplicates` cannot both apply to an open struct-map \
-                 rest row — `@ignore` drops unknown entries, so there is no container for a \
-                 duplicates policy to govern. Keep one: `@ignore` to drop, or `@duplicates` (with \
-                 capture) to retain."
-            ));
-            return (None, Some(candidate));
-        }
-        // `@ignore` + `@name`: `@name` renames the captured field, which an ignore row does not emit.
-        if rest_metadata.name.is_some() {
-            types.record_rejection(format!(
-                "rule `{src}`: `@ignore` and `@name` cannot both apply to an open struct-map rest \
-                 row — `@ignore` emits no field to name. Drop `@name`, or drop `@ignore` to capture \
-                 the entries into the named field."
-            ));
-            return (None, Some(candidate));
-        }
-    }
-    let semantics = if rest_metadata.ignore {
-        RestSemantics::Ignore
-    } else {
-        RestSemantics::Capture
     };
     // `@duplicates` policy on the rest row (CAPTURE flavor): default (reject) uses the loose container
     // (value-equality dup check — accept/reject keyed on the wire VALUE, not the domain's spelling);
     // `preserve` uses the vec-of-pairs twin (`PairMap`), matching what `@duplicates preserve` TABLES do
     // — duplicate keys accepted and re-emitted in wire order. `reject` explicit is the same as default.
-    // Carried on the `RestRow` for the emitters to select the container. (Rejected above for `@ignore`.)
-    let field_name = rest_metadata
-        .name
-        .clone()
-        .unwrap_or_else(|| "rest".to_owned());
+    // Carried on the `RestRow` for the emitters to select the container. (Rejected for `@ignore`.)
     let rest_row = RestRow {
         kind: RestKind::MapEntries {
             domain,
@@ -9474,26 +9604,9 @@ fn recognize_array_rest_tail(
         return (None, None);
     };
     let src = source_rule_name_of(types, name);
-    // A rest tail cannot be collapsed into an enum variant (it would drop the open-array semantics),
-    // so reject it in a group-choice arm; the candidate is still skipped so no fixed field is built.
-    if in_choice_arm {
-        types.record_rejection(format!(
-            "rule `{src}`: an open-array rest tail (`* t`) inside a group-choice arm \
-             (`[ … ] // [ … ]`) is unsupported. Give the open array its own named rule and reference \
-             it from the arm."
-        ));
-        return (None, Some(candidate));
-    }
-    // A rest tail inside a PLAIN GROUP (`g = ( a, * t )`, embedded via `[ g ]`) is rejected: a
-    // materialized plain group exports TRANSPARENTLY as an extern-interface group-body row rendered
-    // from `fields` only, so recognizing a tail here would silently project a CLOSED group across the
-    // crate boundary (the silent-lossy cross-crate class). Point at the named-rule form.
-    if types.is_plain_group(name) {
-        types.record_rejection(format!(
-            "rule `{src}`: an open-array rest tail (`* t`) inside a plain group \
-             (`{src} = ( … * t )`, embedded elsewhere) is unsupported. Give the open array its own \
-             named rule (`{src} = [ … * t ]`) and reference it by name."
-        ));
+    // The candidate is still skipped when refused, so no fixed field is built from it.
+    if reject_row_container_placement(types, name, &src, in_choice_arm, DynamicRowShape::ArrayTail)
+    {
         return (None, Some(candidate));
     }
     // Multiple count-permitting entries: only one array occurrence segment is supported. (The
@@ -9595,94 +9708,20 @@ fn recognize_array_rest_tail(
         return (None, Some(candidate));
     }
     // Entry-level directives on the tail (`@name`, `@ignore`; `@duplicates` is rejected — no keys),
-    // read from the row's own trailing slot (NOT rule-position handling, and the two slots are
-    // DISJOINT here: on an array TYPE rule the parser binds a trailing comment written after the
-    // closing bracket to the RULE slot alone — `u = [ a, * t ] ; @ignore` is refused as a
-    // rule-position `@ignore`, and this walk never sees it — so anything read below is the comment
-    // the author put on the TAIL's own line; the dual-read slot is a plain GROUP rule's last entry,
-    // a different construct). Placement/shape guards above fire FIRST, so `@ignore` on a rejected
-    // placement gets the placement rejection, not one of these.
+    // read from the row's own trailing slot (NOT rule-position handling — see `recognize_rest_row`).
+    // Placement/shape guards above fire FIRST, so `@ignore` on a rejected placement gets the
+    // placement rejection, not one of the directive refusals.
     let tail_metadata = group_entry_rule_metadata(candidate_ge, candidate_comma);
-    // The TYPE-SCOPED directives describe the type a name denotes, so a tail entry — which declares
-    // no type of its own — reads none of them. Called ALONE (not the whole member list) because this
-    // slot legitimately honors `@name` and `@ignore`, which that list refuses.
-    reject_type_scoped_directives(
+    let Some((semantics, field_name)) = rest_row_directives(
         types,
-        &format!("the open-array rest tail (`* t`) of rule `{src}`"),
+        cli,
+        RestRowShape::ArrayTail,
+        &src,
         &tail_metadata,
-    );
-    // A custom (de)serializer pair in this slot is inert (the tail declares no type of its own) —
-    // reject it here rather than generating default wire in both directions.
-    if reject_custom_codec_on_row_entry(
-        types,
-        &format!("open-array rest tail (`* t`) of rule `{src}`"),
-        "Name the tail element type as its own rule and put the pair there (`e = uint ; \
-         @custom_serialize <fn> @custom_deserialize <fn>`, then `* e`).",
-        &tail_metadata,
-    ) {
+        occurrence.is_some(),
+    ) else {
         return (None, Some(candidate));
-    }
-    // …and a `@custom_encodings` declaration with no pair to describe is dropped the same way.
-    if reject_custom_encodings_without_pair(
-        types,
-        &format!("the open-array rest tail (`* t`) of rule `{src}`"),
-        &tail_metadata,
-    ) {
-        return (None, Some(candidate));
-    }
-    // `@duplicates` on an array tail is meaningless — there are no keys for a duplicates policy to
-    // govern (distinct from the map row's `@ignore`+`@duplicates` combination message).
-    if tail_metadata.duplicates.is_some() {
-        types.record_rejection(format!(
-            "rule `{src}`: `@duplicates` does not apply to an open-array rest tail — an array tail \
-             has no keys, so there is no duplicate policy to govern. Remove `@duplicates`."
-        ));
-        return (None, Some(candidate));
-    }
-    if tail_metadata.ignore {
-        if occurrence.is_some() {
-            types.record_rejection(format!(
-                "rule `{src}`: `@ignore` cannot apply to a restricted open-array rest tail, because \
-                 dropping every captured element would re-serialize zero occurrences: that violates \
-                 a positive minimum, while a zero-minimum restricted window would lose the bounded \
-                 or exact state its checked carrier retains. Drop `@ignore` to capture the checked \
-                 tail."
-            ));
-            return (None, Some(candidate));
-        }
-        // `@ignore` + `--preserve-encodings`: PERMANENTLY rejected (a preserve crate's contract is
-        // byte-exact round-trips, which a deliberately-lossy tolerate-and-drop tail undermines
-        // crate-wide). `--canonical-form` implies preserve (enforced in `api.rs`), so this covers it
-        // transitively. Distinct message naming the array shape (not a reword of the map text).
-        if cli.preserve_encodings {
-            types.record_rejection(format!(
-                "rule `{src}`: `@ignore` (tolerate-and-drop) on an open-array rest tail is not \
-                 supported under --preserve-encodings, because a preserve crate's contract is \
-                 byte-exact round-trips and a silently-lossy type undermines it. Drop the `@ignore` \
-                 to capture the trailing elements (the default), or use `@custom_serialize` / \
-                 `@custom_deserialize` for a genuine view type."
-            ));
-            return (None, Some(candidate));
-        }
-        // `@ignore` + `@name`: `@name` renames the captured field, which an ignore tail does not emit.
-        if tail_metadata.name.is_some() {
-            types.record_rejection(format!(
-                "rule `{src}`: `@ignore` and `@name` cannot both apply to an open-array rest tail — \
-                 `@ignore` emits no field to name. Drop `@name`, or drop `@ignore` to capture the \
-                 elements into the named field."
-            ));
-            return (None, Some(candidate));
-        }
-    }
-    let semantics = if tail_metadata.ignore {
-        RestSemantics::Ignore
-    } else {
-        RestSemantics::Capture
     };
-    let field_name = tail_metadata
-        .name
-        .clone()
-        .unwrap_or_else(|| "rest".to_owned());
     let rest_row = RestRow {
         kind: RestKind::ArrayTail {
             element: element_type,
