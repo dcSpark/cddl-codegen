@@ -1,0 +1,2 @@
+; integral_float_bound_outside_integer_range_rejects_gracefully pins an oversize float bound.
+x = int .le 1.0e300

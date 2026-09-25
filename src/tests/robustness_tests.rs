@@ -529,6 +529,33 @@ fn unsupported_tag_heads_reject_gracefully() {
     );
 }
 
+#[test]
+fn integral_float_bound_outside_integer_range_rejects_gracefully() {
+    for (tag, spec, needle) in [
+        ("int_le", "x = int .le 1.0e300\n", "float bound `1e300`"),
+        ("uint_le", "x = uint .le 1.0e300\n", "float bound `1e300`"),
+        ("int_ne", "x = int .ne 1.0e300\n", "float bound `1e300`"),
+        ("int_ge", "x = int .ge -1.0e300\n", "float bound `-1e300`"),
+        (
+            "member",
+            "x = [a: int .le 1.0e300]\n",
+            "float bound `1e300`",
+        ),
+    ] {
+        let msg = expect_graceful_rejection(tag, spec, &["--wasm=false"]);
+        assert!(
+            msg.contains(needle) && msg.contains("outside the integer range"),
+            "{tag}: {msg}"
+        );
+    }
+    for (tag, spec) in [
+        ("small", "x = int .eq 2.0\n"),
+        ("large", "x = int .le 1.0e19\n"),
+    ] {
+        expect_generates(tag, spec, &["--wasm=false"]);
+    }
+}
+
 /// Child half of the warning-capture regression. `warn!` writes directly to stderr, so an
 /// in-process assertion cannot observe it without changing the production logging seam.
 #[test]

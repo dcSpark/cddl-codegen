@@ -2606,7 +2606,19 @@ fn control_operand_integer(
     match operand {
         Type2::UintValue { value, .. } => Ok(*value as i128),
         Type2::IntValue { value, .. } => Ok(*value as i128),
-        Type2::FloatValue { value, .. } => Ok(*value as i128),
+        Type2::FloatValue { value, .. } => {
+            // Outside the CDDL int/uint literal range, `as i128` saturates into a bogus window.
+            if (-9_223_372_036_854_775_808.0..18_446_744_073_709_551_616.0).contains(value) {
+                Ok(*value as i128)
+            } else {
+                Err(format!(
+                    "{}float bound `{value:?}` on an integer-typed head is outside the integer range — an \
+                     integral float bound must lie within -9223372036854775808..18446744073709551615; use an \
+                     integer literal bound or a float head (float64)",
+                    reject_rule_prefix(rule_name)
+                ))
+            }
+        }
         _ => Err(non_literal_control_operand_rejection(
             rule_name, ctrl, operand,
         )),
