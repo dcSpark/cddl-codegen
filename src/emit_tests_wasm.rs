@@ -293,7 +293,7 @@ fn rust_scoped(mv: &MintValue, scoped: &ScopeMap) -> String {
         // The wasm wrapper has no composite `new_*` ctors for `AnyCbor`, so the wrapper round-trip
         // fallback builds its independent rust twin from an `Any` mint then decodes its bytes on the
         // wasm side. The generated module conditionally imports the alias this shared renderer uses.
-        MintValue::Any => emit_tests::render_rust(mv),
+        MintValue::Any | MintValue::AnyText { .. } => emit_tests::render_rust(mv),
     }
 }
 

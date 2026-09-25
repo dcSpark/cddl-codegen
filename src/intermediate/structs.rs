@@ -1399,6 +1399,18 @@ impl RestRow {
 }
 
 impl RustRecord {
+    /// The declared JSON member names this record owns, followed by exact-zero forbidden names.
+    /// The flattened rest writer reserves them; emitted JSON tests recognize all other members as
+    /// dynamic-row entries.
+    pub fn json_reserved_member_names(&self) -> Vec<String> {
+        self.fields
+            .iter()
+            .filter(|f| !f.rust_type.is_fixed_value() || f.optional)
+            .map(|f| f.name.to_string())
+            .chain(self.forbidden_fields.iter().map(|f| f.name.clone()))
+            .collect()
+    }
+
     /// Whether the native record constructor returns `Result` for value bounds or protected
     /// complete-rest validation. Boundary conversions (such as WASM's loose map builder) can
     /// introduce additional fallibility. Defaulted fields retain the mandatory-field rule.

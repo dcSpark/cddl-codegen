@@ -183,6 +183,9 @@ pub(crate) enum MintValue {
     /// import-glued `AnyCbor` path, so `render_rust` stays free of the CLI (the alias resolves in both
     /// the default and `--common-import-override` arrangements).
     Any,
+    /// A CDDL `any` rest key minted as text under JSON assertions: the composite `Any` mint has
+    /// no natural JSON member name.
+    AnyText { content: String },
 }
 
 /// Render a `MintValue` as the rust-crate API expression string. This reproduces, byte-for-byte,
@@ -242,6 +245,7 @@ pub(crate) fn render_rust(mv: &MintValue) -> String {
         // `widen_float` fidelity class widens; `__AnyCborMint` is the import-glued `AnyCbor` alias
         // `emit_generated_tests` injects at the test module root.
         MintValue::Any => "__AnyCborMint::new_array(vec![__AnyCborMint::new_uint(5), __AnyCborMint::new_float(1.5)])".to_owned(),
+        MintValue::AnyText { content } => format!("__AnyCborMint::new_text(\"{content}\".to_owned())"),
     }
 }
 
@@ -800,7 +804,35 @@ pub fn emit_generated_tests(
             out
         }
 
+        #[allow(dead_code)]
         pub fn assert_case<T>(value: serde_json::Value, rust_type: &str, case: &str)
+        where
+            T: schemars::JsonSchema + DeserializeOwned,
+        {
+            check::<T>(value, rust_type, case, None);
+        }
+
+        // A dynamic map row's occurrence minimum is deliberately absent from the schema:
+        // `minProperties` would also count declared members. Only a candidate that drops dynamic
+        // members of the actual serialization is exempt from schema/deserializer agreement.
+        #[allow(dead_code)]
+        pub fn assert_case_unpublished_row_minimum<T>(value: serde_json::Value, rust_type: &str, case: &str, declared: &[&str])
+        where
+            T: schemars::JsonSchema + DeserializeOwned,
+        {
+            check::<T>(value, rust_type, case, Some(declared));
+        }
+
+        fn drops_only_dynamic_members(value: &serde_json::Value, candidate: &serde_json::Value, declared: &[&str]) -> bool {
+            let (serde_json::Value::Object(original), serde_json::Value::Object(candidate)) = (value, candidate) else {
+                return false;
+            };
+            candidate.len() < original.len()
+                && candidate.iter().all(|(key, member)| original.get(key) == Some(member))
+                && original.keys().filter(|key| !candidate.contains_key(*key)).all(|key| !declared.contains(&key.as_str()))
+        }
+
+        fn check<T>(value: serde_json::Value, rust_type: &str, case: &str, declared: Option<&[&str]>)
         where
             T: schemars::JsonSchema + DeserializeOwned,
         {
@@ -810,6 +842,9 @@ pub fn emit_generated_tests(
                 .unwrap_or_else(|error| panic!("{rust_type} ({case}): schema validator could not compile the generated schema: {error}"));
             assert!(validator.is_valid(&value), "{rust_type} ({case}): schema rejected a real serialization: {value}");
             for candidate in mutations(&value) {
+                if declared.is_some_and(|declared| drops_only_dynamic_members(&value, &candidate, declared)) {
+                    continue;
+                }
                 if serde_json::from_value::<T>(candidate.clone()).is_err() {
                     assert!(!validator.is_valid(&candidate), "{rust_type} ({case}): schema accepted a shape the JSON deserializer rejects: {candidate}");
                 }
@@ -1122,6 +1157,7 @@ fn roundtrip_body(
     dump_rule: Option<&str>,
     rt: RtEmit,
     first_match: Option<&FirstMatch>,
+    json_row_minimum_declared: Option<&[String]>,
 ) -> Option<String> {
     if cases.is_empty() {
         return None;
@@ -1219,9 +1255,12 @@ fn roundtrip_body(
                 String::new()
             };
             let json_schema_line = if json_schema {
-                format!(
-                    "        cddl_json_schema::assert_case::<{name}>(serde_json::to_value(&v).expect(\"{name} ({label}): minted value must serialize as JSON\"), \"{name}\", \"{label}\");\n"
-                )
+                if let Some(names) = json_row_minimum_declared {
+                    let names = names.iter().map(|n| format!("{n:?}")).collect::<Vec<_>>().join(", ");
+                    format!("        cddl_json_schema::assert_case_unpublished_row_minimum::<{name}>(serde_json::to_value(&v).expect(\"{name} ({label}): minted value must serialize as JSON\"), \"{name}\", \"{label}\", &[{names}]);\n")
+                } else {
+                    format!("        cddl_json_schema::assert_case::<{name}>(serde_json::to_value(&v).expect(\"{name} ({label}): minted value must serialize as JSON\"), \"{name}\", \"{label}\");\n")
+                }
             } else {
                 String::new()
             };
@@ -1455,6 +1494,7 @@ fn rest_entry_key_candidates(
     types: &IntermediateTypes,
     domain: &RustType,
     initial: MintValue,
+    json_natural_any: bool,
     limit: usize,
     depth: u8,
 ) -> Vec<(MintValue, Option<FixedValue>)> {
@@ -1526,7 +1566,7 @@ fn rest_entry_key_candidates(
                     continue;
                 };
                 for (mint, image) in
-                    rest_entry_key_candidates(types, arg_ty, arg_initial, limit, depth + 1)
+                    rest_entry_key_candidates(types, arg_ty, arg_initial, false, limit, depth + 1)
                 {
                     if image.is_some() {
                         candidates.push((
@@ -1565,7 +1605,7 @@ fn rest_entry_key_candidates(
             let Some(wrapped_initial) = valid_value(types, wrapped) else {
                 return Vec::new();
             };
-            rest_entry_key_candidates(types, wrapped, wrapped_initial, limit, depth + 1)
+            rest_entry_key_candidates(types, wrapped, wrapped_initial, false, limit, depth + 1)
                 .into_iter()
                 .filter_map(|(mint, image)| {
                     image.map(|image| {
@@ -1591,6 +1631,18 @@ fn rest_entry_key_candidates(
                 })
                 .collect()
         }
+        (ConceptualRustType::Any, _) if json_natural_any => ('a'..='z')
+            .take(limit.saturating_add(1))
+            .map(|ch| {
+                let content = ch.to_string();
+                (
+                    MintValue::AnyText {
+                        content: content.clone(),
+                    },
+                    Some(FixedValue::Text(content)),
+                )
+            })
+            .collect(),
         _ => vec![(initial, None)],
     }
 }
@@ -1607,6 +1659,7 @@ fn mint_checked_rest_entry_key(
     row: &RestRow,
     baseline: &[MintValue],
     initial: Option<MintValue>,
+    json_natural_any: bool,
 ) -> Option<MintValue> {
     let domain = row.domain();
     let initial = initial?;
@@ -1637,7 +1690,9 @@ fn mint_checked_rest_entry_key(
     // Each fixed key or occupied coordinate rules out at most one candidate, so this bound
     // reaches the first free coordinate whenever the domain has one within cheap reach.
     let limit = fixed_keys.len().saturating_add(occupied.len());
-    for (candidate, image) in rest_entry_key_candidates(types, domain, initial, limit, 0) {
+    for (candidate, image) in
+        rest_entry_key_candidates(types, domain, initial, json_natural_any, limit, 0)
+    {
         if image.as_ref().is_none_or(|image| {
             !fixed_keys.iter().any(|fixed| **fixed == *image) && !occupied.contains(image)
         }) {
@@ -1987,15 +2042,25 @@ fn record_roundtrip(
                     continue;
                 }
                 let protected = record.has_protected_rest_keys(types) && !rest.is_array_tail();
-                let key = if protected {
+                let json_any_key = rt.json_schema
+                    && matches!(domain.resolve_alias_shallow(), ConceptualRustType::Any);
+                let key = if protected || json_any_key {
                     let initial = valid_value(types, domain);
-                    if matches!(&initial, Some(MintValue::Int { .. })) {
+                    if protected && matches!(&initial, Some(MintValue::Int { .. })) {
                         // The former integer search also minted the row carrier to identify its
                         // key kind. Retain that existing diagnostic for an unmintable range; the
                         // candidate search itself must not probe composite choice arms.
                         let _ = valid_value(types, &rest.container_type());
                     }
-                    mint_checked_rest_entry_key(types, name, record, rest, &valid_args, initial)
+                    mint_checked_rest_entry_key(
+                        types,
+                        name,
+                        record,
+                        rest,
+                        &valid_args,
+                        initial,
+                        rt.json_schema,
+                    )
                 } else {
                     valid_value(types, domain)
                 };
@@ -2085,7 +2150,11 @@ fn record_roundtrip(
             "both rows populated".to_owned(),
         ));
     }
-    roundtrip_body(name, cases, conf, dump_rule, rt, None)
+    let declared = record
+        .captured_dynamic_rows()
+        .any(|row| !row.is_array_tail() && row.occurrence.is_some_and(|(min, _)| min > 0))
+        .then(|| record.json_reserved_member_names());
+    roundtrip_body(name, cases, conf, dump_rule, rt, None, declared.as_deref())
 }
 
 /// Choice round-trip: one wire cycle per constructible variant (the construct-reject half never
@@ -2156,6 +2225,7 @@ fn choice_roundtrip(
         dump_rule,
         rt,
         Some(&FirstMatch { arms, minted }),
+        None,
     )
 }
 
@@ -2206,6 +2276,7 @@ fn wrapper_roundtrip(
         conf,
         dump_rule,
         rt,
+        None,
         None,
     )
 }

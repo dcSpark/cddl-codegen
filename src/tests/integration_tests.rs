@@ -9401,7 +9401,8 @@ fn nullable_wasm() {
 /// semantically occurrence-optional. The same fixture owns exact-zero (`0*0`) map-key constraints:
 /// absent and forbidden CBOR/JSON vectors, checked native rest construction and insertion, private
 /// rest storage, schema omission, and wasm's read-only validated-rest view. It retains the optional
-/// CBOR/JSON/wasm getter controls, including the fixed-value presence-bool path.
+/// CBOR/JSON/wasm getter controls, including the fixed-value presence-bool path. Its JSON emitted
+/// tests execute the unpublished dynamic-row minimum and JSON-natural `any` key paths.
 #[test]
 fn zero_permitting_keyed_map_fields() {
     run_test(
@@ -9410,6 +9411,7 @@ fn zero_permitting_keyed_map_fields() {
             "--json-schema-export=true",
             "--json-serde-derives=true",
             "--wasm=true",
+            "--emit-tests=true",
         ],
         None,
         &[],

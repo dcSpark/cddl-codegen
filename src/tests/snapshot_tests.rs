@@ -769,6 +769,36 @@ fn emitted_json_schema_assertion_is_wired_only_under_the_exact_triple() {
     }
 }
 
+#[test]
+fn json_emitted_tests_exempt_unpublished_row_minimum_and_mint_json_any_keys() {
+    let files = crate::api::generated_strings(&cli_for(
+        std::path::Path::new("tests/zero-permitting-map/input.cddl"),
+        &[
+            "--wasm=false",
+            "--emit-tests=true",
+            "--json-serde-derives=true",
+            "--json-schema-export=true",
+        ],
+    ))
+    .unwrap();
+    let src = files.get("rust/src/generated/mod.rs").unwrap();
+    let flat: String = src.chars().filter(|c| !c.is_whitespace()).collect();
+    for needle in [
+        "cddl_json_schema::assert_case_unpublished_row_minimum::<ZeroExactBoundedOpen>(",
+        "\"ZeroExactBoundedOpen\",\"baseline\",&[\"required\",\"forbidden\"]",
+        "cddl_json_schema::assert_case_unpublished_row_minimum::<DeclaredBounded>(",
+        "&[\"key_1\"]",
+        "cddl_json_schema::assert_case::<ZeroExactOpen>(",
+        "__AnyCborMint::new_text(\"a\".to_owned())",
+    ] {
+        assert!(
+            flat.contains(needle),
+            "missing {needle} in emitted JSON tests"
+        );
+    }
+    assert!(!flat.contains("insert_rest(__AnyCborMint::new_array"));
+}
+
 /// Every wasm method that puts an exact byte value directly in a collection carrier must perform
 /// the fallible Vec-to-array handover itself. Constructors that delegate to a native named type are
 /// deliberately absent: their native `new` owns the same conversion and its named diagnostic.

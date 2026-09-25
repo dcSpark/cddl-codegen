@@ -3587,7 +3587,10 @@ minted round-trip values also check their actual `serde_json` output against `sc
 with a generated `jsonschema` dev-dependency. The helper exercises bounded top-level and one-level
 shape mutations, including a duplicate-array candidate at the root or one object field deep; it
 requires schema rejection only for candidates `serde_json::from_value::<T>` rejects, avoiding false
-reds for deliberately broad JSON forms. This is the execution oracle for a
+reds for deliberately broad JSON forms. For a record with a positive-minimum dynamic map row, a
+candidate that only drops dynamic members is exempt because the schema deliberately omits row
+windows (`output_format.mdx` § Bounded rows). `zero_permitting_keyed_map_fields` executes the triple
+over `tests/zero-permitting-map`. This is the execution oracle for a
 hand-written `@custom_json` schema: it catches both a schema that rejects its serializer's output
 and one that accepts shapes its deserializer refuses. The synthetic
 `emitted_json_schema_assertion_accepts_correct_custom_schema` and

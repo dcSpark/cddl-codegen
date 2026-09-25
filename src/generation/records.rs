@@ -1742,23 +1742,13 @@ fn emit_rest_flatten_json(
         return annotations;
     }
 
-    // Declared JSON member names (reserved on the write side): every field that materializes a struct
-    // member — i.e. NOT a mandatory fixed value (which carries zero info and emits no JSON key).
-    let reserved: Vec<String> = record
-        .fields
-        .iter()
-        .filter(|f| !f.rust_type.is_fixed_value() || f.optional)
-        .map(|f| format!("{:?}", f.name.to_string()))
-        .collect();
-    let mut reserved = reserved;
-    // Exact-zero names are neither properties nor rest entries.  Reserving them here also keeps a
+    // Exact-zero names are neither properties nor rest entries. Reserving them also keeps a
     // direct serde construction from laundering the forbidden key through `flatten`.
-    reserved.extend(
-        record
-            .forbidden_fields
-            .iter()
-            .map(|f| format!("{:?}", f.name)),
-    );
+    let reserved: Vec<String> = record
+        .json_reserved_member_names()
+        .iter()
+        .map(|name| format!("{name:?}"))
+        .collect();
     let reserved_lit = format!("&[{}]", reserved.join(", "));
     // Most open records have no exact-zero members. Keep their generated JSON reader byte-for-byte
     // free of this check (and, importantly, avoid an always-false scan plus a dead `key` binding).
