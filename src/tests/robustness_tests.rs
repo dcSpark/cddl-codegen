@@ -760,7 +760,8 @@ fn emit_tests_ctor_probe_sibling_skips_are_loud_child() {
         &path,
         "ext = _CDDL_CODEGEN_EXTERN_TYPE_\n\
          c = [ 0, a: uint .le 5, e: ext // 1, b: tstr ]\n\
-         r = [a: bytes .size 4, e: ext]\n",
+         r = [a: bytes .size 4, e: ext]\n\
+         rb = [a: [2*5 uint], e: ext]\n",
     )
     .unwrap();
     let cli = Cli::parse_from([
@@ -805,6 +806,7 @@ fn emit_tests_ctor_probe_sibling_skips_are_loud() {
     for warning in [
         "cddl-codegen --emit-tests: C::new_c0 argument 0 boundary probes skipped (another constructor argument not cheaply mintable)",
         "cddl-codegen --emit-tests: R::new argument 0 boundary probes skipped (another constructor argument not cheaply mintable)",
+        "cddl-codegen --emit-tests: Rb::new argument 0 accept probes skipped (another constructor argument not cheaply mintable)",
     ] {
         assert_eq!(
             output.matches(warning).count(),

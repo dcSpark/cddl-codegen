@@ -2360,6 +2360,12 @@ fn type_enforced_bounded_array_ctor_probes(
         let mut sibling_skip_announced = false;
         for (mv, accept, label) in bound_cases(types, arg_ty, bounds, true) {
             let Some(door) = render_bounded_array_try_from(types, &mv, arg_ty) else {
+                // Unreachable today: the type-enforced predicate provides bounded metadata and
+                // materialize_at supplies an element (and distinct reject-set elements). Keep the
+                // skip loud if a later mint shape changes that construction guarantee.
+                crate::warn!(
+                    "cddl-codegen --emit-tests: {ctor} argument {target} {label} probe skipped (its bounded mint has no checked TryFrom spelling)"
+                );
                 continue;
             };
             if accept {
@@ -2785,7 +2791,13 @@ fn wrapper_construct_reject_float(
     wrapped: &RustType,
     window: &crate::intermediate::FloatWindow,
 ) -> Option<String> {
-    let cases = float_bound_cases(window, float_is_f32(wrapped), float_class_of(wrapped)?);
+    let Some(class) = float_class_of(wrapped) else {
+        crate::warn!(
+            "cddl-codegen --emit-tests: {name} float window on a non-float type — no reject test"
+        );
+        return None;
+    };
+    let cases = float_bound_cases(window, float_is_f32(wrapped), class);
     let lines: Vec<String> = cases
         .into_iter()
         .map(|(expr, accept, label)| {
