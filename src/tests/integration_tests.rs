@@ -22398,7 +22398,8 @@ fn used_as_elem_satisfies_wrapper_request_from_own_spec() {
 /// W2 criterion-8 dep-side hard errors, each exercised end-to-end (the real resolution code) with a
 /// hand-built or generated sidecar against the generated dep, asserting the actionable message. #6
 /// (malformed sidecar) is unit-tested in `crate::wrapper_requests`; #3 additionally uses the authored
-/// `foos = [* idx_foo]` dep spec (`dep_inputs_rulename`).
+/// `foos = [* idx_foo]` dep spec (`dep_inputs_rulename`). Each refusal is pinned on the exit code
+/// too: exit 1 through the error channel, never a panic.
 #[test]
 fn workspace_requests_hard_errors() {
     use std::str::FromStr;
@@ -22446,7 +22447,17 @@ fn workspace_requests_hard_errors() {
             !o.status.success(),
             "expected a hard error, but generation succeeded"
         );
-        String::from_utf8_lossy(&o.stderr).into_owned()
+        let stderr = String::from_utf8_lossy(&o.stderr).into_owned();
+        assert_eq!(
+            o.status.code(),
+            Some(1),
+            "a sidecar refusal must leave through the error channel (exit 1), never a panic (101); stderr:\n{stderr}"
+        );
+        assert!(
+            stderr.contains("Error: --wrapper-requests") && !stderr.contains("panicked"),
+            "stderr:\n{stderr}"
+        );
+        stderr
     };
 
     // #1 element not owned.
@@ -22565,6 +22576,33 @@ fn workspace_requests_hard_errors() {
         ef.contains("`@duplicates preserve` on the non-map shape")
             && ef.contains("only applies to"),
         "the preserve marker on an array shape must be refused naming the shape, got: {ef}"
+    );
+
+    let sg = write_sidecar(
+        "eg.rs",
+        "    (\"wr_dep\", \"MapU64ToIdxFoo\", \"{* uint => idx_foo} @duplicates reject\"),\n",
+    );
+    assert!(
+        run("dep_inputs", "export_eg", &sg).contains("`@duplicates reject` on the non-array shape")
+    );
+
+    let sh = write_sidecar(
+        "eh.rs",
+        "    (\"wr_dep\", \"IdxFooList\", \"[* idx_foo] junk\"),\n",
+    );
+    assert!(run("dep_inputs", "export_eh", &sh).contains("trailing content after the shape"));
+
+    let si = write_sidecar(
+        "ei.rs",
+        "    (\"wr_dep\", \"IdxFooList\", \"[* idx_foo\"),\n",
+    );
+    let ei = run("dep_inputs", "export_ei", &si);
+    assert!(ei.contains("malformed shape") && ei.contains("expected `]`"));
+
+    let sj = write_sidecar("ej.rs", "    (\"wr_dep\", \"IdxFoo\", \"idx_foo\"),\n");
+    assert!(
+        run("dep_inputs", "export_ej", &sj)
+            .contains("a requested shape must be a collection wrapper")
     );
 }
 
@@ -24489,6 +24527,12 @@ fn workspace_requests_two_shapes_one_name_is_a_hard_error() {
                 .contains("two distinct requested shapes derive the same structural wrapper name"),
         "criterion 8 #4: two shapes deriving one name must hard-error naming both; stderr:\n{stderr}"
     );
+    assert_eq!(
+        o.status.code(),
+        Some(1),
+        "a sidecar refusal must use the error channel; stderr:\n{stderr}"
+    );
+    assert!(!stderr.contains("panicked"), "stderr:\n{stderr}");
 }
 
 /// Recursively collect every generated `.rs` file under `root` (anything on a path containing a

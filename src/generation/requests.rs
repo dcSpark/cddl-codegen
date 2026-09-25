@@ -23,9 +23,9 @@ impl GenerationScope {
     /// Determinism: everything is keyed/sorted (`BTreeMap`/`BTreeSet`), so the union and the emission
     /// order depend on neither the flag order nor the consumers' regen order.
     ///
-    /// The sidecar READERS' refusals come back as `Err` (they travel to `generate_to_disk`'s caller,
-    /// so `--config`'s mid-run wrapper can name the crates already regenerated); the W2 diagnostics
-    /// this function owns itself still abort.
+    /// The sidecar readers' refusals and the W2 diagnostics this function owns all come back as
+    /// `Err`: they travel to `generate_to_disk`'s caller, so `main` reports them as `Error: …`
+    /// (exit 1) and `--config`'s mid-run wrapper can name the crates already regenerated.
     pub(super) fn emit_requested_collections(
         &mut self,
         types: &IntermediateTypes,
@@ -64,7 +64,7 @@ impl GenerationScope {
                 if entry.dep.replace('-', "_") != my_lib {
                     continue;
                 }
-                let rt = parse_requested_shape(types, &entry.shape, consumer, path, &entry.name);
+                let rt = parse_requested_shape(types, &entry.shape, consumer, path, &entry.name)?;
                 // A requested shape that is DIRECTLY WASM-EXPOSABLE has no wrapper class at all —
                 // it lowers to a bare `Vec<…>` at the wasm boundary — so no borrowed wrapper exists
                 // or is needed. Such a request is the symptom of an unfaithful consumer stub: the
@@ -81,7 +81,7 @@ impl GenerationScope {
                     } else {
                         format!("its element(s) resolve here as {}", leaves.join(", "))
                     };
-                    panic!(
+                    return Err(format!(
                         "--wrapper-requests {consumer} ({path}): the requested wrapper {:?} with \
                          shape {:?} is directly wasm-exposable — it lowers to `{member}` with no \
                          wrapper class, so no borrowed wrapper exists or is needed ({leaf_note}). \
@@ -92,10 +92,10 @@ impl GenerationScope {
                          truthfully (e.g. `coin = uint`) and regenerate the consumer, which will \
                          then stop borrowing this shape.",
                         entry.name, entry.shape
-                    );
+                    ));
                 }
                 let canonical = render_wrapper_shape(&rt);
-                let structural = requested_structural_name(types, &rt, consumer, path);
+                let structural = requested_structural_name(types, &rt, consumer, path)?;
                 // Cross-check the derived structural name against the listed name (criterion 8 #2).
                 if structural != entry.name {
                     let leaves = requested_shape_leaf_resolutions(types, &entry.shape);
@@ -104,12 +104,12 @@ impl GenerationScope {
                     } else {
                         format!(" Element resolution in this dep: {}.", leaves.join(", "))
                     };
-                    panic!(
+                    return Err(format!(
                         "--wrapper-requests {consumer} ({path}): the borrowed wrapper listed as \
                          {:?} with shape {:?} derives the structural name {:?}, not {:?} — the \
                          sidecar's name and shape columns disagree (a name↔shape mismatch).{leaf_note}",
                         entry.name, entry.shape, structural, entry.name
-                    );
+                    ));
                 }
                 let u = union.entry(canonical).or_insert_with(|| Unioned {
                     rt: rt.clone(),
@@ -136,12 +136,12 @@ impl GenerationScope {
                     .iter()
                     .flat_map(|s| union[s].requesters.iter())
                     .collect();
-                panic!(
+                return Err(format!(
                     "--wrapper-requests: two distinct requested shapes derive the same structural \
                      wrapper name {structural:?}: {shapes:?} (requested by {requesters:?}). These \
                      would define one JS class for two concepts — rename or @name one of the shapes \
                      in the requesting consumers."
-                );
+                ));
             }
         }
 
@@ -158,14 +158,14 @@ impl GenerationScope {
                 Some(existing) if existing.as_ref() == u.structural => {}
                 // Own spec produces this shape under a DIFFERENT (rule-declared) name => hard error.
                 Some(existing) => {
-                    panic!(
+                    return Err(format!(
                         "--wrapper-requests: requested shape {canonical:?} (requested by {:?}) is \
                          already produced by this dep's own spec under the non-structural rule name \
                          {existing}, not the structural name {:?} the consumers import. Emitting \
                          both would create two JS classes for one concept. Remedy: rename the rule \
                          {existing} to {}, give it `@name {}`, or drop it.",
                         u.requesters, u.structural, u.structural, u.structural
-                    );
+                    ));
                 }
                 None => to_emit.push((canonical, u)),
             }
@@ -182,13 +182,13 @@ impl GenerationScope {
                     .own_wrapper_shape(&inner)
                     .is_some();
                 if !requested && !own {
-                    panic!(
+                    return Err(format!(
                         "--wrapper-requests: requested shape {canonical:?} nests the collection \
                          wrapper {inner:?}, which is neither requested by any consumer nor produced \
                          by this dep's own spec. The inner collection of an all-one-dep shape is \
                          itself all-one-dep and must be requested too — this sidecar looks truncated \
                          or hand-edited."
-                    );
+                    ));
                 }
             }
         }
@@ -594,7 +594,7 @@ fn parse_requested_shape(
     consumer: &str,
     path: &str,
     listed_name: &str,
-) -> RustType {
+) -> Result<RustType, String> {
     let chars: Vec<char> = shape.chars().collect();
     let mut pos = 0;
     let mut rt = parse_shape_fragment(
@@ -606,7 +606,7 @@ fn parse_requested_shape(
         shape,
         listed_name,
         0,
-    );
+    )?;
     while pos < chars.len() && chars[pos].is_whitespace() {
         pos += 1;
     }
@@ -616,32 +616,32 @@ fn parse_requested_shape(
     let rest: String = chars[pos..].iter().collect();
     if rest == REJECT_MARKER {
         if !matches!(rt.conceptual_type, ConceptualRustType::Array(_)) {
-            panic!(
+            return Err(format!(
                 "--wrapper-requests {consumer} ({path}): `@duplicates reject` on the non-array shape \
                  {shape:?} (wrapper {listed_name:?}) — the reject policy only applies to set/array \
                  collections."
-            );
+            ));
         }
         rt.config.duplicates = Some(crate::comment_ast::DuplicatesPolicy::Reject);
         pos = chars.len();
     } else if rest == PRESERVE_MARKER {
         if !matches!(rt.conceptual_type, ConceptualRustType::Map(_, _)) {
-            panic!(
+            return Err(format!(
                 "--wrapper-requests {consumer} ({path}): `@duplicates preserve` on the non-map shape \
                  {shape:?} (wrapper {listed_name:?}) — the preserve pair-map twin only applies to \
                  table collections."
-            );
+            ));
         }
         rt.config.duplicates = Some(crate::comment_ast::DuplicatesPolicy::Preserve);
         pos = chars.len();
     }
     if pos != chars.len() {
-        panic!(
+        return Err(format!(
             "--wrapper-requests {consumer} ({path}): trailing content after the shape {shape:?} \
              (wrapper {listed_name:?})."
-        );
+        ));
     }
-    rt
+    Ok(rt)
 }
 
 /// Depth cap for `parse_shape_fragment`'s recursion. Real wrapper shapes nest 2–3 deep; 32 is a
@@ -659,37 +659,37 @@ fn parse_shape_fragment(
     shape: &str,
     listed_name: &str,
     depth: usize,
-) -> RustType {
+) -> Result<RustType, String> {
     let skip_ws = |pos: &mut usize| {
         while *pos < chars.len() && chars[*pos].is_whitespace() {
             *pos += 1;
         }
     };
-    let bad = |what: &str| -> ! {
-        panic!(
+    let bad = |what: &str| -> String {
+        format!(
             "--wrapper-requests {consumer} ({path}): malformed shape {shape:?} (wrapper \
              {listed_name:?}): {what}."
-        );
+        )
     };
     if depth > MAX_SHAPE_DEPTH {
-        panic!(
+        return Err(format!(
             "--wrapper-requests {consumer} ({path}): the requested wrapper {listed_name:?} \
              (shape {shape:?}) nests collections deeper than the supported limit of \
              {MAX_SHAPE_DEPTH}. Real wrapper shapes nest only a few levels; this is almost \
              certainly a malformed hand-edited sidecar."
-        );
+        ));
     }
     skip_ws(pos);
     if *pos >= chars.len() {
-        bad("unexpected end of shape");
+        return Err(bad("unexpected end of shape"));
     }
     match chars[*pos] {
         '[' => {
             *pos += 1;
             skip_ws(pos);
-            let occ = read_occurrence(chars, pos).unwrap_or_else(|| {
+            let occ = read_occurrence(chars, pos).ok_or_else(|| {
                 bad("expected an array occurrence (`*`, `+`, `?`, `*N`, `N*`, or `N*M`)")
-            });
+            })?;
             skip_ws(pos);
             let inner = parse_shape_fragment(
                 types,
@@ -700,10 +700,10 @@ fn parse_shape_fragment(
                 shape,
                 listed_name,
                 depth + 1,
-            );
+            )?;
             skip_ws(pos);
             if *pos >= chars.len() || chars[*pos] != ']' {
-                bad("expected `]`");
+                return Err(bad("expected `]`"));
             }
             *pos += 1;
             let mut rt = RustType::new(ConceptualRustType::Array(Box::new(inner))).with_bounds(occ);
@@ -713,14 +713,14 @@ fn parse_shape_fragment(
                 *pos += marker.len();
                 rt.config.duplicates = Some(crate::comment_ast::DuplicatesPolicy::Reject);
             }
-            rt
+            Ok(rt)
         }
         '{' => {
             *pos += 1;
             skip_ws(pos);
-            let occ = read_occurrence(chars, pos).unwrap_or_else(|| {
+            let occ = read_occurrence(chars, pos).ok_or_else(|| {
                 bad("expected a table occurrence (`*`, `+`, `?`, `*N`, `N*`, or `N*M`)")
-            });
+            })?;
             skip_ws(pos);
             let key = parse_shape_fragment(
                 types,
@@ -731,10 +731,10 @@ fn parse_shape_fragment(
                 shape,
                 listed_name,
                 depth + 1,
-            );
+            )?;
             skip_ws(pos);
             if !(chars.get(*pos) == Some(&'=') && chars.get(*pos + 1) == Some(&'>')) {
-                bad("expected `=>`");
+                return Err(bad("expected `=>`"));
             }
             *pos += 2;
             skip_ws(pos);
@@ -747,10 +747,10 @@ fn parse_shape_fragment(
                 shape,
                 listed_name,
                 depth + 1,
-            );
+            )?;
             skip_ws(pos);
             if *pos >= chars.len() || chars[*pos] != '}' {
-                bad("expected `}`");
+                return Err(bad("expected `}`"));
             }
             *pos += 1;
             let mut rt = RustType::new(ConceptualRustType::Map(Box::new(key), Box::new(value)));
@@ -764,7 +764,7 @@ fn parse_shape_fragment(
                 *pos += marker.len();
                 rt.config.duplicates = Some(crate::comment_ast::DuplicatesPolicy::Preserve);
             }
-            rt
+            Ok(rt)
         }
         _ => {
             // A named or primitive leaf: read the ident token.
@@ -775,11 +775,11 @@ fn parse_shape_fragment(
                 *pos += 1;
             }
             if *pos == start {
-                bad("expected an element type name");
+                return Err(bad("expected an element type name"));
             }
             let token: String = chars[start..*pos].iter().collect();
             if let Some(p) = primitive_from_cddl_name(&token) {
-                return RustType::new(ConceptualRustType::Primitive(p));
+                return Ok(RustType::new(ConceptualRustType::Primitive(p)));
             }
             // A reserved CDDL keyword (`biguint`, `bigint`, …) or reserved Rust type name
             // (`option` → `Option`) as a leaf token would trip `RustIdent::new`'s internal asserts
@@ -788,20 +788,20 @@ fn parse_shape_fragment(
             // (`RustIdent::reserved_reason`, the same predicate `new` asserts on) so external
             // input surfaces the feature's own hard error instead of the assert.
             if RustIdent::reserved_reason(&token).is_some() {
-                panic!(
+                return Err(format!(
                     "--wrapper-requests {consumer} ({path}): the requested wrapper {listed_name:?} \
                      (shape {shape:?}) uses the reserved identifier {token:?} as a wrapper element; \
                      reserved CDDL keywords and reserved Rust type names cannot be wrapper elements."
-                );
+                ));
             }
             let ident = RustIdent::new(CDDLIdent::new(token.clone()));
             if !dep_owns_element(types, &ident) {
-                panic!(
+                return Err(format!(
                     "--wrapper-requests {consumer} ({path}): the requested wrapper {listed_name:?} \
                      (shape {shape:?}) references the element type {token:?}, which this dep does not \
                      own. The consumer's extern stub for this dep and the dep's own spec disagree — \
                      the request cannot be satisfied."
-                );
+                ));
             }
             // Resolve through the pipeline's one alias-substitution rule (`resolve_alias`, shared
             // with `new_type` so this path cannot drift from pipeline resolution): a leaf left as
@@ -814,9 +814,9 @@ fn parse_shape_fragment(
             // generation of the same CDDL shape would produce. `dep_owns_element` already required
             // a spec-registered ident, so `new_type`'s unregistered-reserved prelude fallback (the
             // one mutable part) cannot be needed here.
-            types
+            Ok(types
                 .resolve_alias(&AliasIdent::Rust(ident.clone()))
-                .unwrap_or_else(|| RustType::new(ConceptualRustType::Rust(ident)))
+                .unwrap_or_else(|| RustType::new(ConceptualRustType::Rust(ident))))
         }
     }
 }
@@ -871,15 +871,15 @@ fn read_occurrence_number(chars: &[char], pos: &mut usize) -> Option<Option<i128
 /// spelling the consumer's emitter passed to `try_defer_wrapper` and recorded in its sidecar. Uses
 /// the raw `NonEmpty*List` / `NonEmpty<MapKToV>` forms (NOT `non_empty_wasm_wrapper_name`, which
 /// consults named owners) so a dep that authored a `[+ …]` rule surfaces as a name↔shape/own-spec
-/// disagreement rather than silently matching. Panics for a non-collection top level (a hand-edited
-/// sidecar row).
+/// disagreement rather than silently matching. Refuses (as an `Err`) a non-collection top level
+/// (a hand-edited sidecar row).
 fn requested_structural_name(
     types: &IntermediateTypes,
     rt: &RustType,
     consumer: &str,
     path: &str,
-) -> String {
-    match &rt.conceptual_type {
+) -> Result<String, String> {
+    Ok(match &rt.conceptual_type {
         ConceptualRustType::Array(inner) => {
             if rt.is_bounded_reject_ordered_set() {
                 rt.bounded_reject_ordered_set_wasm_wrapper_name(types)
@@ -918,11 +918,13 @@ fn requested_structural_name(
                 rt.wasm_structural_map_name(types).to_string()
             }
         }
-        other => panic!(
-            "--wrapper-requests {consumer} ({path}): a requested shape must be a collection wrapper \
-             (list or map), got {other:?}."
-        ),
-    }
+        other => {
+            return Err(format!(
+                "--wrapper-requests {consumer} ({path}): a requested shape must be a collection \
+                 wrapper (list or map), got {other:?}."
+            ));
+        }
+    })
 }
 
 /// If a reconstructed requested shape is DIRECTLY WASM-EXPOSABLE (it lowers to a bare `Vec<…>` with
@@ -1087,6 +1089,51 @@ mod tests {
         intermediate::{ConceptualRustType, IntermediateTypes, Primitive, RustType},
     };
 
+    /// Every refusal the requested-shape parser and the structural-name derivation raise for a
+    /// hand-edited sidecar row is an `Err` carrying its diagnostic, never a panic: these run inside
+    /// `generate`, whose error channel `main` prints as `Error: …` (exit 1) and `--config` wraps
+    /// with the crates already regenerated.
+    #[test]
+    fn requested_shape_refusals_are_errors() {
+        let types = IntermediateTypes::new();
+        let deep = format!("{}uint{}", "[* ".repeat(64), "]".repeat(64));
+        for (shape, expected) in [
+            (
+                "[* uint",
+                "malformed shape \"[* uint\" (wrapper \"listed\"): expected `]`.",
+            ),
+            (
+                "{* uint => uint} @duplicates reject",
+                "`@duplicates reject` on the non-array shape",
+            ),
+            (
+                "[* uint] @duplicates preserve",
+                "`@duplicates preserve` on the non-map shape",
+            ),
+            ("[* uint] junk", "trailing content after the shape"),
+            (deep.as_str(), "deeper than the supported limit of 32"),
+            ("[* biguint]", "uses the reserved identifier \"biguint\""),
+            (
+                "[* nope]",
+                "references the element type \"nope\", which this dep does not own",
+            ),
+        ] {
+            let err = parse_requested_shape(&types, shape, "consumer", "sidecar", "listed")
+                .expect_err(shape);
+            assert!(
+                err.starts_with("--wrapper-requests consumer (sidecar): ")
+                    && err.contains(expected),
+                "{shape:?} must be refused with {expected:?}, got: {err}"
+            );
+        }
+        let leaf = parse_requested_shape(&types, "uint", "consumer", "sidecar", "listed").unwrap();
+        let err = requested_structural_name(&types, &leaf, "consumer", "sidecar").unwrap_err();
+        assert!(
+            err.contains("a requested shape must be a collection wrapper (list or map)"),
+            "a non-collection top level must be refused, got: {err}"
+        );
+    }
+
     #[test]
     fn requested_nested_preserve_map_reconstructs_emitter_structural_name() {
         let types = IntermediateTypes::new();
@@ -1105,10 +1152,11 @@ mod tests {
         ))
         .with_duplicates_policy(Some(DuplicatesPolicy::Preserve));
         let shape = render_wrapper_shape(&emitted);
-        let reconstructed = parse_requested_shape(&types, &shape, "consumer", "sidecar", "listed");
+        let reconstructed =
+            parse_requested_shape(&types, &shape, "consumer", "sidecar", "listed").unwrap();
 
         assert_eq!(
-            requested_structural_name(&types, &reconstructed, "consumer", "sidecar"),
+            requested_structural_name(&types, &reconstructed, "consumer", "sidecar").unwrap(),
             emitted.wasm_structural_map_name(&types).to_string(),
             "the real sidecar parser must preserve a nested bounded PairMap identity"
         );

@@ -1668,10 +1668,11 @@ extractor):
   both-directions compile, and the bare-widening red proof) +
   `workspace_requests_alias_elements_host` — dep side over `tests/workspace-requests/`: strict
   sidecar intake, union-by-shape with sorted requester attribution, own-spec-shape satisfaction,
-  flag-order byte-identity, the criterion-8 hard errors plus the review-hardened classes — the
-  stub-fidelity diagnosis for directly-exposable shapes, reserved element idents, the
-  shape-nesting depth cap, and the element-resolution appendix on name↔shape mismatches — and
-  alias-element hosting: request leaves resolve through the pipeline's `resolve_alias`, the single
+  flag-order byte-identity, the criterion-8 hard errors plus the review-hardened classes, and
+  alias-element hosting. Each refusal is pinned on exit code 1 (the error channel, never a panic).
+  The review-hardened classes cover the stub-fidelity diagnosis for directly-exposable shapes,
+  reserved element idents, the shape-nesting depth cap, and the element-resolution appendix on
+  name↔shape mismatches. Request leaves resolve through the pipeline's `resolve_alias`, the single
   owner of the alias-substitution rule, so requested wrappers over
   `stake_credential = credential`-style aliases, primitive aliases, and externs generate exactly
   what the dep's own spec would. `workspace_requests_hosts_cross_scope_elements` is the host-side
