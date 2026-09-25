@@ -9676,6 +9676,20 @@ fn nested_exact_direct_storage_emit_tests_execute() {
             String::from_utf8_lossy(&test.stdout),
             String::from_utf8_lossy(&test.stderr)
         );
+        let stdout = String::from_utf8_lossy(&test.stdout);
+        let generated_prefix = if face == "rust" {
+            "test generated::cddl_generated_tests::roundtrip_"
+        } else {
+            "test generated::cddl_generated_wasm_tests::wasm_roundtrip_"
+        };
+        let executed = stdout
+            .lines()
+            .filter(|line| line.starts_with(generated_prefix) && line.ends_with(" ... ok"))
+            .count();
+        assert!(
+            executed >= 3,
+            "expected at least three generated {face} round-trips to execute, got {executed}:\n{stdout}"
+        );
     }
     let _ = std::fs::remove_dir_all(root);
 }
