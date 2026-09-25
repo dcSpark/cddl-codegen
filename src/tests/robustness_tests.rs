@@ -137,6 +137,8 @@ fn all_supported_constructs_generate() {
 /// Generate-only (no `cargo check`), so it captures ONLY panic-class gaps; compile-class ones (`x = any`,
 /// bare `x = int`, `bool` in a type-choice) generate fine and are invisible here — those need a negative
 /// compile-gate, a different tool.
+/// The directory may be empty (every panic-class construct was converted); the header-only
+/// snapshot then pins that no matrix construct panics.
 #[test]
 fn unsupported_construct_panic_catalog() {
     let dir = std::path::Path::new("tests/matrix_panic");
@@ -146,10 +148,10 @@ fn unsupported_construct_panic_catalog() {
         .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("cddl"))
         .collect();
     inputs.sort();
-    assert!(
-        !inputs.is_empty(),
-        "no panic fixtures in {dir:?} (run `bun run project_robustness.ts`)"
-    );
+    // An EMPTY catalog is legal: it is the state where no matrix construct is panic-class. The
+    // header-only snapshot then pins that state, and `project_robustness.ts --check` fails if the
+    // matrix projects a panic-class row this directory lacks, or the snapshot records a row the
+    // matrix does not project — so a future panic still lands here loudly.
 
     let mut catalog = String::from(
         "# generator outcome per matrix `unsupported` (panic-class) construct — a SCORECARD, not a contract.\n\

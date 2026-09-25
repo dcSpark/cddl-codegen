@@ -4488,7 +4488,7 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`, `
 > driven by `src/tests/robustness_tests.rs`) is the same projection→fixtures→gate shape on a different axis —
 > "does a construct *generate*?" rather than "does its wasm *compile*?". Three generation-outcome
 > catalogs, one per matrix verdict class: **supported** (`all_supported_constructs_generate` — must
-> generate clean), **panic** (`unsupported_construct_panic_catalog` — tracked-known generator panics),
+> generate clean), **panic** (`unsupported_construct_panic_catalog` — tracked-known generator panics; empty when no matrix construct is panic-class, which the header-only snapshot and the `--check` cross-check then pin),
 > and **reject** (`unsupported_construct_reject_catalog` — the rows the matrix marks off-limits that mint
 > no other test: parse-rejected control ops, constructs with no standalone Rust representation such as
 > the `#` any-type (`type2.any`), and
