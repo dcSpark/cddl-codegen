@@ -69,6 +69,10 @@ pub(crate) mod layout;
 // emitter for snapshot fixtures.
 pub(crate) mod extern_interface;
 
+// The reference-closure fixpoint both finalized-IR projections (`extern_interface` above and `wit`
+// below) run after staging, so the emitted `references excluded <root>` rows come from one scan.
+mod reference_closure;
+
 // The WIT face: the naming rules (keyword escaping over the kebab converter), the WIT package
 // identifier `--wit-package` parses into, and the two pre-generation detectors that decide whether a
 // spec can be projected to WIT at all. `pub(crate)` because both readers sit outside `generation/` —

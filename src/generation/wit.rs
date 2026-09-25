@@ -945,39 +945,25 @@ pub(crate) fn project(
         }
     }
 
-    // Reference closure to fixpoint: a resource whose signature names an excluded type would dangle,
-    // so it is excluded too, naming the chain ROOT rather than its immediate neighbour. Monotone
-    // (types only ever leave `staged`), so it terminates; deterministic (`BTreeMap` iteration, first
-    // offending reference in `BTreeSet` order).
+    // Reference closure to fixpoint (shared with `extern_interface`, see `reference_closure`): a
+    // resource whose signature names an excluded type would dangle, so it is excluded too, naming
+    // the chain ROOT rather than its immediate neighbour.
     //
     // An IMPORTED type counts as resolved: the consumer does not define it, but the dependency's
     // package does, and the `use` line makes it nameable — which is the whole point of import mode.
-    loop {
-        let next = staged.iter().find_map(|(ident, st)| {
-            st.refs
-                .iter()
-                .find(|r| !staged.contains_key(*r) && !imported.contains_key(*r))
-                .map(|r| {
-                    let root = excluded
-                        .get(r)
-                        .map(|e| e.root.clone())
-                        .unwrap_or_else(|| r.to_string());
-                    (ident.clone(), root)
-                })
-        });
-        let Some((ident, root)) = next else {
-            break;
-        };
-        let st = staged.remove(&ident).expect("just found in the same map");
-        excluded.insert(
-            ident,
-            WitExclusion {
-                scope: st.scope,
-                reason: format!("references excluded {root}"),
-                root,
-            },
-        );
-    }
+    super::reference_closure::exclude_dangling_refs(
+        &mut staged,
+        &mut excluded,
+        |st| &st.refs,
+        |r| imported.contains_key(r),
+        |e| &e.root,
+        |r| r.to_string(),
+        |st, reason, root| WitExclusion {
+            scope: st.scope,
+            reason,
+            root,
+        },
+    );
 
     // Assemble the interfaces. Every exported scope carrying a staged OR excluded type gets one; an
     // interface with nothing in it is still legal WIT and is still emitted.

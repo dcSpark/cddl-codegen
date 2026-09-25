@@ -1178,36 +1178,27 @@ pub(crate) fn project_extern_interface(types: &IntermediateTypes, cli: &Cli) -> 
     // Reference-closure to fixpoint: consumers run the checked parse over the whole export, so a rule
     // whose exported body references an ident that is NOT itself exported (excluded, or never a
     // candidate — e.g. an extern-dep-scope rule) would dangle for EVERY consumer. Exclude it too,
-    // naming the chain root. Monotone (only moves rules out of `included`), so it terminates;
-    // deterministic (`BTreeMap` iteration, first offending ref in `BTreeSet` order).
-    loop {
-        let next = included.iter().find_map(|(ident, inc)| {
-            inc.rule_refs
-                .iter()
-                .find(|r| !included.contains_key(*r))
-                .map(|r| {
-                    let root = excluded
-                        .get(r)
-                        .map(|e| e.root.clone())
-                        .or_else(|| types.source_rule_name(r).map(str::to_owned))
-                        .unwrap_or_else(|| r.to_string());
-                    (ident.clone(), root)
-                })
-        });
-        let Some((ident, root)) = next else {
-            break;
-        };
-        let inc = included.remove(&ident).unwrap();
-        excluded.insert(
-            ident,
-            ExcludedRule {
-                components: inc.components,
-                source: inc.source,
-                reason: format!("references excluded {root}"),
-                root,
-            },
-        );
-    }
+    // naming the chain root (shared fixpoint: `reference_closure`). A never-candidate reference has
+    // no exclusion record, so its root is its CDDL rule name when it has one.
+    super::reference_closure::exclude_dangling_refs(
+        &mut included,
+        &mut excluded,
+        |inc| &inc.rule_refs,
+        |_| false,
+        |e| &e.root,
+        |r| {
+            types
+                .source_rule_name(r)
+                .map(str::to_owned)
+                .unwrap_or_else(|| r.to_string())
+        },
+        |inc, reason, root| ExcludedRule {
+            components: inc.components,
+            source: inc.source,
+            reason,
+            root,
+        },
+    );
 
     ExternProjection {
         dep_key,
