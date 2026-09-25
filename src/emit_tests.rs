@@ -3481,15 +3481,11 @@ pub(crate) fn mint_struct(
                     .or_else(|| valid_value_at(types, element_type, depth + 1).map(Box::new)),
                 count,
                 non_empty: *bounds == Some((Some(1), None)),
-                bounded: bounds.and_then(|(min, max)| {
-                    (crate::intermediate::exact_array_len_from_bounds(Some((min, max))).is_none()
-                        && (min, max) != (None, None)
-                        && (min, max) != (Some(1), None))
-                        .then_some((
-                            u64::try_from(min.unwrap_or(0)).ok()?,
-                            max.map(|v| u64::try_from(v).ok())
-                                .unwrap_or(Some(u64::MAX))?,
-                        ))
+                bounded: bounds.and_then(|b| {
+                    crate::intermediate::type_enforced_bounded_window(
+                        b,
+                        crate::intermediate::exact_array_len_from_bounds(Some(b)).is_some(),
+                    )
                 }),
                 reject,
                 unique_elems,

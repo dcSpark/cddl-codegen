@@ -528,6 +528,19 @@ pub(crate) fn occurrence_window_u64(
     (min <= max).then_some((min, max))
 }
 
+/// Inclusive `u64` window held by a type-enforced bounded carrier. Loose `*`, NonEmpty `+`,
+/// exact occurrences (according to the caller's static-carrier verdict), and invalid windows
+/// have no bounded carrier.
+pub(crate) fn type_enforced_bounded_window(
+    bounds: (Option<i128>, Option<i128>),
+    exact: bool,
+) -> Option<(u64, u64)> {
+    if exact || bounds == (None, None) || bounds == (Some(1), None) {
+        return None;
+    }
+    occurrence_window_u64(bounds)
+}
+
 /// The occurrence-window suffix of a structural wasm class name: `{infix}Max{max}` for a zero
 /// minimum, `{infix}Min{min}` for an unbounded maximum (including `(0, u64::MAX)`, which renders as
 /// `Min0`), and `{infix}Min{min}Max{max}` otherwise.
@@ -577,6 +590,28 @@ pub(crate) fn bound_const_arg(max: u64) -> String {
 #[cfg(test)]
 mod exact_byte_array_len_tests {
     use super::*;
+
+    #[test]
+    fn bounded_window_helper_matches_the_carrier_rules() {
+        assert_eq!(
+            type_enforced_bounded_window((Some(2), Some(5)), false),
+            Some((2, 5))
+        );
+        for bounds in [(None, None), (Some(1), None), (Some(3), Some(3))] {
+            assert_eq!(
+                type_enforced_bounded_window(bounds, bounds == (Some(3), Some(3))),
+                None
+            );
+        }
+        assert_eq!(
+            type_enforced_bounded_window((Some(3), Some(2)), false),
+            None
+        );
+        assert_eq!(
+            type_enforced_bounded_window((None, Some(3)), false),
+            Some((0, 3))
+        );
+    }
 
     #[test]
     fn recognizes_only_size_windows_including_normalized_zero_and_wasm_limit() {
@@ -1335,14 +1370,10 @@ impl RustType {
             ConceptualRustType::Array(_)
         )
         .then_some(())?;
-        let (min, max) = self.config.bounds?;
-        if (min, max) == (None, None)
-            || (min, max) == (Some(1), None)
-            || self.exact_homogeneous_array_len_checked().is_some()
-        {
-            return None;
-        }
-        occurrence_window_u64((min, max))
+        type_enforced_bounded_window(
+            self.config.bounds?,
+            self.exact_homogeneous_array_len_checked().is_some(),
+        )
     }
 
     /// True when this array-shaped member carries `@duplicates reject` — its representation swaps to
@@ -1451,11 +1482,7 @@ impl RustType {
             ConceptualRustType::Map(_, _)
         )
         .then_some(())?;
-        let (min, max) = self.config.bounds?;
-        if (min, max) == (None, None) || (min, max) == (Some(1), None) {
-            return None;
-        }
-        occurrence_window_u64((min, max))
+        type_enforced_bounded_window(self.config.bounds?, false)
     }
 
     pub fn is_type_enforced_bounded_map(&self) -> bool {
