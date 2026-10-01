@@ -22,8 +22,8 @@
  *   | under $RUSTUP_HOME (default ~/.rustup)  | pinned by the `rustc -vV` key component                 |
  *   | system prefixes (/usr /lib* /etc /proc  | machine state (per-checkout-local cache, never shared) — |
  *   | /sys /dev /opt /run /bin /sbin, plus    | same accepted class as glibc/the linker. /mnt/wsl is the |
- *   | /mnt/wsl — see the comment at           | WSL-kernel tmpfs `/etc/resolv.conf` resolves into (the   |
- *   | SYSTEM_PREFIXES)                        | audit records kernel-resolved paths)                     |
+ *   | /mnt/wsl and /nix/store — comments at  | WSL-kernel tmpfs `/etc/resolv.conf` resolves into (the   |
+ *   | SYSTEM_PREFIXES)                        | audit records kernel-resolved paths); Nix stores tools. |
  *   | the repo's own `.cargo/config(.toml)?`   | HASHED into the gate-cache key (`cargoConfigDigest` in  |
  *   | — EXACTLY those files, never the        | `lib.ts`, folded in by `gateCacheKey` so every cached    |
  *   | `.cargo/` directory                     | site keys on it by construction). Unlike the git-config  |
@@ -99,7 +99,7 @@
  * check.ts maps this dedicated code to SKIPPED and no other nonzero).
  *
  * Run from cddl-matrix/:  bun run audit_gate_cache_closure.ts   (or CLOSURE_AUDIT_GATE=<test>).
- * `--self-test` runs only the embedded parser fixtures and exits (no cargo, no strace).
+ * `--self-test` runs embedded fixtures and the probe-child smoke test (no cargo, no strace).
  */
 import { existsSync, mkdtempSync, readdirSync, realpathSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -135,6 +135,9 @@ export function classifyStraceCapability(result: StraceCapabilityResult, strace:
   return { status: "broken", detail };
 }
 
+// Reuse the running interpreter: NixOS need not have /bin/true or a usable PATH.
+const STRACE_PROBE_COMMAND = [process.execPath, "--version"];
+
 /**
  * Probe the exact tracing mode the audit uses. A present binary is insufficient in containers that
  * deny ptrace: those environments are equivalent to a missing strace for this gate, while a bad
@@ -148,7 +151,7 @@ export function probeStraceCapability(strace = Bun.which("strace")): StraceCapab
     run = Bun.spawnSync(
       [
         strace, "-f", "--seccomp-bpf", "-e", "trace=%process,openat,openat2,open", "-y", "-s", "4096",
-        "-o", "/dev/null", "--", "/bin/true",
+        "-o", "/dev/null", "--", ...STRACE_PROBE_COMMAND,
       ],
       { stdout: "pipe", stderr: "pipe", timeout: 10_000 },
     );
@@ -330,7 +333,12 @@ export interface Boundaries {
 // never WHAT is built (same argument as the user-git-config class: versions + checksums are pinned
 // by the hashed lockfile). No repo checkout or user content lives there (user Windows drives mount
 // under /mnt/<drive-letter>, which stays unclassified).
-const SYSTEM_PREFIXES = ["/usr", "/lib", "/lib64", "/lib32", "/etc", "/proc", "/sys", "/dev", "/opt", "/run", "/bin", "/sbin", "/mnt/wsl"];
+// Nix system executables resolve their linker, libraries, compiler wrappers, and locale data into
+// immutable /nix/store outputs rather than /usr or /lib. These are the same machine-tool inputs
+// covered by the existing per-checkout-local system exception; cache sharing across machines or
+// tool environments is not justified by this class. Limit it to the immutable store, not mutable
+// /nix/var state. The repo boundary still wins if a checkout itself lives under the store.
+const SYSTEM_PREFIXES = ["/usr", "/lib", "/lib64", "/lib32", "/etc", "/proc", "/sys", "/dev", "/opt", "/run", "/bin", "/sbin", "/mnt/wsl", "/nix/store"];
 
 // Order matters: tmp/cargo/rustup/user-git-config are checked before `repo`/`home` (they may live
 // under $HOME); `repo` before the system + home-generic classes so a repo path never masquerades as
@@ -354,6 +362,18 @@ export function classifyPath(path: string, b: Boundaries): PathClass {
 function selfTest(): void {
   const fail = (msg: string): never => { console.error(`self-test FAILED: ${msg}`); process.exit(2); };
   const eq = (a: unknown, b: unknown, msg: string) => { if (JSON.stringify(a) !== JSON.stringify(b)) fail(`${msg}: got ${JSON.stringify(a)} want ${JSON.stringify(b)}`); };
+
+  // The probe's child must execute without PATH or an FHS /bin layout (e.g. NixOS).
+  // Exercise the actual command, without requiring strace/ptrace for the self-test.
+  let probeChild;
+  try {
+    probeChild = Bun.spawnSync(STRACE_PROBE_COMMAND, {
+      env: { ...process.env, PATH: "" }, stdout: "pipe", stderr: "pipe", timeout: 10_000,
+    });
+  } catch (error) {
+    fail(`capability probe child failed without PATH: ${error}`);
+  }
+  eq(probeChild!.exitCode, 0, "capability probe child executes without PATH");
 
   // strace capability: exit 0 wins even if a best-effort seccomp probe warned; only explicit ptrace
   // EPERM is unavailable. Every other nonzero, timeout, or signal remains a hard harness error.
@@ -483,6 +503,12 @@ function selfTest(): void {
   eq(classifyPath("/home/u/.cargo/registry/z", b).allowed, true, "cargo_home allowed");
   eq(classifyPath("/home/u/.rustup/toolchains/z", b).allowed, true, "rustup allowed");
   eq(classifyPath("/usr/lib/x.so", b).allowed, true, "system allowed");
+  eq(classifyPath("/nix/store/hash-glibc/lib/libc.so.6", b),
+     { allowed: true, label: "system" }, "immutable Nix system runtime allowed");
+  eq(classifyPath("/nix/storex/user.rs", b).label, "UNCLASSIFIED", "Nix store prefix does not bleed into siblings");
+  eq(classifyPath("/nix/var/nix/profiles/tool", b).label, "UNCLASSIFIED", "mutable Nix state is not store content");
+  eq(classifyPath("/nix/store/project/src/lib.rs", { ...b, repo: ["/nix/store/project"] }).label,
+     "REPO_CHECKOUT", "a checkout in the store still fails before the system class");
   eq(classifyPath("/mnt/wsl/resolv.conf", b), { allowed: true, label: "system" }, "WSL kernel-resolved /etc/resolv.conf allowed");
   eq(classifyPath("/mnt/wslx/evil", b).label, "UNCLASSIFIED", "/mnt/wsl prefix does not bleed into siblings");
   eq(classifyPath("/mnt/c/Users/u/repo/x.rs", b).label, "UNCLASSIFIED", "Windows drive mounts NOT in the system class");
