@@ -90,6 +90,7 @@ entries = [
   "testing.wasm-duplicate-link-controls-current-toolchain",
   "testing.rust-oracle-tag-leniency-optional-segment-roundtrip",
   "testing.full-tier-command-oracles-unavailable",
+  "testing.nixos-wasm-pack-helper-environment",
 ]
 
 [[section]]
@@ -4248,6 +4249,28 @@ capture_md = '''Capture the same-run sweep, preflight, failure, disk usage, and 
 [[record.payload.capture_step]]
 step_id = "scope"
 capture_md = '''Record the full untruncated log or consumer report, command, full commit, date, environment, relevant versions, and the explicitly unprobed remainder; never cite a disposable draft log as durable evidence.
+'''
+
+[[record]]
+id = "testing.nixos-wasm-pack-helper-environment"
+title = "NixOS verification needs a reproducible environment for wasm-pack helpers."
+
+[record.payload]
+kind = "work"
+body_md = '''Provide a project-scoped Nix verification environment with an executable wasm-bindgen CLI matching the generated Cargo graph, rather than relying on wasm-pack's generic Linux helper download.
+On an aarch64-linux NixOS worker, Rust 1.96.1 and wasm-pack 0.15.0 resolved wasm-bindgen 0.2.129; integration_tests::json_arbitrary_precision, integration_tests::wasm_json_roundtrip, and integration_tests::package_json_pipeline failed because the downloaded helper requested an unavailable generic Linux ELF loader (exit 127).
+All three passed in isolated retries after exposing the official 0.2.129 archive through an immutable Nix derivation with autoPatchelfHook and its libgcc dependency, ahead of the downloaded cache on PATH.
+The missing system is a reusable project environment that checks helper version agreement and execution before starting a long tier run, and also carries the declared Rust targets, Node/npm, Bun, WASM tools, and pinned command oracles.
+Keep system configuration and writable package caches outside this project environment; do not enable a machine-wide loader workaround to qualify the tests.
+
+'''
+work_state = "pending_review"
+work_intent = "build_system"
+work_kind = "missing_system"
+risk = "false_pass_or_red"
+uncertainty_md = '''The worker-specific scratch environment is sufficient for the three retries; a portable committed environment and its dependency-version update policy remain to be designed.
+A successful isolated retry does not establish a local or full tier pass.
+
 '''
 
 [[record]]
