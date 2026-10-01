@@ -2127,9 +2127,10 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
         });
     }
 
-    // Fail-loudly blocks go at the top, after the header AND any leading inner attributes (a
-    // `compile_error!` item placed before `#![…]` would make the inner attribute illegal). Carried
-    // blocks (verbatim, for byte-stable carry-forward) precede freshly-minted ones.
+    // Fail-loudly blocks go after the header and every leading inner attribute (a `compile_error!`
+    // item before `#![…]` makes the attribute illegal), the placement contract
+    // `alloc_import_inject::insertion_line` documents. Carried blocks (verbatim, for byte-stable
+    // carry-forward) precede freshly-minted ones.
     let top_offset = {
         let mut idx = 0;
         while let Some(j) = inner_attr_end(&new_lex.code, idx) {

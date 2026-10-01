@@ -76,6 +76,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use proc_macro2::{TokenStream, TokenTree};
 use quote::ToTokens;
 use syn::Item;
+use syn::spanned::Spanned;
 
 use crate::import_prune::{IdentForm, follows_path_sep, walk_ident_uses};
 
@@ -271,7 +272,7 @@ pub(crate) fn inject(source: &str) -> Cow<'_, str> {
     // construction — no sort at use time, and the output is deterministic.
     block.extend(wanted.iter().copied());
 
-    let insert_at = insertion_line(&kept);
+    let insert_at = insertion_line(&kept, &inner_attribute_lines(&file));
     let mut out: Vec<&str> = Vec::with_capacity(kept.len() + block.len());
     out.extend_from_slice(&kept[..insert_at]);
     out.extend_from_slice(&block);
@@ -352,8 +353,19 @@ fn references_alloc_crate(source: &str) -> bool {
     }
 }
 
-/// The line index the injected block goes at: after the leading comment/blank run and after any
-/// inner attributes, before the first item.
+/// The lines occupied by inner attributes. `file` must parse exactly the lines scanned by
+/// `insertion_line`; proc-macro2 span lines are one-based.
+fn inner_attribute_lines(file: &syn::File) -> BTreeSet<usize> {
+    file.attrs
+        .iter()
+        .filter(|attr| matches!(attr.style, syn::AttrStyle::Inner(_)))
+        .flat_map(|attr| attr.span().start().line - 1..attr.span().end().line)
+        .collect()
+}
+
+/// The block goes after the leading comment and blank lines and after every inner attribute,
+/// before the first item. `comment_preserve` places its fail-loudly blocks by the same contract
+/// on its own token stream (`inner_attr_end`).
 ///
 /// Inner attributes (`#![allow(…)]`, which the generated root `mod.rs` opens with) MUST precede
 /// every item in their module, so an item injected above one is a hard error. Comments may precede
@@ -367,16 +379,14 @@ fn references_alloc_crate(source: &str) -> bool {
 /// reader then meets a marker it cannot classify and hard-errors on its own emitted output. Placing
 /// the block ABOVE such a marker is always safe: it is still after the banner and the inner
 /// attributes, which is all the language requires.
-fn insertion_line(lines: &[&str]) -> usize {
+fn insertion_line(lines: &[&str], inner_attribute_lines: &BTreeSet<usize>) -> usize {
     let mut i = 0;
-    let mut depth = 0i32;
     while i < lines.len() {
-        let trimmed = lines[i].trim();
-        if depth > 0 {
-            depth += bracket_delta(trimmed);
+        if inner_attribute_lines.contains(&i) {
             i += 1;
             continue;
         }
+        let trimmed = lines[i].trim();
         // Deliberately broader than `comment_preserve::ReservedComment::parse`: any run of
         // slashes (`///`, `//!`) counts, since stopping EARLIER is always safe here.
         if trimmed.starts_with("//")
@@ -391,24 +401,9 @@ fn insertion_line(lines: &[&str]) -> usize {
             i += 1;
             continue;
         }
-        if trimmed.starts_with("#!") {
-            depth += bracket_delta(trimmed);
-            i += 1;
-            continue;
-        }
         break;
     }
     i
-}
-
-/// Net bracket depth change of a line, counting only `[`/`]` (an inner attribute's own delimiters).
-/// Brackets inside string literals do not occur in the attribute forms the generator emits.
-fn bracket_delta(line: &str) -> i32 {
-    line.chars().fold(0i32, |acc, c| match c {
-        '[' => acc + 1,
-        ']' => acc - 1,
-        _ => acc,
-    })
 }
 
 #[cfg(test)]
@@ -584,6 +579,34 @@ mod tests {
             !out.contains("use alloc::collections::BTreeMap;"),
             "...but not a file-top import the nested module cannot use:\n{out}"
         );
+    }
+
+    #[test]
+    fn a_bracket_in_an_inner_attribute_comment_does_not_split_the_attribute() {
+        let src = "#![allow(\n    // ] stray\n    clippy::all\n)]\npub struct S { f: String }\n";
+        let out = inj(src);
+        assert!(
+            syn::parse_file(&out).is_ok(),
+            "injected source must parse:\n{out}"
+        );
+        let lines: Vec<&str> = out.lines().collect();
+        let attr_close = lines.iter().position(|l| l.trim() == ")]").unwrap();
+        let injected = lines.iter().position(|l| *l == EXTERN_CRATE_ALLOC).unwrap();
+        assert!(
+            injected > attr_close,
+            "alloc must follow the attribute:\n{out}"
+        );
+    }
+
+    #[test]
+    fn a_bracket_in_an_inner_attribute_string_does_not_push_the_block_to_eof() {
+        let src = "#![doc = \"[\"]\npub fn f() {\n    let v = [\n        1,\n    ];\n    let s = String::new();\n}\n";
+        let out = inj(src);
+        assert!(
+            syn::parse_file(&out).is_ok(),
+            "injected source must parse:\n{out}"
+        );
+        assert_eq!(out.lines().position(|l| l == EXTERN_CRATE_ALLOC), Some(1));
     }
 
     #[test]
