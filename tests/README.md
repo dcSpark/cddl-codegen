@@ -740,16 +740,18 @@ mechanical full-tier gate INSTEAD of an industry cold run. `gate_cache_closure_a
 (`cddl-matrix/audit_gate_cache_closure.ts`) protects the KEY side: it traces a real cached gate
 under `strace -f` and asserts every file-content read made by a nested-cargo subtree falls in a
 class the key provably covers (the generated tree under `$TMPDIR`, `$CARGO_HOME`, `$RUSTUP_HOME`,
-system prefixes, and exactly the two user git-config files cargo consults at startup — fetch-side
+system prefixes (including immutable Nix store tool dependencies), and exactly the two user git-config files cargo consults at startup — fetch-side
 only, checksum-fenced by the hashed lockfile, so verdict-inert) — a read under the repo checkout is
 exactly "a cached site grew an unhashed input"
 and FAILs, naming the path, pid, and owning nested-cargo argv. It traces `multifile_matrix_compiles`
 by default (its nested `cargo check` transitively builds the `../rust` path dep — the highest-risk
 read pattern); `CLOSURE_AUDIT_GATE=<test name>` extends coverage to the other cached gates as
 configuration, not code. It prints a visible `SKIPPED` when `strace` is absent or an explicit
-capability probe shows that the environment denies ptrace. The same probe classifies every other
-`strace` failure as a hard harness error, and capable hosts still run the complete audit. It refuses
-to pass a trace with zero nested-cargo subtrees (vacuity floor), and proves that any repo
+capability probe shows that the environment denies ptrace.
+The probe traces the running Bun executable, so it requires neither a fixed `/bin/true` nor a child resolved through `PATH`.
+The system class admits only `/nix/store` within Nix state; mutable `/nix/var` stays unclassified, and the repository boundary still takes precedence over system paths.
+The same probe classifies every other `strace` failure as a hard harness error, and capable hosts still run the complete audit.
+It refuses to pass a trace with zero nested-cargo subtrees (vacuity floor), and proves that any repo
 `.cargo/config` changes the shared cache key (including for TS-side sites whose nested cargo runs
 with cwd = the repo). Two nested cargos are deliberately NOT audited, both builds of the TOOL UNDER TEST rather
 than of a generated crate, and neither work any cell's verdict can be skipped on: the traced root
