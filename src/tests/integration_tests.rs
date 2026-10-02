@@ -972,6 +972,57 @@ pub(crate) fn tool_cmd(program: &str) -> ToolCmd {
     }
 }
 
+/// Check the public binding surface after a successful wasm32 link. Recent wasm-bindgen
+/// versions distinguish Rust symbols from JS names, so duplicate classes can survive linking
+/// and are rejected here instead. A missing/mismatched CLI must never count as a collision.
+fn wasm_public_surface(
+    build: &std::process::Output,
+    artifact: &std::path::Path,
+    duplicate_classes: &[&str],
+) {
+    let link_stderr = String::from_utf8_lossy(&build.stderr);
+    if !build.status.success() {
+        assert!(
+            !duplicate_classes.is_empty()
+                && link_stderr.contains("duplicate symbol")
+                && duplicate_classes
+                    .iter()
+                    .any(|name| link_stderr.to_lowercase().contains(&name.to_lowercase())),
+            "unexpected wasm32 link failure:\n{link_stderr}"
+        );
+        return;
+    }
+    assert!(
+        tool_exists("wasm-bindgen"),
+        "wasm public-surface controls require a wasm-bindgen CLI matching the generated crate"
+    );
+    let output_dir = artifact.parent().unwrap().join(format!(
+        "{}-bindings",
+        artifact.file_stem().unwrap().to_str().unwrap()
+    ));
+    let _ = std::fs::remove_dir_all(&output_dir);
+    let output = tool_cmd("wasm-bindgen")
+        .arg(artifact)
+        .args(["--target", "nodejs", "--out-dir"])
+        .arg(&output_dir)
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if duplicate_classes.is_empty() {
+        assert!(output.status.success(), "deferred WASM bindings must succeed:\n{stderr}");
+        assert!(output_dir.join(format!("{}.js", artifact.file_stem().unwrap().to_str().unwrap())).is_file());
+    } else {
+        assert!(
+            !output.status.success()
+                && duplicate_classes.iter().any(|name| stderr.contains(&format!(
+                    "the name `{name}` is exported multiple times"
+                ))),
+            "duplicated WASM classes must fail binding generation by name; success={}, stderr:\n{stderr}",
+            output.status.success()
+        );
+    }
+}
+
 /// The counting bound itself, on a LOCAL instance so this never queues behind the process-wide
 /// semaphore's real holders (which keep permits for whole nested-cargo runs): four threads racing
 /// for two permits never exceed two concurrent holders, and all four eventually run.
@@ -14321,6 +14372,29 @@ fn rust_oracle_fingerprint_preflight(scratch_root: &std::path::Path, target_dir:
     // not behavior a correct oracle should preserve. Their per-rule corpus exemptions below are
     // stale the moment the exact defect signature changes or the validator starts returning.
     main_rs.push_str(
+        r#"    let optional_segment_spec = "__cddl_oracle_root = optional_segment_occurrence\noptional_segment_occurrence = [* uint, ? label: tstr, suffix: #6.10(uint)]";
+    for bytes in [&[0x81, 0xca, 0x00][..], &[0x82, 0x01, 0xca, 0x00][..]] {
+        match cddl::validate_cbor_from_slice(optional_segment_spec, bytes, None) {
+            Err(error) if error.to_string().contains("array validation failed: element sequence does not match group") => {}
+            Ok(()) => failures.push(format!("  - optional-segment-tag-gap: accepted valid absent-label CBOR {bytes:02x?}; remove occurrence/optional_segment_occurrence RUST_ORACLE_RULE_SKIP after the validator repair")),
+            Err(error) => failures.push(format!("  - optional-segment-tag-gap: expected pinned array sequence rejection for valid absent-label CBOR {bytes:02x?}, got `{error}`; investigate before retaining RUST_ORACLE_RULE_SKIP")),
+        }
+    }
+    for (bytes, expect_ok) in [
+        (&[0x82, 0x61, 0x61, 0xca, 0x00][..], true),
+        (&[0x83, 0x01, 0x61, 0x61, 0xca, 0x00][..], true),
+        (&[0x81, 0x00][..], false),
+        (&[0x81, 0xcb, 0x00][..], false),
+        (&[0x81, 0xca, 0x61, 0x61][..], false),
+    ] {
+        let observed = cddl::validate_cbor_from_slice(optional_segment_spec, bytes, None).is_ok();
+        if observed != expect_ok {
+            failures.push(format!("  - optional-segment-tag-control: CBOR {bytes:02x?}, expected acceptance={expect_ok}, got {observed}"));
+        }
+    }
+"#,
+    );
+    main_rs.push_str(
         r#"    match cddl::validate_cbor_from_slice("x = undefined", &[0xf7], None) {
         Ok(()) => failures.push("  - undefined-validator-gap: unexpectedly accepted spec `x = undefined` CBOR f7; remove RUST_ORACLE_RULE_SKIP and re-arm this probe for the fixed behavior".to_owned()),
         Err(error) if error.to_string().contains("expected type undefined, got Null") => {}
@@ -15518,6 +15592,11 @@ fn ir_conformance_corpus() {
     // unaffected calls, ordinary round trips, dumps, ruby and structural oracles live.
     const FIXED_BYTE_VALIDATOR_PANIC: &str = "pinned rust-cddl local-fixes ac1b98e panics at src/validator/cbor.rs:4840:29 (`called `Option::unwrap()` on a `None` value`) on valid fixed-byte CBOR; the exact h'CAFE' fingerprint probe makes this stale when the validator returns or changes signature — remove this skip after the upstream validator repair";
     const RUST_ORACLE_RULE_SKIP: &[(&str, &str, &str)] = &[
+        (
+            "occurrence",
+            "optional_segment_occurrence",
+            "cddl ac1b98e accepts unrelated tags as primitive uint, so the repeated prefix consumes the required #6.10(uint) suffix when label is absent; exact rooted valid CBOR 81ca00/8201ca00 preflight pins the array sequence rejection and re-arms on repair, with present-label and invalid controls still validated; generated round trips, dumps, ruby validation, and every sibling rule remain live",
+        ),
         (
             "generic_inline_choice",
             "chain_outer_uint",
@@ -20512,9 +20591,9 @@ fn extern_wrapper_index_defers_to_dep() {
     }
     assert!(cargo_test_wasm.status.success());
 
-    // The honest link gate. GREEN: the consumer wasm crate (with the dep's wasm crate linked in)
-    // builds for wasm32-unknown-unknown. RED: regenerating WITHOUT the deferral flag re-mints the
-    // dep-owned wrappers locally, so the same link fails with `duplicate symbol`.
+    // GREEN must link and generate JS bindings. RED re-mints dep-owned classes locally:
+    // older graphs reject duplicate symbols at link, newer graphs reject duplicate JS names
+    // during wasm-bindgen. Both stages must be exercised before judging the public surface.
     if !wasm32_target_installed() {
         assert!(
             std::env::var_os("CI").is_none(),
@@ -20541,7 +20620,13 @@ fn extern_wrapper_index_defers_to_dep() {
         "the deferring consumer wasm crate must link for wasm32-unknown-unknown"
     );
 
-    // RED: same spec, deferral OFF -> local re-mints -> duplicate-symbol link failure.
+    wasm_public_surface(
+        &green,
+        &wasm_dir.join("target/wasm32-unknown-unknown/debug/cddl_lib_wasm.wasm"),
+        &[],
+    );
+
+    // RED: same spec, deferral OFF -> local re-mints -> duplicate public WASM classes.
     let red_export = test_path.join("export_nodefer");
     let _ = std::fs::remove_dir_all(&red_export);
     let generate_red = codegen_cmd()
@@ -20560,12 +20645,10 @@ fn extern_wrapper_index_defers_to_dep() {
         .current_dir(red_export.join("wasm"))
         .output()
         .unwrap();
-    let red_stderr = String::from_utf8_lossy(&red.stderr);
-    assert!(
-        !red.status.success() && red_stderr.contains("duplicate symbol"),
-        "without deferral the consumer must fail the wasm32 link with a duplicate symbol; \
-         status_success={}, stderr:\n{red_stderr}",
-        red.status.success()
+    wasm_public_surface(
+        &red,
+        &red_export.join("wasm/target/wasm32-unknown-unknown/debug/cddl_lib_wasm.wasm"),
+        &["IdxBarList", "IdxFooList", "ArrIdxFooList", "MapU64ToIdxFoo", "NonEmptyIdxFooList"],
     );
 }
 
@@ -21383,9 +21466,14 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[];
             "the deferring consumer wasm crate ({output}) must link for wasm32-unknown-unknown:\n{}",
             String::from_utf8_lossy(&green.stderr)
         );
+        wasm_public_surface(
+            &green,
+            &base.join(output).join("wasm/target/wasm32-unknown-unknown/debug/cddl_lib_wasm.wasm"),
+            &[],
+        );
     }
 
-    // ===== Criterion 10 (RED): flag-off re-mints locally -> duplicate-symbol link failure =====
+    // ===== Criterion 10 (RED): flag-off re-mints locally -> duplicate public WASM classes =====
     let nodefer = run_gen("inputs", "export_nodefer", &[]);
     assert!(nodefer.status.success());
     // Flag-off emits NO sidecar (byte-identity: no new file appears without the flag). This holds for
@@ -21413,12 +21501,10 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[];
         .current_dir(base.join("export_nodefer").join("wasm"))
         .output()
         .unwrap();
-    let red_stderr = String::from_utf8_lossy(&red.stderr);
-    assert!(
-        !red.status.success() && red_stderr.contains("duplicate symbol"),
-        "without deferral the consumer must fail the wasm32 link with a duplicate symbol; \
-         status_success={}, stderr:\n{red_stderr}",
-        red.status.success()
+    wasm_public_surface(
+        &red,
+        &base.join("export_nodefer/wasm/target/wasm32-unknown-unknown/debug/cddl_lib_wasm.wasm"),
+        &["IdxBarList", "IdxFooList", "ArrIdxFooList", "MapU64ToIdxFoo", "NonEmptyIdxFooList"],
     );
 }
 
@@ -25238,7 +25324,8 @@ fn workspace_regen_two_consumer_contract() {
 
     // =============================== LEG a — RED (criterion 5) ===============================
     // Both consumers generated WITHOUT workspace flags each mint the shared wrappers locally; the dep
-    // hosts nothing. Linked into one umbrella cdylib, the two `#[wasm_bindgen] FooList` collide.
+    // hosts nothing. The umbrella's public surface contains two `#[wasm_bindgen] FooList`
+    // classes, rejected at linking or binding generation depending on wasm-bindgen version.
     assert!(
         run_consumer("consumer_a", "export_a", "consumer-a", true, false)
             .status
@@ -25267,14 +25354,10 @@ fn workspace_regen_two_consumer_contract() {
     }
     if have_wasm {
         let red = build_umbrella();
-        let stderr = String::from_utf8_lossy(&red.stderr);
-        assert!(
-            !red.status.success()
-                && stderr.contains("duplicate symbol")
-                && stderr.to_lowercase().contains("foolist"),
-            "leg a: two minted consumers must fail the umbrella link with a duplicate symbol on a \
-             shared wrapper; success={}, stderr:\n{stderr}",
-            red.status.success()
+        wasm_public_surface(
+            &red,
+            &target_dir.join("wasm32-unknown-unknown/debug/regen_umbrella_wasm.wasm"),
+            &["FooList", "MapU64ToFoo", "NonEmptyFooList"],
         );
     }
 
@@ -25364,6 +25447,11 @@ fn workspace_regen_two_consumer_contract() {
             green.status.success(),
             "leg b: workspace mode (dep hosts each wrapper once) must link the umbrella clean:\n{}",
             String::from_utf8_lossy(&green.stderr)
+        );
+        wasm_public_surface(
+            &green,
+            &target_dir.join("wasm32-unknown-unknown/debug/regen_umbrella_wasm.wasm"),
+            &[],
         );
     }
 
@@ -33796,8 +33884,8 @@ fn extern_companions_defers_to_sibling_wasm_crate() {
         String::from_utf8_lossy(&native.stderr)
     );
 
-    // The honest link gate. GREEN: consumer + sibling wasm crates into one wasm32 cdylib.
-    // RED: the same spec with the directive removed re-mints the class locally and the link fails.
+    // GREEN: consumer + sibling wasm crates must link and generate bindings.
+    // RED: removing each directive independently re-mints its class and breaks the public surface.
     if !wasm32_target_installed() {
         assert!(
             std::env::var_os("CI").is_none(),
@@ -33819,26 +33907,30 @@ fn extern_companions_defers_to_sibling_wasm_crate() {
         String::from_utf8_lossy(&green.stderr)
     );
 
-    // RED: same fixture, BOTH directives stripped (a scratch copy of `inputs/` — the committed spec
-    // is never edited), so each class is minted locally and the link duplicate-symbols. One RED run
-    // covers both markers because the linker reports every duplicate it finds, and the symbol names
-    // are what attribute the failure to each arm — asserted individually below.
+    wasm_public_surface(
+        &green,
+        &wasm_dir.join("target/wasm32-unknown-unknown/debug/cddl_lib_wasm.wasm"),
+        &[],
+    );
+
+    // Remove each directive independently: bindgen stops at the first duplicated JS class,
+    // so a combined negative leg would not prove the raw-bytes and extern markers separately.
     let red_inputs =
         std::env::temp_dir().join(format!("cddl_codegen_extcomp_red_{:016x}", checkout_hash()));
     let _ = std::fs::remove_dir_all(&red_inputs);
     std::fs::create_dir_all(&red_inputs).unwrap();
     let spec = std::fs::read_to_string(test_path.join("inputs/lib.cddl")).unwrap();
-    let stripped = spec
-        .replace(" ; @extern_companions index_dep_crate_wasm=IdxFooList", "")
-        .replace(" ; @extern_companions index_dep_crate_wasm=IdxHashList", "");
+    for class in ["IdxFooList", "IdxHashList"] {
+    let directive = format!(" ; @extern_companions index_dep_crate_wasm={class}");
+    let stripped = spec.replace(&directive, "");
     assert_eq!(
         spec.matches(" ; @extern_companions ").count(),
         2,
         "the RED edit must find both directives to remove"
     );
     assert!(
-        !stripped.contains("@extern_companions"),
-        "the RED edit must actually remove both directives"
+        !stripped.contains(&directive) && stripped.matches("@extern_companions").count() == 1,
+        "each RED edit must remove only its own directive"
     );
     std::fs::write(red_inputs.join("lib.cddl"), stripped).unwrap();
     let red_export = test_path.join("export_nodefer");
@@ -33859,34 +33951,22 @@ fn extern_companions_defers_to_sibling_wasm_crate() {
     );
     seed_roots(&red_export);
     let red_mod = std::fs::read_to_string(red_export.join("wasm/src/generated/mod.rs")).unwrap();
-    for class in ["IdxFooList", "IdxHashList"] {
         assert!(
             red_mod.contains(&format!("pub struct {class}")),
             "without the directive {class} must be minted locally (the RED premise):\n{red_mod}"
         );
-    }
     let red = tool_cmd("cargo")
         .args(["build", "--target", "wasm32-unknown-unknown"])
         .current_dir(red_export.join("wasm"))
         .output()
         .unwrap();
-    let red_stderr = String::from_utf8_lossy(&red.stderr);
-    let _ = std::fs::remove_dir_all(&red_inputs);
-    assert!(
-        !red.status.success() && red_stderr.contains("duplicate symbol"),
-        "without the directive the consumer must fail the wasm32 link with a duplicate symbol; \
-         status_success={}, stderr:\n{red_stderr}",
-        red.status.success()
+    wasm_public_surface(
+        &red,
+        &red_export.join("wasm/target/wasm32-unknown-unknown/debug/cddl_lib_wasm.wasm"),
+        &[class],
     );
-    // Each marker's own arm is attributable: the linker names the class whose `#[wasm_bindgen]`
-    // free-function it found twice, so the raw-bytes arm is not riding on the extern arm's failure.
-    for symbol in ["__wbg_idxfoolist_free", "__wbg_idxhashlist_free"] {
-        assert!(
-            red_stderr.contains(symbol),
-            "the RED link must name the duplicated `{symbol}`, so each marker's arm is \
-             attributable; stderr:\n{red_stderr}"
-        );
     }
+    let _ = std::fs::remove_dir_all(&red_inputs);
 }
 
 /// The recursive-type boundary's auto-`@newtype` repair ANNOUNCES itself, on stderr, at the default
