@@ -167,23 +167,12 @@ pub fn parse_rule(
                     let rust_ident = RustIdent::new(CDDLIdent::new(rule.name.to_string()));
                     let pin_metadata =
                         group_rule_pin_metadata(group, comments_after_group.as_ref());
-                    handle_rust_name_pin(types, &rust_ident, &pin_metadata);
-                    if pin_metadata.no_json_schema_export {
-                        types.mark_no_json_schema_export(rust_ident.clone());
-                    }
-                    // A SPLICED group mints a real struct, so both of these have somewhere to land:
-                    // `@custom_json` suppresses its JSON derives and `@used_as_key` demands its
-                    // comparison derives. Neither could reach it before — the struct is built from
-                    // `PlainGroupInfo`'s metadata, read off the `comments_after_group` slot cddl
-                    // leaves empty — so both were accepted and dropped. Marked per-ident here, the
-                    // same carrier the type-rule seam uses for the kinds whose config is not their
-                    // own.
-                    if pin_metadata.custom_json {
-                        types.mark_custom_json_rule(rust_ident.clone());
-                    }
-                    if let Some(demand) = pin_metadata.key_demand {
-                        types.mark_key_demand(rust_ident.clone(), demand);
-                    }
+                    apply_rule_position_directives(
+                        types,
+                        &rust_ident,
+                        &pin_metadata,
+                        RuleBodyShape::PlainGroup,
+                    );
                     // Everything the author wrote, for the never-spliced refusal in `finalize`: a
                     // group no rule splices materializes neither struct nor field, so every directive
                     // in this slot is inert and the only honest outcome is to say so. Recorded rather
@@ -2421,57 +2410,7 @@ fn parse_type_choices(
         // rejections written right below could not fire, nor could `@no_json_schema_export` mark.
         let local_metadata = rule_position_metadata(type_choices);
         let rule_metadata = merge_metadata(inherited_metadata, &local_metadata);
-        // Preserve the accepted outside tagged-collapse spelling; inside demands remain refused.
-        if tag.is_some() {
-            if let Some(demand) = inherited_metadata.key_demand {
-                types.mark_key_demand(name.clone(), demand);
-            }
-            if inherited_metadata.used_as_elem {
-                types.mark_used_as_elem(name.clone());
-            }
-        }
-        if let Some(doc) = &rule_metadata.doc {
-            types.mark_rule_doc(name.clone(), doc.clone());
-        }
-        if rule_metadata.custom_json {
-            types.mark_custom_json_rule(name.clone());
-        }
-        // A `T / null` rule collapses to an `Option<T>` alias — a non-collection, so `@duplicates`
-        // can never apply here (and `@ignore` never applies at a rule position).
-        if rule_metadata.duplicates.is_some() {
-            reject_duplicates_not_applicable(types, name);
-        }
-        if rule_metadata.ignore {
-            reject_ignore_not_applicable(types, name);
-        }
-        // Recorded (not rejected) here: the `T / null` collapse registers a transparent
-        // `Option<T>` ALIAS and no rust struct, so finalize's registered-nothing check is what turns
-        // this placement into a loud rejection — one site for every struct-less rule shape.
-        if rule_metadata.no_json_schema_export {
-            types.mark_no_json_schema_export(name.clone());
-        }
-        // Project the suppressed nullable alias into extern-interface inputs, so consumers
-        // inline its optional body instead of naming a type this dependency never emits.
-        if rule_metadata.no_alias {
-            types.mark_no_alias_rule(name.clone());
-        }
-        // Sibling parity: the same three "valid only on an extern / raw-bytes marker rule"
-        // rejections the multi-arm branch records, for the same reason — a `T / null` rule can never
-        // be either marker, so each of these is a misplacement, and the silent flavor re-mints the
-        // classes the directives exist to suppress.
-        if rule_metadata.raw_bytes_flavor {
-            types.record_rejection(raw_bytes_flavor_not_extern_rejection(name));
-        }
-        if rule_metadata.copy {
-            types.record_rejection(copy_not_extern_rejection(name));
-        }
-        if rule_metadata.extern_companions.is_some() {
-            types.record_rejection(extern_companions_not_extern_rejection(name));
-        }
-        handle_rust_name_pin(types, name, &rule_metadata);
-        // A `@custom_encodings` declaration is a property OF the pair — with one half or none, it
-        // describes nothing (the rule-position sites all check this the same way).
-        reject_custom_encodings_without_pair(types, &format!("rule `{name}`"), &rule_metadata);
+        apply_rule_position_directives(types, name, &rule_metadata, RuleBodyShape::NullCollapse);
         // `@used_as_key` / `@used_as_elem` ask for a wasm surface keyed on the rule's own type. The
         // collapse target is `Option<T>`, which is not a class the wasm boundary can key a map or a
         // list on (it is exposed as a nullable of T's own wasm spelling, so the wrapper would either
@@ -2554,12 +2493,7 @@ fn parse_type_choices(
         if let Some(fixed_null) = null_singleton {
             // `null / null` has one CBOR and Rust state.  It is a named singleton, not a nullable
             // alias, so rule-scoped class directives remain meaningful just as on `x = null`.
-            if let Some(demand) = rule_metadata.key_demand {
-                types.mark_key_demand(name.clone(), demand);
-            }
-            if rule_metadata.used_as_elem {
-                types.mark_used_as_elem(name.clone());
-            }
+
             register_fixed_singleton(
                 types,
                 parent_visitor,
@@ -2596,38 +2530,7 @@ fn parse_type_choices(
     } else {
         let local_metadata = rule_position_metadata(type_choices);
         let rule_metadata = merge_metadata(inherited_metadata, &local_metadata);
-        if let Some(demand) = rule_metadata.key_demand {
-            types.mark_key_demand(name.clone(), demand);
-        }
-        if rule_metadata.used_as_elem {
-            types.mark_used_as_elem(name.clone());
-        }
-        // Same unconditional record as the single-choice path: a multi-choice rule normally
-        // registers an enum, but the tag-258 collapse can instead register a transparent alias, which
-        // finalize's registered-nothing check rejects.
-        if rule_metadata.no_json_schema_export {
-            types.mark_no_json_schema_export(name.clone());
-        }
-        // A multi-choice type rule can never be an extern marker, so `@raw_bytes_flavor` cannot
-        // apply here — reject loudly rather than silently ignore it.
-        if rule_metadata.raw_bytes_flavor {
-            types.record_rejection(raw_bytes_flavor_not_extern_rejection(name));
-        }
-        // A multi-choice type rule can never be an extern / raw-bytes marker, so `@copy` cannot apply
-        // here — reject loudly rather than silently ignore it.
-        if rule_metadata.copy {
-            types.record_rejection(copy_not_extern_rejection(name));
-        }
-        // A multi-choice type rule can never be an extern marker, so `@extern_companions` cannot
-        // apply here — reject loudly rather than silently ignore it (the silent flavor re-mints the
-        // very classes the directive exists to suppress, and only a distant link fails).
-        if rule_metadata.extern_companions.is_some() {
-            types.record_rejection(extern_companions_not_extern_rejection(name));
-        }
-        handle_rust_name_pin(types, name, &rule_metadata);
-        // A `@custom_encodings` declaration is a property OF the pair — with one half or none, it
-        // describes nothing (the rule-position sites all check this the same way).
-        reject_custom_encodings_without_pair(types, &format!("rule `{name}`"), &rule_metadata);
+        apply_rule_position_directives(types, name, &rule_metadata, RuleBodyShape::TypeChoice);
         // A rule-level directive on a NON-LAST arm is built and thrown away: the rule slot is
         // `type_choices.last()` (read above), and `create_variants_from_type_choices` consumes only
         // `.name` and `.doc` from each choice. So on any other arm the directive generates
@@ -4179,81 +4082,96 @@ fn multiline_group_trailing_directive_message(name: &str, tags: &[&str]) -> Stri
     )
 }
 
-/// Apply single-body rule directives once, after looking through the rule's wrappers.
-fn apply_single_type_rule_directives(
+/// The rule-body shape determines which checks belong here and which lowering site owns them.
+#[derive(Clone, Copy)]
+enum RuleBodyShape {
+    /// Collection bodies route their collection directives to their lowering site.
+    SingleType {
+        marker: Option<&'static str>,
+        generic_instantiation: bool,
+        collection_body: bool,
+    },
+    /// Nullable lowering owns the key, element, and newtype refusals.
+    NullCollapse,
+    /// Choice lowering owns duplicates, ignore, and name checks once its arms are built.
+    TypeChoice,
+    /// The slot is shared with the last field; only directives without field meaning are read.
+    PlainGroup,
+}
+
+impl RuleBodyShape {
+    fn single_type(type1: &Type1) -> Self {
+        let marker = match &type1.type2 {
+            Type2::Typename { ident, .. } if ident.ident == EXTERN_MARKER => Some(EXTERN_MARKER),
+            Type2::Typename { ident, .. } if ident.ident == RAW_BYTES_MARKER => {
+                Some(RAW_BYTES_MARKER)
+            }
+            _ => None,
+        };
+        Self::SingleType {
+            marker,
+            generic_instantiation: matches!(
+                &type1.type2,
+                Type2::Typename {
+                    generic_args: Some(_),
+                    ..
+                }
+            ),
+            collection_body: matches!(
+                &type1.type2,
+                Type2::Map { .. }
+                    | Type2::Array { .. }
+                    | Type2::TaggedData { .. }
+                    | Type2::ParenthesizedType { .. }
+            ),
+        }
+    }
+}
+
+/// Record shared marks and check the shape once, after looking through rule wrappers.
+fn apply_rule_position_directives(
     types: &mut IntermediateTypes,
     type_name: &RustIdent,
-    type1: &Type1,
     rule_metadata: &RuleMetadata,
+    shape: RuleBodyShape,
 ) {
     if let Some(demand) = rule_metadata.key_demand {
         types.mark_key_demand(type_name.clone(), demand);
     }
-    if rule_metadata.used_as_elem {
-        types.mark_used_as_elem(type_name.clone());
-    }
-    // `@no_json_schema_export` is valid on any rule that registers a rust type, whatever its shape
-    // (extern, record, enum, wrapper, collection typedef), so it is recorded unconditionally here.
-    // The "registers no rust struct at all" misplacement cannot be decided from the rule BODY — a
-    // generic instance (`my_foo = foo<uint>`) only materializes its struct during finalize's generic
-    // resolution — so that rejection is deferred to `IntermediateTypes::finalize`.
     if rule_metadata.no_json_schema_export {
         types.mark_no_json_schema_export(type_name.clone());
     }
-    // `@no_alias` is recorded per-ident for the same reason, and at the same seam: the rule kinds
-    // that register their transparent alias from `finalize` (a table, an array typedef, a named
-    // binding to a generic set nominal) build it without this metadata, so a flag threaded only
-    // through `AliasInfo::new_from_metadata` was silently dropped on exactly the shapes that DO emit
-    // a `pub type`. Recorded unconditionally — a rule that registers a struct instead has no alias
-    // entry for the mark to reach, so it is inert there rather than wrong.
-    if rule_metadata.no_alias {
-        types.mark_no_alias_rule(type_name.clone());
-    }
-    // `@doc` likewise: a generic instance's struct config comes from the generic DEFINITION, and a
-    // named binding to a set nominal registers its alias without metadata, so both emitted a
-    // documentable construct while discarding the rule's own doc.
-    if let Some(doc) = &rule_metadata.doc {
-        types.mark_rule_doc(type_name.clone(), doc.clone());
-    }
-    // `@custom_json` likewise: a generic INSTANCE binding mints a struct whose `RustStructConfig` is
-    // the generic DEFINITION's, so the binding rule's own flag had no route into the derives it asks
-    // to suppress. Recorded unconditionally — a rule that mints no struct has nothing to apply it to,
-    // and the transparent-alias family refuses it at `register_type_alias` / the finalize kind-walk.
     if rule_metadata.custom_json {
         types.mark_custom_json_rule(type_name.clone());
     }
-    // `@raw_bytes_flavor` is valid ONLY on a `_CDDL_CODEGEN_EXTERN_TYPE_` rule (the extern-marker
-    // branch below marks it). Anywhere else it would silently do nothing, so reject loudly here in
-    // the house style of the other comment-DSL misuse rejections.
-    let is_extern_marker = matches!(
-        &type1.type2,
-        Type2::Typename { ident, .. } if ident.ident == EXTERN_MARKER
-    );
-    let is_raw_bytes_marker = matches!(
-        &type1.type2,
-        Type2::Typename { ident, .. } if ident.ident == RAW_BYTES_MARKER
-    );
-    // The marker the rule spells, for the "invalid HERE" rejections that name it.
-    let marker = is_extern_marker
-        .then_some(EXTERN_MARKER)
-        .or(is_raw_bytes_marker.then_some(RAW_BYTES_MARKER));
-    // A rule whose whole body is a generic INSTANTIATION (`foo = base<uint>`) — including a named
-    // binding to a generic set nominal. Its type is minted during finalize's generic resolution,
-    // from the DEFINITION's config, so a directive whose only carrier is that config is written on
-    // one rule and read from another.
-    let is_generic_instantiation = matches!(
-        &type1.type2,
-        Type2::Typename {
-            generic_args: Some(_),
-            ..
-        }
-    );
-    // `@custom_json` on an extern / raw-bytes marker names a type this crate does not define:
-    // `new_extern` / `new_raw_bytes` build with `RustStructConfig::default()`, and the named type
-    // owns its own JSON impls, so there is no derive list here to suppress and nothing for
-    // hand-written impls to be written against that this crate could reach. One class with `@copy`'s
-    // "valid only on X" family, but phrased as "invalid HERE" — the message names the marker the
-    // rule actually spells, like the custom-codec pair's extern rejection below.
+    if matches!(shape, RuleBodyShape::PlainGroup) {
+        handle_rust_name_pin(types, type_name, rule_metadata);
+        return;
+    }
+    if rule_metadata.used_as_elem {
+        types.mark_used_as_elem(type_name.clone());
+    }
+    if rule_metadata.no_alias {
+        types.mark_no_alias_rule(type_name.clone());
+    }
+    if let Some(doc) = &rule_metadata.doc {
+        types.mark_rule_doc(type_name.clone(), doc.clone());
+    }
+    reject_rule_position_misplacements(types, type_name, rule_metadata, shape);
+    handle_rust_name_pin(types, type_name, rule_metadata);
+}
+
+/// Use one refusal order across rule shapes; lowering still owns shape-specific checks.
+fn reject_rule_position_misplacements(
+    types: &mut IntermediateTypes,
+    type_name: &RustIdent,
+    rule_metadata: &RuleMetadata,
+    shape: RuleBodyShape,
+) {
+    let marker = match shape {
+        RuleBodyShape::SingleType { marker, .. } => marker,
+        _ => None,
+    };
     if rule_metadata.custom_json
         && let Some(marker) = marker
     {
@@ -4266,38 +4184,53 @@ fn apply_single_type_rule_directives(
              impls beside the externally-defined type."
         ));
     }
-    if rule_metadata.raw_bytes_flavor && !is_extern_marker {
+    if rule_metadata.raw_bytes_flavor && marker != Some(EXTERN_MARKER) {
         types.record_rejection(raw_bytes_flavor_not_extern_rejection(type_name));
     }
-    // `@copy` is valid ONLY on a `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule
-    // (the marker branches below record it). Anywhere else it would silently do nothing, so reject
-    // loudly here in the house style of the other comment-DSL misuse rejections.
-    if rule_metadata.copy && !is_extern_marker && !is_raw_bytes_marker {
+    if rule_metadata.copy && marker.is_none() {
         types.record_rejection(copy_not_extern_rejection(type_name));
     }
-    // `@extern_companions` is valid ONLY on a `_CDDL_CODEGEN_EXTERN_TYPE_` or
-    // `_CDDL_CODEGEN_RAW_BYTES_TYPE_` rule (each marker branch below records it, after the
-    // local-vs-dep scope check). Both name a type this crate does not define while the generator
-    // still mints that type's STRUCTURAL wasm companion classes from the shapes it is used in
-    // (`<Name>List` from list elements and table keys, `Map<K>To<V>`, the preserve flavors) — so
-    // both can collide with a sibling crate's hand-written class of the same name. Anywhere else the
-    // rule is one this crate GENERATES, which owns its own companions, and the directive would
-    // silently do nothing — reject loudly here in the house style of the other comment-DSL misuse
-    // rejections.
-    if rule_metadata.extern_companions.is_some() && !is_extern_marker && !is_raw_bytes_marker {
+    if rule_metadata.extern_companions.is_some() && marker.is_none() {
         types.record_rejection(extern_companions_not_extern_rejection(type_name));
     }
-    // The custom (de)serializer pair is a TYPE-LEVEL override: it replaces the codec of the rust type
-    // the rule resolves to, keyed on that type's alias node. Three rule-level spellings delete or
-    // bypass the thing it keys on, and each one used to accept the directives and generate as if they
-    // were absent — the silent-wire-divergence class the extern-interface guard exists to prevent. Each
-    // is a graceful rejection naming the spelling that DOES work. (Field position and the row-entry
-    // slots are handled where their metadata is read; the ENUM and single-half-RECORD rule placements
-    // are decided by the minted struct's KIND, so they reject in `IntermediateTypes::finalize`.)
-    // A `@custom_encodings` declaration is a property OF the pair: it declares the wire the pair's
-    // codec writes and reads, so without both halves at this same position there is no codec for it
-    // to describe (and it would be read into the rule's metadata and dropped).
     reject_custom_encodings_without_pair(types, &format!("rule `{type_name}`"), rule_metadata);
+    if let RuleBodyShape::SingleType {
+        generic_instantiation,
+        ..
+    } = shape
+    {
+        reject_single_type_custom_codec(
+            types,
+            type_name,
+            rule_metadata,
+            marker,
+            generic_instantiation,
+        );
+    }
+    let routes_collection_directives = matches!(
+        shape,
+        RuleBodyShape::SingleType {
+            collection_body: false,
+            ..
+        } | RuleBodyShape::NullCollapse
+    );
+    if routes_collection_directives {
+        if rule_metadata.duplicates.is_some() {
+            reject_duplicates_not_applicable(types, type_name);
+        }
+        if rule_metadata.ignore {
+            reject_ignore_not_applicable(types, type_name);
+        }
+    }
+}
+
+fn reject_single_type_custom_codec(
+    types: &mut IntermediateTypes,
+    type_name: &RustIdent,
+    rule_metadata: &RuleMetadata,
+    marker: Option<&'static str>,
+    is_generic_instantiation: bool,
+) {
     let custom_directives = custom_codec_directives(rule_metadata);
     for directive in &custom_directives {
         // An extern / raw-bytes rule names a type this crate does not define — `new_extern` and
@@ -4368,29 +4301,6 @@ fn apply_single_type_rule_directives(
             ));
         }
     }
-    let is_collection_body = matches!(
-        &type1.type2,
-        Type2::Map { .. }
-            | Type2::Array { .. }
-            | Type2::TaggedData { .. }
-            | Type2::ParenthesizedType { .. }
-    );
-    // `@duplicates` is a collection concept. A `Map`/`Array` body (and a tag-head / parenthesized
-    // wrapper of one) delegates to `parse_group` / a recursion that performs the shape-aware routing
-    // (a `[a, b]` record vs a `[* a]` collection is only distinguishable there, and the tag-set
-    // collapse only in `parse_type_choices`), so skip those here and reject only the leaf
-    // non-collection rule bodies (aliases, extern/raw-bytes markers, literals, …) permanently.
-    if rule_metadata.duplicates.is_some() && !is_collection_body {
-        reject_duplicates_not_applicable(types, type_name);
-    }
-    // `@ignore` on a leaf non-collection type rule (`x = uint ; @ignore`) is a misplacement — it is
-    // valid only on an open struct-map rest row. Map/Array/Tagged/Paren bodies route to the
-    // group/collection arms (or the heterogenous record arm), which reject a rule-position `@ignore`
-    // there, so exclude them here exactly as `@duplicates` does.
-    if rule_metadata.ignore && !is_collection_body {
-        reject_ignore_not_applicable(types, type_name);
-    }
-    handle_rust_name_pin(types, type_name, rule_metadata);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -4437,7 +4347,12 @@ fn parse_type(
         _ => false,
     };
     if !defers_to_inner {
-        apply_single_type_rule_directives(types, type_name, type1, &rule_metadata);
+        apply_rule_position_directives(
+            types,
+            type_name,
+            &rule_metadata,
+            RuleBodyShape::single_type(type1),
+        );
     }
     match &type1.type2 {
         Type2::Typename {
