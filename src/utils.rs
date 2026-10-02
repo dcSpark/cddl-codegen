@@ -83,7 +83,7 @@ pub fn convert_to_snake_case(ident: &str) -> String {
 /// **This conversion is MIRRORED outside rust**: `cddl-matrix/verify.ts`'s component-execution leg
 /// re-implements it as `toKebabCase` to name the WIT resource its mint check and its wasmtime host
 /// look for. The mirror's startup self-test parses the fixture table in
-/// [`convert_to_kebab_case_table`] below and requires every TypeScript fixture to be present with
+/// `convert_to_kebab_case_table` below and requires every TypeScript fixture to be present with
 /// the same expected output, so a rule changed HERE cannot leave the component leg on an old rule.
 /// Drift fails in the understating direction on the matrix side (the resource lookup misses, the
 /// row reads "no minted component surface" and its round trip silently stops running), which is why

@@ -11,7 +11,7 @@
 //!   exactly the caller who needed it.
 //!
 //! That second rule is the thing a call-site author needs and cannot read off the macro names, so
-//! it is stated here: [`note!`] is not a redundant [`warn!`]. Both are visible at the default level;
+//! it is stated here: `note!` is not a redundant `warn!`. Both are visible at the default level;
 //! they differ in the stream, because a `note!` is user-facing run output rather than a diagnostic.
 //!
 //! No `log`/`tracing` dependency. Those render a level tag and a prefix INTO the message, which

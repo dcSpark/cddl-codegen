@@ -980,7 +980,7 @@ fn reject_custom_encodings_without_pair(
 /// are read into the row's `RuleMetadata` and dropped. (`@name`, `@duplicates` and `@ignore` are the
 /// spellings that slot legitimately carries — they are row-scoped by construction, which is exactly
 /// what the pair is not.) `position` names the row the way that row's other rejections do (the named
-/// rows spell themselves `<shape> of rule `<src>``, an anonymous inline table has no rule to name) and
+/// rows spell themselves `<shape> of rule <src>`, an anonymous inline table has no rule to name) and
 /// `remedy` names the rule to move the pair onto. Returns whether anything was rejected.
 fn reject_custom_codec_on_row_entry(
     types: &mut IntermediateTypes,
@@ -5240,7 +5240,7 @@ enum GroupParsingType {
     /// Fields are different - needs new struct created e.g. field: [a: uint, b: bstr]
     /// This case covers both maps and arrays
     Heterogenous,
-    /// Special case for single basic group e.g. field: [basic_group], field: {basic_group}
+    /// Special case for single basic group e.g. field: `[basic_group]`, field: `{basic_group}`
     /// The tuple type will already have the basic override set so can be directly used
     /// to generate (de)serialiation codegen.
     WrappedBasicGroup(RustType),

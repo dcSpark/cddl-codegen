@@ -49,7 +49,7 @@ impl ModuleScope {
         Self::from(scope)
     }
 
-    /// Make a new ModuleScope using only the first [depth] components
+    /// Make a new ModuleScope using only the first `depth` components
     pub fn parents(&self, depth: usize) -> Self {
         Self {
             export: self.export,

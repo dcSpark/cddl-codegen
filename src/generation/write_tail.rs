@@ -1,4 +1,4 @@
-//! The write tail of [`GenerationScope::export`](super::export::GenerationScope::export): every
+//! The write tail of [`GenerationScope::export`](super::GenerationScope::export): every
 //! byte this tool puts on disk after the content is decided, and — the reason it is one module —
 //! **every read of prior output the tool performs**.
 //!
@@ -582,7 +582,7 @@ pub(crate) fn stale_orphans(
 }
 
 /// Recursively collect every `.rs` file under `dir` (absent dir = no files). Drives the stale-file
-/// scan at the end of [`GenerationScope::export`].
+/// scan at the end of [`super::GenerationScope::export`].
 fn collect_rs_files(
     dir: &std::path::Path,
     out: &mut Vec<std::path::PathBuf>,

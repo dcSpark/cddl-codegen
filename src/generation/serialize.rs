@@ -10,7 +10,7 @@ pub(super) struct SerializeConfig<'a> {
     /// if true the final line should evaluate to Ok(serializer), or equivalent ie dropping last ?; from line
     is_end: bool,
     encoding_var_is_ref: bool,
-    /// If the encoding var is contained within another sturct in an option e.g. encodings: Option<FooEncodings> within struct Foo
+    /// If the encoding var is contained within another sturct in an option e.g. `encodings: Option<FooEncodings>` within struct Foo
     encoding_var_in_option_struct: Option<String>,
     /// an overload instead of using "serializer". (name, is_local) - if is_local then &mut will be appended when needed.
     serializer_name_overload: Option<(&'a str, bool)>,
@@ -163,7 +163,7 @@ impl<'a> SerializeConfig<'a> {
         }
     }
 
-    /// for looking up encoding vars stored within a Vec<T> / Map<K, V> and declaring them as local variables
+    /// for looking up encoding vars stored within a `Vec<T>` / `Map<K, V>` and declaring them as local variables
     pub(super) fn container_encoding_lookup(
         &self,
         prefix: &str,

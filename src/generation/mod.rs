@@ -3932,7 +3932,7 @@ struct EncodingField {
     /// spelling-irrelevant and may pass whatever shape is convenient.
     type_name: String,
     /// this MUST be equivalent to the Default trait of the encoding field.
-    /// This can be more concise though e.g. None for Option<T>::default()
+    /// This can be more concise though e.g. `None` for `Option<T>::default()`
     default_expr: &'static str,
     enc_conversion_before: &'static str,
     enc_conversion_after: &'static str,

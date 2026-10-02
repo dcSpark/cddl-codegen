@@ -108,7 +108,7 @@ pub(crate) fn is_preservable_generated_path(path: &str) -> bool {
 }
 
 /// The stderr notice body for a newly-written `--export-static-crate` runtime file (see
-/// [`warn_new_static_file`] for why it fires). Pure (no I/O) so the message — the required
+/// `write_tail::warn_new_static_file` for why it fires). Pure (no I/O) so the message — the required
 /// `pub mod <module>;` edit and the E0432→E0119 cascade signature a consumer sees when the edit is
 /// missing — is unit-pinnable without a nested export run.
 pub(crate) fn new_static_file_notice(filename: &str) -> String {

@@ -3106,7 +3106,7 @@ impl ConceptualRustType {
         }
     }
 
-    /// FROM rust TO wasm as Option<T>. This is separate as we can have optional fields
+    /// FROM rust TO wasm as `Option<T>`. This is separate as we can have optional fields
     /// that act identical to Self::Optional(ty)
     pub fn to_wasm_boundary_optional(
         &self,
@@ -3164,7 +3164,7 @@ impl ConceptualRustType {
         }
     }
 
-    /// Whether the WASM face of this type is Copy. This differs from [`is_copy`] (the rust face) at
+    /// Whether the WASM face of this type is Copy. This differs from [`Self::is_copy`] (the rust face) at
     /// exactly one shape: a `@copy` extern / raw-bytes type, whose rust type derives Copy but whose
     /// wasm face is a distinct `#[wasm_bindgen]` wrapper struct (Clone, never Copy). Every OTHER Copy
     /// shape — primitives, c-style enums (`pub use`-re-exported so wasm face IS the rust type) — is

@@ -266,10 +266,10 @@ impl From<BlocksOrLines> for DeserializationCode {
 }
 
 /// Context as to how to generate deserialization code.
-/// formats as {before}{<deserialized value>}{after} in a line within the body param, allowing freedom e.g.:
-/// * {let x = }{<value>}{;} - creation of variables
-/// * {x = Some(}{<value>}{);} - variable assignment (could be nested in function call, etc, too)
-/// * {}{<value>}{} - for last-expression eval in blocks
+/// formats as `{before}{<deserialized value>}{after}` in a line within the body param, allowing freedom e.g.:
+/// * `{let x = }{<value>}{;}` - creation of variables
+/// * `{x = Some(}{<value>}{);}` - variable assignment (could be nested in function call, etc, too)
+/// * `{}{<value>}{}` - for last-expression eval in blocks
 /// * etc
 ///
 /// We also keep track of if it expects a result and can adjust the generated code based on that
