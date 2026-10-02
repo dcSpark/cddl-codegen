@@ -153,7 +153,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use proc_macro2::{Spacing, TokenStream, TokenTree};
 use quote::ToTokens;
 use syn::spanned::Spanned;
-use syn::{Item, ItemUse, UseTree};
+use syn::{Ident, Item, ItemUse, UseTree};
 
 /// The built-in concrete-type import names this pass may remove by name-scan, always available (the
 /// per-run [`PruneConfig::extra_candidates`] add to these). These are exactly the blindly-pushed
@@ -240,15 +240,7 @@ fn splice_private_uses<'a>(
     // would then be relative to the stripped text. Generated sources never start with either.
     debug_assert!(!source.starts_with('\u{feff}'), "BOM-prefixed source");
     let mut edits: Vec<(usize, usize, Option<String>)> = Vec::new();
-    for item in &file.items {
-        let Item::Use(use_item) = item else {
-            continue;
-        };
-        if !matches!(use_item.vis, syn::Visibility::Inherited) {
-            // `pub use` (any non-private visibility) is exported API surface — a downstream crate
-            // may import the name, so usage analysis inside this crate can never justify removal.
-            continue;
-        }
+    for use_item in private_uses(&file) {
         let drop_whole = |edits: &mut Vec<(usize, usize, Option<String>)>| {
             // Drop the whole item, including the line it occupied — plain span deletion would leave a
             // blank-line scar rustfmt does not collapse.
@@ -261,15 +253,14 @@ fn splice_private_uses<'a>(
             continue;
         }
         match filter_use_tree(&use_item.tree, &mut Vec::new(), remove_named, remove_globs) {
-            Some(pruned_tree) => {
-                if !trees_equal(&use_item.tree, &pruned_tree) {
-                    let mut new_item = use_item.clone();
-                    new_item.tree = pruned_tree;
-                    let (start, end) = item_byte_range(use_item);
-                    edits.push((start, end, Some(new_item.to_token_stream().to_string())));
-                }
+            (Some(pruned_tree), true) => {
+                let mut new_item = use_item.clone();
+                new_item.tree = pruned_tree;
+                let (start, end) = item_byte_range(use_item);
+                edits.push((start, end, Some(new_item.to_token_stream().to_string())));
             }
-            None => drop_whole(&mut edits),
+            (Some(_), false) => {}
+            (None, _) => drop_whole(&mut edits),
         }
     }
 
@@ -751,9 +742,7 @@ pub(crate) fn collect_used_idents_from_source(source: &str) -> Option<BTreeSet<S
     let file = syn::parse_file(source).ok()?;
     let mut used = BTreeSet::new();
     for item in &file.items {
-        if let Item::Use(use_item) = item
-            && matches!(use_item.vis, syn::Visibility::Inherited)
-        {
+        if as_private_use(item).is_some() {
             continue;
         }
         collect_idents_in_tokens(item.to_token_stream(), &mut used);
@@ -851,29 +840,19 @@ pub(crate) fn collect_directly_imported_idents(source: &str) -> BTreeSet<String>
     if let Ok(file) = syn::parse_file(source) {
         for item in &file.items {
             if let Item::Use(use_item) = item {
-                collect_use_tree_leaf_idents(&use_item.tree, &mut direct);
+                for_each_use_leaf(&use_item.tree, &mut |_, leaf| match leaf {
+                    UseLeaf::Name(ident) => {
+                        direct.insert(ident.to_string());
+                    }
+                    UseLeaf::Rename(rename) => {
+                        direct.insert(rename.rename.to_string());
+                    }
+                    UseLeaf::Glob => {}
+                });
             }
         }
     }
     direct
-}
-
-fn collect_use_tree_leaf_idents(tree: &UseTree, direct: &mut BTreeSet<String>) {
-    match tree {
-        UseTree::Name(name) => {
-            direct.insert(name.ident.to_string());
-        }
-        UseTree::Rename(rename) => {
-            direct.insert(rename.rename.to_string());
-        }
-        UseTree::Path(path) => collect_use_tree_leaf_idents(&path.tree, direct),
-        UseTree::Group(group) => {
-            for item in &group.items {
-                collect_use_tree_leaf_idents(item, direct);
-            }
-        }
-        UseTree::Glob(_) => {}
-    }
 }
 
 /// For F's own PRIVATE candidate imports (the only named ones this pass can remove), map each
@@ -891,53 +870,22 @@ fn collect_candidate_import_targets(
 ) -> BTreeMap<String, Vec<String>> {
     let mut targets: BTreeMap<String, Vec<String>> = BTreeMap::new();
     if let Ok(file) = syn::parse_file(source) {
-        for item in &file.items {
-            if let Item::Use(use_item) = item
-                && matches!(use_item.vis, syn::Visibility::Inherited)
-            {
-                walk_use_targets(
-                    &use_item.tree,
-                    &mut Vec::new(),
-                    crate_root,
-                    config,
-                    &mut targets,
-                );
-            }
+        for use_item in private_uses(&file) {
+            for_each_use_leaf(&use_item.tree, &mut |prefix, leaf| {
+                // A rename binds a different local name (its `as` target, not X), and a glob binds
+                // no specific ident — neither is a candidate-leaf import path to derive a target from.
+                if let UseLeaf::Name(ident) = leaf {
+                    let ident = ident.to_string();
+                    if is_candidate(&ident, config)
+                        && let Some(base) = target_base_from_prefix(prefix, crate_root)
+                    {
+                        targets.entry(ident).or_default().push(base);
+                    }
+                }
+            });
         }
     }
     targets
-}
-
-fn walk_use_targets(
-    tree: &UseTree,
-    prefix: &mut Vec<String>,
-    crate_root: &str,
-    config: &PruneConfig,
-    targets: &mut BTreeMap<String, Vec<String>>,
-) {
-    match tree {
-        UseTree::Path(path) => {
-            prefix.push(path.ident.to_string());
-            walk_use_targets(&path.tree, prefix, crate_root, config, targets);
-            prefix.pop();
-        }
-        UseTree::Group(group) => {
-            for item in &group.items {
-                walk_use_targets(item, prefix, crate_root, config, targets);
-            }
-        }
-        UseTree::Name(name) => {
-            let ident = name.ident.to_string();
-            if is_candidate(&ident, config)
-                && let Some(base) = target_base_from_prefix(prefix, crate_root)
-            {
-                targets.entry(ident).or_default().push(base);
-            }
-        }
-        // A rename binds a different local name (its `as` target, not X), and a glob binds no
-        // specific ident — neither is a candidate-leaf import path to derive a target from.
-        UseTree::Rename(_) | UseTree::Glob(_) => {}
-    }
 }
 
 /// For F's own PRIVATE candidate imports, map each candidate leaf ident X to the `::`-joined module
@@ -952,42 +900,18 @@ fn collect_candidate_import_sources(
 ) -> BTreeMap<String, Vec<String>> {
     let mut sources: BTreeMap<String, Vec<String>> = BTreeMap::new();
     if let Ok(file) = syn::parse_file(source) {
-        for item in &file.items {
-            if let Item::Use(use_item) = item
-                && matches!(use_item.vis, syn::Visibility::Inherited)
-            {
-                walk_use_sources(&use_item.tree, &mut Vec::new(), config, &mut sources);
-            }
+        for use_item in private_uses(&file) {
+            for_each_use_leaf(&use_item.tree, &mut |prefix, leaf| {
+                if let UseLeaf::Name(ident) = leaf {
+                    let ident = ident.to_string();
+                    if is_candidate(&ident, config) && !prefix.is_empty() {
+                        sources.entry(ident).or_default().push(path_string(prefix));
+                    }
+                }
+            });
         }
     }
     sources
-}
-
-fn walk_use_sources(
-    tree: &UseTree,
-    prefix: &mut Vec<String>,
-    config: &PruneConfig,
-    sources: &mut BTreeMap<String, Vec<String>>,
-) {
-    match tree {
-        UseTree::Path(path) => {
-            prefix.push(path.ident.to_string());
-            walk_use_sources(&path.tree, prefix, config, sources);
-            prefix.pop();
-        }
-        UseTree::Group(group) => {
-            for item in &group.items {
-                walk_use_sources(item, prefix, config, sources);
-            }
-        }
-        UseTree::Name(name) => {
-            let ident = name.ident.to_string();
-            if is_candidate(&ident, config) && !prefix.is_empty() {
-                sources.entry(ident).or_default().push(prefix.join("::"));
-            }
-        }
-        UseTree::Rename(_) | UseTree::Glob(_) => {}
-    }
 }
 
 /// The `::`-joined module path of every PRIVATE glob (`use PATH::*;`) in `source` — `super`,
@@ -997,36 +921,15 @@ fn walk_use_sources(
 fn collect_private_glob_paths(source: &str) -> BTreeSet<String> {
     let mut globs = BTreeSet::new();
     if let Ok(file) = syn::parse_file(source) {
-        for item in &file.items {
-            if let Item::Use(use_item) = item
-                && matches!(use_item.vis, syn::Visibility::Inherited)
-            {
-                walk_glob_paths(&use_item.tree, &mut Vec::new(), &mut globs);
-            }
+        for use_item in private_uses(&file) {
+            for_each_use_leaf(&use_item.tree, &mut |prefix, leaf| {
+                if matches!(leaf, UseLeaf::Glob) && !prefix.is_empty() {
+                    globs.insert(path_string(prefix));
+                }
+            });
         }
     }
     globs
-}
-
-fn walk_glob_paths(tree: &UseTree, prefix: &mut Vec<String>, globs: &mut BTreeSet<String>) {
-    match tree {
-        UseTree::Path(path) => {
-            prefix.push(path.ident.to_string());
-            walk_glob_paths(&path.tree, prefix, globs);
-            prefix.pop();
-        }
-        UseTree::Group(group) => {
-            for item in &group.items {
-                walk_glob_paths(item, prefix, globs);
-            }
-        }
-        UseTree::Glob(_) => {
-            if !prefix.is_empty() {
-                globs.insert(prefix.join("::"));
-            }
-        }
-        UseTree::Name(_) | UseTree::Rename(_) => {}
-    }
 }
 
 /// The top-level item NAMES a module defines in its own namespace (`struct`/`enum`/`fn`/`type`/
@@ -1065,15 +968,15 @@ pub(crate) fn collect_module_item_defs(source: &str) -> BTreeSet<String> {
 /// prefix (external/relative — no in-crate module). `use crate::X;` (no middle segments) targets the
 /// crate root; base `<crate_root>/src` makes every in-crate file at/under it, which is exactly right
 /// for a crate-root item every module reaches via `crate::X` (does not arise for the allowlist).
-fn target_base_from_prefix(prefix: &[String], crate_root: &str) -> Option<String> {
+fn target_base_from_prefix(prefix: &[&Ident], crate_root: &str) -> Option<String> {
     let (first, middle) = prefix.split_first()?;
-    if first != "crate" {
+    if *first != "crate" {
         return None;
     }
     if middle.is_empty() {
         Some(format!("{crate_root}/src"))
     } else {
-        Some(format!("{crate_root}/src/{}", middle.join("/")))
+        Some(format!("{crate_root}/src/{}", join_idents(middle, "/")))
     }
 }
 
@@ -1092,66 +995,138 @@ fn module_is_target_file(file_path: &str, target_base: &str) -> bool {
 
 /// Filter leaves from a `UseTree`. A `Name` leaf is dropped when `remove_named` returns true; a
 /// `Glob` leaf is dropped when its full `::`-joined module path (built from the `prefix` of `Path`
-/// segments walked to reach it) is in `remove_globs`. Returns `None` if the whole tree becomes empty
-/// (the caller drops the item), otherwise the filtered tree. `Rename` leaves are always kept (the
-/// alias target can't be connected to the local name by an ident scan); a single-element group
-/// collapses back to its inner tree (so `use x::{Kept};` renders as `use x::Kept;`).
-fn filter_use_tree(
-    tree: &UseTree,
-    prefix: &mut Vec<String>,
+/// segments walked to reach it) is in `remove_globs`. `Rename` leaves are always kept (the alias
+/// target can't be connected to the local name by an ident scan).
+///
+/// Returns the filtered tree (`None` when the whole tree becomes empty, so the caller drops the
+/// item) and whether its rendering differs from the input. A rebuilt group differs when a leaf was
+/// dropped, when it collapses to its single survivor (`use x::{Kept};` renders as `use x::Kept;`,
+/// even when nothing was dropped), or when the input group had a trailing comma, which the rebuilt
+/// `Punctuated` omits.
+fn filter_use_tree<'t>(
+    tree: &'t UseTree,
+    prefix: &mut Vec<&'t Ident>,
     remove_named: &dyn Fn(&str) -> bool,
     remove_globs: &BTreeSet<String>,
-) -> Option<UseTree> {
+) -> (Option<UseTree>, bool) {
     match tree {
         UseTree::Name(name) => {
             if remove_named(&name.ident.to_string()) {
-                None
+                (None, true)
             } else {
-                Some(tree.clone())
+                (Some(tree.clone()), false)
             }
         }
         // A rename's binding (`use x::A as B;`) is exercised by the local name `B`, which our ident
         // scan cannot connect back to `A`, so it is always kept.
-        UseTree::Rename(_) => Some(tree.clone()),
+        UseTree::Rename(_) => (Some(tree.clone()), false),
         UseTree::Glob(_) => {
-            if remove_globs.contains(&prefix.join("::")) {
-                None
+            if remove_globs.contains(&path_string(prefix)) {
+                (None, true)
             } else {
-                Some(tree.clone())
+                (Some(tree.clone()), false)
             }
         }
         UseTree::Path(path) => {
-            prefix.push(path.ident.to_string());
-            let inner = filter_use_tree(&path.tree, prefix, remove_named, remove_globs);
+            prefix.push(&path.ident);
+            let (inner, changed) = filter_use_tree(&path.tree, prefix, remove_named, remove_globs);
             prefix.pop();
-            inner.map(|inner| {
+            let rebuilt = inner.map(|inner| {
                 let mut new_path = path.clone();
                 new_path.tree = Box::new(inner);
                 UseTree::Path(new_path)
-            })
+            });
+            (rebuilt, changed)
         }
         UseTree::Group(group) => {
             // A group shares the prefix accumulated so far; filter each item under that same prefix.
+            let mut any_changed = false;
             let kept: Vec<UseTree> = group
                 .items
                 .iter()
-                .filter_map(|item| filter_use_tree(item, prefix, remove_named, remove_globs))
+                .filter_map(|item| {
+                    let (kept, changed) = filter_use_tree(item, prefix, remove_named, remove_globs);
+                    any_changed |= changed;
+                    kept
+                })
                 .collect();
             match kept.len() {
-                0 => None,
-                1 => Some(kept.into_iter().next().unwrap()),
+                0 => (None, true),
+                1 => (Some(kept.into_iter().next().unwrap()), true),
                 _ => {
+                    let changed = any_changed || group.items.trailing_punct();
                     let mut new_group = group.clone();
                     new_group.items = kept.into_iter().collect();
-                    Some(UseTree::Group(new_group))
+                    (Some(UseTree::Group(new_group)), changed)
                 }
             }
         }
     }
 }
 
-fn trees_equal(a: &UseTree, b: &UseTree) -> bool {
-    a.to_token_stream().to_string() == b.to_token_stream().to_string()
+/// A leaf of a `use` tree, as reported by [`for_each_use_leaf`].
+enum UseLeaf<'t> {
+    /// `…::X` binds `X`.
+    Name(&'t Ident),
+    /// `…::A as B` binds `B` (`rename.rename`).
+    Rename(&'t syn::UseRename),
+    /// `…::*` binds no specific ident.
+    Glob,
+}
+
+/// Visit every leaf of `tree` in source order with the `Path` segments walked to reach it; a group
+/// shares the prefix accumulated before it. The shared recursion of the collectors below.
+fn for_each_use_leaf<'t>(tree: &'t UseTree, visit: &mut impl FnMut(&[&'t Ident], UseLeaf<'t>)) {
+    fn walk<'t>(
+        tree: &'t UseTree,
+        prefix: &mut Vec<&'t Ident>,
+        visit: &mut impl FnMut(&[&'t Ident], UseLeaf<'t>),
+    ) {
+        match tree {
+            UseTree::Path(path) => {
+                prefix.push(&path.ident);
+                walk(&path.tree, prefix, visit);
+                prefix.pop();
+            }
+            UseTree::Group(group) => {
+                for item in &group.items {
+                    walk(item, prefix, visit);
+                }
+            }
+            UseTree::Name(name) => visit(prefix, UseLeaf::Name(&name.ident)),
+            UseTree::Rename(rename) => visit(prefix, UseLeaf::Rename(rename)),
+            UseTree::Glob(_) => visit(prefix, UseLeaf::Glob),
+        }
+    }
+    walk(tree, &mut Vec::new(), visit);
+}
+
+/// `item` as a top-level PRIVATE (inherited-visibility) `use`, the only kind this pass edits.
+fn as_private_use(item: &Item) -> Option<&ItemUse> {
+    match item {
+        Item::Use(use_item) if matches!(use_item.vis, syn::Visibility::Inherited) => Some(use_item),
+        _ => None,
+    }
+}
+
+/// The top-level private `use` items of `file`, in source order. A `pub use` (any non-private
+/// visibility) is exported API surface: a downstream crate may import the name, so usage analysis
+/// inside this crate can never justify removing it.
+fn private_uses(file: &syn::File) -> impl Iterator<Item = &ItemUse> {
+    file.items.iter().filter_map(as_private_use)
+}
+
+/// The `::`-joined module path of `prefix` (`cml_core::serialization`).
+fn path_string(prefix: &[&Ident]) -> String {
+    join_idents(prefix, "::")
+}
+
+fn join_idents(idents: &[&Ident], separator: &str) -> String {
+    idents
+        .iter()
+        .map(|ident| ident.to_string())
+        .collect::<Vec<_>>()
+        .join(separator)
 }
 
 /// Byte range `[start, end)` covering the whole `use ...;` item (including any leading attributes,
@@ -2721,5 +2696,31 @@ mod tests {
             "ERROR_MODULE_EXPORTS drifted from static/error.rs public items — update the const \
              (the error-glob universe must stay complete or the glob-prune could under-prune)"
         );
+    }
+
+    #[test]
+    fn unchanged_single_line_group_is_not_rewritten() {
+        let src = "use x::{A, BTreeMap};\npub fn f(_: A, _: BTreeMap<u8, u8>) {}\n";
+        assert!(matches!(prune_unused_type_imports(src), Cow::Borrowed(_)));
+    }
+
+    // Pins current behavior for the refactor; postpass-missed-4 will change it to preserve comments.
+    #[test]
+    fn trailing_comma_group_is_rewritten_even_when_nothing_is_removed() {
+        let src = "use x::{\n    A, BTreeMap,\n};\npub fn f(_: A, _: BTreeMap<u8, u8>) {}\n";
+        let out = prune_unused_type_imports(src);
+        assert!(matches!(out, Cow::Owned(_)));
+        assert!(
+            out.replace(' ', "").starts_with("usex::{A,BTreeMap};"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn single_element_group_collapses_even_when_nothing_is_removed() {
+        let src = "use x::{A};\npub fn f(_: A) {}\n";
+        let out = prune_unused_type_imports(src);
+        assert!(matches!(out, Cow::Owned(_)));
+        assert!(out.contains("use x :: A ;"), "{out}");
     }
 }
