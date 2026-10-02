@@ -333,11 +333,13 @@ pub(crate) fn prune_generated_files(
         let mut reach: Vec<&str> = Vec::new();
         let mut poisoned = false;
         let mut has_descendant = false;
-        for (desc_path, desc_used) in &used_by_path {
-            if *desc_path == path.as_str()
-                || !desc_path.starts_with(&dir)
-                || crate_key(desc_path) != key
-            {
+        // Every path starting with `dir` sorts contiguously from `dir`, so the range visits exactly
+        // the `starts_with(&dir)` paths, in the same order as a full scan.
+        for (desc_path, desc_used) in used_by_path
+            .range::<&str, _>(dir.as_str()..)
+            .take_while(|(desc_path, _)| desc_path.starts_with(&dir))
+        {
+            if *desc_path == path.as_str() || crate_key(desc_path) != key {
                 continue;
             }
             has_descendant = true;
@@ -990,7 +992,7 @@ fn target_base_from_prefix(prefix: &[&Ident], crate_root: &str) -> Option<String
 /// `mod.rs` the definer, so a `plutus/serialization.rs` naming a root-defined `X` still protects the
 /// `plutus/mod.rs` re-import it actually consumes.
 fn module_is_target_file(file_path: &str, target_base: &str) -> bool {
-    file_path == format!("{target_base}.rs") || file_path == format!("{target_base}/mod.rs")
+    matches!(file_path.strip_prefix(target_base), Some(".rs" | "/mod.rs"))
 }
 
 /// Filter leaves from a `UseTree`. A `Name` leaf is dropped when `remove_named` returns true; a
@@ -2722,5 +2724,46 @@ mod tests {
         let out = prune_unused_type_imports(src);
         assert!(matches!(out, Cow::Owned(_)));
         assert!(out.contains("use x :: A ;"), "{out}");
+    }
+    #[test]
+    fn module_is_target_file_matches_only_the_file_of_the_module() {
+        assert!(module_is_target_file("c/src/a/b.rs", "c/src/a/b"));
+        assert!(module_is_target_file("c/src/a/b/mod.rs", "c/src/a/b"));
+        for other in [
+            "c/src/a/b/x.rs",
+            "c/src/a/bc.rs",
+            "c/src/a/b/mod.rsx",
+            "c/src/a.rs",
+        ] {
+            assert!(!module_is_target_file(other, "c/src/a/b"), "{other}");
+        }
+    }
+
+    #[test]
+    fn descendant_scan_skips_paths_sorting_inside_the_prefix_range() {
+        let map = files(&[
+            (
+                "rust/src/generated/a.rs",
+                "use std::collections::BTreeMap;\npub struct A;\n",
+            ),
+            (
+                "rust/src/generated/a-b.rs",
+                "use super::*;\npub type X = BTreeMap<u8, u8>;\n",
+            ),
+            (
+                "rust/src/generated/a0.rs",
+                "use super::*;\npub type Y = BTreeMap<u8, u8>;\n",
+            ),
+            (
+                "rust/src/generated/a/x.rs",
+                "use super::*;\npub struct Z;\n",
+            ),
+        ]);
+        let changed: BTreeMap<String, String> =
+            prune_generated_files(&map, &PruneConfig::default())
+                .into_iter()
+                .collect();
+        let a = changed.get("rust/src/generated/a.rs").expect("a.rs pruned");
+        assert!(!a.contains("BTreeMap"), "{a}");
     }
 }
