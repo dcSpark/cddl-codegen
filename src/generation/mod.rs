@@ -2098,23 +2098,8 @@ impl GenerationScope {
                 _ => None,
             })
             .collect();
-        let mut externs_by_scope: BTreeMap<ModuleScope, BTreeSet<RustIdent>> = BTreeMap::new();
-        for (rust_ident, rust_struct) in types.rust_structs() {
-            if matches!(
-                rust_struct.variant(),
-                RustStructType::Extern | RustStructType::RawBytesType
-            ) && rust_ident.as_ref() != "Int"
-                && !rust_aliased.contains(rust_ident)
-            {
-                let scope = types.scope(rust_ident);
-                if scope.export() {
-                    externs_by_scope
-                        .entry(scope.clone())
-                        .or_default()
-                        .insert(rust_ident.clone());
-                }
-            }
-        }
+        let externs_by_scope =
+            extern_reexports_by_scope(types, |rust_ident| !rust_aliased.contains(rust_ident));
         // Scopes that have already received the contract comment, so the `@raw_bytes_flavor` loop
         // below doesn't emit a second comment into a scope whose base extern already carried one.
         let mut rust_glue_commented: BTreeSet<ModuleScope> = BTreeSet::new();
@@ -2506,26 +2491,11 @@ impl GenerationScope {
                 })
                 .collect();
             let generic_bases = types.generic_instance_bases();
-            let mut wasm_externs_by_scope: BTreeMap<ModuleScope, BTreeSet<RustIdent>> =
-                BTreeMap::new();
-            for (rust_ident, rust_struct) in types.rust_structs() {
-                if matches!(
-                    rust_struct.variant(),
-                    RustStructType::Extern | RustStructType::RawBytesType
-                ) && rust_ident.as_ref() != "Int"
-                    && !wasm_aliased.contains(rust_ident)
+            let wasm_externs_by_scope = extern_reexports_by_scope(types, |rust_ident| {
+                !wasm_aliased.contains(rust_ident)
                     && !generic_bases.contains(rust_ident)
                     && wasm_boundary_idents.contains(rust_ident)
-                {
-                    let scope = types.scope(rust_ident);
-                    if scope.export() {
-                        wasm_externs_by_scope
-                            .entry(scope.clone())
-                            .or_default()
-                            .insert(rust_ident.clone());
-                    }
-                }
-            }
+            });
             for (scope, idents) in &wasm_externs_by_scope {
                 let content = self.wasm_scopes.entry(scope.clone()).or_default();
                 content.raw(EXTERN_REEXPORT_CONTRACT_COMMENT);
@@ -2910,6 +2880,34 @@ fn set_tag_idiom_doc(n: usize) -> String {
 const REJECT_SET_DOC: &str = "`@duplicates reject`: a repeated element is refused (a \
     `DuplicateKey` error) on both the wire and the API; accepted (duplicate-free) input re-emits \
     byte-exactly in wire order (the set is order-preserving, never sorted).";
+
+/// The extern and raw-bytes types whose crate-root re-export glue (`pub use crate::<Name>;`) a
+/// face emits, grouped by their declaring scope. Both faces skip the built-in `Int` extern and
+/// every non-exported (dependency-owned) scope; `keep` carries the face's own exclusions, which the
+/// call sites document.
+fn extern_reexports_by_scope(
+    types: &IntermediateTypes,
+    keep: impl Fn(&RustIdent) -> bool,
+) -> BTreeMap<ModuleScope, BTreeSet<RustIdent>> {
+    let mut by_scope: BTreeMap<ModuleScope, BTreeSet<RustIdent>> = BTreeMap::new();
+    for (rust_ident, rust_struct) in types.rust_structs() {
+        if matches!(
+            rust_struct.variant(),
+            RustStructType::Extern | RustStructType::RawBytesType
+        ) && rust_ident.as_ref() != "Int"
+            && keep(rust_ident)
+        {
+            let scope = types.scope(rust_ident);
+            if scope.export() {
+                by_scope
+                    .entry(scope.clone())
+                    .or_default()
+                    .insert(rust_ident.clone());
+            }
+        }
+    }
+    by_scope
+}
 
 /// The common-crate `serialization` encoding types every preserve-encodings struct and
 /// cbor_encodings file imports, in import order.
