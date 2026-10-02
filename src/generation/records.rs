@@ -224,11 +224,11 @@ fn generate_array_segment_serialization(
     };
     let elem_config = SerializeConfig::new("element", &elem_var_name)
         .expr_is_ref(true)
-        .is_end(false)
+        .end(false)
         .encoding_var_no_option_struct()
         .encoding_var_is_ref(false)
         .tag_depth(0);
-    gen_scope.generate_serialize(
+    generate_serialize(
         types,
         rest.element().into(),
         &mut segment_loop,
@@ -295,7 +295,7 @@ pub(super) fn generate_array_struct_serialization(
                 } else {
                     config = config.expr_is_ref(true).encoding_var_is_ref(true)
                 }
-                gen_scope.generate_serialize(
+                generate_serialize(
                     types,
                     (&field.rust_type).into(),
                     &mut opt_block,
@@ -356,7 +356,7 @@ pub(super) fn generate_array_struct_serialization(
             } else {
                 config = config.expr_is_ref(true).encoding_var_is_ref(true)
             }
-            gen_scope.generate_serialize(
+            generate_serialize(
                 types,
                 (&field.rust_type).into(),
                 &mut optional_array_ser_block,
@@ -371,7 +371,7 @@ pub(super) fn generate_array_struct_serialization(
             } else {
                 config = config.expr_is_ref(true).encoding_var_is_ref(true)
             }
-            gen_scope.generate_serialize(types, (&field.rust_type).into(), ser_func, config, cli);
+            generate_serialize(types, (&field.rust_type).into(), ser_func, config, cli);
         }
     }
     // A final segment remains byte-identical to the historic tail: it is emitted after every
@@ -2662,10 +2662,10 @@ fn emit_open_table_preserve_order(
             let merge_key_config =
                 SerializeConfig::new("rest_key", format!("{}_key", row.field_name))
                     .expr_is_ref(true)
-                    .is_end(false)
+                    .end(false)
                     .serializer_name_overload(("buf", true))
                     .encoding_var_is_ref(false);
-            gen_scope.generate_serialize(
+            generate_serialize(
                 types,
                 (row.domain()).into(),
                 &mut key_loop,
@@ -3121,21 +3121,21 @@ fn emit_rest_entry_serialize(
     }
     let key_config = SerializeConfig::new("key", format!("{}_key", rest.field_name))
         .expr_is_ref(true)
-        .is_end(false)
+        .end(false)
         .encoding_var_no_option_struct()
         .encoding_var_is_ref(false)
         .tag_depth(0);
-    gen_scope.generate_serialize(types, (rest.domain()).into(), block, key_config, cli);
+    generate_serialize(types, (rest.domain()).into(), block, key_config, cli);
     if !value_encs.is_empty() {
         block.line(&outer.container_encoding_lookup("value", &value_encs, enc_lookup_var));
     }
     let value_config = SerializeConfig::new("value", format!("{}_value", rest.field_name))
         .expr_is_ref(true)
-        .is_end(false)
+        .end(false)
         .encoding_var_no_option_struct()
         .encoding_var_is_ref(false)
         .tag_depth(0);
-    gen_scope.generate_serialize(types, (rest.range()).into(), block, value_config, cli);
+    generate_serialize(types, (rest.range()).into(), block, value_config, cli);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -4917,12 +4917,12 @@ pub(super) fn codegen_struct(
                 }
                 let key_config = SerializeConfig::new("key", "rest_key")
                     .expr_is_ref(true)
-                    .is_end(false)
+                    .end(false)
                     .encoding_var_no_option_struct()
                     .encoding_var_is_ref(false)
                     .serializer_name_overload(("serializer", true))
                     .tag_depth(0);
-                gen_scope.generate_serialize(
+                generate_serialize(
                     types,
                     rest.domain().into(),
                     &mut validator,
@@ -5253,7 +5253,7 @@ pub(super) fn codegen_struct(
                     };
 
                     // serialize value
-                    gen_scope.generate_serialize(
+                    generate_serialize(
                         types,
                         (&field.rust_type).into(),
                         &mut map_ser_content,
@@ -5361,12 +5361,12 @@ pub(super) fn codegen_struct(
                                 format!("{}_key", rest.field_name),
                             )
                             .expr_is_ref(true)
-                            .is_end(false)
+                            .end(false)
                             .serializer_name_overload(("buf", true))
                             .encoding_var_is_ref(false);
                             // No sidecar lookup here: under force_canonical the key is written minimal
                             // regardless, so the merge's sort key matches the bytes the rest arm writes.
-                            gen_scope.generate_serialize(
+                            generate_serialize(
                                 types,
                                 (rest.domain()).into(),
                                 &mut rest_key_loop,
@@ -5422,7 +5422,7 @@ pub(super) fn codegen_struct(
                     };
                     for (field_index, field, content) in ser_content.into_iter() {
                         // TODO: while this would be nice we would need to either:
-                        // 1) know this before we call gen_scope.generate_serialize() OR
+                        // 1) know this before we call generate_serialize() OR
                         // 2) strip that !is_end (?;) field from it which seems brittle
                         //if let Some(single_line) = content.as_single_line() {
                         //    ser_loop_match.line(format!("{} => {},"));
@@ -5533,8 +5533,8 @@ pub(super) fn codegen_struct(
                     ));
                     let key_config = SerializeConfig::new("key", "rest_key")
                         .expr_is_ref(true)
-                        .is_end(false);
-                    gen_scope.generate_serialize(
+                        .end(false);
+                    generate_serialize(
                         types,
                         (rest.domain()).into(),
                         &mut rest_loop,
@@ -5543,8 +5543,8 @@ pub(super) fn codegen_struct(
                     );
                     let value_config = SerializeConfig::new("value", "rest_value")
                         .expr_is_ref(true)
-                        .is_end(false);
-                    gen_scope.generate_serialize(
+                        .end(false);
+                    generate_serialize(
                         types,
                         (rest.range()).into(),
                         &mut rest_loop,

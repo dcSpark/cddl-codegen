@@ -124,7 +124,7 @@ use deserialize::{
     make_deser_loop, make_deserialization_function, make_err_annotate_block,
 };
 use serialize::{
-    EncodingVarIsCopy, SerializeConfig, SerializingRustType, create_serialize_impls, end_len,
+    EncodingVarIsCopy, SerializeConfig, SerializingRustType, create_serialize_impls, end_len, generate_serialize,
     make_serialization_function, make_serialization_impl, nominal_collection_cfg, start_len,
     write_string_sz, write_using_sz,
 };

@@ -959,14 +959,14 @@ pub(super) fn generate_wrapper_struct(
             self_var.to_owned()
         };
         let mut serialize_config = SerializeConfig::new(&serialized_inner, "inner")
-            .is_end(true)
+            .end(true)
             .encoding_var_in_option_struct("self.encodings");
         if checked_scalar && !field_type.is_copy(types) {
             // String/byte getters already return a reference. Tell the shared serializer so it
             // neither adds a second borrow nor treats `.len()` as if it belonged under a deref.
             serialize_config = serialize_config.expr_is_ref(true);
         }
-        gen_scope.generate_serialize(
+        generate_serialize(
             types,
             field_type.into(),
             &mut ser_body,

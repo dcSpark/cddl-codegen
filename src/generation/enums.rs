@@ -1556,7 +1556,7 @@ fn generate_enum(
                                     cli,
                                 );
                             }
-                            gen_scope.generate_serialize(
+                            generate_serialize(
                                 types,
                                 ty.into(),
                                 &mut case_block,
@@ -1569,13 +1569,13 @@ fn generate_enum(
                             case_block.line("Ok(serializer)");
                         } else {
                             // type choice
-                            gen_scope.generate_serialize(
+                            generate_serialize(
                                 types,
                                 ty.into(),
                                 &mut case_block,
                                 SerializeConfig::new(&variant_var_name, &variant_var_name)
                                     .expr_is_ref(true)
-                                    .is_end(true)
+                                    .end(true)
                                     .encoding_var_is_ref(true),
                                 cli,
                             );
@@ -1612,13 +1612,13 @@ fn generate_enum(
                         // TODO: only generate a block if the serialize is more than 1 line
                         // Problem: generate_serialize() works in terms of line() and push_block()
                         //          but we'd just want to inline the single one inside of a line...
-                        gen_scope.generate_serialize(
+                        generate_serialize(
                             types,
                             ty.into(),
                             &mut case_block,
                             SerializeConfig::new(&variant_var_name, &variant_var_name)
                                 .expr_is_ref(true)
-                                .is_end(!write_break),
+                                .end(!write_break),
                             cli,
                         );
                         if write_break {

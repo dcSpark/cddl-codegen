@@ -97,8 +97,7 @@ impl<'a> SerializeConfig<'a> {
         self
     }
 
-    #[allow(clippy::wrong_self_convention)]
-    pub(super) fn is_end(mut self, is_end: bool) -> Self {
+    pub(super) fn end(mut self, is_end: bool) -> Self {
         self.is_end = is_end;
         self
     }
@@ -686,112 +685,162 @@ pub(super) fn make_serialization_impl(name: &str, cli: &Cli) -> codegen::Impl {
     ser_impl
 }
 
-impl GenerationScope {
-    /// Write code for serializing {serializing_rust_type} directly into {body}
-    #[allow(clippy::only_used_in_recursion)]
-    pub(super) fn generate_serialize(
-        &mut self,
-        types: &IntermediateTypes,
-        serializing_rust_type: SerializingRustType<'_>,
-        body: &mut dyn CodeBlock,
-        config: SerializeConfig,
-        cli: &Cli,
-    ) {
-        let line_ender = if config.is_end { "" } else { "?;" };
-        let expr_deref = if config.expr_is_ref {
-            format!("*{}", config.expr)
-        } else {
-            config.expr.to_owned()
-        };
-        let expr_ref = if config.expr_is_ref {
-            config.expr.to_owned()
-        } else {
-            format!("&{}", config.expr)
-        };
-        let (serializer_use, serializer_pass) = config
-            .serializer_name_overload
-            .map(|(name, is_local)| {
-                if is_local {
-                    (name, format!("&mut {name}"))
-                } else {
-                    (name, name.to_owned())
-                }
-            })
-            .unwrap_or(("serializer", "serializer".to_owned()));
-        let encoding_deref = if config.encoding_var_is_ref { "*" } else { "" };
-        let encoding_var_is_copy = serializing_rust_type.encoding_var_is_copy(types);
-        let encoding_var = config.encoding_var(None, encoding_var_is_copy);
-        let encoding_var_deref = format!("{encoding_deref}{encoding_var}");
-        // field-level @custom_serialize overrides everything
-        if let Some(custom_serialize) = &config.custom_serialize {
-            let pass_encoding_args = if cli.preserve_encodings {
-                // The pair's OWN declaration wins over the replaced type's inferred demand — that is
-                // the whole point of `@custom_encodings` (a self-carrying replaced type infers
-                // nothing, so the custom framing had nowhere to go). Undeclared: today's inference,
-                // blind to declarations below since THIS codec now owns the wire from here down.
-                let codec_encodings = match &config.custom_encodings {
-                    Some(kinds) => declared_encoding_fields(&config.var_name, kinds),
-                    None => encoding_fields_impl(
-                        types,
-                        &config.var_name,
-                        serializing_rust_type,
-                        cli,
-                        0,
-                        0,
-                        AliasDeclarations::Blind,
-                    ),
-                };
-                Cow::Owned(
-                    codec_encodings
-                        .into_iter()
-                        .map(|enc| {
-                            format!(
-                                ", {}",
-                                match &config.encoding_var_in_option_struct {
-                                    Some(namespace) => format!(
-                                        "{}{}.as_ref().map(|encs| encs.{}{}).unwrap_or_default()",
-                                        if enc.is_copy { "" } else { "&" },
-                                        namespace,
-                                        enc.field_name,
-                                        if enc.is_copy { "" } else { ".clone()" },
-                                    ),
-                                    None => enc.field_name.clone(),
-                                }
-                            )
-                        })
-                        .collect::<Vec<String>>()
-                        .join(""),
-                )
+/// Write code for serializing {serializing_rust_type} directly into {body}
+pub(super) fn generate_serialize(
+    types: &IntermediateTypes,
+    serializing_rust_type: SerializingRustType<'_>,
+    body: &mut dyn CodeBlock,
+    config: SerializeConfig,
+    cli: &Cli,
+) {
+    let line_ender = if config.is_end { "" } else { "?;" };
+    let expr_deref = if config.expr_is_ref {
+        format!("*{}", config.expr)
+    } else {
+        config.expr.to_owned()
+    };
+    let expr_ref = if config.expr_is_ref {
+        config.expr.to_owned()
+    } else {
+        format!("&{}", config.expr)
+    };
+    let (serializer_use, serializer_pass) = config
+        .serializer_name_overload
+        .map(|(name, is_local)| {
+            if is_local {
+                (name, format!("&mut {name}"))
             } else {
-                Cow::Borrowed("")
+                (name, name.to_owned())
+            }
+        })
+        .unwrap_or(("serializer", "serializer".to_owned()));
+    let encoding_deref = if config.encoding_var_is_ref { "*" } else { "" };
+    let encoding_var_is_copy = serializing_rust_type.encoding_var_is_copy(types);
+    let encoding_var = config.encoding_var(None, encoding_var_is_copy);
+    let encoding_var_deref = format!("{encoding_deref}{encoding_var}");
+    // field-level @custom_serialize overrides everything
+    if let Some(custom_serialize) = &config.custom_serialize {
+        let pass_encoding_args = if cli.preserve_encodings {
+            // The pair's OWN declaration wins over the replaced type's inferred demand — that is
+            // the whole point of `@custom_encodings` (a self-carrying replaced type infers
+            // nothing, so the custom framing had nowhere to go). Undeclared: today's inference,
+            // blind to declarations below since THIS codec now owns the wire from here down.
+            let codec_encodings = match &config.custom_encodings {
+                Some(kinds) => declared_encoding_fields(&config.var_name, kinds),
+                None => encoding_fields_impl(
+                    types,
+                    &config.var_name,
+                    serializing_rust_type,
+                    cli,
+                    0,
+                    0,
+                    AliasDeclarations::Blind,
+                ),
             };
-            // `serializer_pass`, NOT `serializer_use`: a custom serialize target is a FREE FUNCTION
-            // taking the serializer as an ARGUMENT, so where the serializer in scope is a local
-            // `Serializer` value (the canonical key-sort scratch `buf`, the open struct-map canonical
-            // merge's `buf`, a `bytes .cbor T` wrapper's inner) the pass-form is `&mut <name>` — a
-            // method receiver auto-refs, a function argument does not (E0308). Same class as
-            // `write_float`'s doc comment above; for the DEFAULT `serializer` (already `&mut`) the two
-            // forms coincide, so this changes emitted bytes only at local-serializer sites.
-            body.line(&format!(
-                "{}({}, {}{}{}){}",
-                custom_serialize,
-                serializer_pass,
-                expr_ref,
-                pass_encoding_args,
-                canonical_param(cli),
-                line_ender
-            ));
+            Cow::Owned(
+                codec_encodings
+                    .into_iter()
+                    .map(|enc| {
+                        format!(
+                            ", {}",
+                            match &config.encoding_var_in_option_struct {
+                                Some(namespace) => format!(
+                                    "{}{}.as_ref().map(|encs| encs.{}{}).unwrap_or_default()",
+                                    if enc.is_copy { "" } else { "&" },
+                                    namespace,
+                                    enc.field_name,
+                                    if enc.is_copy { "" } else { ".clone()" },
+                                ),
+                                None => enc.field_name.clone(),
+                            }
+                        )
+                    })
+                    .collect::<Vec<String>>()
+                    .join(""),
+            )
         } else {
-            match serializing_rust_type {
-                SerializingRustType::EncodingOperation(
-                    CBOREncodingOperation::Tagged(tag),
-                    child,
-                ) => {
-                    // level (tag_depth + 1) counted outside-in; the infix keeps the member name in
-                    // lockstep with `encoding_fields_impl`, and the child recurses one level deeper.
-                    let tag_level = config.tag_depth + 1;
-                    let tag_infix = tag_encoding_infix(tag_level);
-                    let expr = format!("{tag}u64");
+            Cow::Borrowed("")
+        };
+        // `serializer_pass`, NOT `serializer_use`: a custom serialize target is a FREE FUNCTION
+        // taking the serializer as an ARGUMENT, so where the serializer in scope is a local
+        // `Serializer` value (the canonical key-sort scratch `buf`, the open struct-map canonical
+        // merge's `buf`, a `bytes .cbor T` wrapper's inner) the pass-form is `&mut <name>` — a
+        // method receiver auto-refs, a function argument does not (E0308). Same class as
+        // `write_float`'s doc comment above; for the DEFAULT `serializer` (already `&mut`) the two
+        // forms coincide, so this changes emitted bytes only at local-serializer sites.
+        body.line(&format!(
+            "{}({}, {}{}{}){}",
+            custom_serialize,
+            serializer_pass,
+            expr_ref,
+            pass_encoding_args,
+            canonical_param(cli),
+            line_ender
+        ));
+    } else {
+        match serializing_rust_type {
+            SerializingRustType::EncodingOperation(
+                CBOREncodingOperation::Tagged(tag),
+                child,
+            ) => {
+                // level (tag_depth + 1) counted outside-in; the infix keeps the member name in
+                // lockstep with `encoding_fields_impl`, and the child recurses one level deeper.
+                let tag_level = config.tag_depth + 1;
+                let tag_infix = tag_encoding_infix(tag_level);
+                let expr = format!("{tag}u64");
+                write_using_sz(
+                    body,
+                    "write_tag",
+                    serializer_use,
+                    &expr,
+                    &expr,
+                    "?;",
+                    &format!(
+                        "{}{}",
+                        encoding_deref,
+                        config.encoding_var(Some(&tag_infix), encoding_var_is_copy)
+                    ),
+                    cli,
+                );
+                generate_serialize(types, *child, body, config.tag_depth(tag_level), cli);
+            }
+            SerializingRustType::EncodingOperation(
+                CBOREncodingOperation::OptionallyTagged(tag),
+                child,
+            ) => {
+                // level (tag_depth + 1) counted outside-in; the infix keeps the member name in
+                // lockstep with `encoding_fields_impl`, and the child recurses one level deeper.
+                let tag_level = config.tag_depth + 1;
+                let tag_infix = tag_encoding_infix(tag_level);
+                let expr = format!("{tag}u64");
+                if cli.preserve_encodings {
+                    // CANONICAL POLICY (decided): force_canonical normalizes the tag's SIZE
+                    // (via `fit_sz` below) but NEVER its PRESENCE. Which arm was written is part
+                    // of what the spec author encoded and other implementations validate
+                    // structurally; canonicality governs encoding minimality only. So a value
+                    // read untagged re-serializes untagged even under --canonical-form.
+                    let enc_expr = format!(
+                        "{}{}",
+                        encoding_deref,
+                        config.encoding_var(Some(&tag_infix), encoding_var_is_copy)
+                    );
+                    let mut tag_block = Block::new(format!(
+                        "if let TagPresenceEncoding::Tagged(tag_sz) = {enc_expr}"
+                    ));
+                    write_using_sz(
+                        &mut tag_block,
+                        "write_tag",
+                        serializer_use,
+                        &expr,
+                        &expr,
+                        "?;",
+                        "tag_sz",
+                        cli,
+                    );
+                    body.push_block(tag_block);
+                } else {
+                    // No encoding var to consult: default new values to tagged (matches the
+                    // first/tagged arm and current-era ledger emission).
                     write_using_sz(
                         body,
                         "write_tag",
@@ -799,117 +848,296 @@ impl GenerationScope {
                         &expr,
                         &expr,
                         "?;",
-                        &format!(
-                            "{}{}",
-                            encoding_deref,
-                            config.encoding_var(Some(&tag_infix), encoding_var_is_copy)
-                        ),
+                        "",
                         cli,
                     );
-                    self.generate_serialize(types, *child, body, config.tag_depth(tag_level), cli);
                 }
-                SerializingRustType::EncodingOperation(
-                    CBOREncodingOperation::OptionallyTagged(tag),
-                    child,
-                ) => {
-                    // level (tag_depth + 1) counted outside-in; the infix keeps the member name in
-                    // lockstep with `encoding_fields_impl`, and the child recurses one level deeper.
-                    let tag_level = config.tag_depth + 1;
-                    let tag_infix = tag_encoding_infix(tag_level);
-                    let expr = format!("{tag}u64");
-                    if cli.preserve_encodings {
-                        // CANONICAL POLICY (decided): force_canonical normalizes the tag's SIZE
-                        // (via `fit_sz` below) but NEVER its PRESENCE. Which arm was written is part
-                        // of what the spec author encoded and other implementations validate
-                        // structurally; canonicality governs encoding minimality only. So a value
-                        // read untagged re-serializes untagged even under --canonical-form.
-                        let enc_expr = format!(
-                            "{}{}",
-                            encoding_deref,
-                            config.encoding_var(Some(&tag_infix), encoding_var_is_copy)
-                        );
-                        let mut tag_block = Block::new(format!(
-                            "if let TagPresenceEncoding::Tagged(tag_sz) = {enc_expr}"
+                generate_serialize(types, *child, body, config.tag_depth(tag_level), cli);
+            }
+            SerializingRustType::EncodingOperation(CBOREncodingOperation::CBORBytes, child) => {
+                // level (cbor_depth + 1) counted outside-in; the buffer, the finalized byte
+                // vector and the encoding var all take the level's names, and the child recurses
+                // one level deeper. Level 1 keeps the historical spellings, so single-payload
+                // output is byte-identical; without the suffix the INLINE
+                // `bytes .cbor (bytes .cbor T)` spelling has both depths write to one buffer and
+                // the outer write borrows what the inner `finalize()` moved (E0382).
+                let cbor_level = config.cbor_depth + 1;
+                let bytes_infix = cbor_bytes_infix(cbor_level);
+                let inner_se = format!(
+                    "{}_{}",
+                    config.var_name,
+                    cbor_payload_buffer_suffix(cbor_level)
+                );
+                body.line(&format!("let mut {inner_se} = Serializer::new_vec();"));
+                let inner_config = config
+                    .clone()
+                    .end(false)
+                    .serializer_name_overload((&inner_se, true))
+                    .cbor_depth(cbor_level);
+                generate_serialize(types, *child, body, inner_config, cli);
+                let bytes_local = format!("{}_{}", config.var_name, bytes_infix);
+                body.line(&format!("let {bytes_local} = {inner_se}.finalize();"));
+                write_string_sz(
+                    body,
+                    "write_bytes",
+                    serializer_use,
+                    &bytes_local,
+                    false,
+                    line_ender,
+                    &config.encoding_var(Some(&bytes_infix), encoding_var_is_copy),
+                    cli,
+                );
+            }
+            SerializingRustType::Root(ConceptualRustType::Fixed(value), _cfg) => match value {
+                FixedValue::Null => {
+                    body.line(&format!(
+                        "{serializer_use}.write_special(cbor_event::Special::Null){line_ender}"
+                    ));
+                }
+                FixedValue::Undefined => {
+                    body.line(&format!(
+                        "{serializer_use}.write_special(cbor_event::Special::Undefined){line_ender}"
+                    ));
+                }
+                FixedValue::Bool(b) => {
+                    body.line(&format!(
+                        "{serializer_use}.write_special(cbor_event::Special::Bool({b})){line_ender}"
+                    ));
+                }
+                FixedValue::Uint(u) => {
+                    let expr = format!("{u}u64");
+                    write_using_sz(
+                        body,
+                        "write_unsigned_integer",
+                        serializer_use,
+                        &expr,
+                        &expr,
+                        line_ender,
+                        &encoding_var_deref,
+                        cli,
+                    );
+                }
+                FixedValue::Nint(i) => {
+                    assert!(*i < 0);
+                    if !cli.preserve_encodings && *i <= i64::MIN as i128 {
+                        // Nint literals are i128: below i64::MIN they don't fit the plain
+                        // write_negative_integer endpoint's i64 argument (upstream keeps the
+                        // narrow argument by design — the i128-taking _sz endpoint is the
+                        // documented full-range form), and the i64::MIN literal itself stays on
+                        // the explicit-Sz spelling pinned by
+                        // `i64_min_fixed_value_emits_width_correct_nint`.
+                        let sz_str = if *i >= -24 {
+                            "cbor_event::Sz::Inline"
+                        } else if *i >= -0x1_00 {
+                            "cbor_event::Sz::One"
+                        } else if *i >= -0x1_00_00 {
+                            "cbor_event::Sz::Two"
+                        } else if *i >= -0x1_00_00_00_00 {
+                            "cbor_event::Sz::Four"
+                        } else {
+                            "cbor_event::Sz::Eight"
+                        };
+                        body.line(&format!(
+                            "{serializer_use}.write_negative_integer_sz({i}i128, {sz_str}){line_ender}"
                         ));
-                        write_using_sz(
-                            &mut tag_block,
-                            "write_tag",
-                            serializer_use,
-                            &expr,
-                            &expr,
-                            "?;",
-                            "tag_sz",
-                            cli,
-                        );
-                        body.push_block(tag_block);
                     } else {
-                        // No encoding var to consult: default new values to tagged (matches the
-                        // first/tagged arm and current-era ledger emission).
                         write_using_sz(
                             body,
-                            "write_tag",
+                            "write_negative_integer",
                             serializer_use,
-                            &expr,
-                            &expr,
-                            "?;",
-                            "",
+                            &i.to_string(),
+                            &format!("({i}i128 + 1).unsigned_abs() as u64"),
+                            line_ender,
+                            &encoding_var_deref,
                             cli,
                         );
                     }
-                    self.generate_serialize(types, *child, body, config.tag_depth(tag_level), cli);
                 }
-                SerializingRustType::EncodingOperation(CBOREncodingOperation::CBORBytes, child) => {
-                    // level (cbor_depth + 1) counted outside-in; the buffer, the finalized byte
-                    // vector and the encoding var all take the level's names, and the child recurses
-                    // one level deeper. Level 1 keeps the historical spellings, so single-payload
-                    // output is byte-identical; without the suffix the INLINE
-                    // `bytes .cbor (bytes .cbor T)` spelling has both depths write to one buffer and
-                    // the outer write borrows what the inner `finalize()` moved (E0382).
-                    let cbor_level = config.cbor_depth + 1;
-                    let bytes_infix = cbor_bytes_infix(cbor_level);
-                    let inner_se = format!(
-                        "{}_{}",
-                        config.var_name,
-                        cbor_payload_buffer_suffix(cbor_level)
+                FixedValue::Float(f) => {
+                    // float_literal, not Display: `{}` on a whole-valued f64 drops the decimal
+                    // point (3.0 -> "3"), emitting an integer literal in an f64 position (E0308).
+                    let lit = float_fixed_literal(*f);
+                    if cli.preserve_encodings {
+                        write_float(
+                            body,
+                            &serializer_pass,
+                            &lit,
+                            line_ender,
+                            &encoding_var_deref,
+                            cli,
+                        );
+                    } else {
+                        // Smallest value-preserving head (RFC 8949 §4.1), like every other
+                        // float write. A fixed literal is read back by VALUE comparison at any
+                        // head, so the width is free to be the preferred one.
+                        body.line(&format!(
+                            "write_float({serializer_pass}, {lit}){line_ender}"
+                        ));
+                    }
+                }
+                FixedValue::Text(s) => {
+                    write_string_sz(
+                        body,
+                        "write_text",
+                        serializer_use,
+                        &format!("\"{}\"", escape_rust_str(s)),
+                        true,
+                        line_ender,
+                        &encoding_var,
+                        cli,
                     );
-                    body.line(&format!("let mut {inner_se} = Serializer::new_vec();"));
-                    let inner_config = config
-                        .clone()
-                        .is_end(false)
-                        .serializer_name_overload((&inner_se, true))
-                        .cbor_depth(cbor_level);
-                    self.generate_serialize(types, *child, body, inner_config, cli);
-                    let bytes_local = format!("{}_{}", config.var_name, bytes_infix);
-                    body.line(&format!("let {bytes_local} = {inner_se}.finalize();"));
+                }
+                FixedValue::Bytes(bytes) => {
                     write_string_sz(
                         body,
                         "write_bytes",
                         serializer_use,
-                        &bytes_local,
+                        &FixedValue::bytes_rust_expr(bytes),
                         false,
                         line_ender,
-                        &config.encoding_var(Some(&bytes_infix), encoding_var_is_copy),
+                        &encoding_var,
                         cli,
                     );
                 }
-                SerializingRustType::Root(ConceptualRustType::Fixed(value), _cfg) => match value {
-                    FixedValue::Null => {
+            },
+            SerializingRustType::Root(ConceptualRustType::Primitive(primitive), _cfg) => {
+                match primitive {
+                    Primitive::Bool => {
                         body.line(&format!(
-                            "{serializer_use}.write_special(cbor_event::Special::Null){line_ender}"
+                            "{serializer_use}.write_special(cbor_event::Special::Bool({expr_deref})){line_ender}"
                         ));
                     }
-                    FixedValue::Undefined => {
-                        body.line(&format!(
-                            "{serializer_use}.write_special(cbor_event::Special::Undefined){line_ender}"
-                        ));
+                    p @ (Primitive::Float
+                    | Primitive::F16
+                    | Primitive::F32
+                    | Primitive::F64
+                    | Primitive::F16To32
+                    | Primitive::F32To64) => {
+                        // The CBOR float domain is f64, so an f32-CARRIED class (`float16`,
+                        // `float32`, `float16-32`) widens here. Through the crate's exact
+                        // widening, never `as`/`From`: those may quiet a signaling NaN or drop
+                        // its payload, and LLVM const-folds the conversion to a canonical quiet
+                        // NaN, so `as` can differ between the const-evaluated and runtime paths
+                        // of one binary. A float round-trips byte-exactly, payload included.
+                        let value = if p.float_carrier_is_f32() {
+                            Cow::Owned(format!(
+                                "cbor_event::se::f32_to_f64_exact({expr_deref})"
+                            ))
+                        } else {
+                            Cow::Borrowed(expr_deref.as_str())
+                        };
+                        // Every class writes the smallest head that preserves the value (RFC
+                        // 8949 §4.1), uniformly in both profiles — the same rule the integer
+                        // writes follow. For a MEMBER of a constrained class that head IS its
+                        // declared width, because membership means the value's shortest lossless
+                        // form lands in the class's window; a non-member fails loudly inside the
+                        // helper rather than being written at a head the class admits.
+                        //
+                        // Width-unconstrained `float` admits every value, so it needs no window
+                        // and no membership check — only the smallest-head rule.
+                        let class_window = (*p != Primitive::Float).then(|| {
+                            let (min, max) = p.float_class_window().unwrap();
+                            format!(
+                                "cbor_event::Sz::{}, cbor_event::Sz::{}",
+                                crate::intermediate::float_head_name(min),
+                                crate::intermediate::float_head_name(max)
+                            )
+                        });
+                        match (cli.preserve_encodings, class_window) {
+                            (true, None) => write_float(
+                                body,
+                                &serializer_pass,
+                                &value,
+                                line_ender,
+                                &encoding_var_deref,
+                                cli,
+                            ),
+                            (true, Some(class_window)) => {
+                                body.line(&format!(
+                                    "write_float_width({serializer_pass}, {value}, {encoding_var_deref}, {class_window}{}){line_ender}",
+                                    canonical_param(cli)
+                                ));
+                            }
+                            (false, None) => {
+                                body.line(&format!(
+                                    "write_float({serializer_pass}, {value}){line_ender}"
+                                ));
+                            }
+                            (false, Some(class_window)) => {
+                                body.line(&format!(
+                                    "write_float_width({serializer_pass}, {value}, {class_window}){line_ender}"
+                                ));
+                            }
+                        }
                     }
-                    FixedValue::Bool(b) => {
-                        body.line(&format!(
-                            "{serializer_use}.write_special(cbor_event::Special::Bool({b})){line_ender}"
-                        ));
+                    Primitive::Bytes => {
+                        write_string_sz(
+                            body,
+                            "write_bytes",
+                            serializer_use,
+                            &config.expr,
+                            config.expr_is_ref,
+                            line_ender,
+                            &encoding_var,
+                            cli,
+                        );
                     }
-                    FixedValue::Uint(u) => {
-                        let expr = format!("{u}u64");
+                    Primitive::Str => {
+                        write_string_sz(
+                            body,
+                            "write_text",
+                            serializer_use,
+                            &config.expr,
+                            config.expr_is_ref,
+                            line_ender,
+                            &encoding_var,
+                            cli,
+                        );
+                    }
+                    Primitive::I8 | Primitive::I16 | Primitive::I32 | Primitive::I64 => {
+                        let mut pos = Block::new(format!("if {expr_deref} >= 0"));
+                        let expr_pos = format!("{expr_deref} as u64");
+                        write_using_sz(
+                            &mut pos,
+                            "write_unsigned_integer",
+                            serializer_use,
+                            &expr_pos,
+                            &expr_pos,
+                            line_ender,
+                            &encoding_var_deref,
+                            cli,
+                        );
+                        body.push_block(pos);
+                        let mut neg = Block::new("else");
+                        // only the _sz variants support i128, the plain endpoint takes i64
+                        // (and negates internally in i128, so i64::MIN needs no special-casing)
+                        let expr = if cli.preserve_encodings {
+                            format!("{expr_deref} as i128")
+                        } else {
+                            format!("{expr_deref} as i64")
+                        };
+                        // unsigned_abs() on i8/i16/i32 yields the same-width unsigned type;
+                        // widen to u64 for Sz::canonical (a bare `as u64` on the i64 case
+                        // would be a no-op cast)
+                        let sz_expr = if *primitive == Primitive::I64 {
+                            format!("({expr_deref} + 1).unsigned_abs()")
+                        } else {
+                            format!("({expr_deref} + 1).unsigned_abs() as u64")
+                        };
+                        write_using_sz(
+                            &mut neg,
+                            "write_negative_integer",
+                            serializer_use,
+                            &expr,
+                            &sz_expr,
+                            line_ender,
+                            &encoding_var_deref,
+                            cli,
+                        );
+                        body.push_block(neg);
+                    }
+                    Primitive::U8 | Primitive::U16 | Primitive::U32 => {
+                        let expr = format!("{expr_deref} as u64");
                         write_using_sz(
                             body,
                             "write_unsigned_integer",
@@ -921,797 +1149,564 @@ impl GenerationScope {
                             cli,
                         );
                     }
-                    FixedValue::Nint(i) => {
-                        assert!(*i < 0);
-                        if !cli.preserve_encodings && *i <= i64::MIN as i128 {
-                            // Nint literals are i128: below i64::MIN they don't fit the plain
-                            // write_negative_integer endpoint's i64 argument (upstream keeps the
-                            // narrow argument by design — the i128-taking _sz endpoint is the
-                            // documented full-range form), and the i64::MIN literal itself stays on
-                            // the explicit-Sz spelling pinned by
-                            // `i64_min_fixed_value_emits_width_correct_nint`.
-                            let sz_str = if *i >= -24 {
-                                "cbor_event::Sz::Inline"
-                            } else if *i >= -0x1_00 {
-                                "cbor_event::Sz::One"
-                            } else if *i >= -0x1_00_00 {
-                                "cbor_event::Sz::Two"
-                            } else if *i >= -0x1_00_00_00_00 {
-                                "cbor_event::Sz::Four"
-                            } else {
-                                "cbor_event::Sz::Eight"
-                            };
-                            body.line(&format!(
-                                "{serializer_use}.write_negative_integer_sz({i}i128, {sz_str}){line_ender}"
-                            ));
-                        } else {
+                    Primitive::U64 => {
+                        write_using_sz(
+                            body,
+                            "write_unsigned_integer",
+                            serializer_use,
+                            &expr_deref,
+                            &expr_deref,
+                            line_ender,
+                            &encoding_var_deref,
+                            cli,
+                        );
+                    }
+                    Primitive::N64 => {
+                        if cli.preserve_encodings {
                             write_using_sz(
                                 body,
                                 "write_negative_integer",
                                 serializer_use,
-                                &i.to_string(),
-                                &format!("({i}i128 + 1).unsigned_abs() as u64"),
-                                line_ender,
-                                &encoding_var_deref,
-                                cli,
-                            );
-                        }
-                    }
-                    FixedValue::Float(f) => {
-                        // float_literal, not Display: `{}` on a whole-valued f64 drops the decimal
-                        // point (3.0 -> "3"), emitting an integer literal in an f64 position (E0308).
-                        let lit = float_fixed_literal(*f);
-                        if cli.preserve_encodings {
-                            write_float(
-                                body,
-                                &serializer_pass,
-                                &lit,
+                                &format!("-({expr_deref} as i128 + 1)"),
+                                &expr_deref,
                                 line_ender,
                                 &encoding_var_deref,
                                 cli,
                             );
                         } else {
-                            // Smallest value-preserving head (RFC 8949 §4.1), like every other
-                            // float write. A fixed literal is read back by VALUE comparison at any
-                            // head, so the width is free to be the preferred one.
-                            body.line(&format!(
-                                "write_float({serializer_pass}, {lit}){line_ender}"
-                            ));
+                            // N64 covers the full CBOR nint range down to -2^64, whose bottom
+                            // half doesn't fit the plain write_negative_integer endpoint's i64
+                            // argument — only the i128 _sz endpoint reaches it. Sz::canonical
+                            // keeps the bytes identical to the plain endpoint's derived width.
+                            body.line(&format!("{serializer_use}.write_negative_integer_sz(-({expr_deref} as i128 + 1), cbor_event::Sz::canonical({expr_deref})){line_ender}"));
                         }
                     }
-                    FixedValue::Text(s) => {
-                        write_string_sz(
-                            body,
-                            "write_text",
-                            serializer_use,
-                            &format!("\"{}\"", escape_rust_str(s)),
-                            true,
-                            line_ender,
-                            &encoding_var,
-                            cli,
-                        );
+                }
+            }
+            // `any` serializes via `AnyCbor`'s own `Serialize` impl (self-carried encodings), the
+            // same shape as a plain Rust struct reference — mirror the `Rust(_)` fallthrough
+            // (`.serialize(serializer[, force_canonical])`) minus owner-encoding threading.
+            SerializingRustType::Root(ConceptualRustType::Any, _cfg) => {
+                body.line(&format!(
+                    "{}.serialize({}{}){}",
+                    config.expr,
+                    serializer_pass,
+                    canonical_param(cli),
+                    line_ender
+                ));
+            }
+            SerializingRustType::Root(ConceptualRustType::Rust(t), type_cfg) => {
+                // A named record or self-nominalized table with a whole-item custom pair owns
+                // its complete CBOR item.
+                // Dispatch before the kind walk so an embed site calls the same free writer as
+                // the record's thin Serialize impl; in particular, do not route a plain group
+                // through SerializeEmbeddedGroup or fall back to the ordinary record fields.
+                if matches!(
+                    types.rust_struct(t).unwrap().variant(),
+                    RustStructType::Record(_) | RustStructType::Wrapper { .. }
+                ) && let Some(custom_serialize) =
+                    &types.rust_struct(t).unwrap().config().custom_serialize
+                {
+                    body.line(&format!(
+                        "{}({}, {}{}){}",
+                        custom_serialize,
+                        serializer_pass,
+                        expr_ref,
+                        canonical_param(cli),
+                        line_ender
+                    ));
+                    return;
+                }
+                match &types.rust_struct(t).unwrap().variant() {
+                    RustStructType::CStyleEnum { variants } => {
+                        let mut enum_body = Block::new(format!("match {expr_ref}"));
+                        for variant in variants {
+                            let mut variant_match =
+                                Block::new(format!("{}::{} =>", t, variant.name));
+                            generate_serialize(
+                                types,
+                                (variant.rust_type()).into(),
+                                &mut variant_match,
+                                // the CStyleEnum variant hand-off resets BOTH depths to 0 to
+                                // match `encoding_fields_impl` (which recurses the variant
+                                // through the `encoding_fields` wrapper, i.e. reset).
+                                config.clone().end(true).tag_depth(0).cbor_depth(0),
+                                cli,
+                            );
+                            enum_body.push_block(variant_match);
+                        }
+                        if !config.is_end {
+                            enum_body.after("?;");
+                        }
+                        body.push_block(enum_body);
                     }
-                    FixedValue::Bytes(bytes) => {
+                    RustStructType::RawBytesType => {
                         write_string_sz(
                             body,
                             "write_bytes",
                             serializer_use,
-                            &FixedValue::bytes_rust_expr(bytes),
-                            false,
+                            &format!("{}.to_raw_bytes()", config.expr),
+                            true,
                             line_ender,
-                            &encoding_var,
+                            &config.encoding_var(None, false),
                             cli,
                         );
                     }
-                },
-                SerializingRustType::Root(ConceptualRustType::Primitive(primitive), _cfg) => {
-                    match primitive {
-                        Primitive::Bool => {
+                    // A named table/array rule emits NO impls of its own — it is a bare rust
+                    // typedef onto a collection (`pub type Mdmap = BTreeMap<..>`), so the
+                    // `.serialize()` the fallback below emits names a method the target type
+                    // does not have. Recurse into the collection's STRUCTURAL conceptual type
+                    // instead: that is the same code the resolved-alias reference path emits,
+                    // and it is the only code that exists for these shapes. Reached only from a
+                    // NOMINAL reference to such a rule, which parse-order makes possible when a
+                    // rule cycle is entered at the collection rule (its referrer is handled
+                    // first, so the reference never resolves through the alias table).
+                    // The struct's OWN per-rule config carries the policy the reference cannot
+                    // (`@duplicates`) — thread it in exactly as the Alias arm keeps its outer
+                    // config for the same reason, so a `preserve` table still picks the
+                    // positional pair-map path.
+                    RustStructType::Table { domain, range, .. } => {
+                        let structural = ConceptualRustType::Map(
+                            Box::new(domain.clone()),
+                            Box::new(range.clone()),
+                        );
+                        let cfg = nominal_collection_cfg(types, t, &type_cfg);
+                        generate_serialize(
+                            types,
+                            SerializingRustType::Root(&structural, cfg),
+                            body,
+                            config,
+                            cli,
+                        );
+                    }
+                    RustStructType::Array { element_type, .. } => {
+                        let structural =
+                            ConceptualRustType::Array(Box::new(element_type.clone()));
+                        let cfg = nominal_collection_cfg(types, t, &type_cfg);
+                        generate_serialize(
+                            types,
+                            SerializingRustType::Root(&structural, cfg),
+                            body,
+                            config,
+                            cli,
+                        );
+                    }
+                    _ => {
+                        if types.is_plain_group(t) && !type_cfg.basic_override {
                             body.line(&format!(
-                                "{serializer_use}.write_special(cbor_event::Special::Bool({expr_deref})){line_ender}"
+                                "{}.serialize_as_embedded_group({}{}){}",
+                                config.expr,
+                                serializer_pass,
+                                canonical_param(cli),
+                                line_ender
+                            ));
+                        } else {
+                            body.line(&format!(
+                                "{}.serialize({}{}){}",
+                                config.expr,
+                                serializer_pass,
+                                canonical_param(cli),
+                                line_ender
                             ));
                         }
-                        p @ (Primitive::Float
-                        | Primitive::F16
-                        | Primitive::F32
-                        | Primitive::F64
-                        | Primitive::F16To32
-                        | Primitive::F32To64) => {
-                            // The CBOR float domain is f64, so an f32-CARRIED class (`float16`,
-                            // `float32`, `float16-32`) widens here. Through the crate's exact
-                            // widening, never `as`/`From`: those may quiet a signaling NaN or drop
-                            // its payload, and LLVM const-folds the conversion to a canonical quiet
-                            // NaN, so `as` can differ between the const-evaluated and runtime paths
-                            // of one binary. A float round-trips byte-exactly, payload included.
-                            let value = if p.float_carrier_is_f32() {
-                                Cow::Owned(format!(
-                                    "cbor_event::se::f32_to_f64_exact({expr_deref})"
-                                ))
-                            } else {
-                                Cow::Borrowed(expr_deref.as_str())
-                            };
-                            // Every class writes the smallest head that preserves the value (RFC
-                            // 8949 §4.1), uniformly in both profiles — the same rule the integer
-                            // writes follow. For a MEMBER of a constrained class that head IS its
-                            // declared width, because membership means the value's shortest lossless
-                            // form lands in the class's window; a non-member fails loudly inside the
-                            // helper rather than being written at a head the class admits.
-                            //
-                            // Width-unconstrained `float` admits every value, so it needs no window
-                            // and no membership check — only the smallest-head rule.
-                            let class_window = (*p != Primitive::Float).then(|| {
-                                let (min, max) = p.float_class_window().unwrap();
-                                format!(
-                                    "cbor_event::Sz::{}, cbor_event::Sz::{}",
-                                    crate::intermediate::float_head_name(min),
-                                    crate::intermediate::float_head_name(max)
-                                )
-                            });
-                            match (cli.preserve_encodings, class_window) {
-                                (true, None) => write_float(
-                                    body,
-                                    &serializer_pass,
-                                    &value,
-                                    line_ender,
-                                    &encoding_var_deref,
-                                    cli,
-                                ),
-                                (true, Some(class_window)) => {
-                                    body.line(&format!(
-                                        "write_float_width({serializer_pass}, {value}, {encoding_var_deref}, {class_window}{}){line_ender}",
-                                        canonical_param(cli)
-                                    ));
-                                }
-                                (false, None) => {
-                                    body.line(&format!(
-                                        "write_float({serializer_pass}, {value}){line_ender}"
-                                    ));
-                                }
-                                (false, Some(class_window)) => {
-                                    body.line(&format!(
-                                        "write_float_width({serializer_pass}, {value}, {class_window}){line_ender}"
-                                    ));
-                                }
-                            }
-                        }
-                        Primitive::Bytes => {
-                            write_string_sz(
-                                body,
-                                "write_bytes",
-                                serializer_use,
-                                &config.expr,
-                                config.expr_is_ref,
-                                line_ender,
-                                &encoding_var,
-                                cli,
-                            );
-                        }
-                        Primitive::Str => {
-                            write_string_sz(
-                                body,
-                                "write_text",
-                                serializer_use,
-                                &config.expr,
-                                config.expr_is_ref,
-                                line_ender,
-                                &encoding_var,
-                                cli,
-                            );
-                        }
-                        Primitive::I8 | Primitive::I16 | Primitive::I32 | Primitive::I64 => {
-                            let mut pos = Block::new(format!("if {expr_deref} >= 0"));
-                            let expr_pos = format!("{expr_deref} as u64");
-                            write_using_sz(
-                                &mut pos,
-                                "write_unsigned_integer",
-                                serializer_use,
-                                &expr_pos,
-                                &expr_pos,
-                                line_ender,
-                                &encoding_var_deref,
-                                cli,
-                            );
-                            body.push_block(pos);
-                            let mut neg = Block::new("else");
-                            // only the _sz variants support i128, the plain endpoint takes i64
-                            // (and negates internally in i128, so i64::MIN needs no special-casing)
-                            let expr = if cli.preserve_encodings {
-                                format!("{expr_deref} as i128")
-                            } else {
-                                format!("{expr_deref} as i64")
-                            };
-                            // unsigned_abs() on i8/i16/i32 yields the same-width unsigned type;
-                            // widen to u64 for Sz::canonical (a bare `as u64` on the i64 case
-                            // would be a no-op cast)
-                            let sz_expr = if *primitive == Primitive::I64 {
-                                format!("({expr_deref} + 1).unsigned_abs()")
-                            } else {
-                                format!("({expr_deref} + 1).unsigned_abs() as u64")
-                            };
-                            write_using_sz(
-                                &mut neg,
-                                "write_negative_integer",
-                                serializer_use,
-                                &expr,
-                                &sz_expr,
-                                line_ender,
-                                &encoding_var_deref,
-                                cli,
-                            );
-                            body.push_block(neg);
-                        }
-                        Primitive::U8 | Primitive::U16 | Primitive::U32 => {
-                            let expr = format!("{expr_deref} as u64");
-                            write_using_sz(
-                                body,
-                                "write_unsigned_integer",
-                                serializer_use,
-                                &expr,
-                                &expr,
-                                line_ender,
-                                &encoding_var_deref,
-                                cli,
-                            );
-                        }
-                        Primitive::U64 => {
-                            write_using_sz(
-                                body,
-                                "write_unsigned_integer",
-                                serializer_use,
-                                &expr_deref,
-                                &expr_deref,
-                                line_ender,
-                                &encoding_var_deref,
-                                cli,
-                            );
-                        }
-                        Primitive::N64 => {
-                            if cli.preserve_encodings {
-                                write_using_sz(
-                                    body,
-                                    "write_negative_integer",
-                                    serializer_use,
-                                    &format!("-({expr_deref} as i128 + 1)"),
-                                    &expr_deref,
-                                    line_ender,
-                                    &encoding_var_deref,
-                                    cli,
-                                );
-                            } else {
-                                // N64 covers the full CBOR nint range down to -2^64, whose bottom
-                                // half doesn't fit the plain write_negative_integer endpoint's i64
-                                // argument — only the i128 _sz endpoint reaches it. Sz::canonical
-                                // keeps the bytes identical to the plain endpoint's derived width.
-                                body.line(&format!("{serializer_use}.write_negative_integer_sz(-({expr_deref} as i128 + 1), cbor_event::Sz::canonical({expr_deref})){line_ender}"));
-                            }
-                        }
                     }
                 }
-                // `any` serializes via `AnyCbor`'s own `Serialize` impl (self-carried encodings), the
-                // same shape as a plain Rust struct reference — mirror the `Rust(_)` fallthrough
-                // (`.serialize(serializer[, force_canonical])`) minus owner-encoding threading.
-                SerializingRustType::Root(ConceptualRustType::Any, _cfg) => {
-                    body.line(&format!(
-                        "{}.serialize({}{}){}",
-                        config.expr,
-                        serializer_pass,
-                        canonical_param(cli),
-                        line_ender
-                    ));
-                }
-                SerializingRustType::Root(ConceptualRustType::Rust(t), type_cfg) => {
-                    // A named record or self-nominalized table with a whole-item custom pair owns
-                    // its complete CBOR item.
-                    // Dispatch before the kind walk so an embed site calls the same free writer as
-                    // the record's thin Serialize impl; in particular, do not route a plain group
-                    // through SerializeEmbeddedGroup or fall back to the ordinary record fields.
-                    if matches!(
-                        types.rust_struct(t).unwrap().variant(),
-                        RustStructType::Record(_) | RustStructType::Wrapper { .. }
-                    ) && let Some(custom_serialize) =
-                        &types.rust_struct(t).unwrap().config().custom_serialize
+            }
+            SerializingRustType::Root(ConceptualRustType::Array(ty), _cfg) => {
+                // Resolve the element's aliases before classifying it: an alias is transparent,
+                // so `[* kv_alias]` splices exactly as many items per element as `[* kv]` does.
+                // Matching the bare `Rust` ident wrote a header counting ELEMENTS while the loop
+                // below wrote each element's members FLAT — an array whose header disagrees with
+                // its own contents, at exit 0 in a crate that compiles. Pinned by
+                // `alias_to_plain_group_in_array_positions_matches_the_direct_reference`; its
+                // deserialize counterpart is the element-read arm in `generate_deserialize`.
+                let len_expr = match ty.conceptual_type.resolve_alias_shallow() {
+                    ConceptualRustType::Rust(elem_ident)
+                        if types.is_plain_group(elem_ident) =>
                     {
-                        body.line(&format!(
-                            "{}({}, {}{}){}",
-                            custom_serialize,
-                            serializer_pass,
-                            expr_ref,
-                            canonical_param(cli),
-                            line_ender
-                        ));
-                        return;
-                    }
-                    match &types.rust_struct(t).unwrap().variant() {
-                        RustStructType::CStyleEnum { variants } => {
-                            let mut enum_body = Block::new(format!("match {expr_ref}"));
-                            for variant in variants {
-                                let mut variant_match =
-                                    Block::new(format!("{}::{} =>", t, variant.name));
-                                self.generate_serialize(
-                                    types,
-                                    (variant.rust_type()).into(),
-                                    &mut variant_match,
-                                    // the CStyleEnum variant hand-off resets BOTH depths to 0 to
-                                    // match `encoding_fields_impl` (which recurses the variant
-                                    // through the `encoding_fields` wrapper, i.e. reset).
-                                    config.clone().is_end(true).tag_depth(0).cbor_depth(0),
-                                    cli,
-                                );
-                                enum_body.push_block(variant_match);
-                            }
-                            if !config.is_end {
-                                enum_body.after("?;");
-                            }
-                            body.push_block(enum_body);
-                        }
-                        RustStructType::RawBytesType => {
-                            write_string_sz(
-                                body,
-                                "write_bytes",
-                                serializer_use,
-                                &format!("{}.to_raw_bytes()", config.expr),
-                                true,
-                                line_ender,
-                                &config.encoding_var(None, false),
-                                cli,
-                            );
-                        }
-                        // A named table/array rule emits NO impls of its own — it is a bare rust
-                        // typedef onto a collection (`pub type Mdmap = BTreeMap<..>`), so the
-                        // `.serialize()` the fallback below emits names a method the target type
-                        // does not have. Recurse into the collection's STRUCTURAL conceptual type
-                        // instead: that is the same code the resolved-alias reference path emits,
-                        // and it is the only code that exists for these shapes. Reached only from a
-                        // NOMINAL reference to such a rule, which parse-order makes possible when a
-                        // rule cycle is entered at the collection rule (its referrer is handled
-                        // first, so the reference never resolves through the alias table).
-                        // The struct's OWN per-rule config carries the policy the reference cannot
-                        // (`@duplicates`) — thread it in exactly as the Alias arm keeps its outer
-                        // config for the same reason, so a `preserve` table still picks the
-                        // positional pair-map path.
-                        RustStructType::Table { domain, range, .. } => {
-                            let structural = ConceptualRustType::Map(
-                                Box::new(domain.clone()),
-                                Box::new(range.clone()),
-                            );
-                            let cfg = nominal_collection_cfg(types, t, &type_cfg);
-                            self.generate_serialize(
-                                types,
-                                SerializingRustType::Root(&structural, cfg),
-                                body,
-                                config,
-                                cli,
-                            );
-                        }
-                        RustStructType::Array { element_type, .. } => {
-                            let structural =
-                                ConceptualRustType::Array(Box::new(element_type.clone()));
-                            let cfg = nominal_collection_cfg(types, t, &type_cfg);
-                            self.generate_serialize(
-                                types,
-                                SerializingRustType::Root(&structural, cfg),
-                                body,
-                                config,
-                                cli,
-                            );
-                        }
-                        _ => {
-                            if types.is_plain_group(t) && !type_cfg.basic_override {
-                                body.line(&format!(
-                                    "{}.serialize_as_embedded_group({}{}){}",
-                                    config.expr,
-                                    serializer_pass,
-                                    canonical_param(cli),
-                                    line_ender
-                                ));
-                            } else {
-                                body.line(&format!(
-                                    "{}.serialize({}{}){}",
-                                    config.expr,
-                                    serializer_pass,
-                                    canonical_param(cli),
-                                    line_ender
-                                ));
-                            }
+                        // you should not be able to indiscriminately encode a plain group like this as it
+                        // could be multiple elements. This would require special handling if it's even permitted in CDDL.
+                        assert!(ty.encodings.is_empty());
+                        if let Some(fixed_elem_size) = ty.expanded_field_count(types) {
+                            format!("{} * {}.len() as u64", fixed_elem_size, config.expr)
+                        } else {
+                            format!(
+                                "{}.iter().map(|e| {}).sum()",
+                                config.expr,
+                                ty.definite_info("e", true, types, cli)
+                            )
                         }
                     }
-                }
-                SerializingRustType::Root(ConceptualRustType::Array(ty), _cfg) => {
-                    // Resolve the element's aliases before classifying it: an alias is transparent,
-                    // so `[* kv_alias]` splices exactly as many items per element as `[* kv]` does.
-                    // Matching the bare `Rust` ident wrote a header counting ELEMENTS while the loop
-                    // below wrote each element's members FLAT — an array whose header disagrees with
-                    // its own contents, at exit 0 in a crate that compiles. Pinned by
-                    // `alias_to_plain_group_in_array_positions_matches_the_direct_reference`; its
-                    // deserialize counterpart is the element-read arm in `generate_deserialize`.
-                    let len_expr = match ty.conceptual_type.resolve_alias_shallow() {
-                        ConceptualRustType::Rust(elem_ident)
-                            if types.is_plain_group(elem_ident) =>
-                        {
-                            // you should not be able to indiscriminately encode a plain group like this as it
-                            // could be multiple elements. This would require special handling if it's even permitted in CDDL.
-                            assert!(ty.encodings.is_empty());
-                            if let Some(fixed_elem_size) = ty.expanded_field_count(types) {
-                                format!("{} * {}.len() as u64", fixed_elem_size, config.expr)
-                            } else {
-                                format!(
-                                    "{}.iter().map(|e| {}).sum()",
-                                    config.expr,
-                                    ty.definite_info("e", true, types, cli)
-                                )
-                            }
-                        }
-                        _ => format!("{}.len() as u64", config.expr),
-                    };
-                    start_len(
-                        body,
-                        Representation::Array,
-                        serializer_use,
-                        &encoding_var,
-                        &len_expr,
-                        cli,
-                    );
-                    let elem_var_name = format!("{}_elem", config.var_name);
-                    let elem_encs = if cli.preserve_encodings {
-                        encoding_fields(types, &elem_var_name, ty, false, cli)
-                    } else {
-                        vec![]
-                    };
-                    let mut loop_block = if !elem_encs.is_empty() {
-                        let mut block = Block::new(format!(
-                            "for (i, element) in {}.iter().enumerate()",
-                            config.expr
-                        ));
-                        block.line(config.container_encoding_lookup("elem", &elem_encs, "i"));
-                        block
-                    } else {
-                        Block::new(format!("for element in {}.iter()", config.expr))
-                    };
-                    let elem_config = config
-                        .clone()
-                        .expr("element")
-                        .expr_is_ref(true)
-                        .var_name(elem_var_name)
-                        .is_end(false)
-                        .encoding_var_no_option_struct()
-                        .encoding_var_is_ref(false)
-                        // fresh `{name}_elem` name namespace: reset both depths to 0 to match
-                        // `encoding_fields_impl`'s array-element reset (else the element's own tag
-                        // or `.cbor` payload reads a depth-inflated var the struct never minted).
-                        .tag_depth(0)
-                        .cbor_depth(0);
-                    self.generate_serialize(
+                    _ => format!("{}.len() as u64", config.expr),
+                };
+                start_len(
+                    body,
+                    Representation::Array,
+                    serializer_use,
+                    &encoding_var,
+                    &len_expr,
+                    cli,
+                );
+                let elem_var_name = format!("{}_elem", config.var_name);
+                let elem_encs = if cli.preserve_encodings {
+                    encoding_fields(types, &elem_var_name, ty, false, cli)
+                } else {
+                    vec![]
+                };
+                let mut loop_block = if !elem_encs.is_empty() {
+                    let mut block = Block::new(format!(
+                        "for (i, element) in {}.iter().enumerate()",
+                        config.expr
+                    ));
+                    block.line(config.container_encoding_lookup("elem", &elem_encs, "i"));
+                    block
+                } else {
+                    Block::new(format!("for element in {}.iter()", config.expr))
+                };
+                let elem_config = config
+                    .clone()
+                    .expr("element")
+                    .expr_is_ref(true)
+                    .var_name(elem_var_name)
+                    .end(false)
+                    .encoding_var_no_option_struct()
+                    .encoding_var_is_ref(false)
+                    // fresh `{name}_elem` name namespace: reset both depths to 0 to match
+                    // `encoding_fields_impl`'s array-element reset (else the element's own tag
+                    // or `.cbor` payload reads a depth-inflated var the struct never minted).
+                    .tag_depth(0)
+                    .cbor_depth(0);
+                generate_serialize(
+                    types,
+                    (&**ty).into(),
+                    &mut loop_block,
+                    elem_config,
+                    cli,
+                );
+                body.push_block(loop_block);
+                // `.end()` takes the serializer as an ARGUMENT, so it needs the pass form
+                // (`&mut <name>` for a `.cbor`-payload local `Serializer::new_vec()`), not the
+                // method-receiver form `serializer_use`. For the top-level `serializer` the two
+                // are identical; they diverge only for the `is_local` inner-buffer overload.
+                end_len(body, &serializer_pass, &encoding_var, config.is_end, cli);
+            }
+            SerializingRustType::Root(ConceptualRustType::Map(key, value), cfg) => {
+                // `@duplicates preserve` (the pair-map twin): the encoding sidecar is POSITIONAL
+                // (a `Vec` parallel to the entries), so the serialize loop reads encodings by
+                // INDEX (`.get(i)`) via `.enumerate()`, exactly like the array `_elem_encodings`
+                // path — a keyed lookup would be structurally wrong (two same-key entries share
+                // one map slot). The non-preserve-encodings loop and the value serialize are
+                // shared; only the encoding-lookup key (`i` vs `key`) differs.
+                let preserve_pair_map =
+                    cfg.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve);
+                let enc_lookup_var = if preserve_pair_map { "i" } else { "key" };
+                start_len(
+                    body,
+                    Representation::Map,
+                    serializer_use,
+                    &encoding_var,
+                    &format!("{}.len() as u64", config.expr),
+                    cli,
+                );
+                let ser_loop = if cli.preserve_encodings {
+                    let key_enc_fields = encoding_fields(
                         types,
-                        (&**ty).into(),
-                        &mut loop_block,
-                        elem_config,
+                        &format!("{}_key", config.var_name),
+                        key,
+                        false,
                         cli,
                     );
-                    body.push_block(loop_block);
-                    // `.end()` takes the serializer as an ARGUMENT, so it needs the pass form
-                    // (`&mut <name>` for a `.cbor`-payload local `Serializer::new_vec()`), not the
-                    // method-receiver form `serializer_use`. For the top-level `serializer` the two
-                    // are identical; they diverge only for the `is_local` inner-buffer overload.
-                    end_len(body, &serializer_pass, &encoding_var, config.is_end, cli);
-                }
-                SerializingRustType::Root(ConceptualRustType::Map(key, value), cfg) => {
-                    // `@duplicates preserve` (the pair-map twin): the encoding sidecar is POSITIONAL
-                    // (a `Vec` parallel to the entries), so the serialize loop reads encodings by
-                    // INDEX (`.get(i)`) via `.enumerate()`, exactly like the array `_elem_encodings`
-                    // path — a keyed lookup would be structurally wrong (two same-key entries share
-                    // one map slot). The non-preserve-encodings loop and the value serialize are
-                    // shared; only the encoding-lookup key (`i` vs `key`) differs.
-                    let preserve_pair_map =
-                        cfg.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve);
-                    let enc_lookup_var = if preserve_pair_map { "i" } else { "key" };
-                    start_len(
-                        body,
-                        Representation::Map,
-                        serializer_use,
-                        &encoding_var,
-                        &format!("{}.len() as u64", config.expr),
+                    let value_enc_fields = encoding_fields(
+                        types,
+                        &format!("{}_value", config.var_name),
+                        value,
+                        false,
                         cli,
                     );
-                    let ser_loop = if cli.preserve_encodings {
-                        let key_enc_fields = encoding_fields(
+                    let mut ser_loop = if cli.canonical_form {
+                        // `@duplicates preserve` under canonical: RFC 8949 deterministic encoding
+                        // requires unique keys, so duplicate-carrying data has NO canonical form.
+                        // The flag is crate-wide, so we do the deterministic best-effort — a STABLE
+                        // sort by encoded key bytes (duplicates stay adjacent in first-appearance
+                        // order) — rather than a generation-time refusal or a runtime error (which
+                        // would make `to_canonical_cbor_bytes` partial over every enclosing type).
+                        // Canonicalizing metadata is moot anyway: its consensus hash is over the
+                        // original bytes, which non-canonical round-trip preserves. The positional
+                        // encoding sidecar means the index `i` must ride through the sorted tuple so
+                        // the value lookup stays aligned after the sort.
+                        let map_head = if preserve_pair_map {
+                            format!(
+                                "let mut key_order = {}.iter().enumerate().map(|(i, (k, v))|",
+                                config.expr
+                            )
+                        } else {
+                            format!("let mut key_order = {}.iter().map(|(k, v)|", config.expr)
+                        };
+                        let mut key_order = Block::new(map_head);
+                        key_order.line("let mut buf = cbor_event::se::Serializer::new_vec();");
+                        if !key_enc_fields.is_empty() {
+                            key_order.line(config.container_encoding_lookup(
+                                "key",
+                                &key_enc_fields,
+                                if preserve_pair_map { "i" } else { "k" },
+                            ));
+                        }
+                        let key_config =
+                            SerializeConfig::new("k", format!("{}_key", config.var_name))
+                                .expr_is_ref(true)
+                                .end(false)
+                                .serializer_name_overload(("buf", true))
+                                .encoding_var_is_ref(false);
+                        generate_serialize(
                             types,
-                            &format!("{}_key", config.var_name),
-                            key,
-                            false,
+                            (&**key).into(),
+                            &mut key_order,
+                            key_config,
                             cli,
                         );
-                        let value_enc_fields = encoding_fields(
-                            types,
-                            &format!("{}_value", config.var_name),
-                            value,
-                            false,
-                            cli,
-                        );
-                        let mut ser_loop = if cli.canonical_form {
-                            // `@duplicates preserve` under canonical: RFC 8949 deterministic encoding
-                            // requires unique keys, so duplicate-carrying data has NO canonical form.
-                            // The flag is crate-wide, so we do the deterministic best-effort — a STABLE
-                            // sort by encoded key bytes (duplicates stay adjacent in first-appearance
-                            // order) — rather than a generation-time refusal or a runtime error (which
-                            // would make `to_canonical_cbor_bytes` partial over every enclosing type).
-                            // Canonicalizing metadata is moot anyway: its consensus hash is over the
-                            // original bytes, which non-canonical round-trip preserves. The positional
-                            // encoding sidecar means the index `i` must ride through the sorted tuple so
-                            // the value lookup stays aligned after the sort.
-                            let map_head = if preserve_pair_map {
-                                format!(
-                                    "let mut key_order = {}.iter().enumerate().map(|(i, (k, v))|",
-                                    config.expr
-                                )
-                            } else {
-                                format!("let mut key_order = {}.iter().map(|(k, v)|", config.expr)
-                            };
-                            let mut key_order = Block::new(map_head);
-                            key_order.line("let mut buf = cbor_event::se::Serializer::new_vec();");
-                            if !key_enc_fields.is_empty() {
-                                key_order.line(config.container_encoding_lookup(
-                                    "key",
-                                    &key_enc_fields,
-                                    if preserve_pair_map { "i" } else { "k" },
-                                ));
-                            }
-                            let key_config =
-                                SerializeConfig::new("k", format!("{}_key", config.var_name))
-                                    .expr_is_ref(true)
-                                    .is_end(false)
-                                    .serializer_name_overload(("buf", true))
-                                    .encoding_var_is_ref(false);
-                            self.generate_serialize(
-                                types,
-                                (&**key).into(),
-                                &mut key_order,
-                                key_config,
-                                cli,
+                        if preserve_pair_map {
+                            key_order.line("Ok((buf.finalize(), i, k, v))").after(
+                                ").collect::<Result<Vec<(Vec<u8>, usize, &_, &_)>, cbor_event::Error>>()?;",
                             );
-                            if preserve_pair_map {
-                                key_order.line("Ok((buf.finalize(), i, k, v))").after(
-                                    ").collect::<Result<Vec<(Vec<u8>, usize, &_, &_)>, cbor_event::Error>>()?;",
-                                );
+                        } else {
+                            key_order.line("Ok((buf.finalize(), k, v))").after(
+                                ").collect::<Result<Vec<(Vec<u8>, &_, &_)>, cbor_event::Error>>()?;",
+                            );
+                        }
+                        body.push_block(key_order);
+                        let mut key_order_if = Block::new("if force_canonical");
+                        // `sort_by` is a STABLE sort, so equal-keyed (duplicate) entries keep their
+                        // first-appearance order — the property the preserve tuple carries `i` for.
+                        // The length-first-then-bytewise comparison is the ONE shared runtime helper
+                        // (`cbor_canonical_key_cmp`, static preserve runtime), so this sort agrees
+                        // by construction with `AnyCbor`'s own canonical map sort and generated open
+                        // struct-maps' runtime key merge.
+                        let sort_call = if preserve_pair_map {
+                            "key_order.sort_by(|(lhs_bytes, _, _, _), (rhs_bytes, _, _, _)| cbor_canonical_key_cmp(lhs_bytes, rhs_bytes));"
+                        } else {
+                            "key_order.sort_by(|(lhs_bytes, _, _), (rhs_bytes, _, _)| cbor_canonical_key_cmp(lhs_bytes, rhs_bytes));"
+                        };
+                        key_order_if.line(sort_call);
+                        body.push_block(key_order_if);
+                        let key_loop_var = if value_enc_fields.is_empty() {
+                            "_key"
+                        } else {
+                            "key"
+                        };
+                        let mut ser_loop = if preserve_pair_map {
+                            // `i` is the positional index into the value encoding sidecar; the key
+                            // value is not re-serialized (its bytes were written above).
+                            let idx_var = if value_enc_fields.is_empty() {
+                                "_i"
                             } else {
-                                key_order.line("Ok((buf.finalize(), k, v))").after(
-                                    ").collect::<Result<Vec<(Vec<u8>, &_, &_)>, cbor_event::Error>>()?;",
-                                );
-                            }
-                            body.push_block(key_order);
-                            let mut key_order_if = Block::new("if force_canonical");
-                            // `sort_by` is a STABLE sort, so equal-keyed (duplicate) entries keep their
-                            // first-appearance order — the property the preserve tuple carries `i` for.
-                            // The length-first-then-bytewise comparison is the ONE shared runtime helper
-                            // (`cbor_canonical_key_cmp`, static preserve runtime), so this sort agrees
-                            // by construction with `AnyCbor`'s own canonical map sort and generated open
-                            // struct-maps' runtime key merge.
-                            let sort_call = if preserve_pair_map {
-                                "key_order.sort_by(|(lhs_bytes, _, _, _), (rhs_bytes, _, _, _)| cbor_canonical_key_cmp(lhs_bytes, rhs_bytes));"
-                            } else {
-                                "key_order.sort_by(|(lhs_bytes, _, _), (rhs_bytes, _, _)| cbor_canonical_key_cmp(lhs_bytes, rhs_bytes));"
+                                "i"
                             };
-                            key_order_if.line(sort_call);
-                            body.push_block(key_order_if);
-                            let key_loop_var = if value_enc_fields.is_empty() {
-                                "_key"
-                            } else {
-                                "key"
-                            };
-                            let mut ser_loop = if preserve_pair_map {
-                                // `i` is the positional index into the value encoding sidecar; the key
-                                // value is not re-serialized (its bytes were written above).
-                                let idx_var = if value_enc_fields.is_empty() {
+                            Block::new(format!(
+                                "for (key_bytes, {idx_var}, _key, value) in key_order"
+                            ))
+                        } else {
+                            Block::new(format!(
+                                "for (key_bytes, {key_loop_var}, value) in key_order"
+                            ))
+                        };
+                        ser_loop
+                            .line(format!("{serializer_use}.write_raw_bytes(&key_bytes)?;"));
+                        ser_loop
+                    } else {
+                        let mut ser_loop = if preserve_pair_map {
+                            // positional: enumerate so the encoding sidecar is read by index.
+                            // The index's only readers are the key and value encoding lookups
+                            // below, so bind `_i` when NEITHER is emitted — otherwise the
+                            // generated crate warns `unused variable: i` on every build. Both
+                            // sides participate here, unlike the canonical sibling above, whose
+                            // key was already serialized (and its lookup already done) inside
+                            // `key_order`.
+                            let idx_var =
+                                if key_enc_fields.is_empty() && value_enc_fields.is_empty() {
                                     "_i"
                                 } else {
                                     "i"
                                 };
-                                Block::new(format!(
-                                    "for (key_bytes, {idx_var}, _key, value) in key_order"
-                                ))
-                            } else {
-                                Block::new(format!(
-                                    "for (key_bytes, {key_loop_var}, value) in key_order"
-                                ))
-                            };
-                            ser_loop
-                                .line(format!("{serializer_use}.write_raw_bytes(&key_bytes)?;"));
-                            ser_loop
+                            Block::new(format!(
+                                "for ({idx_var}, (key, value)) in {}.iter().enumerate()",
+                                config.expr
+                            ))
                         } else {
-                            let mut ser_loop = if preserve_pair_map {
-                                // positional: enumerate so the encoding sidecar is read by index.
-                                // The index's only readers are the key and value encoding lookups
-                                // below, so bind `_i` when NEITHER is emitted — otherwise the
-                                // generated crate warns `unused variable: i` on every build. Both
-                                // sides participate here, unlike the canonical sibling above, whose
-                                // key was already serialized (and its lookup already done) inside
-                                // `key_order`.
-                                let idx_var =
-                                    if key_enc_fields.is_empty() && value_enc_fields.is_empty() {
-                                        "_i"
-                                    } else {
-                                        "i"
-                                    };
-                                Block::new(format!(
-                                    "for ({idx_var}, (key, value)) in {}.iter().enumerate()",
-                                    config.expr
-                                ))
-                            } else {
-                                Block::new(format!("for (key, value) in {}.iter()", config.expr))
-                            };
-                            if !key_enc_fields.is_empty() {
-                                ser_loop.line(config.container_encoding_lookup(
-                                    "key",
-                                    &key_enc_fields,
-                                    enc_lookup_var,
-                                ));
-                            }
-                            let key_config = config
-                                .clone()
-                                .expr("key")
-                                .expr_is_ref(true)
-                                .var_name(format!("{}_key", config.var_name))
-                                .is_end(false)
-                                .encoding_var_no_option_struct()
-                                .encoding_var_is_ref(false)
-                                // fresh `{name}_key` namespace: reset both depths to match
-                                // `encoding_fields_impl`'s map-key reset.
-                                .tag_depth(0)
-                                .cbor_depth(0);
-                            self.generate_serialize(
-                                types,
-                                (&**key).into(),
-                                &mut ser_loop,
-                                key_config,
-                                cli,
-                            );
-                            ser_loop
+                            Block::new(format!("for (key, value) in {}.iter()", config.expr))
                         };
-                        if !value_enc_fields.is_empty() {
+                        if !key_enc_fields.is_empty() {
                             ser_loop.line(config.container_encoding_lookup(
-                                "value",
-                                &value_enc_fields,
+                                "key",
+                                &key_enc_fields,
                                 enc_lookup_var,
                             ));
                         }
-                        let value_config = config
-                            .clone()
-                            .expr("value")
-                            .expr_is_ref(true)
-                            .var_name(format!("{}_value", config.var_name))
-                            .is_end(false)
-                            .encoding_var_no_option_struct()
-                            .encoding_var_is_ref(false)
-                            // fresh `{name}_value` namespace: reset both depths to match
-                            // `encoding_fields_impl`'s map-value reset.
-                            .tag_depth(0)
-                            .cbor_depth(0);
-                        self.generate_serialize(
-                            types,
-                            (&**value).into(),
-                            &mut ser_loop,
-                            value_config,
-                            cli,
-                        );
-                        ser_loop
-                    } else {
-                        let mut ser_loop =
-                            Block::new(format!("for (key, value) in {}.iter()", config.expr));
                         let key_config = config
                             .clone()
                             .expr("key")
                             .expr_is_ref(true)
                             .var_name(format!("{}_key", config.var_name))
-                            .is_end(false)
+                            .end(false)
                             .encoding_var_no_option_struct()
                             .encoding_var_is_ref(false)
-                            // fresh `{name}_key` namespace: reset both depths (as above).
+                            // fresh `{name}_key` namespace: reset both depths to match
+                            // `encoding_fields_impl`'s map-key reset.
                             .tag_depth(0)
                             .cbor_depth(0);
-                        let value_config = key_config
-                            .clone()
-                            .expr("value")
-                            // `{name}_value` namespace; key_config already reset, kept explicit.
-                            .var_name(format!("{}_value", config.var_name))
-                            .tag_depth(0)
-                            .cbor_depth(0);
-                        self.generate_serialize(
+                        generate_serialize(
                             types,
                             (&**key).into(),
                             &mut ser_loop,
                             key_config,
                             cli,
                         );
-                        self.generate_serialize(
-                            types,
-                            (&**value).into(),
-                            &mut ser_loop,
-                            value_config,
-                            cli,
-                        );
                         ser_loop
                     };
-                    body.push_block(ser_loop);
-                    // Argument to `.end()`: use the pass form (`&mut <name>` for a `.cbor`-payload
-                    // local serializer) — see the Array arm above for the rationale.
-                    end_len(body, &serializer_pass, &encoding_var, config.is_end, cli);
-                }
-                SerializingRustType::Root(ConceptualRustType::Optional(ty), _cfg) => {
-                    let mut opt_block = Block::new(format!("match {expr_ref}"));
-                    // TODO: do this in one line without a block if possible somehow.
-                    //       see other comment in generate_enum()
-                    let mut some_block = Block::new("Some(x) =>");
-                    // The inner serialize must terminate the same way the whole Optional does. When
-                    // the Optional is the tail expression (`is_end`), each arm RETURNS the
-                    // serializer. When it is one statement among others (a struct field), the arms
-                    // must be *statements* ending in `?;`: an inner whose body is inlined (a
-                    // collection loop) emits an owning `Ok(serializer)` tail under `is_end=true`,
-                    // which moves `serializer` and then conflicts with the caller's trailing
-                    // `Ok(serializer)` (E0382). Mirroring `config.is_end` keeps both cases valid.
-                    let opt_config = config
+                    if !value_enc_fields.is_empty() {
+                        ser_loop.line(config.container_encoding_lookup(
+                            "value",
+                            &value_enc_fields,
+                            enc_lookup_var,
+                        ));
+                    }
+                    let value_config = config
                         .clone()
-                        .expr("x")
+                        .expr("value")
                         .expr_is_ref(true)
-                        .is_end(config.is_end);
-                    self.generate_serialize(
+                        .var_name(format!("{}_value", config.var_name))
+                        .end(false)
+                        .encoding_var_no_option_struct()
+                        .encoding_var_is_ref(false)
+                        // fresh `{name}_value` namespace: reset both depths to match
+                        // `encoding_fields_impl`'s map-value reset.
+                        .tag_depth(0)
+                        .cbor_depth(0);
+                    generate_serialize(
                         types,
-                        (&**ty).into(),
-                        &mut some_block,
-                        opt_config,
+                        (&**value).into(),
+                        &mut ser_loop,
+                        value_config,
                         cli,
                     );
-                    some_block.after(",");
-                    opt_block.push_block(some_block);
-                    if config.is_end {
-                        opt_block.line(format!(
-                            "None => {serializer_use}.write_special(cbor_event::Special::Null),"
-                        ));
-                    } else {
-                        let mut none_block = Block::new("None =>");
-                        none_block.line(format!(
-                            "{serializer_use}.write_special(cbor_event::Special::Null)?;"
-                        ));
-                        none_block.after(",");
-                        opt_block.push_block(none_block);
-                        opt_block.after(";");
-                    }
-                    body.push_block(opt_block);
-                }
-                SerializingRustType::Root(ConceptualRustType::Alias(ident, ty), cfg) => {
-                    let alias_metadata = types
-                        .type_aliases()
-                        .get(ident)
-                        .unwrap()
-                        .rule_metadata
-                        .as_ref();
-                    let config_for_alias = if let Some(custom_serialize) =
-                        alias_metadata.and_then(|rmd| rmd.custom_serialize.clone())
-                    {
-                        // The rule's `@custom_encodings` rides with the pair it is written beside —
-                        // the second of the two carrier channels the emission sites see a
-                        // declaration through (the other being the derivation from the type, which
-                        // `encoding_fields_impl`'s own `Alias` arm owns).
-                        config.custom_serialize(custom_serialize).custom_encodings(
-                            alias_metadata.and_then(|rmd| rmd.custom_encodings.clone()),
-                        )
-                    } else {
-                        config
-                    };
-                    // Keep the OUTER RustTypeSerializeConfig (`cfg`): an Alias's inner is a bare
-                    // ConceptualRustType with no config of its own, so recursing with `(&**ty).into()`
-                    // would DEFAULT the config and drop the per-rule policy the alias carries —
-                    // notably `@duplicates preserve`, which the Map arm reads to pick the POSITIONAL
-                    // encoding sidecar. (Deserialize's Alias arm keeps the config for the same reason;
-                    // serialize previously discarded it because no serialize path had needed it —
-                    // NonEmptyVec/NonEmptyMap serialize identically to their loose forms.)
-                    self.generate_serialize(
+                    ser_loop
+                } else {
+                    let mut ser_loop =
+                        Block::new(format!("for (key, value) in {}.iter()", config.expr));
+                    let key_config = config
+                        .clone()
+                        .expr("key")
+                        .expr_is_ref(true)
+                        .var_name(format!("{}_key", config.var_name))
+                        .end(false)
+                        .encoding_var_no_option_struct()
+                        .encoding_var_is_ref(false)
+                        // fresh `{name}_key` namespace: reset both depths (as above).
+                        .tag_depth(0)
+                        .cbor_depth(0);
+                    let value_config = key_config
+                        .clone()
+                        .expr("value")
+                        // `{name}_value` namespace; key_config already reset, kept explicit.
+                        .var_name(format!("{}_value", config.var_name))
+                        .tag_depth(0)
+                        .cbor_depth(0);
+                    generate_serialize(
                         types,
-                        SerializingRustType::Root(ty, cfg),
-                        body,
-                        config_for_alias,
+                        (&**key).into(),
+                        &mut ser_loop,
+                        key_config,
                         cli,
-                    )
+                    );
+                    generate_serialize(
+                        types,
+                        (&**value).into(),
+                        &mut ser_loop,
+                        value_config,
+                        cli,
+                    );
+                    ser_loop
+                };
+                body.push_block(ser_loop);
+                // Argument to `.end()`: use the pass form (`&mut <name>` for a `.cbor`-payload
+                // local serializer) — see the Array arm above for the rationale.
+                end_len(body, &serializer_pass, &encoding_var, config.is_end, cli);
+            }
+            SerializingRustType::Root(ConceptualRustType::Optional(ty), _cfg) => {
+                let mut opt_block = Block::new(format!("match {expr_ref}"));
+                // TODO: do this in one line without a block if possible somehow.
+                //       see other comment in generate_enum()
+                let mut some_block = Block::new("Some(x) =>");
+                // The inner serialize must terminate the same way the whole Optional does. When
+                // the Optional is the tail expression (`is_end`), each arm RETURNS the
+                // serializer. When it is one statement among others (a struct field), the arms
+                // must be *statements* ending in `?;`: an inner whose body is inlined (a
+                // collection loop) emits an owning `Ok(serializer)` tail under `is_end=true`,
+                // which moves `serializer` and then conflicts with the caller's trailing
+                // `Ok(serializer)` (E0382). Mirroring `config.is_end` keeps both cases valid.
+                let opt_config = config
+                    .clone()
+                    .expr("x")
+                    .expr_is_ref(true)
+                    .end(config.is_end);
+                generate_serialize(
+                    types,
+                    (&**ty).into(),
+                    &mut some_block,
+                    opt_config,
+                    cli,
+                );
+                some_block.after(",");
+                opt_block.push_block(some_block);
+                if config.is_end {
+                    opt_block.line(format!(
+                        "None => {serializer_use}.write_special(cbor_event::Special::Null),"
+                    ));
+                } else {
+                    let mut none_block = Block::new("None =>");
+                    none_block.line(format!(
+                        "{serializer_use}.write_special(cbor_event::Special::Null)?;"
+                    ));
+                    none_block.after(",");
+                    opt_block.push_block(none_block);
+                    opt_block.after(";");
                 }
-            };
-        }
+                body.push_block(opt_block);
+            }
+            SerializingRustType::Root(ConceptualRustType::Alias(ident, ty), cfg) => {
+                let alias_metadata = types
+                    .type_aliases()
+                    .get(ident)
+                    .unwrap()
+                    .rule_metadata
+                    .as_ref();
+                let config_for_alias = if let Some(custom_serialize) =
+                    alias_metadata.and_then(|rmd| rmd.custom_serialize.clone())
+                {
+                    // The rule's `@custom_encodings` rides with the pair it is written beside —
+                    // the second of the two carrier channels the emission sites see a
+                    // declaration through (the other being the derivation from the type, which
+                    // `encoding_fields_impl`'s own `Alias` arm owns).
+                    config.custom_serialize(custom_serialize).custom_encodings(
+                        alias_metadata.and_then(|rmd| rmd.custom_encodings.clone()),
+                    )
+                } else {
+                    config
+                };
+                // Keep the OUTER RustTypeSerializeConfig (`cfg`): an Alias's inner is a bare
+                // ConceptualRustType with no config of its own, so recursing with `(&**ty).into()`
+                // would DEFAULT the config and drop the per-rule policy the alias carries —
+                // notably `@duplicates preserve`, which the Map arm reads to pick the POSITIONAL
+                // encoding sidecar. (Deserialize's Alias arm keeps the config for the same reason;
+                // serialize previously discarded it because no serialize path had needed it —
+                // NonEmptyVec/NonEmptyMap serialize identically to their loose forms.)
+                generate_serialize(
+                    types,
+                    SerializingRustType::Root(ty, cfg),
+                    body,
+                    config_for_alias,
+                    cli,
+                )
+            }
+        };
     }
 }
