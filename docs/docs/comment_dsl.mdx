@@ -116,6 +116,9 @@ emitted type name, rename the `foo` identifier. The same rejection covers the tw
 (`foo = #6.258([* uint]) / [* uint]`, which collapses to a set wrapper for the same reason).
 The rejection also looks through tag heads and parentheses around the rule body, so nested rule-position `@name` cannot be silently ignored.
 On the first arm of a tag-set collapse, `@doc` is refused too because there is no variant to document; put rule documentation on the last arm.
+An inline type choice in member position names its anonymous enum variants with `@name` and documents them with `@doc`, with two arms or more.
+Other directives on a non-last arm are refused; the last arm carries the containing field's slot.
+An inline nullable collapse has no variants, so every directive on its first arm is refused.
 
 A directive that names a **type** or a **rule** belongs on the rule that defines it, and writing
 one in a *member's* trailing slot — an ordinary field of either representation, a single-entry

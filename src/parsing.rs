@@ -7398,11 +7398,8 @@ fn rust_type(
         let rule_metadata = RuleMetadata::from(
             get_comment_after(parent_visitor, &CDDLType::from(t), None).as_ref(),
         );
-        if t.type_choices.len() == 2 {
-            // A non-last arm's directives belong to a would-be variant.  The `/ null` collapse
-            // has no variants, so leaving them for the fixed-singleton early return would accept
-            // and discard them.  The LAST arm is the containing field's normal directive slot and
-            // is consumed by `parse_record_from_group_choice`; do not reject it here.
+        // Non-last arms belong to variants; the last arm is the containing field's slot.
+        if null_collapse_inner(&t.type_choices).is_some() {
             for choice in &t.type_choices[..1] {
                 let arm_metadata = type_choice_metadata(choice);
                 let mut misplaced = arm_metadata.non_variant_directives();
@@ -7422,6 +7419,21 @@ fn rust_type(
                     ));
                 }
             }
+        } else {
+            for choice in &t.type_choices[..t.type_choices.len() - 1] {
+                let misplaced = type_choice_metadata(choice).non_variant_directives();
+                if !misplaced.is_empty() {
+                    types.record_rejection(format!(
+                        "{} on a non-last arm of an inline type choice: the choice lowers to an \
+                         anonymous enum whose variants read only `@name` and `@doc`, so that arm \
+                         owns no other directive slot. Move a field directive to the entry's \
+                         trailing comment, or put the annotation on a named type rule.",
+                        misplaced.join(" / ")
+                    ));
+                }
+            }
+        }
+        if t.type_choices.len() == 2 {
             // T / null   or   null / T   should map to Option<T>
             let collapse_inner = null_collapse_inner(&t.type_choices);
             if let Some(inner_type1) = collapse_inner {

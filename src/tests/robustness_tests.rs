@@ -19824,3 +19824,42 @@ fn tag_set_collapse_refuses_variant_directives_on_its_non_last_arm() {
         "{files:?}"
     );
 }
+
+#[test]
+fn inline_type_choice_non_last_arm_directives() {
+    for (directive, needle) in [("@name count", "Count(u64)"), ("@doc counts", "/// counts")] {
+        let files = expect_generates(
+            "inline_variant_metadata",
+            &format!("foo = [a: uint ; {directive}\n / tstr]\n"),
+            &["--wasm=false"],
+        );
+        assert!(files.values().any(|s| s.contains(needle)), "{files:?}");
+    }
+    for arms in [
+        "uint ; @copy\n / tstr",
+        "uint ; @custom_json\n / tstr",
+        "uint ; @copy\n / tstr / bytes",
+    ] {
+        let msg = expect_graceful_rejection(
+            "inline_variant_copy",
+            &format!("foo = [a: {arms}]\n"),
+            &["--wasm=false"],
+        );
+        assert!(
+            msg.contains("on a non-last arm of an inline type choice"),
+            "{msg}"
+        );
+        assert!(
+            !msg.contains("optional field rather than variants"),
+            "{msg}"
+        );
+    }
+    for directive in ["@copy", "@name count", "@doc counts"] {
+        let msg = expect_graceful_rejection(
+            "inline_null_variant",
+            &format!("foo = [a: uint ; {directive}\n / null]\n"),
+            &["--wasm=false"],
+        );
+        assert!(msg.contains("optional field rather than variants"), "{msg}");
+    }
+}
