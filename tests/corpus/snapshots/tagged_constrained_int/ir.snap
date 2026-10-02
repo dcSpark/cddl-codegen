@@ -196,7 +196,7 @@ expression: ir
                             custom_encodings: None,
                             custom_wire_major: None,
                             extern_companions: None,
-                            comment: None,
+                            doc: None,
                         },
                     },
                     RustField {
@@ -237,7 +237,7 @@ expression: ir
                             custom_encodings: None,
                             custom_wire_major: None,
                             extern_companions: None,
-                            comment: None,
+                            doc: None,
                         },
                     },
                     RustField {
@@ -278,7 +278,7 @@ expression: ir
                             custom_encodings: None,
                             custom_wire_major: None,
                             extern_companions: None,
-                            comment: None,
+                            doc: None,
                         },
                     },
                     RustField {
@@ -319,7 +319,7 @@ expression: ir
                             custom_encodings: None,
                             custom_wire_major: None,
                             extern_companions: None,
-                            comment: None,
+                            doc: None,
                         },
                     },
                     RustField {
@@ -360,7 +360,7 @@ expression: ir
                             custom_encodings: None,
                             custom_wire_major: None,
                             extern_companions: None,
-                            comment: None,
+                            doc: None,
                         },
                     },
                     RustField {
@@ -401,7 +401,7 @@ expression: ir
                             custom_encodings: None,
                             custom_wire_major: None,
                             extern_companions: None,
-                            comment: None,
+                            doc: None,
                         },
                     },
                     RustField {
@@ -442,7 +442,7 @@ expression: ir
                             custom_encodings: None,
                             custom_wire_major: None,
                             extern_companions: None,
-                            comment: None,
+                            doc: None,
                         },
                     },
                 ],

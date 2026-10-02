@@ -740,7 +740,7 @@ fn reject_exact_zero_field_only_metadata(
     field_type: &RustType,
 ) {
     let source_name = source_rule_name_of(types, record_name);
-    if metadata.comment.is_some() {
+    if metadata.doc.is_some() {
         types.record_rejection(format!(
             "@doc on exact-zero field `{field_name}` of rule `{source_name}`: `0*0` / `*0` \
              declares a forbidden key and emits no value field for this doc comment to document. \
@@ -1115,7 +1115,7 @@ fn reject_inert_inline_table_row_directives(
         custom_encodings: _,
         custom_wire_major: _,
         extern_companions,
-        comment,
+        doc,
     } = metadata;
     // `@name` is the one with a real alternative spelling worth naming: on a type-choice arm the
     // variant name lives in the slot AFTER the closing brace, which is a different comment entirely.
@@ -1161,7 +1161,7 @@ fn reject_inert_inline_table_row_directives(
     }
     // `@doc` last: it is the one spelling an author reaches for reflexively, and its own message
     // says where the documentation would have to live to be emitted.
-    if comment.is_some() {
+    if doc.is_some() {
         types.record_rejection(format!(
             "@doc on the {position}: an anonymous inline table emits no type of its own to \
              document (it renders as the container type at each use site). Put the `@doc` on the \
@@ -1582,7 +1582,7 @@ fn reject_field_directives_on_single_entry_arm(
              <fn>`, then `// {remedy_arm}`), which does route both directions at this arm."
         ));
     }
-    if metadata.comment.is_some() {
+    if metadata.doc.is_some() {
         types.record_rejection(format!(
             "@doc on {site}: a single-entry arm registers no record, so there is no field for the \
              entry's doc comment to land on. Write it in the ARM's own slot instead, which \
@@ -2320,7 +2320,7 @@ fn parse_type_choices(
         // for all four placements), so that slot is dead and the `@duplicates` / `@ignore`
         // rejections written right below could not fire, nor could `@no_json_schema_export` mark.
         let rule_metadata = rule_position_metadata(type_choices);
-        if let Some(doc) = &rule_metadata.comment {
+        if let Some(doc) = &rule_metadata.doc {
             types.mark_rule_doc(name.clone(), doc.clone());
         }
         if rule_metadata.custom_json {
@@ -2426,7 +2426,7 @@ fn parse_type_choices(
         for choice in &type_choices[..type_choices.len() - 1] {
             let arm_metadata = type_choice_metadata(choice);
             let mut misplaced = arm_metadata.non_variant_directives();
-            if arm_metadata.comment.is_some() {
+            if arm_metadata.doc.is_some() {
                 misplaced.push("@doc");
             }
             if !misplaced.is_empty() {
@@ -2517,7 +2517,7 @@ fn parse_type_choices(
         reject_custom_encodings_without_pair(types, &format!("rule `{name}`"), &rule_metadata);
         // A rule-level directive on a NON-LAST arm is built and thrown away: the rule slot is
         // `type_choices.last()` (read above), and `create_variants_from_type_choices` consumes only
-        // `.name` and `.comment` from each choice. So on any other arm the directive generates
+        // `.name` and `.doc` from each choice. So on any other arm the directive generates
         // exit-0 output identical to omitting it — the silent-drop class, and the worst instance of
         // it, because the arms of a type choice are a thing people reorder. Reject instead, naming
         // the directive and the remedy. The `T / null` branch above reads the same rule slot
@@ -4138,7 +4138,7 @@ fn parse_type(
     // `@doc` likewise: a generic instance's struct config comes from the generic DEFINITION, and a
     // named binding to a set nominal registers its alias without metadata, so both emitted a
     // documentable construct while discarding the rule's own doc.
-    if let Some(doc) = &rule_metadata.comment {
+    if let Some(doc) = &rule_metadata.doc {
         types.mark_rule_doc(type_name.clone(), doc.clone());
     }
     // `@custom_json` likewise: a generic INSTANCE binding mints a struct whose `RustStructConfig` is
@@ -5269,7 +5269,7 @@ pub fn create_variants_from_type_choices(
             VariantIdent::new_custom(variant_name),
             rust_type.clone(),
             false,
-            rule_metadata.comment.clone(),
+            rule_metadata.doc.clone(),
         );
         variants.push(if rule_metadata.name.is_none() {
             variant.with_derived_name()
@@ -6501,7 +6501,7 @@ fn reject_inline_group_occurrence_directives(
         custom_encodings,
         custom_wire_major,
         extern_companions,
-        comment,
+        doc,
     } = metadata;
     let found = [
         ("@name", name.is_some()),
@@ -6521,7 +6521,7 @@ fn reject_inline_group_occurrence_directives(
         ("@custom_encodings", custom_encodings.is_some()),
         ("@custom_wire_major", custom_wire_major.is_some()),
         ("@extern_companions", extern_companions.is_some()),
-        ("@doc", comment.is_some()),
+        ("@doc", doc.is_some()),
     ]
     .into_iter()
     .filter_map(|(directive, written)| written.then_some(directive))
@@ -7339,7 +7339,7 @@ fn rust_type(
                 if arm_metadata.name.is_some() {
                     misplaced.push("@name");
                 }
-                if arm_metadata.comment.is_some() {
+                if arm_metadata.doc.is_some() {
                     misplaced.push("@doc");
                 }
                 if !misplaced.is_empty() {
@@ -10294,7 +10294,7 @@ pub fn parse_group(
                         variant_ident,
                         ty,
                         serialize_as_embedded,
-                        rule_metadata.comment.clone(),
+                        rule_metadata.doc.clone(),
                     )
                     .with_key(variant_key)
                 } else {
@@ -10378,7 +10378,7 @@ pub fn parse_group(
                         EnumVariant::new_embedded(
                             variant_display,
                             embedded_record,
-                            rule_metadata.comment.clone(),
+                            rule_metadata.doc.clone(),
                         )
                     } else {
                         // Non-embeddable: the record SURVIVES and is emitted as a real type under
@@ -10429,7 +10429,7 @@ pub fn parse_group(
                             variant_display,
                             ConceptualRustType::Rust(final_ident).into(),
                             true,
-                            rule_metadata.comment.clone(),
+                            rule_metadata.doc.clone(),
                         )
                     }
                 }

@@ -426,7 +426,7 @@ impl From<Option<&RuleMetadata>> for RustStructConfig {
                 custom_deserialize: rule_metadata.custom_deserialize.clone(),
                 custom_encodings: rule_metadata.custom_encodings.clone(),
                 custom_wire_major: rule_metadata.custom_wire_major,
-                doc: rule_metadata.comment.clone(),
+                doc: rule_metadata.doc.clone(),
                 newtype_getter: rule_metadata.newtype.clone(),
                 duplicates: rule_metadata.duplicates,
                 set_nominal: false,

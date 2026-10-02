@@ -64,7 +64,7 @@ expression: ir
                             custom_encodings: None,
                             custom_wire_major: None,
                             extern_companions: None,
-                            comment: Some(
+                            doc: Some(
                                 "this is a field-level comment",
                             ),
                         },
@@ -105,7 +105,7 @@ expression: ir
                             custom_encodings: None,
                             custom_wire_major: None,
                             extern_companions: None,
-                            comment: Some(
+                            doc: Some(
                                 "bar is a u64",
                             ),
                         },

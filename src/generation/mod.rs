@@ -2742,7 +2742,7 @@ fn rust_alias_doc_lines(
     if let Some(comment) = alias_info
         .rule_metadata
         .as_ref()
-        .and_then(|m| m.comment.as_deref())
+        .and_then(|m| m.doc.as_deref())
         .or_else(|| {
             types
                 .rust_struct(ident)

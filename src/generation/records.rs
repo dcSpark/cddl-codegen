@@ -3545,7 +3545,7 @@ pub(super) fn codegen_struct(
                             .from_wasm_boundary_clone(types, &field.name, false)
                             .into_iter(),
                     ));
-                    if let Some(comment) = &field.rule_metadata.comment {
+                    if let Some(comment) = &field.rule_metadata.doc {
                         wasm_new_comments.push(format!("* `{}` - {}", field.name, comment));
                     }
                     // do we want setters here later for mandatory types covered by new?
@@ -4196,7 +4196,7 @@ pub(super) fn codegen_struct(
                 // new
                 if !multi_array_segments {
                     native_new.arg(&field.name, field.rust_type.for_rust_move(types, cli));
-                    if let Some(comment) = &field.rule_metadata.comment {
+                    if let Some(comment) = &field.rule_metadata.doc {
                         native_new_comments.push(format!("* `{}` - {}", field.name, comment));
                     }
                     new_arg_count += 1;
@@ -4213,7 +4213,7 @@ pub(super) fn codegen_struct(
                     field.rust_type.for_rust_member(types, false, cli),
                 )
             };
-            if let Some(comment) = &field.rule_metadata.comment {
+            if let Some(comment) = &field.rule_metadata.doc {
                 codegen_field.doc(comment);
             }
             // A member CARRYING `any` renders its JSON NATURALLY (not
@@ -4628,7 +4628,7 @@ pub(super) fn codegen_struct(
                     field.rust_type.for_rust_move(types, cli),
                     field
                         .rule_metadata
-                        .comment
+                        .doc
                         .as_ref()
                         .map(|comment| format!("* `{}` - {comment}", field.name)),
                 )

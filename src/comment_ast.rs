@@ -274,7 +274,8 @@ pub struct RuleMetadata {
     /// rejection, never silently ignored. See [`ExternCompanions`] and
     /// `IntermediateTypes::extern_companions`.
     pub extern_companions: Option<ExternCompanions>,
-    pub comment: Option<String>,
+    /// `@doc <text>`: the rule's doc text, rendered as `///` on the generated item.
+    pub doc: Option<String>,
 }
 
 /// The matrix-facing projection of comment metadata.  This deliberately lives beside the parser:
@@ -336,7 +337,7 @@ fn merge_fields(r1: &RuleMetadata, r2: &RuleMetadata) -> RuleMetadata {
         custom_encodings: exclusive!(custom_encodings),
         custom_wire_major: exclusive!(custom_wire_major),
         extern_companions: exclusive!(extern_companions),
-        comment: exclusive!(comment),
+        doc: exclusive!(doc),
     }
 }
 
@@ -485,7 +486,7 @@ impl RuleMetadata {
             custom_encodings,
             custom_wire_major,
             extern_companions,
-            comment,
+            doc,
         } = self;
         let mut found: Vec<Directive> = [
             (name.is_some(), Directive::Name),
@@ -505,7 +506,7 @@ impl RuleMetadata {
             (custom_encodings.is_some(), Directive::CustomEncodings),
             (custom_wire_major.is_some(), Directive::CustomWireMajor),
             (extern_companions.is_some(), Directive::ExternCompanions),
-            (comment.is_some(), Directive::Doc),
+            (doc.is_some(), Directive::Doc),
         ]
         .into_iter()
         .filter_map(|(set, directive)| set.then_some(directive))
@@ -588,7 +589,7 @@ impl RuleMetadata {
             custom_encodings: self.custom_encodings.clone(),
             custom_wire_major: self.custom_wire_major,
             extern_companions: self.extern_companions.clone(),
-            doc: self.comment.clone(),
+            doc: self.doc.clone(),
         }
     }
 }
@@ -834,7 +835,7 @@ fn extern_companions_args(input: &str) -> IResult<&str, RuleMetadata> {
 /// `@doc`: everything up to the next `@` (or the end of the comment), trimmed.
 fn doc_args(input: &str) -> IResult<&str, RuleMetadata> {
     let (input, doc) = take_while1(|c| c != '@')(input)?;
-    Ok((input, single(|m| m.comment = Some(doc.trim().to_string()))))
+    Ok((input, single(|m| m.doc = Some(doc.trim().to_string()))))
 }
 
 /// Skip whitespace, then parse ONE directive: the first [`Directive::ALL`] spelling that prefixes
@@ -1451,7 +1452,7 @@ mod tests {
                     custom_json: true,
                     custom_serialize: Some("foo".to_string()),
                     custom_deserialize: Some("bar".to_string()),
-                    comment: Some("this is a doc comment".to_string()),
+                    doc: Some("this is a doc comment".to_string()),
                     ..Default::default()
                 }
             ))
@@ -1776,5 +1777,10 @@ mod tests {
                 .map(|d| d.spelling())
                 .collect::<Vec<_>>()
         );
+    }
+    #[test]
+    #[should_panic(expected = "Key \"doc\" specified twice")]
+    fn parse_comment_doc_duplicate_panics() {
+        let _ = rule_metadata("@doc a @doc b");
     }
 }

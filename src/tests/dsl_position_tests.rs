@@ -693,7 +693,7 @@ const GRID: &[Cell] = &[
     },
     // 21c. A rule-level directive on a NON-LAST arm of a multi-choice type rule. The rule slot is
     //      the LAST arm's trailing comment (`parse_type_choices` reads `type_choices.last()` and
-    //      nothing else); `create_variants_from_type_choices` consumes only `.name`/`.comment` per
+    //      nothing else); `create_variants_from_type_choices` consumes only `.name`/`.doc` per
     //      choice, so anything else written on an earlier arm used to generate exit-0 output
     //      identical to omitting it. Now a graceful rejection. The placement CONTROL is cell 21a
     //      (`type-choice-rule`), whose directive sits on the LAST arm of the same rule shape and
