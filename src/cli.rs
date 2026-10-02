@@ -1165,7 +1165,7 @@ impl Cli {
     }
 
     /// Parsed `--json-gen-dep` mappings: `cargo package name -> path`, SORTED by package name. See
-    /// [`manifest_deps`] for why sorted and why duplicate detection lives elsewhere.
+    /// `manifest_deps` for why sorted and why duplicate detection lives elsewhere.
     pub fn json_gen_deps(&self) -> std::collections::BTreeMap<String, String> {
         manifest_deps(&self.json_gen_dep)
     }
@@ -1209,7 +1209,7 @@ impl Cli {
     /// The `--std-forward-dep` packages, deduplicated and SORTED — the order they render in the
     /// generated crate's `features.std` list.
     ///
-    /// A `BTreeSet` for the reason [`manifest_deps`] sorts: these become entries of one TOML array
+    /// A `BTreeSet` for the reason `manifest_deps` sorts: these become entries of one TOML array
     /// whose order nothing observes, so sorting invents no semantics and makes the rendered list
     /// independent of how the flags happened to be spelled. A repeat is a no-op rather than an
     /// error — unlike the `<package>=<path>` flags, a second occurrence carries no second value

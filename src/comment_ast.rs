@@ -363,7 +363,7 @@ fn single(set: impl FnOnce(&mut RuleMetadata)) -> RuleMetadata {
 macro_rules! directives {
     ($($variant:ident = $spelling:literal => $args:expr,)*) => {
         /// One rule-metadata directive. Declaration order is dispatch order (see
-        /// [`whitespace_then_directive`]) and the order [`RuleMetadata::directives`] reports.
+        /// `whitespace_then_directive`) and the order [`RuleMetadata::directives`] reports.
         #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
         pub enum Directive {
             $($variant,)*

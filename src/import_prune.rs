@@ -3,7 +3,7 @@
 //! Emission sites in `generation/` may over-import; this post-pass keeps an import only when the
 //! final code of its module family names it. Predicting imports at each emission site would have to
 //! mirror every local decision of the generator, and that prediction drifts silently.
-//! [`prune_generated_files`] is the entry point. `generation::export::finalize_generated_imports`
+//! `prune_generated_files` is the entry point. `generation::export::finalize_generated_imports`
 //! runs it over the freshly generated map and again after the comment-preservation overlay, because
 //! a replace block can remove an import's last user (see "Preservation and final-content
 //! recomputation" in `docs/development/generation-contract.md`).
@@ -18,7 +18,7 @@
 //!
 //! **Module family.** A private import in module F can be consumed only by F and by the
 //! descendants linked to F through an unbroken chain of `use super::*;` edges
-//! ([`reachable_via_super`]); a glob from a non-descendant imports only `pub` items, and the
+//! (`reachable_via_super`); a glob from a non-descendant imports only `pub` items, and the
 //! generator emits no explicit `super::X` paths. F's import of X is protected by F's own idents and
 //! by each such descendant D that names X, unless D resolves X through a nearer binding:
 //!   1. **Direct import**: D carries its own `use …::X;`.
@@ -32,24 +32,24 @@
 //!
 //! **Glob pruning.** A private glob is removed only when its universe is enumerable and neither F
 //! nor a protecting descendant names a member it does not resolve locally:
-//!   - `use super::*;`: the parent module's [`bound_names`], and only in a file with no protecting
-//!     descendant ([`super_glob_needed`]);
-//!   - `use <path>::error::*;`: the fixed [`ERROR_MODULE_EXPORTS`] ([`enumerated_glob_needed`]);
+//!   - `use super::*;`: the parent module's `bound_names`, and only in a file with no protecting
+//!     descendant (`super_glob_needed`);
+//!   - `use <path>::error::*;`: the fixed `ERROR_MODULE_EXPORTS` (`enumerated_glob_needed`);
 //!   - `use super::cbor_encodings::*;`: the top-level definitions of the sibling
 //!     `cbor_encodings.rs`.
 //!
 //! **Name-scan candidates.** An absent ident proves an import unused only for a concrete type or a
-//! macro; a trait is exercised by method calls that never name it. So only [`ALLOWLIST`] and
-//! [`PruneConfig::extra_candidates`] are removed by name, and the emitter imports a method-only
+//! macro; a trait is exercised by method calls that never name it. So only `ALLOWLIST` and
+//! `PruneConfig::extra_candidates` are removed by name, and the emitter imports a method-only
 //! trait such as `cbor_event::se::Serialize` by name under `#[allow(unused_imports)]` instead.
 //!
 //! **Path tails.** The used-ident scan ignores an ident preceded by `::`: it resolves relative to
 //! the previous segment and cannot consume a `use` binding, so counting it would keep dead imports
 //! and globs alive. A lone `:` (a field or `let` type) is not a separator, and the ident after it
-//! still counts. [`walk_ident_uses`] owns this rule for this pass and the alloc-import injector.
+//! still counts. `walk_ident_uses` owns this rule for this pass and the alloc-import injector.
 //!
 //! **Re-export-only files.** A file whose items are all `use`s, with no descendant module and only
-//! `crate::`-anchored `Name`/`Rename` non-private uses ([`is_reexport_only_file`]), loses every
+//! `crate::`-anchored `Name`/`Rename` non-private uses (`is_reexport_only_file`), loses every
 //! private `use`, traits and globs included, because nothing can consume them. The anchoring
 //! condition prevents a relative `pub use self::Foo;` from resolving through a deleted private
 //! glob.

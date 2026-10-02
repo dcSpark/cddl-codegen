@@ -15,25 +15,25 @@
 //!   **Three** path classes are exceptions, all merging into the existing value instead of replacing
 //!   it:
 //!   - `["dependencies" | "dev-dependencies", <name>]` merges FIELD-LEVEL
-//!     ([`merge_dep_spec`]), so a user's
+//!     (`merge_dep_spec`), so a user's
 //!     `optional`/`default-features`/extra features and a compatible version pin survive a regen
 //!     while the tool still owns the version floor, its required features, and any field it sets
 //!     (e.g. `path`). The one axis a merge can be told to OWN outright is the dep's SOURCE: a spec
 //!     carrying `git` asserts it implicitly, and a registry-version spec asserts it by carrying
 //!     `assert_source` (a crates.io version has no cargo key that could express the intent), which
 //!     clears a stale `git`/`rev`/`path`/… off an already-written entry instead of flooring against
-//!     it. See [`merge_dep_spec`] for the exact merge contract. A merged entry is the one
+//!     it. See `merge_dep_spec` for the exact merge contract. A merged entry is the one
 //!     place the byte-for-byte claim above is qualified, in two bounded ways: its inline table's
-//!     whitespace is re-normalized ([`normalize_inline_decor`] — the merge moves fields between
+//!     whitespace is re-normalized (`normalize_inline_decor` — the merge moves fields between
 //!     positions, so their old spacing is stale by construction), and a dependency the tool ADDS to
-//!     a dependency table that already existed gains an [`OWNERSHIP_MARKER`].
-//!   - `["features", "default"]` merges as a UNION ([`merge_default_features`]): the user's list
+//!     a dependency table that already existed gains an `OWNERSHIP_MARKER`.
+//!   - `["features", "default"]` merges as a UNION (`merge_default_features`): the user's list
 //!     survives verbatim and tool entries it lacks are appended. A whole-value replace would
 //!     silently drop a consumer's customized default-feature list, and the key is not one the tool
 //!     can decline to write — the generated crate's `std` feature has to be on by default for a
 //!     plain `cargo build` to keep working.
 //!   - `["features", "std"]` merges as a union too, plus an ABSENT-DEP PRUNE
-//!     ([`merge_std_features`]): a `<pkg>/<feat>` entry whose `<pkg>` is not a key of the document's
+//!     (`merge_std_features`): a `<pkg>/<feat>` entry whose `<pkg>` is not a key of the document's
 //!     `[dependencies]` table when the op applies is dropped from either side. The tool's `std` list
 //!     is COMPUTED per run from the deps that run wrote, so unlike `default`'s constant list it
 //!     varies with the flags, and a union alone would strand yesterday's `serde/std` beside a
@@ -41,7 +41,7 @@
 //!     every dependencies op in every builder.
 //!
 //!   The `features.std` path additionally carries a tool-asserted COMMENT
-//!   ([`STD_OWNERSHIP_COMMENT`]): the co-ownership contract, restated above the key on every run
+//!   (`STD_OWNERSHIP_COMMENT`): the co-ownership contract, restated above the key on every run
 //!   that writes it, so the rule is legible to whoever edits the file rather than only to a reader
 //!   of this repo's docs. It reads the key's existing comment lines to preserve the user's — the
 //!   same bounded existing-manifest read the merges above perform, and like them a pure function of
@@ -59,7 +59,7 @@
 //! (`static/manifest_changes/{rust,wasm,json_gen,component,static_runtime}.toml`) — the single source of truth. Each log is
 //! an ordered list of entries, each an `id` + dotted `path` + exactly one of `set` / `seed` /
 //! `remove`, plus the optional `assert_source = true` modifier (`set` on a dependency-table path
-//! only). [`fold_log`] folds them per-path last-write-wins (final `set` → [`ManifestOp::Set`],
+//! only). `fold_log` folds them per-path last-write-wins (final `set` → [`ManifestOp::Set`],
 //! final `seed` → [`ManifestOp::SeedOnce`], final `remove` → [`ManifestOp::Remove`], i.e. a dropped
 //! key is auto-tombstoned) and emits the folded ops in first-mention order of each path. Editing is
 //! append-only: to change a key you append another entry, to drop one you append a `remove` — so the
@@ -77,7 +77,7 @@
 //! crate, say) can carry an UNCONDITIONAL `Remove` forever, the in-code twin of a change-log
 //! tombstone. Two kinds of entry fall outside it and are assert-only: [`ops_for_static_runtime`],
 //! whose manifest is co-owned with a hand-owned crate the tool cannot speak for, and the
-//! `<package>=<path>` dependency entries [`manifest_dep_ops`] builds for `--rust-dep`, `--wasm-dep`,
+//! `<package>=<path>` dependency entries `manifest_dep_ops` builds for `--rust-dep`, `--wasm-dep`,
 //! `--json-gen-dep` and `--component-dep`, whose package names exist only inside the flag values — a dropped flag
 //! carries no name to tombstone. Both document the stale-entry consequence where a user meets it.
 //! An unparseable existing manifest is a hard error naming the file — never a silent clobber,
@@ -96,7 +96,7 @@ pub enum ManifestOp {
     /// Tool-owned key: written every run, overwriting whatever value is there — EXCEPT a
     /// `["dependencies" | "dev-dependencies", <name>]` path, which merges field-level into an
     /// existing entry
-    /// ([`merge_dep_spec`]) so a user's dep-spec shape survives regeneration.
+    /// (`merge_dep_spec`) so a user's dep-spec shape survives regeneration.
     Set {
         value: Item,
         /// Whether this spec OWNS the dependency's SOURCE axis — dependency-table paths only.
@@ -104,7 +104,7 @@ pub enum ManifestOp {
         /// the spec does not itself name (`git`, `rev`, `branch`, `tag`, `path`, `registry`) are
         /// cleared off the existing entry. A crates.io version has no cargo key that could carry the
         /// intent, so the changeset entry says it out-of-band (`assert_source = true`). See
-        /// [`merge_dep_spec`].
+        /// `merge_dep_spec`.
         assert_source: bool,
     },
     /// Written only if the key is absent (existence check only — never reads the existing value).

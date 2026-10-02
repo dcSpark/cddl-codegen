@@ -26,7 +26,7 @@
 //! previous run emitted, so it cannot tell a reworded tool comment from a user comment, and
 //! guessing
 //! "user" splices stale tool prose into maintained text. The rare side is marked: a user comment
-//! declares itself with a `keep` marker ([`ReservedTag::Keep`]), and any other comment this run
+//! declares itself with a `keep` marker (`ReservedTag::Keep`), and any other comment this run
 //! does
 //! not emit is unclassified and trapped. The remaining ownership checks can only suppress a
 //! trap, never insert text, so a
@@ -36,8 +36,8 @@
 //! an anchor `new` documents, or an unplaceable doc block, is tool output; the user channel for doc
 //! text is `@doc`).
 //!
-//! **Blocks.** `keep` markers and `insert` blocks are [`InsertBlock`]s (a `keep` block has an empty
-//! interior) and `replace` blocks are [`ReplaceBlock`]s, all found by [`scan_blocks`]. Anchoring
+//! **Blocks.** `keep` markers and `insert` blocks are `InsertBlock`s (a `keep` block has an empty
+//! interior) and `replace` blocks are `ReplaceBlock`s, all found by `scan_blocks`. Anchoring
 //! runs on a virtual pristine old stream: an insert block's interior code is removed, and a replace
 //! block's user code is substituted by its recorded original (the needle), so the identity tier
 //! still fires and anchors stay sound. A replace block splices by byte range over the needle's
@@ -49,7 +49,7 @@
 //!
 //! **Reserved namespace.** An own-line `// cddl-codegen:` comment that is not part of a well-formed
 //! structure is a hard error, never user text, so a stray or mistyped tag cannot end a block early
-//! and let its remaining lines be clobbered. [`unfold_trailing_markers`] first moves every trailing
+//! and let its remaining lines be clobbered. `unfold_trailing_markers` first moves every trailing
 //! marker, including rustfmt's folded `} // cddl-codegen:replaces`, onto its own line, so both
 //! spellings reach one fixed point.
 //!
@@ -1537,7 +1537,7 @@ pub(crate) fn comments_sharing_a_code_row(
 /// Overlay the user comments from `old` onto the freshly generated `new`. See the module docs for
 /// the tiered anchoring. Pure: no I/O; output is a function of `(old, new)`.
 ///
-/// `old` is first normalized by [`unfold_trailing_markers`] so rustfmt-folded trailing markers parse
+/// `old` is first normalized by `unfold_trailing_markers` so rustfmt-folded trailing markers parse
 /// like their own-line spelling; a `PreserveError`'s line is mapped back to the on-disk line here, the
 /// one place that boundary is crossed. `new` (freshly generated) never carries markers, so it is not
 /// normalized.

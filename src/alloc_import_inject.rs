@@ -6,8 +6,8 @@
 //! cannot
 //! add to a crate that already exists.
 //!
-//! [`inject`] is a pure function of the final file content: it strips the lines it owns, scans the
-//! file's tokens against [`TABLE`], and injects exactly the lines the content needs. Flags threaded
+//! `inject` is a pure function of the final file content: it strips the lines it owns, scans the
+//! file's tokens against `TABLE`, and injects exactly the lines the content needs. Flags threaded
 //! from the emission sites would duplicate what the final content already says and miss future
 //! sites silently. Unconditional imports plus the prune cannot cover traits, whose use is a method
 //! call that never names them, so every file that never calls `.to_string()` would warn and fail
@@ -23,7 +23,7 @@
 //! suppress duplicate injection.
 //!
 //! **Scope rules.**
-//! * Path tails never trigger ([`crate::import_prune::walk_ident_uses`] owns the rule): a qualified
+//! * Path tails never trigger (`crate::import_prune::walk_ident_uses` owns the rule): a qualified
 //!   `alloc::collections::BTreeSet::new()` needs no import.
 //! * `use` items never trigger: an import is not a use of the name it binds.
 //! * Nested inline `mod X { … }` bodies never trigger: a file-top import does not reach them. The
@@ -36,7 +36,7 @@
 //!   scope, or through `super::alloc`/`self::alloc` anywhere, nested modules included, so those
 //!   hand-written nested imports resolve.
 //!
-//! **Known limits.** Only the names in [`TABLE`] are supplied automatically; other names introduced
+//! **Known limits.** Only the names in `TABLE` are supplied automatically; other names introduced
 //! by a user block need an explicit import or a qualified path. A name used only inside a nested
 //! inline module without its own import does
 //! not resolve; in tool output the only such modules are the adapters above and the `--emit-tests`

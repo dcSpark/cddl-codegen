@@ -221,7 +221,7 @@ fn unknown_key_advice(key: &str, known: &[&str]) -> String {
 pub struct Runtime {
     /// Where the shared runtime is written. Resolved against the config file's directory, like every
     /// other path key. Expands to `--export-static-crate` on exactly ONE crate's invocation — see
-    /// [`Config::runtime_carrier`] for which.
+    /// `Config::runtime_carrier` for which.
     pub export_static_crate: Option<String>,
     /// Expands to `--common-import-override <value>` on every crate. It is the LOWEST layer in the
     /// merge: an explicit `common-import-override` in `[defaults]`, a profile, or a crate table wins
@@ -229,7 +229,7 @@ pub struct Runtime {
     /// this key is sugar for the common one of.
     pub common_import: Option<String>,
     /// Name the carrier by hand instead of deriving it, accepting the remaining unsupported
-    /// flavor/depth-limit contract that made the derivation refuse. See [`Config::runtime_carrier`].
+    /// flavor/depth-limit contract that made the derivation refuse. See `Config::runtime_carrier`.
     pub flavor_from: Option<String>,
     /// The cargo PACKAGE name of the co-owned runtime crate `export-static-crate` writes into — the
     /// same vocabulary a `[crates.<name>]` table's `lib-name` uses.
@@ -390,7 +390,7 @@ pub struct Settings {
     /// `extern-import` does.
     ///
     /// Derived from a `deps` edge whose two crates both carry the component face
-    /// ([`Config::apply_graph_edges`]); a hand-written entry wins, and is how a dependency outside
+    /// (`Config::apply_graph_edges`); a hand-written entry wins, and is how a dependency outside
     /// this config, or one whose WIT is vendored, gets import mode.
     #[serde(default)]
     pub component_extern_wit: BTreeMap<String, String>,
@@ -565,7 +565,7 @@ pub struct CrateEntry {
     ///
     /// It is a packaging fact and nothing else: no rust/extern edge, no generation-order edge. Its
     /// only effect is that it joins `deps` as a source for the JSON-schema threading derivation —
-    /// see [`Config::threading`], which is where the reason a package's composition (rather than a
+    /// see `Config::threading`, which is where the reason a package's composition (rather than a
     /// spec's references) is the right source lives.
     pub wasm_reexports: Vec<String>,
     /// Explicit override of the threading derivation for this crate. `Some(list)` REPLACES
@@ -1951,7 +1951,7 @@ impl Config {
     /// The flag list each selected crate would be generated with, as text — the whole of
     /// `--print-flags`.
     ///
-    /// The expansion behind it is the REAL one ([`Self::expand_each`]), so every validation a run
+    /// The expansion behind it is the REAL one (`Self::expand_each`), so every validation a run
     /// performs has already run by the time a line is printed: a config that cannot generate cannot
     /// be listed either, and it fails with the identical message.
     ///
@@ -3547,7 +3547,7 @@ impl Convergence {
 ///
 /// It WRAPS the message rather than restating it: `Display` is the verdict text verbatim, so every
 /// assertion on that text still holds and the exit code is the only new fact. In particular the text
-/// is still deliberately un-prefixed by [`about_the_config`] — the verdict is about the TREE, not
+/// is still deliberately un-prefixed by `about_the_config` — the verdict is about the TREE, not
 /// about the document — and this wrapper must not change that.
 #[derive(Debug)]
 pub struct VerdictError(String);
@@ -3951,7 +3951,7 @@ pub fn is_config_mode(argv: &[String]) -> bool {
 /// define whether it applies to one crate or all of them, and the honest answer differs per flag. The
 /// config file is the edit loop.
 ///
-/// [`EXEMPT_ARG_IDS`] is the one exception, and it is the same class as `--print-flags`: a flag that
+/// `EXEMPT_ARG_IDS` is the one exception, and it is the same class as `--print-flags`: a flag that
 /// does not describe a crate.
 pub fn reject_generation_flags(argv: &[String]) -> Result<(), String> {
     use clap::CommandFactory;
