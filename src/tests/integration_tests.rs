@@ -978,14 +978,15 @@ pub(crate) fn tool_cmd(program: &str) -> ToolCmd {
 fn wasm_public_surface(
     build: &std::process::Output,
     artifact: &std::path::Path,
-    duplicate_classes: &[&str],
+    classes: &[&str],
+    expect_collision: bool,
 ) {
     let link_stderr = String::from_utf8_lossy(&build.stderr);
     if !build.status.success() {
         assert!(
-            !duplicate_classes.is_empty()
+            expect_collision
                 && link_stderr.contains("duplicate symbol")
-                && duplicate_classes
+                && classes
                     .iter()
                     .any(|name| link_stderr.to_lowercase().contains(&name.to_lowercase())),
             "unexpected wasm32 link failure:\n{link_stderr}"
@@ -1008,23 +1009,25 @@ fn wasm_public_surface(
         .output()
         .unwrap();
     let stderr = String::from_utf8_lossy(&output.stderr);
-    if duplicate_classes.is_empty() {
+    if !expect_collision {
         assert!(
             output.status.success(),
             "deferred WASM bindings must succeed:\n{stderr}"
         );
-        assert!(
-            output_dir
-                .join(format!(
-                    "{}.js",
-                    artifact.file_stem().unwrap().to_str().unwrap()
-                ))
-                .is_file()
-        );
+        let js = std::fs::read_to_string(output_dir.join(format!(
+            "{}.js",
+            artifact.file_stem().unwrap().to_str().unwrap()
+        ))).unwrap();
+        for class in classes {
+            assert!(
+                js.contains(&format!("class {class} {{")),
+                "the deferred public class {class} must be retained in the JS bindings"
+            );
+        }
     } else {
         assert!(
             !output.status.success()
-                && duplicate_classes.iter().any(|name| stderr
+                && classes.iter().any(|name| stderr
                     .contains(&format!("the name `{name}` is exported multiple times"))),
             "duplicated WASM classes must fail binding generation by name; success={}, stderr:\n{stderr}",
             output.status.success()
@@ -20632,7 +20635,8 @@ fn extern_wrapper_index_defers_to_dep() {
     wasm_public_surface(
         &green,
         &wasm_dir.join("target/wasm32-unknown-unknown/debug/cddl_lib_wasm.wasm"),
-        &[],
+        &["IdxFooList"],
+        false,
     );
 
     // RED: same spec, deferral OFF -> local re-mints -> duplicate public WASM classes.
@@ -20664,6 +20668,7 @@ fn extern_wrapper_index_defers_to_dep() {
             "MapU64ToIdxFoo",
             "NonEmptyIdxFooList",
         ],
+        true,
     );
 }
 
@@ -21486,7 +21491,8 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[];
             &base
                 .join(output)
                 .join("wasm/target/wasm32-unknown-unknown/debug/cddl_lib_wasm.wasm"),
-            &[],
+            &["IdxFooList"],
+            false,
         );
     }
 
@@ -21528,6 +21534,7 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[];
             "MapU64ToIdxFoo",
             "NonEmptyIdxFooList",
         ],
+        true,
     );
 }
 
@@ -25381,6 +25388,7 @@ fn workspace_regen_two_consumer_contract() {
             &red,
             &target_dir.join("wasm32-unknown-unknown/debug/regen_umbrella_wasm.wasm"),
             &["FooList", "MapU64ToFoo", "NonEmptyFooList"],
+            true,
         );
     }
 
@@ -25474,7 +25482,8 @@ fn workspace_regen_two_consumer_contract() {
         wasm_public_surface(
             &green,
             &target_dir.join("wasm32-unknown-unknown/debug/regen_umbrella_wasm.wasm"),
-            &[],
+            &["FooList"],
+            false,
         );
     }
 
@@ -33933,7 +33942,8 @@ fn extern_companions_defers_to_sibling_wasm_crate() {
     wasm_public_surface(
         &green,
         &wasm_dir.join("target/wasm32-unknown-unknown/debug/cddl_lib_wasm.wasm"),
-        &[],
+        &["IdxFooList", "IdxHashList"],
+        false,
     );
 
     // Remove each directive independently: bindgen stops at the first duplicated JS class,
@@ -33988,6 +33998,7 @@ fn extern_companions_defers_to_sibling_wasm_crate() {
             &red,
             &red_export.join("wasm/target/wasm32-unknown-unknown/debug/cddl_lib_wasm.wasm"),
             &[class],
+            true,
         );
     }
     let _ = std::fs::remove_dir_all(&red_inputs);
