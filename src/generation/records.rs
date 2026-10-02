@@ -2684,7 +2684,6 @@ fn emit_open_table_preserve_order(
 /// `.get()` returns `Option`, so a stale `orig_deser_order` (a user mutated a container after
 /// deserialize, shifting the count) SKIPS rather than panics — serialize's never-panic philosophy.
 fn emit_open_table_replay(
-    gen_scope: &mut GenerationScope,
     types: &IntermediateTypes,
     record: &RustRecord,
     ser_loop_match: &mut Block,
@@ -5422,7 +5421,7 @@ pub(super) fn codegen_struct(
                         ser_loop_match.push_block(field_ser_block);
                     }
                     if record.is_open_table() {
-                        emit_open_table_replay(gen_scope, types, record, &mut ser_loop_match, cli);
+                        emit_open_table_replay(types, record, &mut ser_loop_match, cli);
                     } else if let Some(rest) = &record.rest {
                         // OPEN struct rest arm: index `>= N` selects the (index - N)-th rest entry.
                         // `.get()` returns `Option`, so a stale `orig_deser_order` (a user mutated

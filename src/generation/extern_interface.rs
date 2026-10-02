@@ -1011,7 +1011,7 @@ fn project_struct_row(
             (
                 Ok(ProjectedRow {
                     body: crate::parsing::EXTERN_MARKER.to_string(),
-                    annotations: annotations,
+                    annotations,
                     rule_refs: BTreeSet::new(),
                 }),
                 check,
@@ -1024,7 +1024,7 @@ fn project_struct_row(
             (
                 Ok(ProjectedRow {
                     body: crate::parsing::RAW_BYTES_MARKER.to_string(),
-                    annotations: annotations,
+                    annotations,
                     rule_refs: BTreeSet::new(),
                 }),
                 ExternCheckKind::RawBytes,
