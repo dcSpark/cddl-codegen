@@ -1535,7 +1535,8 @@ When a set of co-generated crates form a workspace — one crate per CDDL spec, 
 earlier ones as extern deps — a collection wrapper over another crate's types
 (`[* foo]` → `FooList`, `[2*5 foo]` → `FooListMin2Max5`, `{* k => v}` → `MapKToV`, and their restricted variants) must live in
 **exactly one** crate. Two crates that each mint the same `#[wasm_bindgen] FooList` export one JS
-class name twice and fail to link a single wasm cdylib (`duplicate symbol: __wbg_foolist_free`). The
+class name twice and cannot produce one public WASM binding surface: older versions reject
+link symbols, while current wasm-bindgen rejects duplicate exported class names. The
 `--workspace-dep` (consumer side) and `--wrapper-requests` (dependency side) flags place every
 all-one-dep wrapper in the **owning dependency**, so every consumer imports one shared definition. Two
 generated files carry this, both under the **wasm** crate's tool-owned `src/generated/**` (clobbered

@@ -5472,28 +5472,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.rust-oracle-tag-leniency-optional-segment-roundtrip"
-title = "The rust oracle rejects spec-valid absent-optional round-trips of `occurrence.optional_segment_occurrence`."
-
-[record.payload]
-kind = "work"
-body_md = '''Record the pinned rust-`cddl` tag-leniency defect in the narrowest IR-conformance ledger, or repair the oracle pin, so `ir_conformance_corpus` stops failing on a spec-valid vector.
-On 2026-09-24, `ir_conformance_corpus` (full tier, run with `CDDL_RUBY_ORACLE=skip` because the ruby gem was absent) failed at both `master` `00a03805` and a byte-identical refactor branch.
-The generated test `roundtrip_optional_segment_occurrence` minted `[10(0)]` (CBOR `81ca00`) for `[* uint, ? label: tstr, suffix: #6.10(uint)]`, which is spec-valid, and the rust oracle rejected it with `array validation failed: element sequence does not match group`.
-The mechanism is the one reduced in the Cycle 16 investigation: at rust-`cddl` `ac1b98e`, `visit_identifier` accepts any tag other than 0 or 1 as an ordinary named primitive, so a greedy `* uint` or `? tstr` consumes the mandatory tagged suffix.
-The missing system is an IR-conformance ledger entry, with a re-arming probe like the existing `undefined-validator-gap` one, that pins this rejection signature so a fixed oracle is noticed.
-Do not weaken the generator or delete the fixture: cddl-codegen's encoding is correct, and the defect is in the oracle's leaf predicate.
-
-'''
-work_state = "pending_review"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "false_pass_or_red"
-uncertainty_md = '''The ruby-oracle leg of the gate was not run, so this record does not establish whether that leg passes on the same vectors.
-Whether a rule-level `RUST_ORACLE_RULE_SKIP` or an upstream pin bump is the smaller repair is undecided.
-'''
-
-[[record]]
 id = "testing.rustfmt-seam-error-leg-still-witness-needs-subprocess"
 title = "One rustfmt-seam error leg still has no witness, and it is the one that needs a subprocess-scoped test harness."
 legacy_aliases = ["Next work 4"]
@@ -6294,34 +6272,6 @@ review_procedure_md = '''Compare fresh, durable evidence with the exact trigger 
 '''
 
 [[record]]
-id = "testing.wasm-duplicate-link-controls-current-toolchain"
-title = "Three duplicate-wrapper negative controls link successfully on the observed dependency graph."
-
-[record.payload]
-kind = "work"
-body_md = '''Re-establish the observable collision contract of the existing no-deferral controls before changing their expected verdicts.
-On 2026-09-08, local-tier tests `integration_tests::extern_companions_defers_to_sibling_wasm_crate`, `extern_wrapper_index_defers_to_dep`, and `workspace_dep_defers_to_dep` failed because their negative-control `cargo build --target wasm32-unknown-unknown` commands succeeded instead of producing `duplicate symbol`.
-The run used repository toolchain Rust 1.96.1, offline nested Cargo after successful warm-up, and fresh negative-control graphs resolving wasm-bindgen 0.2.128.
-The specimen/setup coordinates are the tests' current no-deferral generation branches: `tests/extern-companions/export_nodefer`, `tests/extern-deps-wasm-index/export_nodefer`, and `tests/workspace-dep-wasm/export_nodefer`, respectively.
-These are successful link verdicts from the real negative legs, not missing-target skips or registry failures.
-The missing system is a discriminating collision control for the emitted WASM surface under the dependency/toolchain graph actually selected by the harness, with independently checked premises for both the deferred and locally duplicated wrappers.
-Determine whether duplicate public classes are rejected at a later bindgen/packaging phase, are now valid, or were not forced into the tested link before choosing the smallest repair to that control.
-Do not delete the negative assertions, assume deferral is unnecessary, or rewrite the per-kind generator detectors based on link success alone.
-The evidence establishes the current mismatch between the negative expectation and build outcome; it does not establish which dependency change caused it or the final JS/ABI behavior.
-
-'''
-work_state = "pending_review"
-work_intent = "build_system"
-work_kind = "missing_system"
-risk = "false_pass_or_red"
-uncertainty_md = '''Inspect the exact generated wrapper identities, retained link inputs, and bindgen metadata for all three current controls, then compare an explicit dependency graph only if attribution is needed.
-The entire local run was red with six binary-test failures: three successful-link negative controls and three separate offline retained-lock failures.
-The full tier and later fail-fast-skipped gates were not run, and neither an ABI-level collision nor its absence was proved.
-On 2026-09-24, a `full --keep-going` run at `master` plus behavior-preserving refactors reproduced the three controls above and a fourth of the same class: `workspace_regen_two_consumer_contract` leg a (two minted consumers must fail the umbrella link with a duplicate symbol) linked successfully with wasm-bindgen 0.2.128.
-The three offline retained-lock failures did not recur on that warm cache.
-'''
-
-[[record]]
 id = "testing.wasm32-link-floor-deferred-reject-twin"
 title = "A wasm32 LINK floor for the deferred reject twin."
 
@@ -6329,8 +6279,8 @@ title = "A wasm32 LINK floor for the deferred reject twin."
 kind = "work"
 body_md = '''- **A wasm32 LINK floor for the deferred reject twin.** `workspace_dep_defers_reject_ordered_set_twins`
   compiles both generated crates on the HOST target, which is blind to the failure the deferral
-  exists to remove: two `#[wasm_bindgen]` classes of one name are a `rust-lld: duplicate symbol`
-  and nothing else. The reject family therefore inherits its link evidence from the loose-list
+  exists to remove: two `#[wasm_bindgen]` classes of one name collide at linking or
+  binding generation, depending on the wasm-bindgen version. The reject family therefore inherits its link evidence from the loose-list
   cell (`extern_wrapper_index_defers_to_dep`'s RED leg) rather than owning it. Adding the floor
   means teaching the committed hand dep pair (`tests/index-dep-crate{,-wasm}`) an
   `IdxFooOrderedSet` class — a shared fixture several index-mode cells read, so the change has to

@@ -883,14 +883,14 @@ closeout_state = "due"
 upstream_owner_reference_id = "release-rust-cddl-a-published-release-rejects-generic-tags-as-primitives"
 current_upstream_state_md = '''The diagnosis and corpus impact are durable in README gap 20, but no upstream issue or fix has been filed.
 '''
-verification_md = '''File the report or fix with leaf mismatch and greedy-array regressions; after a release, require ca02 to reject against uint/tstr/bytes/bool, require both absent-optional array reductions to accept, re-mint occurrence.optional_segment_occurrence, and run full verify before pruning gap 20.
+verification_md = '''File the report or fix with leaf mismatch and greedy-array regressions; after a release, require ca02 to reject against uint/tstr/bytes/bool, require both absent-optional array reductions to accept, remove the guarded IR-conformance rule skip, re-mint occurrence.optional_segment_occurrence, and run full verify before pruning gap 20.
 '''
 
 [record.payload.retirement_predicate]
 external_owner_reference_id = "release-rust-cddl-a-published-release-rejects-generic-tags-as-primitives"
 external_predicate_md = '''A published release rejects arbitrary non-0/1 tags against ordinary primitive identifiers while preserving declared typed-tag validation and greedy array sequence semantics.
 '''
-verification_md = '''Require ca02 to reject against uint/tstr/bytes/bool, require both absent-optional array reductions to accept, re-mint occurrence.optional_segment_occurrence, and run full verify before pruning gap 20.
+verification_md = '''Require ca02 to reject against uint/tstr/bytes/bool, require both absent-optional array reductions to accept, remove the guarded IR-conformance rule skip, re-mint occurrence.optional_segment_occurrence, and run full verify before pruning gap 20.
 '''
 due_action_md = '''Perform the ordered closeout actions only after fresh evidence satisfies the external predicate and verification succeeds; otherwise retain the closeout and its corpus-impact ledger.
 '''

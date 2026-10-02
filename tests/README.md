@@ -1410,11 +1410,13 @@ absent from the index, the deferred `use <dep_wasm>::collections::…;` imports 
 re-exported), the local-mint cells (not-in-index and mixed-element), a cross-crate behavioral
 round-trip via the fixture's `tests_wasm.rs` (constructing through the DEP's wrapper classes — the
 DEFERRED-wrapper sibling of `tests/extern-deps-wasm`'s cross-crate `tests_wasm.rs` above), and the
-honest link gate: a real
-`cargo build --target wasm32-unknown-unknown` of consumer+dep — the only place duplicate
-`#[wasm_bindgen]` classes actually fail — asserted GREEN with the flag and RED
-(`duplicate symbol`) without it, with a loud skip (hard assert under CI) when the target isn't
-installed. It was the suite's first gate compiling a generated crate for the actual wasm target
+public-surface gate: a real
+`cargo build --target wasm32-unknown-unknown` followed by matching `wasm-bindgen --target nodejs`
+of consumer+dep — asserted GREEN with the flag and RED without it.
+Older graphs reject duplicate symbols while linking; current graphs link but reject duplicated JS
+class names during binding generation.
+A missing CLI, version mismatch, or unrelated failure cannot satisfy RED.
+A missing target skips loudly locally and fails under CI. It was the suite's first gate compiling a generated crate for the actual wasm target
 (the workspace-mode gates below now do too), so the fixture also deliberately INCLUDES a
 control-constrained signed-int member
 (`local_thing.c: (int .ne 1)`): its emitted i64-window width guard pins `RangeCheck`'s `i128`
@@ -1489,7 +1491,7 @@ collection index, the workspace sidecar, and the run's stderr). The compile/link
 check` of the standalone `Local` column plus a real `cargo build --target wasm32-unknown-unknown` of
 the index and workspace columns against the committed wasm-clean dep pair — GREEN only, since
 `extern_wrapper_index_defers_to_dep`'s RED leg already demonstrates that a non-deferring consumer
-duplicate-symbols; and `wrapper_participation_requested_host_floor` (gate
+fails the public-surface check at linking or binding generation; and `wrapper_participation_requested_host_floor` (gate
 `wrapper_participation_host_floor`) checks the HOST crate a `--wrapper-requests` run emits, whose
 mints come from a sidecar rather than from its own spec, including both NonEmpty twins. Its import
 walk follows each support class's actual emission home: co-hosted classes stay local, own-spec
@@ -1696,7 +1698,7 @@ whose sidecar lists only bounded/marked maps must derive key traits without `--k
   the root defines no such name — E0432); the map's genuine root-hosted element class is still
   imported, and the wasm crate `cargo check`s (RED pre-fix: E0432 unresolved import).
 - `workspace_regen_two_consumer_contract` — the regen-contract gate over `tests/workspace-regen/`:
-  an umbrella wasm cdylib linking one dep + TWO consumers, RED with duplicate symbols when both
+  an umbrella wasm cdylib linking one dep + TWO consumers, RED for duplicate public classes when both
   consumers mint and GREEN after a reverse-dependency-order holistic regen, then the in-place
   lifecycle — zero-diff unchanged regen, requester churn without preservation traps, last-borrower
   removal, and the new-borrow-before-dep-regen unresolved-import failure. The regen gate runs
@@ -3231,18 +3233,17 @@ The directive (user doc: `docs/docs/comment_dsl.mdx` § `@extern_companions`,
 `docs/docs/wasm_differences.mdx` § the not-always-minted note) makes a locally-declared marker rule —
 either user-supplied flavor, `_CDDL_CODEGEN_EXTERN_TYPE_` or `_CDDL_CODEGEN_RAW_BYTES_TYPE_` —
 REFERENCE a listed structural companion class from a sibling wasm crate instead of minting a
-duplicate. Its defect class is a LINK-time duplicate `#[wasm_bindgen]` symbol, so its acceptance
-sits at the one layer no other fixture family reaches:
+duplicate. Its defect class is a duplicate public WASM class, detectable at linking or binding
+generation depending on the wasm-bindgen version:
 
-- **Two-crate link gate** — `src/tests/integration_tests.rs::
+- **Two-crate public-surface gate** — `src/tests/integration_tests.rs::
   extern_companions_defers_to_sibling_wasm_crate` over `tests/extern-companions/`: the dep pair
   ships HAND-written `#[wasm_bindgen] IdxFooList` / `IdxHashList` classes beside its generated tree
   (hand-written, so no wrapper index could list them — the reported consumer case), and the gate
-  builds consumer + dep wasm crates into ONE wasm32 target — the duplicate-`__wbg_*_free` half with
-  the directives stripped, link-clean with them present, plus the native compile. One spec carries
-  both markers over the same shapes (table key + list element), so the link verdict is attributable
-  to the marker KIND: the RED stderr must name `__wbg_idxfoolist_free` **and**
-  `__wbg_idxhashlist_free`.
+  builds consumer + dep wasm crates into ONE wasm32 target and runs matching wasm-bindgen.
+  Both directives present must pass linking and binding generation, plus the native compile.
+  Each directive is removed independently, and each RED must name its own duplicated class
+  (`IdxFooList` or `IdxHashList`), so bindgen's first-error behavior cannot hide an untested marker.
 - **Directive grammar + positions** — `comment_ast` malformed-arg panics (family convention:
   missing arg/`=`, bad prefix, bad class ident, duplicate directive); 9 `dsl_position_tests` GRID
   cells (honored on each marker; unlisted-companion still mints; rust-only inertness; five
@@ -4100,9 +4101,9 @@ dep, so shipped output stays ruby-free. Teeth and posture:
   the scratch generated module neutralizes only the exact emitted validator calls named by its
   `(fixture, rule)` entries. At pinned dcSpark/cddl
   `ac1b98ec07184236517da4511b1bbea239e35190`, valid `x = undefined` bytes `f7` reject with
-  `expected type undefined, got Null`. The cost is exactly **one of fixed_singletons' eight** rust
-  validator calls; its other seven calls, every ordinary round trip, minted-byte dump, ruby sweep,
-  and reference-codec differential remain enforced. Ciborium's generic value model collapses `f7`
+  `expected type undefined, got Null`.
+  Only the ledgered calls are neutralized; every unaffected Rust call, ordinary round trip,
+  minted-byte dump, Ruby sweep, and reference-codec differential remains enforced. Ciborium's generic value model collapses `f7`
   to null while minicbor preserves undefined, so that differential normalizes this one
   representational discrepancy after both codecs fully consume the bytes; its `f7` self-check keeps
   that accommodation explicit. Fixture/rule existence, a nonempty reason,
@@ -4127,6 +4128,15 @@ dep, so shipped output stays ruby-free. Teeth and posture:
   and stack-overflows on the chain. Exact returned-error probes plus a child-process SIGABRT/stderr
   probe make each accommodation stale. All unaffected generated calls, ordinary round trips, ruby
   validation, minted-byte dumps, and structural/reference-codec differentials remain live.
+
+  Gap #20 adds only `(occurrence, optional_segment_occurrence)`.
+  The pinned Rust oracle falsely consumes the required tagged suffix as an ordinary `uint` when
+  the optional label is absent, rejecting valid `81ca00` and `8201ca00`.
+  Fingerprint probes pin that rejection and require present-label vectors to pass and missing,
+  wrong-tag, and wrong-payload suffixes to fail.
+  Acceptance or a changed signature re-arms the rule for investigation and removal of its skip.
+  Ruby accepts the absent-label vectors and remains enabled for every generated case.
+  See `cddl-matrix/README.md` gap #20 for the upstream defect and repair criteria.
 
   The decode catalog has an independent exact-vector oracle-gap ledger for the same upstream gap.
   Working rule: adding or changing an upstream-oracle accommodation requires auditing every

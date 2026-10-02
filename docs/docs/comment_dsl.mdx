@@ -1660,13 +1660,9 @@ When a rule declares an extern or raw-bytes type, the generator still owns that 
 companions* — the `<Elem>List`, `Map<K>To<V>` and their siblings it synthesizes for `[* t]` / `{* k => v}` shapes.
 Each is a `#[wasm_bindgen]` class. If the sibling crate that *defines* the extern type also defines a
 class of the same structural name (typically the canonical `<Name>List`), and both wasm crates link
-into one cdylib, the link fails:
-
-```
-rust-lld: error: duplicate symbol: __wbg_transactionmetadatumlist_free
-  >>> defined in …/cml_cip25_wasm….rcgu.o
-  >>> defined in …/libcml_chain_wasm.rlib(…)
-```
+into one cdylib, their public WASM classes collide.
+Older versions reject duplicate symbols such as `__wbg_transactionmetadatumlist_free` during linking;
+current wasm-bindgen links the Rust symbols but rejects the duplicated JS class name during binding generation.
 
 Renaming one side (via `@rust_name` on the extern rule) removes the collision but mints a *second* JS
 class for one concept, with no type identity against the sibling's own API — a value obtained from
@@ -1770,7 +1766,7 @@ raw-bytes marker needs no such rule of its own: a generic `_CDDL_CODEGEN_RAW_BYT
 rejected outright, directive or not — see its section below.) A
 malformed argument (missing, no `=`, a non-path prefix, an empty or non-identifier class name) is a
 loud parse-time failure rather than a silent drop — a silently dropped declaration re-mints the very
-classes it exists to suppress, and the only symptom would be a duplicate symbol in a *different*
+classes it exists to suppress, and the symptom would be a duplicated public WASM class in a *different*
 crate's link. Finally, if a listed class name is also defined by a rule in this crate, generation
 fails naming both: the `use` and the rule would claim one identifier.
 

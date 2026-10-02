@@ -625,7 +625,8 @@ exactly what the `cp`-the-binary-somewhere-immutable-and-point-`RUST_CDDL`-there
     Ruby accepts both arrays.
     Cycle 16 exposed the composition cost in `occurrence.optional_segment_occurrence`; the Cycle 17 re-mint drops four absent-optional candidates (`[0, [10(699)]]`, `[0, [4686, 4446, 10(189)]]`, `[0, [10(1832)]]`, and `[0, [10(3825)]]`) with `ruby=0 rust=1`, while all six currently committed two-oracle vectors contain the text field that stops `* uint` before the tag.
     cddl-codegen's decoder accepts the absent-optional forms; its hand-authored native, preserve, JSON, wasm, and component tests retain that path, so this is an oracle-side corroboration gap rather than a product defect.
-    Re-mint the row after rust rejects generic tags against ordinary primitives and both absent-optional reductions validate.
+    The IR-conformance harness contains a per-rule `RUST_ORACLE_RULE_SKIP` for this same rule, guarded by exact rooted `81ca00`/`8201ca00` rejection probes and present-label/invalid controls; generated round trips, dumps, Ruby validation, and sibling Rust calls remain active.
+    Re-mint the row and remove that per-rule skip after rust rejects generic tags against ordinary primitives and both absent-optional reductions validate.
     A public `anweiss/cddl` issue search on 2026-09-01 found no report of this exact behavior; none was filed.
 
 ## Gotchas (read before touching the support seam or probe examples)

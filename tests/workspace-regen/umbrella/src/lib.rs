@@ -2,8 +2,8 @@
 // (and, transitively, the dep wasm crate they defer to) into a single wasm32 link. Referencing a
 // `#[wasm_bindgen]` associated function from each consumer forces that crate's whole wasm-bindgen
 // surface — including any locally minted collection wrapper — into the artifact, so:
-//   * workspace mode OFF: A and B each mint `FooList` -> two `#[wasm_bindgen] FooList` -> the linker
-//     reports a duplicate symbol (the feature's headline failure).
+//   * workspace mode OFF: A and B each mint `FooList` -> two `#[wasm_bindgen] FooList` -> linking or binding generation
+//     rejects the duplicate public class.
 //   * workspace mode ON: the dep hosts each shared wrapper once and both consumers defer -> one
 //     definition each -> the umbrella links clean.
 use wasm_bindgen::prelude::wasm_bindgen;
