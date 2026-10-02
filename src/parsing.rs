@@ -149,15 +149,9 @@ pub fn parse_rule(
                 "{}: Generics not supported on plain groups",
                 rule.name
             );
-            // Freely defined group - the group body itself is already handled in `api::with_types`
-            // (`mark_plain_group`). This arm reaches NEITHER `parse_type` nor `parse_type_choices`,
-            // so every rule-position directive a plain group is meant to honor needs its own site
-            // here or it is SILENTLY dropped — `@rust_name` was dropped that way once, and
-            // `@no_json_schema_export` inherited the same hole (a spliced plain group DOES register a
-            // rust struct, so it does get a schema-registration row to suppress). Both are read off
-            // the one `group_rule_pin_metadata` extraction, which knows where cddl actually binds a
-            // group rule's trailing comment. A directive added to this list must be one with NO
-            // field-position meaning — see that fn's doc comment.
+            // The group body is registered in api::with_types. This arm applies its rule slot
+            // through RuleBodyShape::PlainGroup, using group_rule_pin_metadata to avoid consuming
+            // the final entry's field directives as rule directives.
             match &rule.entry {
                 cddl::ast::GroupEntry::InlineGroup {
                     group,
@@ -189,30 +183,11 @@ pub fn parse_rule(
     }
 }
 
-/// A graceful-rejection message if `cddl_rule` carries a rule-position `@name` directive, else
-/// `None`. `@name` renames a struct field, a type-choice variant, or a group-choice arm — never a
-/// top-level rule or group, whose CDDL identifier IS the emitted Rust type name directly. On a
-/// single-type-choice TYPE rule the directive is silently dropped (`parse_type` assembles the merged
-/// rule-position metadata but never consults `.name` to rename the rule), a user-invisible surprise,
-/// so we reject at the parse-walk seam (`api::with_types`) through the normal `record_rejection`
-/// channel, mirroring `intermediate::reserved_ident_rejection`.
-///
-/// Multi-choice type rules are deliberately OUT of scope: there every `@name` attaches to a
-/// type1/choice and legitimately names an enum variant (`parse_type_choices`), so we return `None`.
-/// ONE multi-choice shape is back IN scope — the rule-name position carries a SHAPE axis (the
-/// identifier-hazard lesson): a `T / null` two-choice rule collapses to an `Option<T>` alias
-/// (`parse_type_choices`' optional-inner path) instead of an enum, so a `@name` on either arm has
-/// no variant to name and was silently dropped; both comment placements reject here.
-/// The check keys on `.name` ONLY — every other rule-level directive (`@newtype`, `@no_alias`,
-/// `@used_as_key`, `@custom_json`, `@doc`, `@custom_serialize`/`@custom_deserialize`) attaches at
-/// this same comment position and WORKS, so it must be left untouched.
-///
-/// For a plain GROUP rule the true rule-position slot is `comments_after_group`; we guard it for
-/// symmetry with the reserved-name precedent. Note that a *trailing* `@name` (`grp = (a: uint) ;
-/// @name x`) does NOT land there — cddl binds it to the last group entry's trailing comment, so it
-/// is consumed by the field-naming site (`group_entry_to_field_name`) as a field rename, which the
-/// rejection must not disturb. So in practice this branch only fires for the (currently unreachable)
-/// case where `@name` reaches `comments_after_group` directly.
+/// Reject a rule-position `@name`: field and variant naming cannot rename a CDDL rule.
+/// The type_choices_carry_rule_position_name scan looks through wrappers and nullable collapses;
+/// multi-choice enum arms keep their variant names.
+/// A plain group's comments_after_group slot is checked independently: the parser normally binds
+/// a trailing name to its last entry, where it renames that field instead.
 pub fn rule_position_name_rejection(cddl_rule: &cddl::ast::Rule) -> Option<String> {
     let has_rule_position_name = match cddl_rule {
         cddl::ast::Rule::Type { rule, .. } => {
@@ -1707,10 +1682,8 @@ fn type_choice_metadata(choice: &TypeChoice) -> RuleMetadata {
 /// dumped from the AST; the `Type1` half is kept for robustness against a parser change and is what
 /// makes this identical to the merge every other rule-position site performs.)
 ///
-/// Both branches of `parse_type_choices` read through here — the `T / null` Option collapse and the
-/// enum-registering remainder — so the two cannot drift over which slot IS the rule position. They
-/// drifted once: the collapse branch read the INNER arm's `Type1` slot, which is never populated,
-/// and every rule-position directive on a `T / null` rule was silently dropped as a result.
+/// Both choice branches read the last arm through this seam, so nullable collapses and enums
+/// agree on the rule slot. The inner arm's Type1 comment slot is not populated by the parser.
 fn rule_position_metadata(type_choices: &[TypeChoice]) -> RuleMetadata {
     merge_metadata(
         &RuleMetadata::from(
@@ -2362,10 +2335,8 @@ fn parse_type_choices(
             raw_inner_rust_type.conceptual_type.resolve_alias_shallow()
         {
             if matches!(fixed, FixedValue::Null) && raw_inner_rust_type.encodings.is_empty() {
-                // Do not register yet: the rest of this branch is the one rule-position directive
-                // reader for `T / null`.  Returning here used to make directives on `null / null`
-                // silently inert.  It has a TypeChoice owner rather than an Option alias, but it
-                // still needs the common validation before that owner is registered.
+                // Register after common directive validation. Returning here would leave the
+                // singleton's rule slot unread; null / null owns one concrete state, not an alias.
                 (raw_inner_rust_type.clone(), Some(raw_inner_rust_type))
             } else {
                 let singleton_ident = synthesized_fixed_singleton_ident(&raw_inner_rust_type);
@@ -2387,40 +2358,21 @@ fn parse_type_choices(
         } else {
             (raw_inner_rust_type, None)
         };
-        // The collapse's PLAIN-GROUP inner (`u = kv / null`), sibling of the fixed guard above and
-        // refused for the reason `reject_plain_group_type_choice_arm` carries. This site is the one
-        // that mattered most: the other six spellings of a plain-group arm panicked, while this one
-        // exited 0 emitting `pub type U = Option<Kv>;` over a `Kv` the crate never defines — a
-        // non-compiling output the tool reported as success. Registering NOTHING is correct for the
-        // same reason the fixed guard gives: this rule registers no rust struct either way, and
-        // finalize's registered-nothing check cannot outrun the rejection recorded here.
+        // Refuse plain-group inners before registration: an optional alias would otherwise name
+        // a Rust type the group never defines. The recorded rejection precedes finalization.
         let collapse_site = rejection_site(types, Some(name), "anonymous");
         if reject_plain_group_type_choice_arm(types, &inner_rust_type, &collapse_site) {
             return;
         }
         let final_type =
             RustType::new(ConceptualRustType::Optional(Box::new(inner_rust_type))).tag_if(tag);
-        // The RULE-POSITION metadata slots, read exactly as the non-collapse branch below reads
-        // them: the LAST arm's trailing comment, merged across the `TypeChoice` and `Type1` levels
-        // because the cddl parser may bind a rule's trailing comment to either. Reading the INNER
-        // arm's `Type1` slot instead — as this branch used to — dropped EVERY rule-position
-        // directive on a `T / null` rule silently: the pinned fork never populates
-        // `Type1::comments_after_type` for a type-choice arm in any spelling (dumped from the AST
-        // for all four placements), so that slot is dead and the `@duplicates` / `@ignore`
-        // rejections written right below could not fire, nor could `@no_json_schema_export` mark.
+        // Read the last arm's rule slot and merge the enclosing wrapper's slot once.
         let local_metadata = rule_position_metadata(type_choices);
         let rule_metadata = merge_metadata(inherited_metadata, &local_metadata);
         apply_rule_position_directives(types, name, &rule_metadata, RuleBodyShape::NullCollapse);
-        // `@used_as_key` / `@used_as_elem` ask for a wasm surface keyed on the rule's own type. The
-        // collapse target is `Option<T>`, which is not a class the wasm boundary can key a map or a
-        // list on (it is exposed as a nullable of T's own wasm spelling, so the wrapper would either
-        // duplicate T's or name no class at all). Reject rather than mark: marking would put the
-        // rule into the demand/elem sets and let the wrapper minters silently produce nothing.
-        // Both are scoped to the UNTAGGED collapse, which is the one that registers a transparent
-        // alias. A TAGGED `T / null` rule wraps (below), so it mints a real class — but wiring the
-        // wasm map-key / loose-list minters for a wrapper over an `Optional` inner is its own work,
-        // and until it exists the honest answer is still a refusal, with the reason the tagged shape
-        // actually has rather than the untagged one's.
+        // Nullable aliases mint no class for key or element wrappers. Inside tagged demands
+        // retain their existing refusal, while the accepted outside spelling stays available
+        // pending the maintainer decision. A null / null singleton retains both directives.
         if null_singleton.is_none()
             && rule_metadata.key_demand.is_some()
             && !(tag.is_some()
@@ -2462,15 +2414,8 @@ fn parse_type_choices(
                 )
             });
         }
-        // `@newtype` mints a wrapper STRUCT around the rule's body; this branch registers a
-        // transparent alias and no struct, so the directive has nothing to wrap and would silently
-        // do nothing (on every other alias-producing rule body it does mint the wrapper, which is
-        // what makes the drop a surprise rather than a documented shape).
-        // Scoped to the UNTAGGED collapse. A TAGGED `T / null` rule wraps unconditionally (below),
-        // so there the directive is redundant-but-honored exactly as on a single-type tag rule and
-        // a `.cbor` rule body — and this rejection was never reached on the tagged path anyway, so
-        // `#6.10(uint / null) ; @newtype` used to be a SILENT drop (exit 0, empty stderr, no
-        // wrapper). Force-wrapping dissolves that drop by construction.
+        // An untagged nullable collapse stays a transparent alias, so it cannot honor newtype.
+        // Tagged collapses already wrap, making the directive redundant and honored there.
         if null_singleton.is_none() && tag.is_none() && rule_metadata.newtype.is_some() {
             types.record_rejection(format!(
                 "@newtype on `{name}`: a `T / null` rule collapses to a transparent `Option<T>` \
@@ -2479,12 +2424,7 @@ fn parse_type_choices(
                  `{name} = {name}_inner / null`), or drop the directive."
             ));
         }
-        // A directive on the NON-rule-position arm (`opt = uint ; @x` / `null`) is built and thrown
-        // away — the rule slot is the LAST arm's trailing comment (read above). The sibling branch
-        // rejects the same misplacement for the same reason; the difference is that a collapse has
-        // no VARIANTS, so `@name` and `@doc` have nothing to name or document here either and are
-        // caught too (`@name` additionally rejects at the parse-walk seam,
-        // `rule_position_name_rejection`, which covers both arms of this shape).
+        // A nullable collapse has no variants; classify its preceding arms by that owner.
         reject_non_last_arm_directives(
             types,
             type_choices,
@@ -2507,14 +2447,8 @@ fn parse_type_choices(
             );
             return;
         }
-        // A TAGGED `T / null` rule WRAPS: the tag rides `final_type`, and a transparent
-        // `pub type Topt = Option<u64>;` mints no type to hang it on — `Topt::to_cbor_bytes` would
-        // be `Option<u64>`'s, writing the payload with NO tag, while every embed site of the rule
-        // writes `write_tag(n)` first and every embed site's decoder requires it. Same reasoning,
-        // and the same byte-identical-to-`@newtype` outcome, as the tagged-collection and `.cbor`
-        // rule bodies; `register_type_alias`'s wire-facts assert makes the alias spelling
-        // unrepresentable rather than merely unused. The UNTAGGED collapse is unaffected and stays
-        // the transparent `Option<T>` alias it has always been.
+        // Tagged nullable bodies wrap so the rule's own codec carries the same tag as embed sites.
+        // A transparent alias would use Option's untagged codec and violate those wire facts.
         if tag.is_some() {
             types.register_rust_struct(
                 parent_visitor,
@@ -2531,14 +2465,7 @@ fn parse_type_choices(
         let local_metadata = rule_position_metadata(type_choices);
         let rule_metadata = merge_metadata(inherited_metadata, &local_metadata);
         apply_rule_position_directives(types, name, &rule_metadata, RuleBodyShape::TypeChoice);
-        // A rule-level directive on a NON-LAST arm is built and thrown away: the rule slot is
-        // `type_choices.last()` (read above), and `create_variants_from_type_choices` consumes only
-        // `.name` and `.doc` from each choice. So on any other arm the directive generates
-        // exit-0 output identical to omitting it — the silent-drop class, and the worst instance of
-        // it, because the arms of a type choice are a thing people reorder. Reject instead, naming
-        // the directive and the remedy. The `T / null` branch above reads the same rule slot
-        // (`rule_position_metadata`) and runs its own non-last-arm check, which also refuses
-        // `@name` and `@doc` because a collapse has no variants.
+        // Enum variants consume names and docs; other non-last-arm directives belong on the rule.
         reject_non_last_arm_directives(types, type_choices, NonLastArmOwner::TypeChoiceRule(name));
         // Build the arms. The tag-258 collapse recognizer below compares the raw arm types for
         // structural equality and then DISCARDS these builds; the surviving product (the nominal set
@@ -2607,30 +2534,12 @@ fn parse_type_choices(
             // defaults to `@duplicates reject`. Extend the collapse notice to state it and the opt-out
             // when that default applies; no such wording when the directive is explicit (either value).
             let is_array = matches!(base.conceptual_type, ConceptualRustType::Array(_));
-            // A named non-generic 258 SET rule (array inner) NOMINALIZES into a `Wrapper` struct that
-            // owns its `{tag, len, elem}` encodings (Phase 2.2) — both `reject` and `preserve` flavors
-            // (policy selects the inner type only). Grammar decides the tag record: the two-arm idiom's
-            // OPTIONAL tag rides `OptionallyTagged(258)` (a `TagPresenceEncoding` under
-            // --preserve-encodings), attached to the wrapped array type by the dispatch. `@newtype`
-            // now carries a custom getter on the wrapper (Phase 2.1's gap-3 rejection is SUBSUMED — a
-            // bare `@newtype` emits no getter, `@newtype <name>` a custom one; neither shadows
-            // `OrderedSet::get(index)`). A non-258 collapse (or a table inner) stays a transparent
-            // optionally-tagged alias, byte-identical to today.
-            // NOMINALIZATION covers BOTH non-generic set rules (Phase 2.2) and generic set DEFS
-            // (`set<a0> = #6.258([* a0]) / [* a0]`, Phase 2.3). A generic def's wrapper stores the
-            // generic PARAM as its wrapped element and is registered as a `GenericDef`; each
-            // instantiation then mints ONE nominal wrapper per distinct `<def>_<args>` (`SetKeyHash`)
-            // in `GenericInstance::resolve`. A named binding of an instance aliases the instantiation
-            // nominal.
-            // The collapse registers a COLLECTION (a nominal set wrapper, or a transparent
-            // optionally-tagged alias) — never the enum a two-arm choice would otherwise mint — so
-            // the arms are not variants and the two directives a variant position consumes have
-            // nothing to attach to. `@name` gets the same message every other rule position gives
-            // it (`rule_position_name_rejection` cannot reach this shape: it recognizes the T/null
-            // collapse from the AST alone, while the tag-set collapse is only known once the arms
-            // are BUILT and compared). `@ignore` is the rule-position misplacement its own message
-            // already covers — recorded here because the collapse returns before the multi-arm
-            // branch's copy of that check.
+            // Array-backed 258 sets nominalize into wrappers owning tag, length and element
+            // encodings. The policy selects the inner collection; the optional tag belongs to
+            // OptionallyTagged. A named getter is honored, while bare newtype adds none.
+            // Generic definitions register a GenericDef wrapper and each distinct argument list
+            // resolves to one nominal instance. Other collapsed collections wrap without this
+            // set nominalization. No collapse has enum variants, so arm names and docs are refused.
             if rule_metadata.name.is_some() {
                 types.record_rejection(rule_position_name_message(&source_rule_name_of(
                     types, name,
@@ -2713,13 +2622,8 @@ fn parse_type_choices(
         if rule_metadata.ignore {
             reject_ignore_not_applicable(types, name);
         }
-        // A choice-bodied generic DEF that neither collapse recognized — not the `T / null` Option
-        // collapse above, not the transparent tag-set idiom just above — would register a union
-        // ENUM as the generic def's body. Monomorphizing that is unimplemented: an instance carries
-        // the unresolved parameter into generation and aborts there with no diagnosis (`xs<a0> =
-        // #6.258([+ a0]) / [* a0]`, instanced and used, died at an `Option::unwrap` in the
-        // encoding/serialize walk at exit 101). Refuse here, where the shape is still in hand and
-        // the message can name the one choice-bodied idiom that IS supported.
+        // Refuse other choice-bodied generic definitions: enum monomorphization cannot resolve
+        // their parameters. This site can name the supported collapsed collection spelling.
         if generic_params.is_some() {
             types.record_rejection(format!(
                 "generic rule `{name}`: a type-choice body is supported only for the transparent \
@@ -4233,15 +4137,8 @@ fn reject_single_type_custom_codec(
 ) {
     let custom_directives = custom_codec_directives(rule_metadata);
     for directive in &custom_directives {
-        // An extern / raw-bytes rule names a type this crate does not define — `new_extern` and
-        // `new_raw_bytes` both store `RustStructConfig::default()`, so the pair never reaches
-        // generation and BOTH directions emit the named type's own impls. One class, like `@copy`
-        // above treats them; the message names the marker the rule actually spells, since this is
-        // "invalid HERE" rather than `@copy`'s "valid only on X or Y". The rejection is scoped to
-        // the rule ITSELF spelling a marker: a pair on an ALIAS whose body REFERENCES this rule is
-        // the honored "this rule is that type, written differently on the wire" spelling (the
-        // general type-level override, applied to a type the crate does not define), which is why
-        // the message advertises it as the second remedy.
+        // A marker rule has no generated codec carrier. An alias of that marker can own a pair,
+        // which is why the refusal offers the alias spelling as its second remedy.
         if let Some(marker) = marker {
             types.record_rejection(format!(
                 "{directive} on `{type_name}`: a {marker} rule names a type this crate does \
@@ -4257,13 +4154,8 @@ fn reject_single_type_custom_codec(
                  route the pair through the type-level alias override."
             ));
         }
-        // A generic INSTANTIATION binding mints its type during finalize's generic resolution, from
-        // the DEFINITION's `RustStructConfig` — so the pair written on the binding rule never
-        // reaches generation and both directions keep the definition's generated codec. Covers both
-        // shapes the binding takes: a struct-bodied instance (`foo = base<uint>`), and a named
-        // binding to a generic set NOMINAL (`foo = gset<uint>`), which additionally lowers to a
-        // transparent `pub type` through `AliasInfo::new_manual`. Not fixable by moving the pair to
-        // the definition — a generic DEF is refused for its own reason (it names no concrete type).
+        // Generic instances are built from the definition's config; a pair on the binding has
+        // no route into that codec, including bindings to a generic set nominal.
         if is_generic_instantiation {
             types.record_rejection(format!(
                 "{directive} on `{type_name}`: this rule binds a generic instantiation, and the \
@@ -4275,20 +4167,10 @@ fn reject_single_type_custom_codec(
                  and hand-write the type in full."
             ));
         }
-        // `@no_alias` beside the pair is ACCEPTED and redundant, not refused. It used to be refused
-        // because `resolve_alias` STRIPPED the alias node when the rule emitted no `pub type`, and
-        // the node is what the emitters look the pair up by — so the pair went with it and both
-        // directions silently fell back to the default wire. Node survival is now keyed on
-        // `AliasInfo::keeps_alias_node` (emits-a-type OR carries-a-pair) rather than on emission
-        // alone, so the pair keeps its routing key with or without the directive. What remains is a
-        // request the pair already grants: a pair-carrying alias suppresses its own type projection,
-        // because a `pub type` here would carry the aliased type's built-in codec as a standalone
-        // wire contradicting the one every embed site writes. Both are honored, and the spelling
-        // generates byte-identically either way.
-        // B3-026 audits one wrapper owner only: the implicit, untagged homogeneous-table map wrapper
-        // made by a complete pair. Explicit `@newtype` asks for the general wrapper surface instead,
-        // whose tag/range/set/preserve and Rust/WASM/JSON/WIT contracts were not defined by that
-        // delivery, so keep this placement refused rather than extending the table result by analogy.
+        // A pair-carrying alias keeps its routing node but emits no pub type, so no_alias beside
+        // the pair is accepted and redundant.
+        // A custom pair defines only the implicit homogeneous-table map wrapper contract.
+        // Explicit wrappers have undefined tag, range, set, encoding and cross-face codec contracts.
         if rule_metadata.newtype.is_some() {
             types.record_rejection(format!(
                 "{directive} together with `@newtype` on `{type_name}`: this delivery supports and \
