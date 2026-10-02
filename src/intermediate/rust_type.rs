@@ -2269,6 +2269,22 @@ impl RustType {
             .from_wasm_boundary_clone(types, expr, can_fail)
     }
 
+    /// [`Self::from_wasm_boundary_clone`] rendered as the emitted expression: the wasm-side `expr`
+    /// cloned and converted into this type's rust value, with adjacent conversion steps merged by
+    /// [`ToWasmBoundaryOperations::format`].
+    #[allow(clippy::wrong_self_convention)]
+    pub fn from_wasm_boundary_clone_expr(
+        &self,
+        types: &IntermediateTypes,
+        expr: &str,
+        can_fail: bool,
+    ) -> String {
+        ToWasmBoundaryOperations::format(
+            self.from_wasm_boundary_clone(types, expr, can_fail)
+                .into_iter(),
+        )
+    }
+
     /// FROM wasm as non-owning ref. A NonEmpty-array OR `@duplicates reject`-set wrapper is passed
     /// by-ref unchanged (both cross as `&Wrapper`).
     #[allow(clippy::wrong_self_convention)]

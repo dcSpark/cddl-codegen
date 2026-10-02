@@ -282,12 +282,11 @@ pub(super) fn generate_wrapper_struct(
         // can_fail = false here), then let the rust ctor produce the native wrapper. Building
         // `Self(inner.into())` directly would need two chained `.into()`s for a Rust-typed inner
         // (wasm→native inner, then native inner→native wrapper) with an uninferable middle type.
-        let from_wasm_expr = field_type.from_wasm_boundary_clone(types, "inner", false);
         let ctor = format!(
             "{}::{}({})",
             rust_crate_struct_from_wasm(types, type_name, cli),
             if checked_scalar { "try_from" } else { "new" },
-            ToWasmBoundaryOperations::format(from_wasm_expr.into_iter())
+            field_type.from_wasm_boundary_clone_expr(types, "inner", false)
         );
         super::enums::finish_wasm_ctor(
             &mut wasm_new,
@@ -323,13 +322,8 @@ pub(super) fn generate_wrapper_struct(
                 other => unreachable!("set nominal wrapped a non-array type: {other:?}"),
             };
             let native_wrapper = rust_crate_struct_from_wasm(types, type_name, cli);
-            let from_elem = |name: &str| {
-                ToWasmBoundaryOperations::format(
-                    element_type
-                        .from_wasm_boundary_clone(types, name, false)
-                        .into_iter(),
-                )
-            };
+            let from_elem =
+                |name: &str| element_type.from_wasm_boundary_clone_expr(types, name, false);
             wrapper
                 .s_impl
                 .new_fn("len")

@@ -12,7 +12,7 @@ use crate::intermediate::{
     EnumVariantData, FixedValue, IntWindow, IntermediateTypes, ModuleScope, Primitive, ROOT_SCOPE,
     Representation, RestKind, RestRow, RestSemantics, RustField, RustIdent, RustRecord,
     RustStructCBORLen, RustStructConfig, RustStructType, RustType, RustTypeSerializeConfig,
-    ToWasmBoundaryOperations, VariantIdent, escape_rust_str,
+    VariantIdent, escape_rust_str,
 };
 use crate::utils::{
     cbor_type_code_str, convert_to_camel_case, convert_to_snake_case, is_valid_rust_ident,

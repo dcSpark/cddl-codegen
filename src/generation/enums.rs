@@ -76,13 +76,13 @@ impl GenerationScope {
                     // Never `try_into` at the wasm boundary: the rust ctor takes an already-built
                     // value, so any inner-type bound was enforced when that value was constructed.
                     let try_into = false;
-                    let from_wasm_expr =
-                        variant
-                            .rust_type()
-                            .from_wasm_boundary_clone(types, &variant_arg, try_into);
                     format!(
                         "{native}::new_{variant_arg}({})",
-                        ToWasmBoundaryOperations::format(from_wasm_expr.into_iter())
+                        variant.rust_type().from_wasm_boundary_clone_expr(
+                            types,
+                            &variant_arg,
+                            try_into
+                        )
                     )
                 };
                 finish_wasm_ctor(&mut new_func, name, &ctor, can_fail);
@@ -196,10 +196,10 @@ pub(super) fn codegen_group_choices(
                                             "group-choice constructor field parameter",
                                         ),
                                     );
-                                    ctor.push_str(&ToWasmBoundaryOperations::format(
-                                        wasm_param_type
-                                            .from_wasm_boundary_clone(types, &field.name, false)
-                                            .into_iter(),
+                                    ctor.push_str(&wasm_param_type.from_wasm_boundary_clone_expr(
+                                        types,
+                                        &field.name,
+                                        false,
                                     ));
                                 }
                             }
@@ -218,11 +218,10 @@ pub(super) fn codegen_group_choices(
                         let field_name = convert_to_snake_case(&variant.name.to_string());
                         let ctor = format!(
                             "{native}::new_{variant_arg}({})",
-                            ToWasmBoundaryOperations::format(
-                                variant
-                                    .rust_type()
-                                    .from_wasm_boundary_clone(types, &field_name, false)
-                                    .into_iter()
+                            variant.rust_type().from_wasm_boundary_clone_expr(
+                                types,
+                                &field_name,
+                                false
                             )
                         );
                         new_func.arg(

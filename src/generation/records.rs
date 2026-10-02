@@ -3380,28 +3380,14 @@ pub(super) fn codegen_struct(
                             setter.line(&line);
                         }
                     }
+                    let value =
+                        field
+                            .rust_type
+                            .from_wasm_boundary_clone_expr(types, &field.name, false);
                     let assignment = if field.rust_type.config.default.is_some() {
-                        format!(
-                            "self.0.{} = {}",
-                            field.name,
-                            ToWasmBoundaryOperations::format(
-                                field
-                                    .rust_type
-                                    .from_wasm_boundary_clone(types, &field.name, false)
-                                    .into_iter()
-                            )
-                        )
+                        format!("self.0.{} = {value}", field.name)
                     } else {
-                        format!(
-                            "self.0.{} = Some({})",
-                            field.name,
-                            ToWasmBoundaryOperations::format(
-                                field
-                                    .rust_type
-                                    .from_wasm_boundary_clone(types, &field.name, false)
-                                    .into_iter()
-                            )
-                        )
+                        format!("self.0.{} = Some({value})", field.name)
                     };
                     if setter_can_fail {
                         setter.line(format!("{assignment};")).line("Ok(())");
@@ -3539,11 +3525,10 @@ pub(super) fn codegen_struct(
                             "record constructor parameter",
                         ),
                     );
-                    wasm_new_args.push(ToWasmBoundaryOperations::format(
-                        field
-                            .rust_type
-                            .from_wasm_boundary_clone(types, &field.name, false)
-                            .into_iter(),
+                    wasm_new_args.push(field.rust_type.from_wasm_boundary_clone_expr(
+                        types,
+                        &field.name,
+                        false,
                     ));
                     if let Some(comment) = &field.rule_metadata.doc {
                         wasm_new_comments.push(format!("* `{}` - {}", field.name, comment));
@@ -3625,17 +3610,15 @@ pub(super) fn codegen_struct(
                             "open-table constructor value parameter",
                         ),
                     );
-                wasm_new_args.push(ToWasmBoundaryOperations::format(
+                wasm_new_args.push(
                     typed
                         .domain()
-                        .from_wasm_boundary_clone(types, &first_key, false)
-                        .into_iter(),
-                ));
-                wasm_new_args.push(ToWasmBoundaryOperations::format(
-                    typed
-                        .range()
-                        .from_wasm_boundary_clone(types, &first_value, false)
-                        .into_iter(),
+                        .from_wasm_boundary_clone_expr(types, &first_key, false),
+                );
+                wasm_new_args.push(typed.range().from_wasm_boundary_clone_expr(
+                    types,
+                    &first_value,
+                    false,
                 ));
                 wasm_new_comments.push(format!(
                     "* `{first_key}` - the key of the first typed entry (CDDL `+ k1 => v1`: an open \
@@ -3729,10 +3712,10 @@ pub(super) fn codegen_struct(
                         "multiple-array-segment constructor parameter",
                     ),
                 );
-                wasm_new_args.push(ToWasmBoundaryOperations::format(
-                    rest_ty
-                        .from_wasm_boundary_clone(types, &rest.field_name, false)
-                        .into_iter(),
+                wasm_new_args.push(rest_ty.from_wasm_boundary_clone_expr(
+                    types,
+                    &rest.field_name,
+                    false,
                 ));
                 wasm_new_comments.push(format!(
                     "* `{}` - the complete list wrapper for this authored array occurrence segment (its CDDL occurrence window is enforced before construction)",
@@ -3757,11 +3740,10 @@ pub(super) fn codegen_struct(
                     "open-array constructor first parameter",
                 ),
             );
-            wasm_new_args.push(ToWasmBoundaryOperations::format(
+            wasm_new_args.push(
                 rest.element()
-                    .from_wasm_boundary_clone(types, &first_arg, false)
-                    .into_iter(),
-            ));
+                    .from_wasm_boundary_clone_expr(types, &first_arg, false),
+            );
             wasm_new_comments.push(if !array_segment_is_final(record, rest) {
                 if array_segment_uses_fixed_domain_retry(types, record, rest) {
                     format!(
@@ -3797,10 +3779,10 @@ pub(super) fn codegen_struct(
                     "open-array bounded constructor parameter",
                 ),
             );
-            wasm_new_args.push(ToWasmBoundaryOperations::format(
-                rest_ty
-                    .from_wasm_boundary_clone(types, &rest.field_name, false)
-                    .into_iter(),
+            wasm_new_args.push(rest_ty.from_wasm_boundary_clone_expr(
+                types,
+                &rest.field_name,
+                false,
             ));
             wasm_new_comments.push(if !array_segment_is_final(record, rest) {
                 if rest.has_exact_occurrence_window() {
@@ -3844,10 +3826,10 @@ pub(super) fn codegen_struct(
                     "open-map restricted constructor parameter",
                 ),
             );
-            wasm_new_args.push(ToWasmBoundaryOperations::format(
-                rest_ty
-                    .from_wasm_boundary_clone(types, &rest.field_name, false)
-                    .into_iter(),
+            wasm_new_args.push(rest_ty.from_wasm_boundary_clone_expr(
+                types,
+                &rest.field_name,
+                false,
             ));
             wasm_new_comments.push(format!(
                 "* `{}` - the complete checked captured map row (its declared occurrence window \
@@ -3964,21 +3946,15 @@ pub(super) fn codegen_struct(
                 .then(|| super::collections::wasm_exact_byte_handover(rest.domain(), "key", cli))
                 .flatten()
                 .unwrap_or_else(|| {
-                    ToWasmBoundaryOperations::format(
-                        rest.domain()
-                            .from_wasm_boundary_clone(types, "key", false)
-                            .into_iter(),
-                    )
+                    rest.domain()
+                        .from_wasm_boundary_clone_expr(types, "key", false)
                 });
             let value = direct_storage
                 .then(|| super::collections::wasm_exact_byte_handover(rest.range(), "value", cli))
                 .flatten()
                 .unwrap_or_else(|| {
-                    ToWasmBoundaryOperations::format(
-                        rest.range()
-                            .from_wasm_boundary_clone(types, "value", false)
-                            .into_iter(),
-                    )
+                    rest.range()
+                        .from_wasm_boundary_clone_expr(types, "value", false)
                 });
             let mut insert = codegen::Function::new(&method_name);
             insert
@@ -4050,50 +4026,48 @@ pub(super) fn codegen_struct(
         // source order.  The wasm surface keeps its established field-then-wrapper parameter
         // layout, so assemble the native call independently instead of assuming both orders are
         // identical (which would feed a list wrapper to the next fixed scalar).
-        let wasm_native_new_args =
-            if record.rep == Representation::Array && !record.array_segments.is_empty() {
-                let mut args: Vec<(usize, String)> = record
-                    .fields
-                    .iter()
-                    .filter(|field| {
-                        !field.optional
-                            && !field.rust_type.is_fixed_value()
-                            && field.rust_type.config.default.is_none()
-                    })
-                    .map(|field| {
-                        (
-                            field.source_index,
-                            ToWasmBoundaryOperations::format(
-                                field
-                                    .rust_type
-                                    .from_wasm_boundary_clone(types, &field.name, false)
-                                    .into_iter(),
-                            ),
-                        )
-                    })
-                    .chain(
-                        record
-                            .captured_dynamic_rows()
-                            .filter(|row| row.is_array_tail())
-                            .map(|row| {
-                                let rest_ty = rest_member_type(row);
-                                (
-                                    row.array_source_index()
-                                        .expect("array segment has a source index"),
-                                    ToWasmBoundaryOperations::format(
-                                        rest_ty
-                                            .from_wasm_boundary_clone(types, &row.field_name, false)
-                                            .into_iter(),
-                                    ),
-                                )
-                            }),
+        let wasm_native_new_args = if record.rep == Representation::Array
+            && !record.array_segments.is_empty()
+        {
+            let mut args: Vec<(usize, String)> = record
+                .fields
+                .iter()
+                .filter(|field| {
+                    !field.optional
+                        && !field.rust_type.is_fixed_value()
+                        && field.rust_type.config.default.is_none()
+                })
+                .map(|field| {
+                    (
+                        field.source_index,
+                        field
+                            .rust_type
+                            .from_wasm_boundary_clone_expr(types, &field.name, false),
                     )
-                    .collect();
-                args.sort_by_key(|(source_index, _)| *source_index);
-                args.into_iter().map(|(_, arg)| arg).collect::<Vec<_>>()
-            } else {
-                wasm_new_args
-            };
+                })
+                .chain(
+                    record
+                        .captured_dynamic_rows()
+                        .filter(|row| row.is_array_tail())
+                        .map(|row| {
+                            let rest_ty = rest_member_type(row);
+                            (
+                                row.array_source_index()
+                                    .expect("array segment has a source index"),
+                                rest_ty.from_wasm_boundary_clone_expr(
+                                    types,
+                                    &row.field_name,
+                                    false,
+                                ),
+                            )
+                        }),
+                )
+                .collect();
+            args.sort_by_key(|(source_index, _)| *source_index);
+            args.into_iter().map(|(_, arg)| arg).collect::<Vec<_>>()
+        } else {
+            wasm_new_args
+        };
         if new_can_fail {
             wasm_new.line(format!(
                 "{}::new({}).map(Into::into).map_err(Into::into)",

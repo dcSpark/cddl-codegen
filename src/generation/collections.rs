@@ -616,11 +616,7 @@ impl GenerationScope {
         } else {
             new_func.ret("Self").line(format!(
                 "Self(NonEmptyVec::new({}))",
-                ToWasmBoundaryOperations::format(
-                    element_type
-                        .from_wasm_boundary_clone(types, "first", false)
-                        .into_iter()
-                )
+                element_type.from_wasm_boundary_clone_expr(types, "first", false)
             ));
         }
         wrapper.s_impl.push_fn(new_func);
@@ -1049,11 +1045,7 @@ impl GenerationScope {
             } else {
                 new_func.ret("Self").line(format!(
                     "Self({twin}::new({}))",
-                    ToWasmBoundaryOperations::format(
-                        element_type
-                            .from_wasm_boundary_clone(types, "first", false)
-                            .into_iter()
-                    )
+                    element_type.from_wasm_boundary_clone_expr(types, "first", false)
                 ));
             }
             wrapper.s_impl.push_fn(new_func);
@@ -1125,11 +1117,7 @@ impl GenerationScope {
             } else {
                 insert.ret("bool").line(format!(
                     "self.0.insert({})",
-                    ToWasmBoundaryOperations::format(
-                        element_type
-                            .from_wasm_boundary_clone(types, "elem", false)
-                            .into_iter()
-                    )
+                    element_type.from_wasm_boundary_clone_expr(types, "elem", false)
                 ));
             }
             wrapper.s_impl.push_fn(insert);
@@ -1152,11 +1140,7 @@ impl GenerationScope {
         } else {
             contains.ret("bool").line(format!(
                 "self.0.contains(&{})",
-                ToWasmBoundaryOperations::format(
-                    element_type
-                        .from_wasm_boundary_clone(types, "elem", false)
-                        .into_iter()
-                )
+                element_type.from_wasm_boundary_clone_expr(types, "elem", false)
             ));
         }
         wrapper.s_impl.push_fn(contains);
@@ -1842,11 +1826,7 @@ fn push_list_accessors(
     } else {
         add.line(format!(
             "self.0.push({});",
-            ToWasmBoundaryOperations::format(
-                element_type
-                    .from_wasm_boundary_clone(types, "elem", false)
-                    .into_iter()
-            )
+            element_type.from_wasm_boundary_clone_expr(types, "elem", false)
         ));
     }
     wrapper.s_impl.push_fn(add);
@@ -1884,11 +1864,8 @@ pub(super) fn wasm_direct_storage_expr(
     types: &IntermediateTypes,
     cli: &Cli,
 ) -> String {
-    wasm_exact_byte_handover(ty, expr, cli).unwrap_or_else(|| {
-        ToWasmBoundaryOperations::format(
-            ty.from_wasm_boundary_clone(types, expr, false).into_iter(),
-        )
-    })
+    wasm_exact_byte_handover(ty, expr, cli)
+        .unwrap_or_else(|| ty.from_wasm_boundary_clone_expr(types, expr, false))
 }
 
 /// The fallible leaf conversion without a terminal `?`. Optional handovers map this Result through
