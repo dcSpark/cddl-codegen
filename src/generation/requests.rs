@@ -67,7 +67,13 @@ impl GenerationScope {
                 if entry.dep.replace('-', "_") != my_lib {
                     continue;
                 }
-                let rt = parse_requested_shape(types, &entry.shape, consumer, path, &entry.name)?;
+                let (rt, named_leaves) = parse_requested_shape_with_leaves(
+                    types,
+                    &entry.shape,
+                    consumer,
+                    path,
+                    &entry.name,
+                )?;
                 // A requested shape that is DIRECTLY WASM-EXPOSABLE has no wrapper class at all —
                 // it lowers to a bare `Vec<…>` at the wasm boundary — so no borrowed wrapper exists
                 // or is needed. Such a request is the symptom of an unfaithful consumer stub: the
@@ -78,7 +84,7 @@ impl GenerationScope {
                 // disagreement, and a member-form listing (`Vec<u64>` for `[* uint]`) slips past the
                 // cross-check and dies later in rustfmt labeled a generator bug.
                 if let Some(member) = requested_exposable_member(types, &rt) {
-                    let leaves = requested_shape_leaf_resolutions(types, &entry.shape);
+                    let leaves = requested_shape_leaf_resolutions(types, &named_leaves);
                     let leaf_note = if leaves.is_empty() {
                         "its element is a wasm-primitive".to_owned()
                     } else {
@@ -101,7 +107,7 @@ impl GenerationScope {
                 let structural = requested_structural_name(types, &rt, consumer, path)?;
                 // Cross-check the derived structural name against the listed name (hard error).
                 if structural != entry.name {
-                    let leaves = requested_shape_leaf_resolutions(types, &entry.shape);
+                    let leaves = requested_shape_leaf_resolutions(types, &named_leaves);
                     let leaf_note = if leaves.is_empty() {
                         String::new()
                     } else {
@@ -287,9 +293,8 @@ impl GenerationScope {
                             (**v).clone(),
                             &ident,
                             false,
-                            // cross-crate wrapper-request hosting resolves the flavor from the
-                            // requested `RustType`; an inline request carries no directive so this is
-                            // `false` today (the same anonymous-seam reachability as the inline mint).
+                            // The shape parser restores the hosted carrier's duplicate policy;
+                            // preserve requests use the PairMap twin here too.
                             rt.is_preserve_pair_map(),
                             cli,
                         );
@@ -301,9 +306,8 @@ impl GenerationScope {
                             (**k).clone(),
                             (**v).clone(),
                             false,
-                            // recover the flavor from the requested `RustType`; an inline cross-crate
-                            // request carries no directive, so this is `false` today (same
-                            // anonymous-seam reachability as the `{+ …}` request above).
+                            // Recover the duplicate policy restored from the requested shape,
+                            // including a loose preserve-pair request.
                             rt.is_preserve_pair_map(),
                             cli,
                         );
@@ -441,7 +445,7 @@ fn primitive_cddl_name(p: &Primitive) -> &'static str {
 /// (snake_case of the rust ident, matching the extern-stub naming a dep re-parses after
 /// normalization); primitives render as their CDDL prelude name. The occurrence marker is taken from
 /// the `RustType`'s own bounds so nested non-empty shapes are honored at every level. This is the
-/// single shape renderer shared by the not-in-index warning hint and (later) the request-sidecar
+/// single shape renderer shared by the not-in-index warning hint and the request-sidecar
 /// machinery, so its output is EXACTLY the format a dep parses back.
 pub(crate) fn render_wrapper_shape(rt: &RustType) -> String {
     match &rt.conceptual_type {
@@ -600,9 +604,8 @@ fn primitive_from_cddl_name(name: &str) -> Option<Primitive> {
 }
 
 /// Whether `c` can appear in a shape-column leaf token (a CDDL ident or a prelude/sized-int name).
-/// The one owner of the leaf-token alphabet, shared by the strict parser's leaf arm and
-/// `requested_shape_leaf_resolutions`' diagnostic walk so the two cannot tokenize a shape
-/// differently.
+/// The strict parser records validated named leaves using this alphabet; diagnostics reuse
+/// those original tokens rather than scanning policy syntax as if it were a named type.
 fn is_shape_ident_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_' || c == '-'
 }
@@ -625,6 +628,7 @@ struct ShapeParser<'a> {
     chars: Vec<char>,
     pos: usize,
     row: ShapeRow<'a>,
+    named_leaves: Vec<String>,
 }
 
 impl<'a> ShapeParser<'a> {
@@ -633,6 +637,7 @@ impl<'a> ShapeParser<'a> {
             chars: row.shape.chars().collect(),
             pos: 0,
             row,
+            named_leaves: Vec::new(),
         }
     }
 
@@ -684,7 +689,7 @@ impl<'a> ShapeParser<'a> {
 
     /// Parse the whole shape column: one fragment, then optionally one top-level policy marker, then
     /// end of input.
-    fn parse(mut self, types: &IntermediateTypes) -> Result<RustType, String> {
+    fn parse(mut self, types: &IntermediateTypes) -> Result<(RustType, Vec<String>), String> {
         let mut rt = self.fragment(types, 0)?;
         self.skip_ws();
         let ShapeRow {
@@ -725,7 +730,7 @@ impl<'a> ShapeParser<'a> {
                  (wrapper {listed_name:?})."
             ));
         }
-        Ok(rt)
+        Ok((rt, self.named_leaves))
     }
 
     fn fragment(&mut self, types: &IntermediateTypes, depth: usize) -> Result<RustType, String> {
@@ -800,7 +805,7 @@ impl<'a> ShapeParser<'a> {
     }
 
     /// Resolve one leaf token against the dep's IR.
-    fn leaf(&self, types: &IntermediateTypes, token: String) -> Result<RustType, String> {
+    fn leaf(&mut self, types: &IntermediateTypes, token: String) -> Result<RustType, String> {
         let ShapeRow {
             consumer,
             path,
@@ -843,6 +848,7 @@ impl<'a> ShapeParser<'a> {
         // generation of the same CDDL shape would produce. `dep_owns_element` already required
         // a spec-registered ident, so `new_type`'s unregistered-reserved prelude fallback (the
         // one mutable part) cannot be needed here.
+        self.named_leaves.push(token);
         Ok(types
             .resolve_alias(&AliasIdent::Rust(ident.clone()))
             .unwrap_or_else(|| RustType::new(ConceptualRustType::Rust(ident))))
@@ -853,13 +859,13 @@ impl<'a> ShapeParser<'a> {
 /// named leaf against the DEP's own IR after the same normalization (`RustIdent::new`, which
 /// camel-cases and folds `-`/`_`) type-name derivation uses. A leaf the dep does not own is a hard
 /// error. `consumer`/`path`/`listed_name` are used only for actionable errors.
-fn parse_requested_shape(
+fn parse_requested_shape_with_leaves(
     types: &IntermediateTypes,
     shape: &str,
     consumer: &str,
     path: &str,
     listed_name: &str,
-) -> Result<RustType, String> {
+) -> Result<(RustType, Vec<String>), String> {
     ShapeParser::new(ShapeRow {
         consumer,
         path,
@@ -867,6 +873,17 @@ fn parse_requested_shape(
         listed_name,
     })
     .parse(types)
+}
+
+#[cfg(test)]
+fn parse_requested_shape(
+    types: &IntermediateTypes,
+    shape: &str,
+    consumer: &str,
+    path: &str,
+    listed_name: &str,
+) -> Result<RustType, String> {
+    parse_requested_shape_with_leaves(types, shape, consumer, path, listed_name).map(|(rt, _)| rt)
 }
 
 /// Depth cap for [`ShapeParser::fragment`]'s recursion. Real wrapper shapes nest 2–3 deep; 32 is a
@@ -1007,35 +1024,20 @@ fn requested_exposable_member(types: &IntermediateTypes, rt: &RustType) -> Optio
 }
 
 /// Describe how this dep resolves each NAMED leaf element written in a requested shape's shape column,
-/// for the actionable exposable-shape / name↔shape diagnostics. Walks the ORIGINAL shape tokens (not
-/// the reconstructed `RustType`, which has already substituted `@no_alias` idents away) so the message
-/// names the ident the operator wrote and its resolution target. Primitive leaves contribute nothing.
-/// Only reached after a successful `parse_requested_shape`, so every named token is an owned,
-/// non-reserved ident — `RustIdent::new` cannot trip.
-fn requested_shape_leaf_resolutions(types: &IntermediateTypes, shape: &str) -> Vec<String> {
-    let chars: Vec<char> = shape.chars().collect();
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < chars.len() {
-        if is_shape_ident_char(chars[i]) {
-            let start = i;
-            while i < chars.len() && is_shape_ident_char(chars[i]) {
-                i += 1;
-            }
-            let token: String = chars[start..i].iter().collect();
-            if token.bytes().all(|byte| byte.is_ascii_digit()) {
-                continue;
-            }
-            if primitive_from_cddl_name(&token).is_some() {
-                continue;
-            }
+/// for actionable exposable-shape / name↔shape diagnostics. Uses the successful strict parser's
+/// original named tokens, retaining authored aliases, order and repeated leaves while excluding
+/// duplicate-policy syntax. Every token is already validated as owned and non-reserved.
+fn requested_shape_leaf_resolutions(
+    types: &IntermediateTypes,
+    named_leaves: &[String],
+) -> Vec<String> {
+    named_leaves
+        .iter()
+        .map(|token| {
             let ident = RustIdent::new(CDDLIdent::new(token.clone()));
-            out.push(describe_leaf_resolution(types, &token, &ident));
-        } else {
-            i += 1;
-        }
-    }
-    out
+            describe_leaf_resolution(types, token, &ident)
+        })
+        .collect()
 }
 
 /// One leaf's resolution phrase: a registered struct, a kept alias (rust alias preserving the ident),

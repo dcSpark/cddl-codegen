@@ -34704,3 +34704,96 @@ fn full_u64_checked_carriers_retain_minimum_and_duplicate_checks() {
     }
     let _ = std::fs::remove_dir_all(&root);
 }
+/// A deliberate name mismatch keeps diagnostic coverage independent of request-hosting repairs.
+#[test]
+fn wrapper_request_diagnostics_keep_real_policy_named_leaves() {
+    use clap::Parser;
+    let root = std::env::temp_dir().join(format!("cddl_wr_policy_notes_{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    let input = root.join("dep.cddl");
+    std::fs::write(
+        &input,
+        concat!(
+            "duplicates = [x: uint]\nreject = [x: uint]\npreserve = [x: uint]\n",
+            "kept = duplicates\noriginal = duplicates ; @no_alias\n"
+        ),
+    )
+    .unwrap();
+    for (shape, expected) in [
+        (
+            "[* duplicates] @duplicates reject",
+            vec!["`duplicates` (a registered struct)"],
+        ),
+        (
+            "{* reject => preserve} @duplicates preserve",
+            vec![
+                "`reject` (a registered struct)",
+                "`preserve` (a registered struct)",
+            ],
+        ),
+        (
+            "{* [* duplicates] @duplicates reject => {* reject => preserve} @duplicates preserve} @duplicates preserve",
+            vec![
+                "`duplicates` (a registered struct)",
+                "`reject` (a registered struct)",
+                "`preserve` (a registered struct)",
+            ],
+        ),
+        (
+            "{* duplicates => duplicates} @duplicates preserve",
+            vec![
+                "`duplicates` (a registered struct)",
+                "`duplicates` (a registered struct)",
+            ],
+        ),
+        (
+            "{* kept => original} @duplicates preserve",
+            vec![
+                "`kept` (a kept alias resolving to `duplicates`)",
+                "`original` (transparently substituted to `duplicates`)",
+            ],
+        ),
+    ] {
+        let request = root.join("request.rs");
+        std::fs::write(
+            &request,
+            format!(
+                concat!(
+                    "// This file was code-generated using an experimental CDDL to rust tool:\n",
+                    "// https://github.com/dcSpark/cddl-codegen\n\n",
+                    "pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[\n",
+                    "    (\"wr_dep\", \"WrongName\", {shape:?}),\n];\n"
+                ),
+                shape = shape
+            ),
+        )
+        .unwrap();
+        let input_text = input.display().to_string();
+        let flag = format!("--wrapper-requests=consumer={}", request.display());
+        let cli = crate::cli::Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            &input_text,
+            "--output",
+            "unused-policy-notes",
+            "--lib-name=wr-dep",
+            "--wasm=true",
+            &flag,
+        ]);
+        let error = crate::api::generated_strings(&cli).unwrap_err().to_string();
+        assert!(
+            error.contains("derives the structural name"),
+            "wrong diagnostic: {error}"
+        );
+        let notes = error
+            .split(" Element resolution in this dep: ")
+            .nth(1)
+            .unwrap();
+        assert_eq!(
+            notes,
+            format!("{}.", expected.join(", ")),
+            "policy syntax leaked or authored leaves changed for {shape}: {error}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
