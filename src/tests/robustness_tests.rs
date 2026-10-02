@@ -19995,3 +19995,133 @@ fn unsigned_alias_size_rule_positions_preserve_domains() {
         "{error}"
     );
 }
+
+#[test]
+fn outer_parenthesized_size_preserves_rule_controls() {
+    for (tag, direct, grouped) in [
+        ("uint", "x = uint .size 2\n", "x = (uint) .size 2\n"),
+        ("nested", "x = uint .size 2\n", "x = ((uint)) .size 2\n"),
+        ("bytes", "x = bytes .size 2\n", "x = (bytes) .size 2\n"),
+        ("text", "x = tstr .size 3\n", "x = (tstr) .size 3\n"),
+        (
+            "alias",
+            "u = uint\nx = u .size 2\n",
+            "u = uint\nx = (u) .size 2\n",
+        ),
+        (
+            "forward",
+            "x = u .size 2\nu = uint\n",
+            "x = (u) .size 2\nu = uint\n",
+        ),
+        (
+            "chain",
+            "u = uint\nv = u\nx = v .size 2\n",
+            "u = uint\nv = u\nx = ((v)) .size 2\n",
+        ),
+        (
+            "narrow",
+            "u = uint .size 1\nx = u .size 2\n",
+            "u = uint .size 1\nx = (u) .size 2\n",
+        ),
+        (
+            "newtype",
+            "x = uint .size 2 ; @newtype\n",
+            "x = (uint) .size 2 ; @newtype\n",
+        ),
+        (
+            "tag",
+            "x = #6.42(uint .size 2)\n",
+            "x = #6.42((uint) .size 2)\n",
+        ),
+    ] {
+        let direct = expect_generates(&format!("{tag}_direct"), direct, &["--wasm=false"]);
+        let grouped = expect_generates(&format!("{tag}_outer"), grouped, &["--wasm=false"]);
+        assert_eq!(
+            direct, grouped,
+            "{tag}: an outer size must preserve the direct rule contract"
+        );
+    }
+    for (tag, spec, diagnostic) in [
+        (
+            "negative",
+            "x = (uint) .size -1\n",
+            "negative `.size` operand",
+        ),
+        ("float", "x = (uint) .size 2.0\n", "float `.size` operand"),
+        (
+            "empty",
+            "x = (uint) .size (0...0)\n",
+            "empty `.size` window",
+        ),
+        (
+            "named",
+            "u = uint\nx = (uint) .size u\n",
+            "is not an integer literal or an integer literal range",
+        ),
+        (
+            "controlled",
+            "x = (uint .size 1) .size 2\n",
+            "already-controlled parenthesized head",
+        ),
+        (
+            "nested_controlled",
+            "x = ((uint) .size 1) .size 2\n",
+            "already-controlled parenthesized head",
+        ),
+        (
+            "tagged_source",
+            "x = (#6.42(uint)) .size 2\n",
+            "on parenthesized head",
+        ),
+        (
+            "nominal_source",
+            "u = uint ; @newtype\nx = (u) .size 2\n",
+            "a range or `.size` control operator",
+        ),
+        (
+            "encoded_source",
+            "u = bytes .cbor uint\nx = (u) .size 2\n",
+            "a range or `.size` control operator",
+        ),
+        (
+            "custom_source",
+            "u = uint ; @custom_serialize write_u @custom_deserialize read_u\nx = (u) .size 2\n",
+            "a range or `.size` control operator",
+        ),
+        (
+            "inherited_custom_source",
+            "u = uint ; @custom_serialize write_u @custom_deserialize read_u\nv = u\nx = (v) .size 2\n",
+            "a range or `.size` control operator",
+        ),
+        (
+            "choice",
+            "x = (uint / tstr) .size 2\n",
+            "on the type choice",
+        ),
+        (
+            "generic_body",
+            "g<T> = (uint) .size 2\nx = g<uint>\n",
+            "as the whole body of a generic definition",
+        ),
+    ] {
+        let error = expect_graceful_rejection(tag, spec, &["--wasm=false"]);
+        assert!(error.contains(diagnostic), "{tag}: {error}");
+    }
+    let error = expect_graceful_rejection(
+        "compound_negative",
+        "x = (uint .size 1) .size -1\n",
+        &["--wasm=false"],
+    );
+    let operand = error.find("negative `.size` operand").unwrap();
+    let head = error.find("already-controlled parenthesized head").unwrap();
+    assert!(operand < head, "{error}");
+    // This task repairs SIZE only; the existing outer value-control route remains unchanged.
+    let source = expect_generates(
+        "other_outer_control",
+        "x = (uint) .le 5\n",
+        &["--wasm=false"],
+    )
+    .into_values()
+    .collect::<String>();
+    assert!(source.contains("pub type X = u64;"), "{source}");
+}

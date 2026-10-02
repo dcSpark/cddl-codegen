@@ -115,6 +115,7 @@ pub fn parse_rule(
                             None,
                             generic_params.clone(),
                             &RuleMetadata::default(),
+                            None,
                             cli,
                         );
                     } else {
@@ -4198,9 +4199,12 @@ fn parse_type(
     // `@newtype`) to the OUTER type1, so recursing into the inner type without threading this would
     // silently drop it — making `tagged = #6.42(text) ; @newtype` a no-op. Empty at the top level.
     inherited_metadata: &RuleMetadata,
+    // Borrowed from the original outer AST; never a temporary cloned TypeChoice. SIZE only.
+    size_override: Option<&Operator>,
     cli: &Cli,
 ) {
     let type1 = &type_choice.type1;
+    let operator = size_override.or(type1.operator.as_ref());
     let mut rule_metadata = merge_metadata(
         &merge_metadata(
             inherited_metadata,
@@ -4223,9 +4227,11 @@ fn parse_type(
     // The inner call checks the merged slot against its own body shape.
     let defers_to_inner = match &type1.type2 {
         Type2::TaggedData { tag, .. } => {
-            outer_tag.is_none() && tag_number(tag, Some(type_name)).is_ok()
+            size_override.is_none()
+                && outer_tag.is_none()
+                && tag_number(tag, Some(type_name)).is_ok()
         }
-        Type2::ParenthesizedType { .. } => true,
+        Type2::ParenthesizedType { .. } => size_override.is_none() || type1.operator.is_none(),
         _ => false,
     };
     if !defers_to_inner {
@@ -4248,6 +4254,45 @@ fn parse_type(
             ident.ident
         ));
         return;
+    }
+    if let Some(outer_size) = size_override {
+        // Keep outer operand diagnostics before the narrow head refusal. An inner control
+        // is never overwritten or implicitly intersected with this one.
+        if type1.operator.is_some() {
+            parse_control_operator(
+                types,
+                parent_visitor,
+                &type1.type2,
+                outer_size,
+                Some(type_name),
+                cli,
+            );
+            types.record_rejection(format!(
+                "rule `{type_name}`: an outer `.size` around an already-controlled parenthesized \
+                 head is unsupported — put a single size control on the head, or name the \
+                 constrained type before applying another control"
+            ));
+            return;
+        }
+        let supported_head = matches!(&type1.type2, Type2::ParenthesizedType { .. })
+            || matches!(&type1.type2, Type2::Typename { ident, .. }
+                if !matches!(ident.ident, EXTERN_MARKER | RAW_BYTES_MARKER));
+        if !supported_head {
+            parse_control_operator(
+                types,
+                parent_visitor,
+                &type1.type2,
+                outer_size,
+                Some(type_name),
+                cli,
+            );
+            types.record_rejection(format!(
+                "rule `{type_name}`: an outer `.size` on parenthesized head `{}` is unsupported — \
+                 apply it to uint, bytes, text, or a supported transparent unsigned alias",
+                type1.type2,
+            ));
+            return;
+        }
     }
     match &type1.type2 {
         Type2::Typename {
@@ -4347,7 +4392,7 @@ fn parse_type(
                 // Note: this handles bool constants too, since we apply the type aliases and they resolve
                 // and there's no Type2::BooleanValue
                 let cddl_ident = CDDLIdent::new(ident.to_string());
-                let control = type1.operator.as_ref().map(|op| {
+                let control = operator.map(|op| {
                     parse_control_operator(
                         types,
                         parent_visitor,
@@ -4387,7 +4432,7 @@ fn parse_type(
                                 // when declared top-level we make a new type as the default behavior like before
                                 // Only SIZE gains a transparent unsigned-alias route. Other
                                 // controls retain their existing named-head refusal.
-                                let alias_primitive = type1.operator.as_ref().and_then(|op| {
+                                let alias_primitive = operator.and_then(|op| {
                                     if !matches!(
                                         op.operator,
                                         RangeCtlOp::CtlOp {
@@ -4869,6 +4914,7 @@ fn parse_type(
                         generic_params,
                         // same rule: carry the outer rule's DSL (e.g. `@newtype`) inward
                         &rule_metadata,
+                        None,
                         cli,
                     );
                 }
@@ -5019,21 +5065,38 @@ fn parse_type(
             );
         }
         Type2::ParenthesizedType { pt, .. } => {
-            // The cddl parser keeps a parenthesized single type as a ParenthesizedType. Unwrap it here
-            // so `foo = (uint)` behaves exactly like `foo = uint` (rust_type_from_type2 already unwraps
-            // the same way for non-rule positions).
-            match pt.type_choices.len() {
-                1 => parse_type(
+            // Carry only an authored outer SIZE through bare single-choice parentheses.
+            // Other outer controls retain their existing route in this narrow repair.
+            let outer_size = size_override.or_else(|| {
+                type1.operator.as_ref().filter(|op| {
+                    matches!(
+                        op.operator,
+                        RangeCtlOp::CtlOp {
+                            ctrl: token::ControlOperator::SIZE,
+                            ..
+                        }
+                    )
+                })
+            });
+            match pt.type_choices.as_slice() {
+                [only] => parse_type(
                     types,
                     parent_visitor,
                     type_name,
-                    pt.type_choices.first().unwrap(),
+                    only,
                     outer_tag,
                     generic_params,
-                    // same rule: carry the outer rule's DSL inward through the parens
                     &rule_metadata,
+                    outer_size,
                     cli,
                 ),
+                _ if outer_size.is_some() => {
+                    // The API SIZE choice pre-scan normally refuses this before lowering.
+                    types.record_rejection(format!(
+                        "rule `{type_name}`: an outer `.size` requires one parenthesized head — \
+                         write the size separately on each supported choice arm"
+                    ));
+                }
                 _ => parse_type_choices(
                     types,
                     parent_visitor,

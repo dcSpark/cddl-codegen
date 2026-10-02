@@ -34280,6 +34280,13 @@ prelude_holder = [value: uint .size 2]
 narrow_holder = [value: narrow_width]
 alias_newtype = u .size 2 ; @newtype
 alias_tagged = #6.42(u .size 2)
+outer_width = (u) .size 2
+outer_narrow = ((u8a)) .size 2
+outer_holder = [value: outer_width]
+outer_narrow_holder = [value: outer_narrow]
+outer_bytes = (bytes) .size 2
+outer_newtype = (u) .size 2 ; @newtype
+outer_tagged = #6.42((u) .size 2)
 uw = [a: u .size 2, b: (u) .size (1..2), c: u8a .size 2, d: (uint) .size 2, e: u .size 9]
 uk = { * u .size 2 => tstr }
 n = nint
@@ -34343,6 +34350,19 @@ fn alias_size_admission_matches_prelude_and_preserves_narrow_domain() {
                boundary);
     let overflow = [0x81, 0x1a, 0x00, 0x01, 0x00, 0x00];
     assert!(AliasHolder::from_cbor_bytes(&overflow).is_err());
+    assert!(OuterHolder::from_cbor_bytes(&boundary).is_ok());
+    assert!(OuterHolder::from_cbor_bytes(&overflow).is_err());
+    assert_eq!(OuterHolder::new(65535).to_cbor_bytes(),
+               PreludeHolder::new(65535).to_cbor_bytes());
+    assert!(OuterNarrowHolder::from_cbor_bytes(&[0x81, 0x18, 0xff]).is_ok());
+    assert!(OuterNarrowHolder::from_cbor_bytes(&[0x81, 0x19, 0x01, 0x00]).is_err());
+    assert!(OuterBytes::from_cbor_bytes(&[0x42, 0x01, 0x02]).is_ok());
+    assert!(OuterBytes::from_cbor_bytes(&[0x43, 0x01, 0x02, 0x03]).is_err());
+    assert!(OuterNewtype::from_cbor_bytes(&[0x19, 0xff, 0xff]).is_ok());
+    assert!(OuterNewtype::from_cbor_bytes(&[0x1a, 0x00, 0x01, 0x00, 0x00]).is_err());
+    assert!(OuterTagged::from_cbor_bytes(&[0xd8, 0x2a, 0x19, 0xff, 0xff]).is_ok());
+    assert!(OuterTagged::from_cbor_bytes(&[0x19, 0xff, 0xff]).is_err());
+
     assert!(PreludeHolder::from_cbor_bytes(&overflow).is_err());
     assert!(NarrowHolder::from_cbor_bytes(&[0x81, 0x18, 0xff]).is_ok());
     assert!(NarrowHolder::from_cbor_bytes(&[0x81, 0x19, 0x01, 0x00]).is_err());
