@@ -48,7 +48,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::cli::Cli;
 use crate::comment_ast::RuleMetadata;
 use crate::intermediate::{
-    AliasIdent, CBOREncodingOperation, ConceptualRustType, EnumVariant, EnumVariantData,
+    AliasIdent, AliasInfo, CBOREncodingOperation, ConceptualRustType, EnumVariant, EnumVariantData,
     FixedValue, FloatWindow, IntWindow, IntermediateTypes, Primitive, RESERVED_INT_IDENT,
     ROOT_SCOPE, Representation, RustField, RustIdent, RustRecord, RustStruct, RustStructConfig,
     RustStructType, RustType, RustTypeSerializeConfig,
@@ -835,169 +835,10 @@ pub(crate) fn project_extern_interface(types: &IntermediateTypes, cli: &Cli) -> 
 
     // Pass 1 — `rust_structs`. The variant decides the spelling (exhaustive match).
     for (ident, rust_struct) in types.rust_structs() {
-        let scope = types.scope(ident);
-        // Exported scopes only: a dep's own deps never appear in its export.
-        if !scope.export() {
-            continue;
-        }
-        // Only top-level CDDL rules project; a struct synthesized during IR build (embedded record,
-        // collection-keys wrapper, …) and the reserved prelude `int` extern carry no source rule
-        // name and are not candidates.
-        let Some(source) = types.source_rule_name(ident) else {
+        let Some((source, components)) = candidate(types, ident, &mut seen) else {
             continue;
         };
-        seen.insert(ident.clone());
-        let components = scope_path(scope);
-        // `RustStructConfig` retains the custom-serialize annotations; rebuild the minimal
-        // `RuleMetadata` the transparent renderer consults so the projection exclusion cannot be
-        // bypassed on the class-backed transparent rows (Array/Table/CStyleEnum) or the plain-group
-        // group-body rows.
-        let md = rule_metadata_from_config(rust_struct.config());
-        // Plain groups are inlined at use sites; a referenced one materializes here (a Record for a
-        // heterogeneous body, an Array/Table/Wrapper for a homogeneous/newtype one). They are NOT an
-        // opaque cross-crate class surface, so they never take the class-backed variant match below —
-        // a materialized Record exports transparently as a group-body row, every other materialized
-        // shape leaves a `; unexported:` record (excluded-with-record).
-        if types.is_plain_group(ident) {
-            let (projected, kind) = project_plain_group(source, rust_struct, &md, types);
-            stage_rule(
-                &mut included,
-                &mut excluded,
-                ident,
-                source,
-                components,
-                projected,
-                kind,
-            );
-            continue;
-        }
-        let (projected, kind): (RuleProjection, ExternCheckKind) = match rust_struct.variant() {
-            // Genuinely class-backed types: opaque. `@newtype`/custom-(de)serialize/custom-json do
-            // NOT travel — they shape the dep's internals; the consumer sees only "class exists,
-            // named X". `@raw_bytes_flavor` does NOT travel either, for a structural reason rather
-            // than a scoping one: the projection renders every rule body as a BARE marker, dropping
-            // the generic parameters, so a flavored generic base (`ext_set<T> = …`) projects as the
-            // param-less `ext_set = …`. The tag names a per-INSTANCE flavor, so on that form it can
-            // never be honored — it is exactly the spelling `parse_type`'s non-generic-extern
-            // rejection now refuses, and projecting it would hard-fail every consumer of such a dep.
-            // Dropping it costs nothing measurable: a consumer cannot instantiate a param-less base,
-            // so the tag was already inert there (consumer output is byte-identical with and without
-            // it — pinned by `extern_import_flavored_generic_base_projects_without_the_tag`).
-            // An opaque
-            // marker body is self-contained, so it references nothing (never closure-excluded). The
-            // self-check asserts `Serialize`(+`Deserialize`) on the concrete type — except an exported
-            // generic-extern base, whose bare ident names no concrete type (`None`).
-            RustStructType::Record(_)
-            | RustStructType::TypeChoice { .. }
-            | RustStructType::GroupChoice { .. }
-            | RustStructType::Wrapper { .. }
-            | RustStructType::Extern => {
-                let mut annotations = Vec::new();
-                // `@copy` travels verbatim so a `--extern-import` consumer inherits the Copy-ness and
-                // drops the same boundary clones. Unlike `@raw_bytes_flavor` above it is a property
-                // of the BASE type, not of a generic instance, so the param-less projected form
-                // carries it faithfully.
-                if types.is_copy_extern(ident) {
-                    annotations.push("@copy".to_string());
-                }
-                // `@extern_companions` deliberately does NOT travel. It answers "where does THIS
-                // crate's wasm face borrow its companion classes from", which is a statement about
-                // this crate's own link graph; a consumer importing this rule gets a DEP-scoped
-                // extern, where the dependency-keyed mechanisms (`--extern-wrapper-index` /
-                // `--workspace-dep`) answer the same question with a dep edge — and where the
-                // directive is a graceful rejection precisely because those own the case.
-                let check = if generic_bases.contains(ident) {
-                    ExternCheckKind::None
-                } else {
-                    ExternCheckKind::Serialize
-                };
-                (
-                    Ok((
-                        crate::parsing::EXTERN_MARKER.to_string(),
-                        annotations,
-                        BTreeSet::new(),
-                    )),
-                    check,
-                )
-            }
-            // A raw-bytes type is opaque behind its own marker. `@copy` travels verbatim (mirrors the
-            // extern arm) so a `--extern-import` consumer inherits the Copy-ness.
-            RustStructType::RawBytesType => {
-                let mut annotations = Vec::new();
-                if types.is_copy_extern(ident) {
-                    annotations.push("@copy".to_string());
-                }
-                (
-                    Ok((
-                        crate::parsing::RAW_BYTES_MARKER.to_string(),
-                        annotations,
-                        BTreeSet::new(),
-                    )),
-                    ExternCheckKind::RawBytes,
-                )
-            }
-            // Named collections: transparent. The rust surface is a `pub type`, so spelling it opaque
-            // would violate the fidelity contract — render the registered transparent alias body and
-            // collect the rule idents it references for the closure. The self-check is a `use`
-            // existence check on the `pub type`.
-            RustStructType::Array { .. } | RustStructType::Table { .. } => {
-                // Both representation-changing `@duplicates` placements travel verbatim: `reject` on a
-                // set swaps the rust surface to a uniqueness twin (`OrderedSet`/`NonEmptyOrderedSet`),
-                // and `preserve` on a table swaps it to a vec-of-pairs twin
-                // (`PairMap`/`NonEmptyPairMap`). A consumer that rebuilds this rule without the
-                // directive would embed the DEFAULT representation and skew across the seam: a
-                // preserve-mode `Vec` that ACCEPTS what a reject dep rejects, or a reject-default
-                // `BTreeMap` that REJECTS what a preserve dep preserves. The transparent alias's
-                // `base_type` carries the policy (`with_duplicates_policy` at registration), and the
-                // shape-aware predicates filter the two no-op defaults (set `preserve`, table
-                // `reject`) so only the representation-changing halves project.
-                // `@no_alias` travels for the same anti-skew reason, and is read from the IR's
-                // per-ident record rather than the alias's `rule_metadata`: a collection rule
-                // registers through `AliasInfo::new_manual`, whose metadata is `None` by
-                // construction, so reading it here would project a dep that emits NO `pub type` as
-                // though it emitted one — and the consumer would `use dep::Tbl` for a name the dep
-                // no longer materializes. That is the writer half of the same skew the missing
-                // `@duplicates` projection was.
-                let no_alias = types.is_no_alias_rule(ident);
-                let projected = match types.type_aliases().get(&AliasIdent::Rust(ident.clone())) {
-                    Some(alias) => {
-                        let mut annotations = Vec::new();
-                        if no_alias {
-                            annotations.push("@no_alias".to_string());
-                        }
-                        annotations.extend(duplicates_annotation(&alias.base_type));
-                        render_transparent_rule_body(source, &alias.base_type, Some(&md), types)
-                            .map(|body| {
-                                (
-                                    body,
-                                    annotations,
-                                    collect_rule_refs(&alias.base_type, types),
-                                )
-                            })
-                    }
-                    None => Err(unrenderable(
-                        source,
-                        "a named collection with no registered transparent alias",
-                    )),
-                };
-                // Nothing to `use` when the rule materializes no `pub type` — the same reasoning the
-                // pass-2 `gen_rust_alias` check already applies to a scalar `@no_alias` rule.
-                let check = if no_alias {
-                    ExternCheckKind::None
-                } else {
-                    ExternCheckKind::Use
-                };
-                (projected, check)
-            }
-            // A c-style enum is transparent — its value choices (`0 / 1 / 2`) — but a real Rust enum
-            // lives in the dep, so it still needs the `@rust_name` pin. Value choices reference no
-            // rules. The self-check is a `use` existence check on the enum.
-            RustStructType::CStyleEnum { variants } => (
-                render_c_style_enum_body(source, variants, Some(&md))
-                    .map(|body| (body, Vec::new(), BTreeSet::new())),
-                ExternCheckKind::Use,
-            ),
-        };
+        let (projected, kind) = project_struct_row(types, ident, source, rust_struct, &generic_bases);
         stage_rule(
             &mut included,
             &mut excluded,
@@ -1016,107 +857,10 @@ pub(crate) fn project_extern_interface(types: &IntermediateTypes, cli: &Cli) -> 
         let AliasIdent::Rust(ident) = alias_ident else {
             continue;
         };
-        if seen.contains(ident) {
-            continue;
-        }
-        let scope = types.scope(ident);
-        if !scope.export() {
-            continue;
-        }
-        let Some(source) = types.source_rule_name(ident) else {
+        let Some((source, components)) = candidate(types, ident, &mut seen) else {
             continue;
         };
-        seen.insert(ident.clone());
-        let components = scope_path(scope);
-        // `@no_alias` travels verbatim: a truthful export makes the consumer's generator treat the
-        // rule exactly as the dep's did.
-        // Read from the IR's per-ident record rather than `alias_info.rule_metadata`: a named
-        // binding to a generic set nominal registers through `AliasInfo::new_manual` (metadata
-        // `None`), so the metadata read alone would silently drop the annotation on exactly the
-        // binding whose `pub type` the directive suppresses.
-        let mut extra_annotations = Vec::new();
-        if types.is_no_alias_rule(ident) {
-            extra_annotations.push("@no_alias".to_string());
-        }
-        // A collection reaching pass 2 (rather than the pass-1 Array/Table arm) still carries its
-        // policy on the alias base type; project the representation-changing halves (set `reject`,
-        // table `preserve`) for the same anti-skew reason.
-        extra_annotations.extend(duplicates_annotation(&alias_info.base_type));
-        // An alias BINDING a generic set-nominal instantiation (`required_signers =
-        // nonempty_set<ed25519_key_hash>` → `pub type RequiredSigners = NonemptySetEd25519KeyHash;`)
-        // references the instantiation-minted nominal by a bare `Rust(<nominal>)` base_type. That
-        // nominal is a class-backed `Wrapper` struct with NO source CDDL rule name (it is minted
-        // from the instantiation, not authored), so the transparent renderer's `render_rust_ref`
-        // would hard-`Err` on the unspellable reference and DROP the whole rule with a
-        // `; unexported:` record. Project it as the SAME opaque row the nominal itself takes in
-        // pass 1 (the Wrapper arm): the consumer references it as an opaque class named by the
-        // alias's `@rust_name`, and the instantiation's spelling never crosses. Scoped to set
-        // nominals per the fidelity ask — an alias to any OTHER no-source-name class-backed struct
-        // is not a shape a spec produces today.
-        let set_nominal_ref = matches!(
-            &alias_info.base_type.conceptual_type,
-            ConceptualRustType::Rust(bound)
-                if types.source_rule_name(bound).is_none()
-                    && types
-                        .rust_struct(bound)
-                        .is_some_and(|rs| rs.config().set_nominal)
-        );
-        let projected: RuleProjection = if set_nominal_ref && !alias_info.declared_rust_alias() {
-            // A `@no_alias` binding to a set nominal materializes NO rust name at all: the opaque row
-            // above names the BINDING (the nominal itself is unspellable — it is minted from the
-            // instantiation and has no source rule), so exporting it would hand the consumer a
-            // `use dep::Nset;` for a name the dependency does not emit. Exclude it instead, which
-            // makes a consumer that references the rule fail at ITS parse with an unknown ident
-            // rather than in its rustc.
-            Err(unrenderable(
-                source,
-                "a `@no_alias` binding to a generic set nominal (the rule materializes no rust name \
-                 to reference, and the nominal it binds has no source rule of its own)",
-            ))
-        } else if set_nominal_ref {
-            Ok((
-                crate::parsing::EXTERN_MARKER.to_string(),
-                extra_annotations,
-                BTreeSet::new(),
-            ))
-        } else if let Some(target) = &alias_info.stripped_alias_target {
-            // A `ptm = mp` rule whose `Alias(mp, …)` wrapper was stripped to inline the type keeps a
-            // `stripped_alias_target`; spell it truthfully as a reference to that target's original
-            // ident rather than re-inlining the whole collection shape.
-            render_rust_ref(source, target, types).map(|body| {
-                let mut refs = BTreeSet::new();
-                if types.source_rule_name(target).is_some() {
-                    refs.insert(target.clone());
-                }
-                (body, extra_annotations, refs)
-            })
-        } else {
-            render_transparent_rule_body(
-                source,
-                &alias_info.base_type,
-                alias_info.rule_metadata.as_ref(),
-                types,
-            )
-            .map(|body| {
-                (
-                    body,
-                    extra_annotations,
-                    collect_rule_refs(&alias_info.base_type, types),
-                )
-            })
-        };
-        // A transparent alias materializes a named rust surface (a `pub type`) only when
-        // `gen_rust_alias` is set. A `@no_alias` rule (and a `stripped_alias_target` inline) generates
-        // no rust type — nothing for the self-check to `use`, so it asserts nothing (`None`). The opaque
-        // set-nominal row asserts `Serialize` on the concrete `pub type` (the same bound the pass-1
-        // Wrapper arm uses), since the alias resolves to a Serialize-implementing nominal.
-        let kind = if set_nominal_ref && alias_info.declared_rust_alias() {
-            ExternCheckKind::Serialize
-        } else if alias_info.declared_rust_alias() {
-            ExternCheckKind::Use
-        } else {
-            ExternCheckKind::None
-        };
+        let (projected, kind) = project_alias_row(types, ident, source, alias_info);
         stage_rule(
             &mut included,
             &mut excluded,
@@ -1135,21 +879,13 @@ pub(crate) fn project_extern_interface(types: &IntermediateTypes, cli: &Cli) -> 
     // will ever produce). Record it. Guards mirror the passes above: exported scope only, a recorded
     // source rule name only, and skip anything already staged (a materialized group `seen` in pass 1).
     for ident in types.directly_defined_plain_group_idents() {
-        if seen.contains(ident) {
-            continue;
-        }
-        let scope = types.scope(ident);
-        if !scope.export() {
-            continue;
-        }
-        let Some(source) = types.source_rule_name(ident) else {
+        let Some((source, components)) = candidate(types, ident, &mut seen) else {
             continue;
         };
-        seen.insert(ident.clone());
         excluded.insert(
             ident.clone(),
             ExcludedRule {
-                components: scope_path(scope),
+                components,
                 source: source.to_string(),
                 reason: "plain group never referenced in the dependency's own spec — no \
                          materialized shape to project"
@@ -1191,12 +927,282 @@ pub(crate) fn project_extern_interface(types: &IntermediateTypes, cli: &Cli) -> 
     }
 }
 
-/// A per-rule projection: `Ok((body, extra annotations, referenced rule idents))` or an `Err` the
-/// walk converts to an exclusion. The `@rust_name` pin is appended by `stage_rule`, so `extra
-/// annotations` holds only the row-specific ones (`@copy`, `@no_alias`, `@duplicates …`). The
+/// Select each exported source rule once, preserving the projection pass precedence.
+fn candidate<'a>(
+    types: &'a IntermediateTypes,
+    ident: &RustIdent,
+    seen: &mut BTreeSet<RustIdent>,
+) -> Option<(&'a str, Vec<String>)> {
+    if seen.contains(ident) || !types.scope(ident).export() {
+        return None;
+    }
+    let source = types.source_rule_name(ident)?;
+    seen.insert(ident.clone());
+    Some((source, scope_path(types.scope(ident))))
+}
+
+/// Copy-ness belongs to the base type and survives opaque marker projection.
+fn copy_annotation(types: &IntermediateTypes, ident: &RustIdent) -> Vec<String> {
+    if types.is_copy_extern(ident) {
+        vec!["@copy".to_string()]
+    } else {
+        Vec::new()
+    }
+}
+
+fn project_struct_row(
+    types: &IntermediateTypes,
+    ident: &RustIdent,
+    source: &str,
+    rust_struct: &RustStruct,
+    generic_bases: &BTreeSet<RustIdent>,
+) -> (RuleProjection, ExternCheckKind) {
+    // `RustStructConfig` retains the custom-serialize annotations; rebuild the minimal
+    // `RuleMetadata` the transparent renderer consults so the projection exclusion cannot be
+    // bypassed on the class-backed transparent rows (Array/Table/CStyleEnum) or the plain-group
+    // group-body rows.
+    let md = rule_metadata_from_config(rust_struct.config());
+    // Plain groups are inlined at use sites; a referenced one materializes here (a Record for a
+    // heterogeneous body, an Array/Table/Wrapper for a homogeneous/newtype one). They are NOT an
+    // opaque cross-crate class surface, so they never take the class-backed variant match below —
+    // a materialized Record exports transparently as a group-body row, every other materialized
+    // shape leaves a `; unexported:` record (excluded-with-record).
+    if types.is_plain_group(ident) {
+        return project_plain_group(source, rust_struct, &md, types);
+    }
+    match rust_struct.variant() {
+        // Genuinely class-backed types: opaque. `@newtype`/custom-(de)serialize/custom-json do
+        // NOT travel — they shape the dep's internals; the consumer sees only "class exists,
+        // named X". `@raw_bytes_flavor` does NOT travel either, for a structural reason rather
+        // than a scoping one: the projection renders every rule body as a BARE marker, dropping
+        // the generic parameters, so a flavored generic base (`ext_set<T> = …`) projects as the
+        // param-less `ext_set = …`. The tag names a per-INSTANCE flavor, so on that form it can
+        // never be honored — it is exactly the spelling `parse_type`'s non-generic-extern
+        // rejection now refuses, and projecting it would hard-fail every consumer of such a dep.
+        // Dropping it costs nothing measurable: a consumer cannot instantiate a param-less base,
+        // so the tag was already inert there (consumer output is byte-identical with and without
+        // it — pinned by `extern_import_flavored_generic_base_projects_without_the_tag`).
+        // An opaque
+        // marker body is self-contained, so it references nothing (never closure-excluded). The
+        // self-check asserts `Serialize`(+`Deserialize`) on the concrete type — except an exported
+        // generic-extern base, whose bare ident names no concrete type (`None`).
+        RustStructType::Record(_)
+        | RustStructType::TypeChoice { .. }
+        | RustStructType::GroupChoice { .. }
+        | RustStructType::Wrapper { .. }
+        | RustStructType::Extern => {
+            // `@copy` travels verbatim so a `--extern-import` consumer inherits the Copy-ness and
+            // drops the same boundary clones. Unlike `@raw_bytes_flavor` above it is a property
+            // of the BASE type, not of a generic instance, so the param-less projected form
+            // carries it faithfully.
+            let annotations = copy_annotation(types, ident);
+            // `@extern_companions` deliberately does NOT travel. It answers "where does THIS
+            // crate's wasm face borrow its companion classes from", which is a statement about
+            // this crate's own link graph; a consumer importing this rule gets a DEP-scoped
+            // extern, where the dependency-keyed mechanisms (`--extern-wrapper-index` /
+            // `--workspace-dep`) answer the same question with a dep edge — and where the
+            // directive is a graceful rejection precisely because those own the case.
+            let check = if generic_bases.contains(ident) {
+                ExternCheckKind::None
+            } else {
+                ExternCheckKind::Serialize
+            };
+            (
+                Ok(ProjectedRow {
+                    body: crate::parsing::EXTERN_MARKER.to_string(),
+                    annotations: annotations,
+                    rule_refs: BTreeSet::new(),
+                }),
+                check,
+            )
+        }
+        // A raw-bytes type is opaque behind its own marker. `@copy` travels verbatim (mirrors the
+        // extern arm) so a `--extern-import` consumer inherits the Copy-ness.
+        RustStructType::RawBytesType => {
+            let annotations = copy_annotation(types, ident);
+            (
+                Ok(ProjectedRow {
+                    body: crate::parsing::RAW_BYTES_MARKER.to_string(),
+                    annotations: annotations,
+                    rule_refs: BTreeSet::new(),
+                }),
+                ExternCheckKind::RawBytes,
+            )
+        }
+        // Named collections: transparent. The rust surface is a `pub type`, so spelling it opaque
+        // would violate the fidelity contract — render the registered transparent alias body and
+        // collect the rule idents it references for the closure. The self-check is a `use`
+        // existence check on the `pub type`.
+        RustStructType::Array { .. } | RustStructType::Table { .. } => {
+            // Both representation-changing `@duplicates` placements travel verbatim: `reject` on a
+            // set swaps the rust surface to a uniqueness twin (`OrderedSet`/`NonEmptyOrderedSet`),
+            // and `preserve` on a table swaps it to a vec-of-pairs twin
+            // (`PairMap`/`NonEmptyPairMap`). A consumer that rebuilds this rule without the
+            // directive would embed the DEFAULT representation and skew across the seam: a
+            // preserve-mode `Vec` that ACCEPTS what a reject dep rejects, or a reject-default
+            // `BTreeMap` that REJECTS what a preserve dep preserves. The transparent alias's
+            // `base_type` carries the policy (`with_duplicates_policy` at registration), and the
+            // shape-aware predicates filter the two no-op defaults (set `preserve`, table
+            // `reject`) so only the representation-changing halves project.
+            // `@no_alias` travels for the same anti-skew reason, and is read from the IR's
+            // per-ident record rather than the alias's `rule_metadata`: a collection rule
+            // registers through `AliasInfo::new_manual`, whose metadata is `None` by
+            // construction, so reading it here would project a dep that emits NO `pub type` as
+            // though it emitted one — and the consumer would `use dep::Tbl` for a name the dep
+            // no longer materializes. That is the writer half of the same skew the missing
+            // `@duplicates` projection was.
+            let no_alias = types.is_no_alias_rule(ident);
+            let projected = match types.type_aliases().get(&AliasIdent::Rust(ident.clone())) {
+                Some(alias) => {
+                    let mut annotations = Vec::new();
+                    if no_alias {
+                        annotations.push("@no_alias".to_string());
+                    }
+                    annotations.extend(duplicates_annotation(&alias.base_type));
+                    render_transparent_rule_body(source, &alias.base_type, Some(&md), types)
+                        .map(|body| {
+                            ProjectedRow {
+                                body,
+                                annotations,
+                                rule_refs: collect_rule_refs(&alias.base_type, types),
+                            }
+                        })
+                }
+                None => Err(unrenderable(
+                    source,
+                    "a named collection with no registered transparent alias",
+                )),
+            };
+            // Nothing to `use` when the rule materializes no `pub type` — the same reasoning the
+            // pass-2 `gen_rust_alias` check already applies to a scalar `@no_alias` rule.
+            let check = if no_alias {
+                ExternCheckKind::None
+            } else {
+                ExternCheckKind::Use
+            };
+            (projected, check)
+        }
+        // A c-style enum is transparent — its value choices (`0 / 1 / 2`) — but a real Rust enum
+        // lives in the dep, so it still needs the `@rust_name` pin. Value choices reference no
+        // rules. The self-check is a `use` existence check on the enum.
+        RustStructType::CStyleEnum { variants } => (
+            render_c_style_enum_body(source, variants, Some(&md))
+                .map(|body| ProjectedRow { body, annotations: Vec::new(), rule_refs: BTreeSet::new() }),
+            ExternCheckKind::Use,
+        ),
+    }
+}
+
+fn project_alias_row(
+    types: &IntermediateTypes,
+    ident: &RustIdent,
+    source: &str,
+    alias_info: &AliasInfo,
+) -> (RuleProjection, ExternCheckKind) {
+    // `@no_alias` travels verbatim: a truthful export makes the consumer's generator treat the
+    // rule exactly as the dep's did.
+    // Read from the IR's per-ident record rather than `alias_info.rule_metadata`: a named
+    // binding to a generic set nominal registers through `AliasInfo::new_manual` (metadata
+    // `None`), so the metadata read alone would silently drop the annotation on exactly the
+    // binding whose `pub type` the directive suppresses.
+    let mut extra_annotations = Vec::new();
+    if types.is_no_alias_rule(ident) {
+        extra_annotations.push("@no_alias".to_string());
+    }
+    // A collection reaching pass 2 (rather than the pass-1 Array/Table arm) still carries its
+    // policy on the alias base type; project the representation-changing halves (set `reject`,
+    // table `preserve`) for the same anti-skew reason.
+    extra_annotations.extend(duplicates_annotation(&alias_info.base_type));
+    // An alias BINDING a generic set-nominal instantiation (`required_signers =
+    // nonempty_set<ed25519_key_hash>` → `pub type RequiredSigners = NonemptySetEd25519KeyHash;`)
+    // references the instantiation-minted nominal by a bare `Rust(<nominal>)` base_type. That
+    // nominal is a class-backed `Wrapper` struct with NO source CDDL rule name (it is minted
+    // from the instantiation, not authored), so the transparent renderer's `render_rust_ref`
+    // would hard-`Err` on the unspellable reference and DROP the whole rule with a
+    // `; unexported:` record. Project it as the SAME opaque row the nominal itself takes in
+    // pass 1 (the Wrapper arm): the consumer references it as an opaque class named by the
+    // alias's `@rust_name`, and the instantiation's spelling never crosses. Scoped to set
+    // nominals per the fidelity ask — an alias to any OTHER no-source-name class-backed struct
+    // is not a shape a spec produces today.
+    let set_nominal_ref = matches!(
+        &alias_info.base_type.conceptual_type,
+        ConceptualRustType::Rust(bound)
+            if types.source_rule_name(bound).is_none()
+                && types
+                    .rust_struct(bound)
+                    .is_some_and(|rs| rs.config().set_nominal)
+    );
+    let projected: RuleProjection = if set_nominal_ref && !alias_info.declared_rust_alias() {
+        // A `@no_alias` binding to a set nominal materializes NO rust name at all: the opaque row
+        // above names the BINDING (the nominal itself is unspellable — it is minted from the
+        // instantiation and has no source rule), so exporting it would hand the consumer a
+        // `use dep::Nset;` for a name the dependency does not emit. Exclude it instead, which
+        // makes a consumer that references the rule fail at ITS parse with an unknown ident
+        // rather than in its rustc.
+        Err(unrenderable(
+            source,
+            "a `@no_alias` binding to a generic set nominal (the rule materializes no rust name \
+             to reference, and the nominal it binds has no source rule of its own)",
+        ))
+    } else if set_nominal_ref {
+        Ok(ProjectedRow {
+            body: crate::parsing::EXTERN_MARKER.to_string(),
+            annotations: extra_annotations,
+            rule_refs: BTreeSet::new(),
+        })
+    } else if let Some(target) = &alias_info.stripped_alias_target {
+        // A `ptm = mp` rule whose `Alias(mp, …)` wrapper was stripped to inline the type keeps a
+        // `stripped_alias_target`; spell it truthfully as a reference to that target's original
+        // ident rather than re-inlining the whole collection shape.
+        render_rust_ref(source, target, types).map(|body| {
+            let mut refs = BTreeSet::new();
+            if types.source_rule_name(target).is_some() {
+                refs.insert(target.clone());
+            }
+            ProjectedRow { body, annotations: extra_annotations, rule_refs: refs }
+        })
+    } else {
+        render_transparent_rule_body(
+            source,
+            &alias_info.base_type,
+            alias_info.rule_metadata.as_ref(),
+            types,
+        )
+        .map(|body| {
+            ProjectedRow {
+                body,
+                annotations: extra_annotations,
+                rule_refs: collect_rule_refs(&alias_info.base_type, types),
+            }
+        })
+    };
+    // A transparent alias materializes a named rust surface (a `pub type`) only when
+    // `gen_rust_alias` is set. A `@no_alias` rule (and a `stripped_alias_target` inline) generates
+    // no rust type — nothing for the self-check to `use`, so it asserts nothing (`None`). The opaque
+    // set-nominal row asserts `Serialize` on the concrete `pub type` (the same bound the pass-1
+    // Wrapper arm uses), since the alias resolves to a Serialize-implementing nominal.
+    let kind = if set_nominal_ref && alias_info.declared_rust_alias() {
+        ExternCheckKind::Serialize
+    } else if alias_info.declared_rust_alias() {
+        ExternCheckKind::Use
+    } else {
+        ExternCheckKind::None
+    };
+    (projected, kind)
+}
+
+/// A projected body, row-specific annotations, and referenced rule idents. An `Err` is an exclusion.
+/// `stage_rule` appends the `@rust_name` pin after the row-specific annotations.
+/// The
 /// complete written vocabulary is enumerated — and held against these writer sites in both
 /// directions — by `extern_import_tests::EXTERN_INTERFACE_WRITER_VOCABULARY`.
-type RuleProjection = Result<(String, Vec<String>, BTreeSet<RustIdent>), ExternInterfaceError>;
+struct ProjectedRow {
+    body: String,
+    annotations: Vec<String>,
+    rule_refs: BTreeSet<RustIdent>,
+}
+
+type RuleProjection = Result<ProjectedRow, ExternInterfaceError>;
 
 /// Project a MATERIALIZED plain group (one referenced somewhere in the dep's own spec, so it has a
 /// `rust_structs` entry). A plain group is inlined at its use sites — it is not an opaque cross-crate
@@ -1222,7 +1228,7 @@ fn project_plain_group(
                 for field in &record.fields {
                     refs.extend(collect_rule_refs(&field.rust_type, types));
                 }
-                (body, Vec::new(), refs)
+                ProjectedRow { body, annotations: Vec::new(), rule_refs: refs }
             }),
             ExternCheckKind::EmbeddedGroup,
         ),
@@ -1264,7 +1270,7 @@ fn stage_rule(
     kind: ExternCheckKind,
 ) {
     match projected {
-        Ok((body, mut annotations, rule_refs)) => {
+        Ok(ProjectedRow { body, mut annotations, rule_refs }) => {
             annotations.push(format!("@rust_name {ident}"));
             included.insert(
                 ident.clone(),
