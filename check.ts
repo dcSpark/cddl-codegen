@@ -2455,10 +2455,11 @@ export const REGISTRY: Gate[] = [
   // The wrapper-participation grid's compile/link floors. Two gates rather than one because their
   // SUBJECTS differ: the first links a CONSUMER (plus the committed wasm-clean dep pair) for
   // wasm32-unknown-unknown, which is the only place two `#[wasm_bindgen]` classes of one name fail;
-  // the second checks the HOST crate a `--wrapper-requests` run produces, whose mints come from a
-  // sidecar rather than from its own spec. Both are `#[ignore]`d, `cmd`-shaped, gate-cached per
-  // generated-crate content hash, and own flocked scratch roots nothing else touches — the batch's
-  // membership terms.
+  // the second checks the HOST crate a `--wrapper-requests` run produces, then builds explicit
+  // full-u64 consumer/host carriers for wasm32 and executes native checked-carrier controls.
+  // Both are `#[ignore]`d, `cmd`-shaped and own flocked scratch roots. Existing grid compile
+  // cells are gate-cached per generated-crate content hash; the additional full-u64 legs execute
+  // directly rather than claiming the grid's cache receipt covers their different fixtures.
   { id: "wrapper_participation_floors", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "wrapper_participation_mode_floors", "--", "--ignored", "--nocapture"],
     ignoredTest: "wrapper_participation_mode_floors",
@@ -2466,7 +2467,7 @@ export const REGISTRY: Gate[] = [
   { id: "wrapper_participation_host_floor", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "wrapper_participation_requested_host_floor", "--", "--ignored", "--nocapture"],
     ignoredTest: "wrapper_participation_requested_host_floor",
-    desc: "wrapper-participation grid: requested-hosted floor — cargo check of the HOST crate a --wrapper-requests run emits (manual, #[ignore]d)" },
+    desc: "wrapper-participation requested host: host check + full-u64 consumer/host wasm32 builds and native checked-carrier execution (manual, #[ignore]d)" },
   { id: "regen_over_prior_output_corpus_compiles", tier: "full", kind: "cmd", concurrent: MANUAL_HEAVY,
     cmd: ["cargo", "test", "--bin", "cddl-codegen", "regen_over_prior_output_corpus_compiles", "--", "--ignored", "--nocapture"],
     ignoredTest: "regen_over_prior_output_corpus_compiles",
