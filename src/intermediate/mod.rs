@@ -1585,13 +1585,34 @@ impl<'a> IntermediateTypes<'a> {
             .collect()
     }
 
+    /// Only an unbounded table can host the loose structural alias beside its named class.
+    /// Restricted sole owners remain in the shape registry for named-wrapper identity.
+    pub(crate) fn is_loose_table_owner(&self, owner: &RustIdent) -> bool {
+        matches!(
+            self.rust_structs().get(owner).map(|rs| rs.variant()),
+            Some(RustStructType::Table { bounds: None, .. })
+        )
+    }
+
+    fn loose_table_wrapper_scope(
+        &self,
+        ident: &RustIdent,
+        sole_owners: &BTreeMap<String, RustIdent>,
+    ) -> ModuleScope {
+        sole_owners
+            .get(&ident.to_string())
+            .filter(|owner| self.is_loose_table_owner(owner))
+            .map(|owner| self.scope(owner).clone())
+            .unwrap_or_else(|| self.scope(ident).clone())
+    }
+
     /// The wasm wrapper the code emitter (`RustType::for_wasm_member`) names for a collection
     /// occurrence `ty`, paired with the module its class is MINTED in — the import-tracker twin of
     /// the emitter's own name resolution, so a using scope imports EXACTLY the ident the emitter
     /// references, from EXACTLY the module the mint walk / `wasm()` places it. It branches
     /// identically to `for_wasm_member` (reject-set → non-empty-array → non-empty-map → loose
     /// `[* elem]` list), and resolves the home scope the SAME way emission does:
-    /// - a LOOSE structural `MapKToV` with a sole named owner is minted in that owner's module
+    /// - a LOOSE structural `MapKToV` with a loose sole named owner is minted in that owner's module
     ///   (via `table_shape_sole_owners`, shared with `mint_sole_owner_table`) — the one wrapper whose
     ///   home `types.scope` can't see, since the structural name is never a registered scope;
     /// - every other wrapper lives at `types.scope(wrapper_ident)`: the crate root for a synthesized
@@ -1618,10 +1639,7 @@ impl<'a> IntermediateTypes<'a> {
             // the same local signal `for_wasm_member` uses, so name resolution here and at the
             // emitter cannot disagree.
             let ident = ty.wasm_structural_map_name(self);
-            let scope = sole_owners
-                .get(&ident.to_string())
-                .map(|owner| self.scope(owner).clone())
-                .unwrap_or_else(|| self.scope(&ident).clone());
+            let scope = self.loose_table_wrapper_scope(&ident, sole_owners);
             return Some((ident, scope));
         }
         // Every remaining wrapper name resolves the same way `for_wasm_member` names it, and its home
@@ -1759,7 +1777,7 @@ impl<'a> IntermediateTypes<'a> {
         // deferred, import it at the restricted wrapper's emission scope. The caller passes the
         // exact SOURCE key: native for `{+ …}`, top-level-loosened for a bounded table. Additional
         // no-op case: the loose shape has a SOLE table-rule owner — the `try_from` source is then
-        // the owner's local `pub type MapKToV = <Owner>;` alias, never a deferred class.
+        // an actual loose owner's local `pub type MapKToV = <Owner>;` alias, never a deferred class.
         #[allow(clippy::too_many_arguments)]
         fn register_deferred_restricted_map_source(
             refs: &mut ScopeReferences,
@@ -1775,7 +1793,9 @@ impl<'a> IntermediateTypes<'a> {
         ) {
             let loose_ident = RustType::wasm_structural_map_name_for(key, value, preserve, types);
             if loose_ident.as_ref() == wrapper_ident.as_ref()
-                || sole_owners.contains_key(&loose_ident.to_string())
+                || sole_owners
+                    .get(&loose_ident.to_string())
+                    .is_some_and(|owner| types.is_loose_table_owner(owner))
             {
                 return;
             }
@@ -1867,7 +1887,7 @@ impl<'a> IntermediateTypes<'a> {
         // bare in `emit_scope`. The caller passes the exact SOURCE key: native for `{+ …}`,
         // top-level-loosened for a bounded table. Import it here, resolving the loose builder's own
         // home the SAME way emission places it (`table_shape_sole_owners`: the owner's
-        // `pub type MapKToV = <Owner>;` module when a sole owner exists, else root). Also register
+        // `pub type MapKToV = <Owner>;` module when a loose sole owner exists, else root). Also register
         // the loose builder's key/value refs at its scope. No-op when the loose name equals the
         // wrapper ident (self-named rule) or the loose builder is deferred.
         #[allow(clippy::too_many_arguments)]
@@ -1892,10 +1912,7 @@ impl<'a> IntermediateTypes<'a> {
             {
                 return;
             }
-            let loose_scope = sole_owners
-                .get(&loose_ident.to_string())
-                .map(|owner| types.scope(owner).clone())
-                .unwrap_or_else(|| types.scope(&loose_ident).clone());
+            let loose_scope = types.loose_table_wrapper_scope(&loose_ident, sole_owners);
             if loose_scope != *emit_scope {
                 refs.add_import(
                     emit_scope.to_owned(),
@@ -2484,7 +2501,7 @@ impl<'a> IntermediateTypes<'a> {
                     // scope. `{+ …}` uses its native direct key; a bounded table uses the same
                     // top-level-loosened key as `generate_bounded_map_type`.
                     let bounded_source = bounds.is_some_and(|candidate| {
-                        Self::normalized_bounded_window(candidate).is_some()
+                        type_enforced_bounded_window(candidate, false).is_some()
                     });
                     if wasm && (*bounds == Some((Some(1), None)) || bounded_source) {
                         // the rule's own `@duplicates` config picks its container flavor, so the
@@ -6867,7 +6884,7 @@ impl<'a> IntermediateTypes<'a> {
                     if *bounds != Some((Some(1), None)) {
                         let preserve = rs.config().duplicates_preserve();
                         let bounded_source = bounds.is_some_and(|candidate| {
-                            Self::normalized_bounded_window(candidate).is_some()
+                            type_enforced_bounded_window(candidate, false).is_some()
                         });
                         let (name, builder_key, need) = if bounded_source {
                             (
@@ -7511,7 +7528,7 @@ impl<'a> IntermediateTypes<'a> {
                         continue;
                     }
                     let bounded_source = bounds.is_some_and(|candidate| {
-                        Self::normalized_bounded_window(candidate).is_some()
+                        type_enforced_bounded_window(candidate, false).is_some()
                     });
                     let (structural, builder_key, source) = if bounded_source {
                         (

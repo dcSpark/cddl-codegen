@@ -1108,6 +1108,298 @@ fn named_restricted_rules_import_nonroot_loose_sources() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// Each fixture has one table per flavored shape: a second owner or a loose control in the same
+/// generation can hide a restricted sole owner's wrong source home.
+fn named_bounded_map_source_exports(prefix: &str) -> Vec<(String, PathBuf)> {
+    let mut exports = Vec::new();
+    for preserve_encodings in [false, true] {
+        for pair in [false, true] {
+            for (window, occurrence) in [
+                ("finite", "2*3"),
+                ("max0", "0*18446744073709551615"),
+                ("max1", "1*18446744073709551615"),
+            ] {
+                for nonroot in [false, true] {
+                    let leg = format!(
+                        "{prefix}_bounded_map_{window}_pair{pair}_preserve{preserve_encodings}_sub{nonroot}"
+                    );
+                    let root = scratch_root(&leg);
+                    let _ = std::fs::remove_dir_all(&root);
+                    let input = root.join("input");
+                    let export = root.join("export");
+                    let policy = if pair { " ; @duplicates preserve" } else { "" };
+                    let table = format!("owned = {{{occurrence} elem => uint}}{policy}\n");
+                    let mut files =
+                        vec![("lib.cddl".to_owned(), "elem = [value: uint]\n".to_owned())];
+                    if nonroot {
+                        files.push(("sub.cddl".to_owned(), table));
+                    } else {
+                        files[0].1.push_str(&table);
+                    }
+                    write_files(&input, &files);
+                    let out = codegen_cmd()
+                        .arg(format!("--input={}", input.display()))
+                        .arg(format!("--output={}", export.display()))
+                        .arg(format!("--lib-name={}", leg.replace('_', "-")))
+                        .arg("--wasm=true")
+                        .arg(format!("--preserve-encodings={preserve_encodings}"))
+                        .output()
+                        .unwrap();
+                    assert!(
+                        out.status.success(),
+                        "{leg} must generate: {}",
+                        String::from_utf8_lossy(&out.stderr)
+                    );
+                    let path = if nonroot {
+                        "wasm/src/generated/sub/mod.rs"
+                    } else {
+                        "wasm/src/generated/mod.rs"
+                    };
+                    let source = std::fs::read_to_string(export.join(path)).unwrap();
+                    let loose = if pair {
+                        "PairMapElemToU64"
+                    } else {
+                        "MapElemToU64"
+                    };
+                    assert!(
+                        source.contains(&format!("try_from(map: &{loose})")),
+                        "{leg} must name its loose source: {source}"
+                    );
+                    if nonroot {
+                        assert!(
+                            source
+                                .lines()
+                                .any(|line| line.starts_with("use crate::generated::")
+                                    && line
+                                        .split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_')
+                                        .any(|ident| ident == loose)),
+                            "{leg} must import the root loose source: {source}"
+                        );
+                    }
+                    exports.push((leg, export));
+                }
+            }
+        }
+    }
+    exports
+}
+
+#[test]
+fn named_bounded_maps_import_their_actual_loose_source_home() {
+    for (_, export) in named_bounded_map_source_exports("source") {
+        let _ = std::fs::remove_dir_all(export.parent().unwrap());
+    }
+}
+
+/// These legs consume an actual generated dependency's interface and wrapper index. Each
+/// dependency has one Elem-key loose shape and a distinct uint-key runtime-support shape;
+/// the support shape cannot accidentally supply the consumer's Elem-key source.
+fn named_map_dependency_source_exports(prefix: &str) -> Vec<(String, PathBuf)> {
+    let mut exports = Vec::new();
+    for workspace in [false, true] {
+        for pair in [false, true] {
+            for (window, occurrence) in [
+                ("finite", "2*3"),
+                ("max0", "0*18446744073709551615"),
+                ("max1", "1*18446744073709551615"),
+                ("loose_owner", "*"),
+            ] {
+                let leg = format!("{prefix}_dep_map_{window}_pair{pair}_workspace{workspace}");
+                let root = scratch_root(&leg);
+                let _ = std::fs::remove_dir_all(&root);
+                let dep_input = root.join("dep_input");
+                let dep_export = root.join("dep");
+                let input = root.join("input");
+                let export = root.join("consumer");
+                let dep = format!("{leg}_dep");
+                let dep_package = dep.replace('_', "-");
+                let dep_wasm = format!("{dep}_wasm");
+                let policy = if pair { " ; @duplicates preserve" } else { "" };
+                let loose = if pair {
+                    "PairMapElemToU64"
+                } else {
+                    "MapElemToU64"
+                };
+                let loose_rule = if pair {
+                    "pair_map_elem_to_u64"
+                } else {
+                    "map_elem_to_u64"
+                };
+                write_files(
+                    &dep_input,
+                    &[(
+                        "lib.cddl".to_owned(),
+                        format!(
+                            "elem = [value: uint]\n\n{loose_rule} = {{* elem => uint}}{policy}\n\nruntime_support = {{2*3 uint => uint}}{policy}\n"
+                        ),
+                    )],
+                );
+                let out = codegen_cmd()
+                    .arg(format!("--input={}", dep_input.display()))
+                    .arg(format!("--output={}", dep_export.display()))
+                    .arg(format!("--lib-name={dep_package}"))
+                    .arg("--wasm=true")
+                    .arg("--preserve-encodings=false")
+                    .output()
+                    .unwrap();
+                assert!(
+                    out.status.success(),
+                    "{leg} dependency must generate: {}",
+                    String::from_utf8_lossy(&out.stderr)
+                );
+                let index_path = dep_export.join("wasm/src/generated/collections.rs");
+                let index = std::fs::read_to_string(&index_path).unwrap();
+                for class in [loose, "ElemList"] {
+                    assert!(
+                        index.contains(&format!("::{class};")),
+                        "{leg} dependency must actually export {class}: {index}"
+                    );
+                }
+                write_files(
+                    &input,
+                    &[
+                        ("lib.cddl".to_owned(), "root = [value: uint]\n".to_owned()),
+                        (
+                            "sub.cddl".to_owned(),
+                            format!("owned = {{{occurrence} elem => uint}}{policy}\n"),
+                        ),
+                    ],
+                );
+                let mut cmd = codegen_cmd();
+                cmd.arg(format!("--input={}", input.display()))
+                    .arg(format!("--output={}", export.display()))
+                    .arg(format!("--lib-name={}", leg.replace('_', "-")))
+                    .arg("--wasm=true")
+                    .arg("--preserve-encodings=false")
+                    .arg(format!(
+                        "--extern-import={dep}={}",
+                        dep_export.join("extern-interface").join(&dep).display()
+                    ))
+                    .arg(format!("--extern-wasm-crate={dep}={dep_wasm}"))
+                    .arg(format!("--common-import-override={dep}"));
+                if workspace {
+                    cmd.arg(format!("--workspace-dep={dep}"));
+                } else {
+                    cmd.arg(format!(
+                        "--extern-wrapper-index={dep}={}",
+                        index_path.display()
+                    ));
+                }
+                let out = cmd.output().unwrap();
+                assert!(
+                    out.status.success(),
+                    "{leg} consumer must generate: {}",
+                    String::from_utf8_lossy(&out.stderr)
+                );
+                let sub =
+                    std::fs::read_to_string(export.join("wasm/src/generated/sub/mod.rs")).unwrap();
+                // Rustfmt may split a grouped import across lines. Parse the Rust item so
+                // comments and formatting cannot disguise the precise imported source name.
+                let imported = syn::parse_file(&sub).unwrap().items.iter().any(|item| {
+                    use quote::ToTokens;
+                    let syn::Item::Use(item) = item else {
+                        return false;
+                    };
+                    let tree = item.tree.to_token_stream().to_string();
+                    tree.starts_with(&format!("{dep_wasm} :: collections ::"))
+                        && tree
+                            .split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_')
+                            .any(|ident| ident == loose)
+                });
+                assert!(
+                    sub.contains("pub struct Owned("),
+                    "{leg} named owner must remain local: {sub}"
+                );
+                if window == "loose_owner" {
+                    assert!(
+                        sub.contains(&format!("pub type {loose} = Owned;")) && !imported,
+                        "{leg} actual loose owner must supply its local structural alias without deferring it: {sub}"
+                    );
+                } else {
+                    assert!(
+                        sub.contains(&format!("try_from(map: &{loose})")) && imported,
+                        "{leg} restricted owner must import the actual dependency loose source: {sub}"
+                    );
+                    let root_source =
+                        std::fs::read_to_string(export.join("wasm/src/generated/mod.rs")).unwrap();
+                    assert!(
+                        !root_source.contains(&format!("pub struct {loose}("))
+                            && !sub.contains(&format!("pub struct {loose}(")),
+                        "{leg} deferred loose source must not be re-minted locally"
+                    );
+                }
+                if workspace {
+                    let sidecar = std::fs::read_to_string(
+                        export.join("wasm/src/generated/borrowed_collections.rs"),
+                    )
+                    .unwrap();
+                    let rows =
+                        crate::wrapper_requests::parse_sidecar(&sidecar, "borrowed_collections.rs")
+                            .unwrap();
+                    let shape = if pair {
+                        "{* elem => uint} @duplicates preserve"
+                    } else {
+                        "{* elem => uint}"
+                    };
+                    if window == "loose_owner" {
+                        assert!(
+                            !rows.iter().any(|row| row.dep == dep && row.name == loose),
+                            "{leg} actual local owner must not be recorded as borrowed: {sidecar}"
+                        );
+                    } else {
+                        assert!(
+                            rows.iter().any(|row| row.dep == dep
+                                && row.name == loose
+                                && row.shape == shape),
+                            "{leg} sidecar must record the exact loose shape/flavor: {sidecar}"
+                        );
+                    }
+                }
+                let rust_dep =
+                    format!("{dep_package} = {{ path = {:?} }}", dep_export.join("rust"));
+                let wasm_dep = format!(
+                    "{dep_package}-wasm = {{ path = {:?} }}",
+                    dep_export.join("wasm")
+                );
+                super::integration_tests::append_manifest_deps(
+                    &export.join("rust/Cargo.toml"),
+                    &[&rust_dep],
+                );
+                super::integration_tests::append_manifest_deps(
+                    &export.join("wasm/Cargo.toml"),
+                    &[&rust_dep, &wasm_dep],
+                );
+                exports.push((leg, export));
+            }
+        }
+    }
+    exports
+}
+
+#[test]
+fn named_maps_route_real_dependency_sources_and_loose_owners() {
+    for (_, export) in named_map_dependency_source_exports("source") {
+        let _ = std::fs::remove_dir_all(export.parent().unwrap());
+    }
+}
+
+/// The generated path dependency is outside the consumer tree; do not memoize only the
+/// consumer's bytes. Each leg's own target directory holds both crates, with unique packages.
+fn run_generated_dependency_floor(cell: &str, export: &Path, args: &[&str]) {
+    let out = super::integration_tests::tool_cmd("cargo")
+        .args(args)
+        .current_dir(export.join("wasm"))
+        .env("CARGO_TARGET_DIR", export.parent().unwrap().join("target"))
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{cell} generated dependency floor must pass:\n{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
 /// MODE = `IndexDeferred`: the dep's index lists every structural name the spec derives, so what the
 /// grid records is which shapes CONSULT it — and, for the ones that cannot, that the collision is
 /// announced rather than silent.
@@ -1630,8 +1922,9 @@ fn generate_floor_consumer(leg: &str, spec: &[(&str, &str)], mode_flags: &[Strin
 /// observable: two `#[wasm_bindgen]` classes of one name are a `rust-lld: duplicate symbol`, which
 /// `cargo check`, `cargo test` and every generation assertion above are structurally blind to.
 ///
-/// Batched per (mode, floor) so cost stays bounded, and each leg is memoized by
-/// `gate_cache::run_cached` on the generated crate's content hash:
+/// The original mode batches and local named-map legs use `gate_cache::run_cached` on
+/// generated content. The synthetic dependency legs below run uncached because their
+/// path dependency lives outside the consumer tree:
 ///
 /// * `local` — `cargo check` of a standalone generated wasm crate. No dependency exists, so the
 ///   question is only that a whole shape column compiles; the link property is vacuous.
@@ -1669,6 +1962,42 @@ fn wrapper_participation_mode_floors() {
         &local_export,
         &["check".to_owned()],
     );
+
+    // Named bounded maps need their own source-home floor. Keep one owner per fixture so
+    // the sole-owner branch, including explicit full-u64 authored bounds, reaches compilation.
+    for (leg, export) in named_bounded_map_source_exports("floor") {
+        run_cargo_floor(
+            "wrapper_participation_mode_floors",
+            &format!("{leg}-wasm-check"),
+            &export,
+            &["check".to_owned()],
+        );
+        if wasm32_target_installed() {
+            run_cargo_floor(
+                "wrapper_participation_mode_floors",
+                &format!("{leg}-wasm32-link"),
+                &export,
+                &[
+                    "build".to_owned(),
+                    "--target".to_owned(),
+                    "wasm32-unknown-unknown".to_owned(),
+                ],
+            );
+        }
+    }
+
+    // These named-map legs link against their own real generated dependency, not a fabricated
+    // index or a fixture that lacks the relevant map flavor. Native checks still run without wasm32.
+    for (leg, export) in named_map_dependency_source_exports("floor") {
+        run_generated_dependency_floor(&format!("{leg}-wasm-check"), &export, &["check"]);
+        if wasm32_target_installed() {
+            run_generated_dependency_floor(
+                &format!("{leg}-wasm32-link"),
+                &export,
+                &["build", "--target", "wasm32-unknown-unknown"],
+            );
+        }
+    }
 
     // ---- The deferring legs --------------------------------------------------------------------
     // Every wrapper below is one the COMMITTED dep pair really defines and really lists, so a GREEN

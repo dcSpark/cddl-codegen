@@ -2305,10 +2305,7 @@ fn transitive_owner_set(
 /// `try_from` needs. Treating it as the sole owner of `PairMapKToV` would emit both that alias and
 /// the required loose class on a repeated/aliased visit (duplicate top-level ident).
 pub(super) fn is_loose_table_owner(types: &IntermediateTypes, owner: &RustIdent) -> bool {
-    matches!(
-        types.rust_structs().get(owner).map(|rs| rs.variant()),
-        Some(RustStructType::Table { bounds: None, .. })
-    )
+    types.is_loose_table_owner(owner)
 }
 
 /// Where a collection wrapper is hosted, given its transitive element owners. Factored as one
