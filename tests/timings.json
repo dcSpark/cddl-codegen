@@ -1073,6 +1073,9 @@
       ]
     },
     {
+      "gate": "rustdoc_links"
+    },
+    {
       "gate": "self_checks",
       "warm_ms": 253,
       "n": 20,
