@@ -7,9 +7,9 @@ use crate::comment_ast::{DuplicatesPolicy, RuleMetadata, merge_metadata, metadat
 use crate::intermediate::{
     AliasIdent, AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant,
     EnumVariantData, FixedValue, FloatWindow, ForbiddenField, GenericDef, GenericInstance,
-    GenericParamBinding, IntBounds, IntermediateTypes, ModuleScope, PlainGroupInfo, Primitive,
-    Representation, RestKind, RestRow, RestSemantics, RustField, RustIdent, RustRecord, RustStruct,
-    RustStructType, RustType, VariantIdent, reserved_pin_rejection,
+    GenericParamBinding, IntBounds, IntWindow, IntermediateTypes, ModuleScope, PlainGroupInfo,
+    Primitive, Representation, RestKind, RestRow, RestSemantics, RustField, RustIdent, RustRecord,
+    RustStruct, RustStructType, RustType, VariantIdent, reserved_pin_rejection,
 };
 use crate::utils::{
     append_number_if_duplicate, convert_to_camel_case, convert_to_snake_case,
@@ -19,7 +19,7 @@ use crate::utils::{
 #[derive(Clone, Debug)]
 #[allow(clippy::upper_case_acronyms)]
 enum ControlOperator {
-    Range((Option<i128>, Option<i128>)),
+    Range(IntWindow),
     /// A NaN-safe float value window (`float64 .le 10.5`, `0.5..10.5`, `float .le 10`). Carries
     /// per-side exclusivity because float space is dense (no ±1 collapse like the integer window).
     RangeFloat(FloatWindow),
@@ -3443,7 +3443,7 @@ fn uint_size_max(bytes: i128) -> i128 {
 }
 
 /// `ty` with occurrence `bounds` attached when there are any.
-fn with_optional_bounds(ty: RustType, bounds: Option<(Option<i128>, Option<i128>)>) -> RustType {
+fn with_optional_bounds(ty: RustType, bounds: Option<IntWindow>) -> RustType {
     match bounds {
         Some(bounds) => ty.with_bounds(bounds),
         None => ty,
@@ -3571,7 +3571,7 @@ fn register_ranged_type(
     parent_visitor: &ParentVisitor,
     type_name: &RustIdent,
     mut ranged_type: RustType,
-    min_max: (Option<i128>, Option<i128>),
+    min_max: IntWindow,
     outer_tag: Option<usize>,
     rule_metadata: RuleMetadata,
     cli: &Cli,
@@ -5293,16 +5293,16 @@ enum GroupParsingType {
     /// Fields are the same e.g. field: [* uint]. The second field is the occurrence-count bounds
     /// (`+` / `n*m`) — a LENGTH constraint belonging to the enclosing array type, kept separate
     /// from the element so it can never be misread as an element VALUE bound.
-    HomogenousArray(RustType, Option<(Option<i128>, Option<i128>)>),
+    HomogenousArray(RustType, Option<IntWindow>),
     /// An RFC 8610 repeated plain group in a named ARRAY. The element still uses the ordinary
     /// Array representation (and therefore its existing flat embedded-group codec), but the
     /// owning rule must be a `Wrapper` rather than a transparent collection alias: only the
     /// wrapper owns a standalone codec for the flattened wire shape.
-    FlatGroupArray(RustType, Option<(Option<i128>, Option<i128>)>),
+    FlatGroupArray(RustType, Option<IntWindow>),
     /// Pairs are the same e.g. field:{ *text => uint }. The third field is the occurrence-count
     /// bounds (a cardinality constraint on the table itself). `None` is the unbounded `*` table;
     /// `+` / `1*` retains `NonEmptyMap` and every other representable window uses `BoundedMap`.
-    HomogenousMap(RustType, RustType, Option<(Option<i128>, Option<i128>)>),
+    HomogenousMap(RustType, RustType, Option<IntWindow>),
     /// Fields are different - needs new struct created e.g. field: [a: uint, b: bstr]
     /// This case covers both maps and arrays
     Heterogenous,
@@ -5315,10 +5315,7 @@ enum GroupParsingType {
 /// `BoundedVec` and `BoundedMap` carry occurrence endpoints as `u64` const arguments. Reject a
 /// parser value that cannot fit that target-independent carrier before later codegen reaches a
 /// narrowing conversion (where an `expect` would turn malformed input into a panic).
-fn reject_out_of_range_occurrence_bounds(
-    types: &mut IntermediateTypes,
-    bounds: Option<(Option<i128>, Option<i128>)>,
-) {
+fn reject_out_of_range_occurrence_bounds(types: &mut IntermediateTypes, bounds: Option<IntWindow>) {
     for bound in bounds
         .into_iter()
         .flat_map(|(lower, upper)| [lower, upper])
@@ -5361,7 +5358,7 @@ fn normalized_dynamic_sequence_occurrence_window(
 /// The `(min, max)` window an occurrence marker admits: `*` is `(None, None)`, `+` is
 /// `(Some(1), None)`, `?` is `(None, Some(1))`, and `n*m` keeps its bounds with a zero lower bound
 /// dropped.
-fn occur_bounds(occur: &Occur) -> (Option<i128>, Option<i128>) {
+fn occur_bounds(occur: &Occur) -> IntWindow {
     match occur {
         Occur::ZeroOrMore { .. } => (None, None),
         Occur::Exact { lower, upper, .. } => (
@@ -6680,7 +6677,7 @@ fn member_size_named_head_rejection(
     types: &IntermediateTypes,
     type1: &Type1,
     base_type: &RustType,
-    window: (Option<i128>, Option<i128>),
+    window: IntWindow,
 ) -> Option<String> {
     if window == (None, None) {
         return None;
@@ -6822,10 +6819,7 @@ fn rust_type_from_type1(
 /// primitive a side its domain already implies is dropped (`u8_alias .size 2` checks nothing,
 /// `u .size 9` spans every uint) instead of emitting a comparison the carrier cannot fail or a
 /// literal it cannot hold. An exclusion and every other type keep the window as written.
-fn with_resolved_head_window(
-    base_type: RustType,
-    window: (Option<i128>, Option<i128>),
-) -> RustType {
+fn with_resolved_head_window(base_type: RustType, window: IntWindow) -> RustType {
     let window = match base_type.conceptual_type.resolve_alias_shallow() {
         ConceptualRustType::Primitive(primitive @ (Primitive::Bytes | Primitive::Str)) => {
             length_window(*primitive, window)
@@ -6849,10 +6843,7 @@ fn with_resolved_head_window(
 /// zero minimum left without it checks nothing either. An exact window keeps both bounds, so exact
 /// bytes still reach the `[u8; N]` path and its own length floor. Every other primitive's window
 /// passes through unchanged.
-fn length_window(
-    primitive: Primitive,
-    (low, high): (Option<i128>, Option<i128>),
-) -> (Option<i128>, Option<i128>) {
+fn length_window(primitive: Primitive, (low, high): IntWindow) -> IntWindow {
     match (primitive, high) {
         (Primitive::Bytes | Primitive::Str, Some(h)) if h == u64::MAX as i128 && low != Some(h) => {
             (low.filter(|l| *l != 0), None)

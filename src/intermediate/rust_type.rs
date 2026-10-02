@@ -520,9 +520,7 @@ impl RustType {
 /// `u64::MAX`, and a window whose endpoints do not fit or whose minimum exceeds its maximum is
 /// `None`. Occurrence endpoints are non-negative parse quantities; the checked conversion keeps a
 /// future wider parser carrier from being silently truncated.
-pub(crate) fn occurrence_window_u64(
-    (min, max): (Option<i128>, Option<i128>),
-) -> Option<(u64, u64)> {
+pub(crate) fn occurrence_window_u64((min, max): IntWindow) -> Option<(u64, u64)> {
     let min = u64::try_from(min.unwrap_or(0)).ok()?;
     let max = max.map(u64::try_from).transpose().ok()?.unwrap_or(u64::MAX);
     (min <= max).then_some((min, max))
@@ -531,10 +529,7 @@ pub(crate) fn occurrence_window_u64(
 /// Inclusive `u64` window held by a type-enforced bounded carrier. Loose `*`, NonEmpty `+`,
 /// exact occurrences (according to the caller's static-carrier verdict), and invalid windows
 /// have no bounded carrier.
-pub(crate) fn type_enforced_bounded_window(
-    bounds: (Option<i128>, Option<i128>),
-    exact: bool,
-) -> Option<(u64, u64)> {
+pub(crate) fn type_enforced_bounded_window(bounds: IntWindow, exact: bool) -> Option<(u64, u64)> {
     if exact || bounds == (None, None) || bounds == (Some(1), None) {
         return None;
     }
@@ -554,9 +549,7 @@ fn window_name_suffix(infix: &str, min: u64, max: u64) -> String {
 
 /// Bounds-only half of the exact static-array recognizers. Primitive decode owns only a copied
 /// config window, so keep the tuple interpretation here instead of duplicating it there.
-pub fn exact_array_len_from_bounds(
-    bounds: Option<(Option<i128>, Option<i128>)>,
-) -> Option<Result<usize, i128>> {
+pub fn exact_array_len_from_bounds(bounds: Option<IntWindow>) -> Option<Result<usize, i128>> {
     let (min, max) = bounds?;
     let exact = match (min, max) {
         (Some(min), Some(max)) if min == max => min,
@@ -885,6 +878,11 @@ pub enum CBOREncodingOperation {
 /// used exactly; emitted comparisons cast the f32 value to f64.
 pub type FloatWindow = (Option<(f64, bool)>, Option<(f64, bool)>);
 
+/// A stored integer bound pair `(min, max)`, inclusive on both sides; an absent side is open. This
+/// is the storage of `RustTypeConfig::bounds` and a wrapper's `min_max`. A pair with `min > max` is
+/// the `.ne` encoding: read it through [`IntBounds::read`], never by comparing the sides.
+pub type IntWindow = (Option<i128>, Option<i128>);
+
 /// What a stored integer bound pair (`RustTypeConfig::bounds`, a wrapper's `min_max`) means.
 ///
 /// `.ne N` is stored as the inverted pair `(N + 1, N - 1)`: the pair stays the storage because the
@@ -901,12 +899,12 @@ pub enum IntBounds {
 
 impl IntBounds {
     /// The stored pair for `.ne value`.
-    pub fn exclusion(value: i128) -> (Option<i128>, Option<i128>) {
+    pub fn exclusion(value: i128) -> IntWindow {
         (Some(value + 1), Some(value - 1))
     }
 
     /// The meaning of a stored pair.
-    pub fn read(bounds: (Option<i128>, Option<i128>)) -> Self {
+    pub fn read(bounds: IntWindow) -> Self {
         match bounds {
             (Some(min), Some(max)) if min > max => IntBounds::Exclusion(min - 1),
             (min, max) => IntBounds::Window(min, max),
@@ -919,7 +917,7 @@ pub struct RustTypeSerializeConfig {
     /// default value when missing in deserialization
     pub default: Option<FixedValue>,
     /// Bounds to check. Relevant to primitives + arrays + maps
-    pub bounds: Option<(Option<i128>, Option<i128>)>,
+    pub bounds: Option<IntWindow>,
     /// Per-rule `@duplicates` policy for an array or table collection member. On arrays (`[* a]` /
     /// `[+ a]`, including the tag-258 set idiom), `Some(Reject)` swaps to the uniqueness twin
     /// (`OrderedSet`/`NonEmptyOrderedSet`) whose single `TryFrom` door refuses duplicates. On loose
@@ -1095,7 +1093,7 @@ impl RustType {
             && self.generic_param_binding == resolved.generic_param_binding
     }
 
-    pub fn with_bounds(mut self, mut bounds: (Option<i128>, Option<i128>)) -> Self {
+    pub fn with_bounds(mut self, mut bounds: IntWindow) -> Self {
         assert!(self.config.bounds.is_none());
         // remove redundant 0 for unsigned types — a window's lower endpoint only: an exclusion's
         // stored pair has no endpoint to drop (`.ne -1` is `(0, -2)`)

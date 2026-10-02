@@ -9,7 +9,7 @@ use std::process::{Command, Stdio};
 
 use crate::intermediate::{
     AliasIdent, AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant,
-    EnumVariantData, FixedValue, IntermediateTypes, ModuleScope, Primitive, ROOT_SCOPE,
+    EnumVariantData, FixedValue, IntWindow, IntermediateTypes, ModuleScope, Primitive, ROOT_SCOPE,
     Representation, RestKind, RestRow, RestSemantics, RustField, RustIdent, RustRecord,
     RustStructCBORLen, RustStructConfig, RustStructType, RustType, RustTypeSerializeConfig,
     ToWasmBoundaryOperations, VariantIdent, escape_rust_str,

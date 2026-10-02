@@ -49,9 +49,9 @@ use crate::cli::Cli;
 use crate::comment_ast::RuleMetadata;
 use crate::intermediate::{
     AliasIdent, CBOREncodingOperation, ConceptualRustType, EnumVariant, EnumVariantData,
-    FixedValue, FloatWindow, IntermediateTypes, Primitive, RESERVED_INT_IDENT, ROOT_SCOPE,
-    Representation, RustField, RustIdent, RustRecord, RustStruct, RustStructConfig, RustStructType,
-    RustType, RustTypeSerializeConfig,
+    FixedValue, FloatWindow, IntWindow, IntermediateTypes, Primitive, RESERVED_INT_IDENT,
+    ROOT_SCOPE, Representation, RustField, RustIdent, RustRecord, RustStruct, RustStructConfig,
+    RustStructType, RustType, RustTypeSerializeConfig,
 };
 
 /// A rendering failure. Both variants name the rule; `Unrenderable` also names the offending shape.
@@ -511,11 +511,7 @@ fn float_cddl_name(p: Primitive) -> Option<&'static str> {
 }
 
 /// A primitive whose only faithful spelling is its bare name; any window is an unexpected shape.
-fn plain_primitive(
-    rule: &str,
-    name: &str,
-    bounds: Option<(Option<i128>, Option<i128>)>,
-) -> RenderResult {
+fn plain_primitive(rule: &str, name: &str, bounds: Option<IntWindow>) -> RenderResult {
     match bounds {
         None => Ok(name.to_string()),
         Some(_) => Err(unrenderable(
@@ -527,11 +523,7 @@ fn plain_primitive(
 
 /// A fixed-width integer identity: the collapsed type IS the constraint, so it carries no further
 /// bounds. Its identity spelling (`text`) round-trips.
-fn fixed_width_int(
-    rule: &str,
-    text: &str,
-    bounds: Option<(Option<i128>, Option<i128>)>,
-) -> RenderResult {
+fn fixed_width_int(rule: &str, text: &str, bounds: Option<IntWindow>) -> RenderResult {
     match bounds {
         None => Ok(text.to_string()),
         Some(_) => Err(unrenderable(
@@ -544,11 +536,7 @@ fn fixed_width_int(
 /// `.size` on `tstr`/`bytes`: exact (`.size n`) or ranged (`.size (n..m)`). The parser normalizes a
 /// bare `.size n` to the exact window `(Some(n), Some(n))` and a `.size (0..m)` to `(None, Some(m))`
 /// (unsigned min-0 stripped). Anything else (a lone lower bound) has no faithful `.size` spelling.
-fn render_text_or_bytes_size(
-    rule: &str,
-    base: &str,
-    bounds: Option<(Option<i128>, Option<i128>)>,
-) -> RenderResult {
+fn render_text_or_bytes_size(rule: &str, base: &str, bounds: Option<IntWindow>) -> RenderResult {
     match bounds {
         None => Ok(base.to_string()),
         Some((Some(n), Some(m))) if n == m => Ok(format!("{base} .size {n}")),
@@ -568,11 +556,7 @@ fn render_text_or_bytes_size(
 /// `.ge`/`.le` (preserves the base typename). Two-sided → a literal range `a..b`, which round-trips
 /// for `uint`/`int` (the literal sign re-derives the same base). Two-sided on `nint` has no faithful
 /// literal-range form (a negative literal range parses as `int`), so it hard-errors.
-fn render_int_bounds(
-    rule: &str,
-    base: &str,
-    bounds: Option<(Option<i128>, Option<i128>)>,
-) -> RenderResult {
+fn render_int_bounds(rule: &str, base: &str, bounds: Option<IntWindow>) -> RenderResult {
     match bounds {
         None | Some((None, None)) => Ok(base.to_string()),
         Some((Some(a), None)) => Ok(format!("{base} .ge {a}")),
@@ -642,7 +626,7 @@ fn render_float_primitive(rule: &str, p: Primitive, window: FloatWindow) -> Rend
 fn occurrence_marker(
     rule: &str,
     float_bounds: Option<FloatWindow>,
-    bounds: Option<(Option<i128>, Option<i128>)>,
+    bounds: Option<IntWindow>,
 ) -> RenderResult {
     if float_bounds.is_some() {
         return Err(unrenderable(
@@ -1748,7 +1732,7 @@ mod tests {
 
     // --- Arrays / maps with occurrence bounds --------------------------------------------------
 
-    fn array_of(inner: RustType, bounds: Option<(Option<i128>, Option<i128>)>) -> RustType {
+    fn array_of(inner: RustType, bounds: Option<IntWindow>) -> RustType {
         let mut ty = RustType::new(ConceptualRustType::Array(Box::new(inner)));
         if let Some(b) = bounds {
             ty = ty.with_bounds(b);

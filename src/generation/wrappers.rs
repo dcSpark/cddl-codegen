@@ -30,7 +30,7 @@ fn json_schema_integer_value(value: i128) -> String {
 fn emit_checked_scalar_json_schema_bounds(
     json_schema_fn: &mut codegen::Function,
     field_type: &RustType,
-    effective_min_max: Option<(Option<i128>, Option<i128>)>,
+    effective_min_max: Option<IntWindow>,
     float_min_max: Option<crate::intermediate::FloatWindow>,
 ) {
     if let Some((min, max)) = effective_min_max {
@@ -212,7 +212,7 @@ pub(super) fn generate_wrapper_struct(
     types: &IntermediateTypes,
     type_name: &RustIdent,
     field_type: &RustType,
-    min_max: Option<(Option<i128>, Option<i128>)>,
+    min_max: Option<IntWindow>,
     float_min_max: Option<crate::intermediate::FloatWindow>,
     struct_config: &RustStructConfig,
     cli: &Cli,

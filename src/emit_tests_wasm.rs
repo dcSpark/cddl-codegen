@@ -80,8 +80,8 @@ use crate::emit_tests::{
 };
 use crate::generation::rust_crate_struct_from_wasm;
 use crate::intermediate::{
-    ConceptualRustType, EnumVariant, EnumVariantData, IntermediateTypes, RustField, RustIdent,
-    RustRecord, RustStructType, RustType,
+    ConceptualRustType, EnumVariant, EnumVariantData, IntWindow, IntermediateTypes, RustField,
+    RustIdent, RustRecord, RustStructType, RustType,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -1078,7 +1078,7 @@ fn wasm_choice_bounds(
 fn accept_cases(
     types: &IntermediateTypes,
     ty: &RustType,
-    bounds: (Option<i128>, Option<i128>),
+    bounds: IntWindow,
     is_len: bool,
 ) -> Vec<(MintValue, &'static str)> {
     bound_cases(types, ty, bounds, is_len)

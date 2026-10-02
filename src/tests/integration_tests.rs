@@ -14979,7 +14979,7 @@ fn emit_tests_open_array_execute() {
 #[test]
 fn bounds_reject_value_agrees_with_emitted_condition() {
     use crate::generation::bounds_reject_value;
-    let rejected = |b: (Option<i128>, Option<i128>), lo: i128, hi: i128| -> Vec<i128> {
+    let rejected = |b: crate::intermediate::IntWindow, lo: i128, hi: i128| -> Vec<i128> {
         (lo..=hi).filter(|v| bounds_reject_value(&b, *v)).collect()
     };
 

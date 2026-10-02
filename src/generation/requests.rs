@@ -494,7 +494,7 @@ pub(crate) fn render_wrapper_shape(rt: &RustType) -> String {
 /// The occurrence marker of a collection shape in the `borrowed_collections.rs` shape-column
 /// grammar (`*`, `+`, `?`,
 /// `*5`, `2*`, `2*5`), shared by the list and map arms of [`render_wrapper_shape`].
-fn render_occurrence(bounds: Option<(Option<i128>, Option<i128>)>) -> String {
+fn render_occurrence(bounds: Option<IntWindow>) -> String {
     match bounds {
         Some((Some(1), None)) => "+".to_owned(),
         Some((None, Some(1))) => "?".to_owned(),
@@ -659,7 +659,7 @@ impl<'a> ShapeParser<'a> {
 
     /// The occurrence marker after a collection's opening bracket; `expected` is the `malformed`
     /// clause when there is none.
-    fn occurrence(&mut self, expected: &str) -> Result<(Option<i128>, Option<i128>), String> {
+    fn occurrence(&mut self, expected: &str) -> Result<IntWindow, String> {
         read_occurrence(&self.chars, &mut self.pos).ok_or_else(|| self.malformed(expected))
     }
 
@@ -867,10 +867,7 @@ const MAX_SHAPE_DEPTH: usize = 32;
 /// Read the occurrence grammar emitted by [`render_wrapper_shape`], advancing past it. Shared with
 /// the lenient key-seed scan (`wrapper_requests::map_key_cddl_idents`) so the two readers of the
 /// shape column cannot drift on which occurrences exist.
-pub(crate) fn read_occurrence(
-    chars: &[char],
-    pos: &mut usize,
-) -> Option<(Option<i128>, Option<i128>)> {
+pub(crate) fn read_occurrence(chars: &[char], pos: &mut usize) -> Option<IntWindow> {
     match chars.get(*pos) {
         Some('+') => {
             *pos += 1;

@@ -1056,6 +1056,7 @@ pub fn seed_used_as_key_from_key_requests(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::intermediate::IntWindow;
 
     /// The refusal assertion every grammar-rejection test below shares, asserting BOTH halves of
     /// what a refusal owes at once. That it is an `Err` and not an abort: these readers run inside
@@ -1468,10 +1469,7 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
         let named =
             |n: &str| RustType::new(ConceptualRustType::Rust(RustIdent::new(CDDLIdent::new(n))));
         let uint = || RustType::new(ConceptualRustType::Primitive(Primitive::U64));
-        let map = |key: RustType,
-                   value: RustType,
-                   bounds: Option<(Option<i128>, Option<i128>)>,
-                   preserve: bool| {
+        let map = |key: RustType, value: RustType, bounds: Option<IntWindow>, preserve: bool| {
             let mut rt = RustType::new(ConceptualRustType::Map(Box::new(key), Box::new(value)));
             if let Some(bounds) = bounds {
                 rt = rt.with_bounds(bounds);
@@ -1481,7 +1479,7 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
             }
             rt
         };
-        let list = |inner: RustType, bounds: Option<(Option<i128>, Option<i128>)>, reject: bool| {
+        let list = |inner: RustType, bounds: Option<IntWindow>, reject: bool| {
             let mut rt = RustType::new(ConceptualRustType::Array(Box::new(inner)));
             if let Some(bounds) = bounds {
                 rt = rt.with_bounds(bounds);

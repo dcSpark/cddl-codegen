@@ -467,14 +467,14 @@ pub enum RustStructType {
         /// `NonEmptyMap`, and every other window selects `BoundedMap` (`NonEmptyPairMap` /
         /// `BoundedPairMap` under `@duplicates preserve`). Rides the registered alias's `RustType` so
         /// embed sites enforce it, exactly like `Array` bounds.
-        bounds: Option<(Option<i128>, Option<i128>)>,
+        bounds: Option<IntWindow>,
     },
     Array {
         element_type: RustType,
         /// occurrence-count bounds (`+` / `n*m`) — a LENGTH constraint on the array itself.
         /// Applied to the registered alias RustType's config so embed sites enforce it; kept off
         /// the element_type so it can't be misread as an element VALUE bound.
-        bounds: Option<(Option<i128>, Option<i128>)>,
+        bounds: Option<IntWindow>,
     },
     TypeChoice {
         variants: Vec<EnumVariant>,
@@ -485,7 +485,7 @@ pub enum RustStructType {
     },
     Wrapper {
         wrapped: RustType,
-        min_max: Option<(Option<i128>, Option<i128>)>,
+        min_max: Option<IntWindow>,
         /// NaN-safe float window for a float-typed wrapper (`c = 0.5..10.5`, `#6.5(0.5..10.5)`).
         /// Mutually exclusive with `min_max` (a wrapper never carries both). Its presence — like a
         /// `Some` `min_max` — makes the wrapper's `new()`/deserialize fallible.
@@ -523,7 +523,7 @@ impl RustStruct {
         rule_metadata: Option<&RuleMetadata>,
         domain: RustType,
         range: RustType,
-        bounds: Option<(Option<i128>, Option<i128>)>,
+        bounds: Option<IntWindow>,
     ) -> Self {
         Self {
             ident,
@@ -543,7 +543,7 @@ impl RustStruct {
         tag: Option<usize>,
         rule_metadata: Option<&RuleMetadata>,
         element_type: RustType,
-        bounds: Option<(Option<i128>, Option<i128>)>,
+        bounds: Option<IntWindow>,
     ) -> Self {
         Self {
             ident,
@@ -649,7 +649,7 @@ impl RustStruct {
         tag: Option<usize>,
         rule_metadata: Option<&RuleMetadata>,
         wrapped_type: RustType,
-        min_max: Option<(Option<i128>, Option<i128>)>,
+        min_max: Option<IntWindow>,
     ) -> Self {
         Self {
             ident,
@@ -1314,7 +1314,7 @@ impl RestRow {
     /// The RustType-form window used by the collection carriers: `u64::MAX` is rendered as the
     /// existing unbounded endpoint, and a zero lower endpoint stays absent so `BoundedMap` derives
     /// the conventional `min: None` range payload.
-    pub fn rust_bounds(&self) -> Option<(Option<i128>, Option<i128>)> {
+    pub fn rust_bounds(&self) -> Option<IntWindow> {
         self.occurrence.map(|(min, max)| {
             (
                 (min != 0).then_some(i128::from(min)),

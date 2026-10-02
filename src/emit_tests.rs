@@ -54,14 +54,12 @@
 use crate::cli::Cli;
 use crate::comment_ast::DuplicatesPolicy;
 use crate::intermediate::{
-    ConceptualRustType, EnumVariant, EnumVariantData, FixedValue, IntermediateTypes, Primitive,
-    Representation, RestRow, RustField, RustIdent, RustRecord, RustStruct, RustStructType,
-    RustType,
+    ConceptualRustType, EnumVariant, EnumVariantData, FixedValue, IntWindow, IntermediateTypes,
+    Primitive, Representation, RestRow, RustField, RustIdent, RustRecord, RustStruct,
+    RustStructType, RustType,
 };
 use crate::utils::convert_to_snake_case;
 use std::collections::{BTreeMap, BTreeSet};
-
-type Bounds = (Option<i128>, Option<i128>);
 
 // ============================================================================================
 // The MINT-VALUE data layer. Value derivation (`valid_value`/`materialize`/`mint_struct` and the
@@ -1663,7 +1661,7 @@ fn rest_entry_key_candidates(
 /// Whether a bounded wrapper's `new()` accepts a candidate key image. Integer images are CDDL
 /// values, the space the wrapper window is written in. A text candidate keeps its initial's length,
 /// which the wrapper mint already placed inside a `.size` window.
-fn wrapper_key_image_in_window(window: Bounds, image: &FixedValue) -> bool {
+fn wrapper_key_image_in_window(window: IntWindow, image: &FixedValue) -> bool {
     match image {
         FixedValue::Uint(value) => {
             !crate::generation::bounds_reject_value(&window, i128::from(*value))
@@ -2909,7 +2907,7 @@ fn wrapper_construct_reject(
     ident: &RustIdent,
     name: &str,
     wrapped: &RustType,
-    min_max: Bounds,
+    min_max: IntWindow,
     alias: &mut FailureAlias,
 ) -> Option<String> {
     // A bounded nint wrapper stores the inner as a u64 MAGNITUDE (`m = |v + 1|`) and its `new()`
@@ -3018,7 +3016,7 @@ pub(crate) fn measure_kind(ty: &RustType) -> Option<MeasureKind> {
 }
 
 /// In-range measure for a valid baseline: the inclusive min (or max, or 0).
-fn valid_measure(b: Bounds) -> i128 {
+fn valid_measure(b: IntWindow) -> i128 {
     b.0.or(b.1).unwrap_or(0)
 }
 
@@ -3244,7 +3242,7 @@ fn float_is_f32(ty: &RustType) -> bool {
 /// applies `nint_bounds_to_u64` there), so the baseline must be minted from the transformed bounds —
 /// otherwise a raw negative literal (e.g. `-5`) is passed to a `u64` ctor and the emitted code won't
 /// compile. Non-nint wrappers check the raw measure directly.
-fn wrapper_measure(wrapped: &RustType, mm: Bounds) -> i128 {
+fn wrapper_measure(wrapped: &RustType, mm: IntWindow) -> i128 {
     if matches!(
         wrapped.resolve_alias_shallow(),
         ConceptualRustType::Primitive(Primitive::N64)
@@ -3260,7 +3258,7 @@ fn wrapper_measure(wrapped: &RustType, mm: Bounds) -> i128 {
 /// copy previously omitted the min/max endpoint SWAP the generator applies — harmless for the
 /// current single-endpoint `valid_measure`, but a latent divergence trap for the planned
 /// construct-reject work. Sharing the one implementation removes that class outright.)
-fn nint_bounds_to_u64(b: Bounds) -> Bounds {
+fn nint_bounds_to_u64(b: IntWindow) -> IntWindow {
     crate::generation::nint_bounds_to_u64(&b)
 }
 
@@ -3296,7 +3294,7 @@ fn prim_range(p: &Primitive) -> (i128, i128) {
 pub(crate) fn bound_cases(
     types: &IntermediateTypes,
     ty: &RustType,
-    bounds: Bounds,
+    bounds: IntWindow,
     is_len: bool,
 ) -> Vec<(MintValue, bool, &'static str)> {
     let mut out = Vec::new();
@@ -3400,7 +3398,7 @@ fn valid_value_at(types: &IntermediateTypes, ty: &RustType, depth: u8) -> Option
 fn mint_wrapper_inner(
     types: &IntermediateTypes,
     wrapped: &RustType,
-    min_max: Option<Bounds>,
+    min_max: Option<IntWindow>,
     float_min_max: Option<&crate::intermediate::FloatWindow>,
     depth: u8,
 ) -> Option<MintValue> {
@@ -3704,7 +3702,7 @@ fn unique_array_elems(
 fn bounded_unique_array_elems(
     types: &IntermediateTypes,
     elem: &RustType,
-    bounds: Bounds,
+    bounds: IntWindow,
     count: i128,
     depth: u8,
 ) -> Option<Vec<MintValue>> {

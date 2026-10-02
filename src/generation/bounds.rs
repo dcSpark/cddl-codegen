@@ -1,5 +1,5 @@
 use super::*;
-use crate::intermediate::IntBounds;
+use crate::intermediate::{IntBounds, IntWindow};
 
 pub(super) fn bounds_check_expr(p: Primitive, e: &str) -> String {
     match p {
@@ -92,9 +92,7 @@ pub(super) fn bounds_check_expr_non_negative(ty: &RustType) -> bool {
 // SWAPPED: the value-min becomes the magnitude-max and the value-max becomes the magnitude-min
 // (e.g. `nint .ge -5` → `v >= -5` → `m <= 4`). The `.ne` sentinel is transformed as an
 // EXCLUSION rather than as two real endpoints, so the `-1`/magnitude-0 boundary stays inverted.
-pub(crate) fn nint_bounds_to_u64(
-    bounds: &(Option<i128>, Option<i128>),
-) -> (Option<i128>, Option<i128>) {
+pub(crate) fn nint_bounds_to_u64(bounds: &IntWindow) -> IntWindow {
     // Preserve `.ne N` as an exclusion before mapping coordinates. Mapping its synthetic
     // `(N + 1, N - 1)` endpoints independently is wrong at N = -1: both endpoints map to
     // magnitude 1, which turns "anything except -1" into "exactly -2". Re-encode the excluded
@@ -230,10 +228,7 @@ fn value_window_is_type_enforced(ty: &RustType) -> bool {
 /// N64 is stored as its `u64` magnitude, which is DECREASING in the signed value, so a check
 /// written against the unswapped bounds is inverted. Both the reported window and the condition
 /// take the swapped pair.
-fn effective_int_bounds(
-    ty: &RustType,
-    bounds: &(Option<i128>, Option<i128>),
-) -> (Option<i128>, Option<i128>) {
+fn effective_int_bounds(ty: &RustType, bounds: &IntWindow) -> IntWindow {
     if matches!(
         ty.resolve_alias_shallow(),
         ConceptualRustType::Primitive(Primitive::N64)
@@ -428,7 +423,7 @@ const WASM32_USIZE_MAX: i128 = u32::MAX as i128;
 /// comparison `clippy::absurd_extreme_comparisons` denies, so such a check compares the length
 /// widened to `u64`, which holds every CBOR length and enforces the bound on 64-bit targets too.
 /// Every other expression and window is returned unchanged.
-fn portable_len_expr<'a>(e: &'a str, bounds: &(Option<i128>, Option<i128>)) -> Cow<'a, str> {
+fn portable_len_expr<'a>(e: &'a str, bounds: &IntWindow) -> Cow<'a, str> {
     let beyond_wasm32 = [bounds.0, bounds.1]
         .into_iter()
         .flatten()
@@ -452,7 +447,7 @@ fn portable_len_expr<'a>(e: &'a str, bounds: &(Option<i128>, Option<i128>)) -> C
 /// their authored payload.
 /// `found_i128` threads through to `range_check_err` (whether the found expression is already i128).
 pub(super) fn bounds_check_if_block(
-    bounds: &(Option<i128>, Option<i128>),
+    bounds: &IntWindow,
     e: &str,
     return_err: bool,
     non_negative: bool,
@@ -479,10 +474,7 @@ pub(super) fn bounds_check_if_block(
 /// beyond a proven-non-negative checked expression, so ordinary zero-to-non-negative-max windows
 /// report their effective one-sided range. Keep inverted `.ne` encodings and every sign-unknown
 /// window authored: their bounds still carry semantic information not implied by the expression.
-fn canonical_range_check_payload(
-    bounds: &(Option<i128>, Option<i128>),
-    non_negative: bool,
-) -> (Option<i128>, Option<i128>) {
+fn canonical_range_check_payload(bounds: &IntWindow, non_negative: bool) -> IntWindow {
     let min = match (bounds.0, bounds.1, non_negative) {
         (Some(0), Some(max), true) if max >= 0 => None,
         (min, _, _) => min,
@@ -541,7 +533,7 @@ impl RejectCond {
 /// lower leg (`e < 0`, dead there and an `unused_comparisons` wart) collapse to the one-sided form;
 /// when unsure a caller passes `false` and keeps the long form. The two agree on every value the
 /// assertion admits, so an evaluating caller that cannot vouch for the sign passes `false`.
-pub(crate) fn reject_cond(bounds: &(Option<i128>, Option<i128>), non_negative: bool) -> RejectCond {
+pub(crate) fn reject_cond(bounds: &IntWindow, non_negative: bool) -> RejectCond {
     // the `.ne N` exclusion, not an (unsatisfiable) window
     if let IntBounds::Exclusion(excluded) = IntBounds::read(*bounds) {
         return RejectCond::Eq(excluded);
@@ -569,7 +561,7 @@ pub(crate) fn reject_cond(bounds: &(Option<i128>, Option<i128>), non_negative: b
 /// An empty window `(None, None)` accepts everything rather than hitting `reject_cond`'s
 /// `unreachable!`: the emitter can never reach it, but the `--emit-tests` minter asks about key
 /// domains that legitimately carry no window at all.
-pub(crate) fn bounds_reject_value(bounds: &(Option<i128>, Option<i128>), v: i128) -> bool {
+pub(crate) fn bounds_reject_value(bounds: &IntWindow, v: i128) -> bool {
     if bounds.0.is_none() && bounds.1.is_none() {
         return false;
     }
@@ -591,19 +583,16 @@ pub(super) enum SignArmBounds {
     /// The window imposes no constraint on this arm (bounds vacuous here) — emit no check.
     Unconstrained,
     /// The window narrows to these (possibly one-sided) bounds on this arm — emit the check.
-    Check((Option<i128>, Option<i128>)),
+    Check(IntWindow),
     /// The window excludes this arm's entire sign domain — every value it decodes is out of
     /// range. Reject unconditionally, reporting the ORIGINAL window (not the empty projection).
-    Empty((Option<i128>, Option<i128>)),
+    Empty(IntWindow),
 }
 
 /// Project a value window onto one CBOR sign arm. Distinguishes "vacuous in this arm" (drop the
 /// bound) from "this arm's whole sign domain is excluded" (unconditional reject) — conflating the
 /// two is what made the old per-arm filter panic on all-negative / zero-upper windows.
-pub(super) fn classify_sign_arm(
-    bounds: &Option<(Option<i128>, Option<i128>)>,
-    arm: SignArm,
-) -> SignArmBounds {
+pub(super) fn classify_sign_arm(bounds: &Option<IntWindow>, arm: SignArm) -> SignArmBounds {
     let bounds = match bounds {
         Some(b) => *b,
         None => return SignArmBounds::Unconstrained,
@@ -682,7 +671,7 @@ pub(super) const CONVERT_ERR_TO_OURS: &str = ".map_err(Into::<DeserializeError>:
 pub(super) fn non_preserve_bounds_fn(
     p: Primitive,
     x: &str,
-    bounds: &Option<(Option<i128>, Option<i128>)>,
+    bounds: &Option<IntWindow>,
 ) -> Cow<'static, str> {
     match bounds {
         // always convert error to have consistent E for the and_then
@@ -759,10 +748,10 @@ pub(super) fn width_reject(
 // side: an authored/classified upper bound <= the type max (uint side) or lower
 // bound >= the type min (nint side). A min>max pair is the `.ne` EXCLUSION
 // encoding — it caps nothing.
-pub(super) fn upper_caps(bounds: &Option<(Option<i128>, Option<i128>)>, wmax: i128) -> bool {
+pub(super) fn upper_caps(bounds: &Option<IntWindow>, wmax: i128) -> bool {
     matches!(bounds.map(IntBounds::read), Some(IntBounds::Window(_, Some(mx))) if mx <= wmax)
 }
-fn lower_caps(bounds: &Option<(Option<i128>, Option<i128>)>, wmin: i128) -> bool {
+fn lower_caps(bounds: &Option<IntWindow>, wmin: i128) -> bool {
     matches!(bounds.map(IntBounds::read), Some(IntBounds::Window(Some(mn), _)) if mn >= wmin)
 }
 pub(super) fn uint_arm_needs_width(arm: &SignArmBounds, wmax: i128) -> bool {

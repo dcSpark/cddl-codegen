@@ -1094,7 +1094,7 @@ impl<'a> IntermediateTypes<'a> {
     pub fn bounded_array_named_owner(
         &self,
         element: &RustType,
-        bounds: (Option<i128>, Option<i128>),
+        bounds: IntWindow,
     ) -> Option<&RustIdent> {
         let normalized = Self::normalized_bounded_window(bounds)?;
         let resolved = element.clone().resolve_aliases();
@@ -1119,7 +1119,7 @@ impl<'a> IntermediateTypes<'a> {
         &self,
         key: &RustType,
         value: &RustType,
-        bounds: (Option<i128>, Option<i128>),
+        bounds: IntWindow,
         preserve: bool,
     ) -> Option<&RustIdent> {
         let normalized = Self::normalized_bounded_window(bounds)?;
@@ -1143,7 +1143,7 @@ impl<'a> IntermediateTypes<'a> {
     /// not bounded owners (`*` stays loose, `+` stays NonEmptyVec / NonEmptyMap).  Keeping this here
     /// makes `[? T]`/`[0*1 T]` and `[*5 T]`/`[0*5 T]` one identity even though the parser preserves
     /// the source spelling.
-    fn normalized_bounded_window(bounds: (Option<i128>, Option<i128>)) -> Option<(u64, u64)> {
+    fn normalized_bounded_window(bounds: IntWindow) -> Option<(u64, u64)> {
         occurrence_window_u64(bounds)
             .filter(|&window| window != (0, u64::MAX) && window != (1, u64::MAX))
     }
