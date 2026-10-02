@@ -1,3 +1,7 @@
+mod numeric_collection_controls;
+
+pub(crate) use numeric_collection_controls::rejections as numeric_collection_control_rejections;
+
 use crate::cli::Cli;
 use cddl::ast::parent::ParentVisitor;
 use cddl::{ast::*, token};
@@ -2913,19 +2917,28 @@ fn try_float_or_reject(
             }
             // integer-typed head with a DECIMAL float bound: do not silently floor — reject.
             if type2_is_decimal_float(operand) {
-                types.record_rejection(format!(
-                    "{}decimal float bound `{}` on an integer-typed head is unsupported — use an integer bound or a float head (float64)",
-                    reject_rule_prefix(rule_name),
-                    match operand {
-                        Type2::FloatValue { value, .. } => *value,
-                        _ => 0.0,
-                    }
+                types.record_rejection(decimal_integer_control_operand_rejection(
+                    rule_name, operand,
                 ));
                 return Some(ControlOperator::Range((None, None)));
             }
             None
         }
     }
+}
+
+fn decimal_integer_control_operand_rejection(
+    rule_name: Option<&RustIdent>,
+    operand: &Type2,
+) -> String {
+    format!(
+        "{}decimal float bound `{}` on an integer-typed head is unsupported — use an integer bound or a float head (float64)",
+        reject_rule_prefix(rule_name),
+        match operand {
+            Type2::FloatValue { value, .. } => *value,
+            _ => 0.0,
+        }
+    )
 }
 
 /// The literal a control operand denotes, or `None` when the operand is not a literal at all.

@@ -636,6 +636,13 @@ This section is generated from [`cddl-matrix/matrix.json`](https://github.com/dc
 
 Supported: `.cbor`, `.default`, `.eq`, `.ge`, `.gt`, `.le`, `.lt`, `.ne`, `.size`.
 
+Numeric comparisons apply to numeric values; they do not constrain collection cardinality.
+`.lt`, `.le`, `.gt`, and `.ge` on an array/map head are refused at generation time, including a named/aliased, generic, tagged, or `@newtype` collection head and a collection arm in a type choice.
+Numeric `.eq`/`.ne` controls on collections are also refused as an unsupported feature: RFC 8610 §3.8.6 makes comparison with a numeric value an empty/vacuous schema, rather than an entry-count constraint.
+If an entry-count limit was intended, put an occurrence inside the collection (`[0*1 elem]` or `{1* key => value}`); this expresses a different constraint from a value comparison.
+A `.cbor` wrapper has an outer byte-string value, so a control on its decoded collection target is checked separately from a control on that outer value.
+
+
 Unsupported (in-profile):
 
 `.abnf`, `.abnfb`, `.and`, `.b32`, `.b45`, `.b64c`, `.b64c-sloppy`, `.b64u`, `.b64u-sloppy`, `.base10`, `.bits`, `.cat`, `.cborseq`, `.det`, `.feature`, `.h32`, `.hex`, `.hexlc`, `.hexuc`, `.join`, `.json`, `.oid`, `.plus`, `.printf`, `.regexp`, `.sdnv`, `.sdnvseq`, `.within`.

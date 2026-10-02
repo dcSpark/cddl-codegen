@@ -20125,3 +20125,228 @@ fn outer_parenthesized_size_preserves_rule_controls() {
     .collect::<String>();
     assert!(source.contains("pub type X = u64;"), "{source}");
 }
+
+/// Numeric controls constrain values; cardinality belongs to occurrence syntax. Pin the
+/// nominal-cycle compiler failures and all member routes before they can acquire a carrier.
+#[test]
+fn collection_numeric_controls_refuse_before_occurrence_lowering() {
+    for (tag, spec) in [
+        (
+            "array_nominal",
+            "holder = [items]\nval = items .le 1 / int\nitems = [* val]\n",
+        ),
+        (
+            "array_resolved",
+            "holder = [val]\nval = items .le 1 / int\nitems = [* val]\n",
+        ),
+        (
+            "map_nominal",
+            "holder = [items]\nval = items .ge 1 / int\nitems = {* uint => val}\n",
+        ),
+        (
+            "map_resolved",
+            "holder = [val]\nval = items .ge 1 / int\nitems = {* uint => val}\n",
+        ),
+        ("direct_array", "holder = [x: ([* uint]) .le 1]\n"),
+        ("direct_map", "holder = [x: ({* uint => uint}) .ge 1]\n"),
+        ("alias", "arr = [* uint]\na = arr\nholder = [x: a .le 1]\n"),
+        ("forward", "holder = [x: arr .le 1]\narr = [* uint]\n"),
+        (
+            "alias_cycle",
+            "holder = [a]\na = items\nval = a .le 1 / int\nitems = [* val]\n",
+        ),
+        (
+            "generic_head",
+            "g<T> = [* T]\nholder = [x: g<uint> .le 1]\n",
+        ),
+        (
+            "generic_template",
+            "g<T> = [* T]\nh<T> = [x: g<T> .le 1]\nholder = h<uint>\n",
+        ),
+        (
+            "generic_argument",
+            "g<T> = [x: T]\narr = [* uint]\nholder = g<arr .le 1>\n",
+        ),
+        (
+            "mixed_choice",
+            "arr = [* uint]\nholder = [x: (arr / uint) .le 1]\n",
+        ),
+        ("tag_inner", "holder = [x: #6.42(([* uint]) .le 1)]\n"),
+        (
+            "tag_outer",
+            "arr = #6.42([* uint])\nholder = [x: arr .le 1]\n",
+        ),
+        (
+            "newtype",
+            "arr = [* uint] ; @newtype\n\nholder = [x: arr .le 1]\n",
+        ),
+        (
+            "cbor_target",
+            "arr = [* uint]\nholder = [x: bytes .cbor (arr .le 1)]\n",
+        ),
+        (
+            "already_bounded",
+            "arr = [2*3 uint]\nholder = [x: arr .le 1]\n",
+        ),
+    ] {
+        for extra in [
+            &["--wasm=false", "--preserve-encodings=false"][..],
+            &["--wasm=true", "--preserve-encodings=true"][..],
+        ] {
+            let message =
+                expect_graceful_rejection(&format!("numeric_collection_{tag}"), spec, extra);
+            assert!(
+                message.contains("on collection head")
+                    && message.contains("not collection entry counts")
+                    && message.contains("occurrence inside the collection"),
+                "{tag}: {message}"
+            );
+        }
+    }
+    let repeated = "g<T> = [* T]\nh<T> = [x: g<T> .le 1]\none = h<uint>\ntwo = h<uint>\n";
+    let message = expect_graceful_rejection(
+        "numeric_collection_repeated_instance",
+        repeated,
+        &["--wasm=false"],
+    );
+    assert_eq!(
+        message.matches("on collection head").count(),
+        1,
+        "one source control per repeated instance: {message}"
+    );
+    let ordered = "arr = [* uint]\nholder = [a: arr .le 1, b: arr .ge 2]\n";
+    let message = expect_graceful_rejection(
+        "numeric_collection_source_order",
+        ordered,
+        &["--wasm=false"],
+    );
+    assert!(
+        message.find("`.le`").unwrap() < message.find("`.ge`").unwrap(),
+        "source diagnostic order: {message}"
+    );
+    for kind in ["array", "map"] {
+        let body = if kind == "array" {
+            "[* uint]"
+        } else {
+            "{* uint => uint}"
+        };
+        for op in [".lt", ".le", ".gt", ".ge", ".eq", ".ne"] {
+            let spec = format!("items = {body}\nholder = [x: items {op} 1]\n");
+            let message = expect_graceful_rejection(
+                &format!("numeric_{kind}_{op}"),
+                &spec,
+                &["--wasm=false"],
+            );
+            assert!(
+                message.contains("on collection head `items`") && message.contains(op),
+                "{spec}: {message}"
+            );
+            if matches!(op, ".eq" | ".ne") {
+                assert!(
+                    message.contains("empty/vacuous")
+                        && !message.contains("defined only for numeric"),
+                    "{message}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn collection_numeric_controls_preserve_existing_error_priority() {
+    for (tag, spec, expected) in [
+        (
+            "operand",
+            "arr = [* uint]\nholder = [x: arr .le uint]\n",
+            "operand `uint` is not a numeric literal",
+        ),
+        (
+            "decimal",
+            "arr = [* uint]\nholder = [x: arr .le 1.5]\n",
+            "decimal float bound `1.5` on an integer-typed head",
+        ),
+        (
+            "literal",
+            "holder = [x: 5 .le 1]\n",
+            "control operator on the literal value `5`",
+        ),
+        (
+            "size",
+            "arr = [* uint]\nholder = [x: arr .size 1]\n",
+            "`.size` on `arr` is unsupported",
+        ),
+        (
+            "generic_parameter",
+            "g<T> = [x: T .le 1]\narr = [* uint]\nholder = g<arr>\n",
+            "generic parameter occurrence has unsupported configuration",
+        ),
+        (
+            "generic_parameter_paren",
+            "g<T> = [x: (T) .le 1]\narr = [* uint]\nholder = g<arr>\n",
+            "generic parameter occurrence has unsupported configuration",
+        ),
+        (
+            "top_name",
+            "arr = [* uint]\nval = arr .le 1\n",
+            "a range or `.size` control operator on `arr` is unsupported",
+        ),
+    ] {
+        let message = expect_graceful_rejection(
+            &format!("numeric_collection_priority_{tag}"),
+            spec,
+            &["--wasm=false"],
+        );
+        assert!(
+            message.contains(expected) && !message.contains("on collection head"),
+            "{tag}: {message}"
+        );
+    }
+}
+
+/// Keep genuine occurrences and supported scalar controls outside the new source-head refusal.
+/// The encoded outer control is a byte-string policy already accepted by the generator;
+/// this test preserves that admission only, without claiming its runtime meaning is repaired.
+#[test]
+fn collection_numeric_refusal_keeps_occurrences_and_scalar_controls() {
+    for (tag, spec) in [
+        (
+            "occurrences",
+            "finite = [2*3 uint]\nexact = [2*2 uint]\nnonempty = [+ uint]\nmax0 = [0*18446744073709551615 uint]\nmax1 = [1*18446744073709551615 uint]\ntable = {2*3 uint => uint}\nholder = [a: finite, b: exact, c: nonempty, d: max0, e: max1, f: table]\n",
+        ),
+        (
+            "scalar",
+            "u = uint\nf = float64\nholder = [x: u .le 1, y: (f) .lt 3.5, other: [* uint]]\n",
+        ),
+        (
+            "size",
+            "holder = [a: uint .size 2, b: bytes .size 3, c: tstr .size (1..4)]\n",
+        ),
+        (
+            "encoded_outer",
+            "arr = [* uint]\nenc = bytes .cbor arr\nholder = [x: enc .le 1]\n",
+        ),
+        ("plain_generic", "g<T> = [x: T]\nholder = g<uint>\n"),
+    ] {
+        for preserve in ["false", "true"] {
+            let path = unique_temp_cddl(&format!("numeric_collection_positive_{tag}"));
+            std::fs::write(&path, spec).unwrap();
+            let cli = Cli::parse_from([
+                "cddl-codegen",
+                "--input",
+                path.to_str().unwrap(),
+                "--output",
+                "numeric_collection_positive_unused",
+                "--wasm=false",
+                "--preserve-encodings",
+                preserve,
+            ]);
+            let result = crate::api::generated_strings(&cli);
+            std::fs::remove_file(path).ok();
+            assert!(
+                result.is_ok(),
+                "{tag}, preserve={preserve}: {:?}",
+                result.err()
+            );
+        }
+    }
+}

@@ -1019,6 +1019,16 @@ pub fn with_types<R>(
             return Err(types.rejections_error());
         }
 
+        // Numeric control provenance is still in the source AST here. Resolve complete
+        // declaration/generic heads before member lowering can mistake a value window
+        // for a collection occurrence or attach a second bound to an existing carrier.
+        for msg in parsing::numeric_collection_control_rejections(&cddl) {
+            types.record_rejection(msg);
+        }
+        if types.has_rejections() {
+            return Err(types.rejections_error());
+        }
+
         // mark scope and filter scope markers
         let mut scope = ROOT_SCOPE.clone();
         let cddl_rules = cddl
