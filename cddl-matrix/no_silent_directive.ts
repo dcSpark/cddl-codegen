@@ -317,6 +317,13 @@ const SHAPES: Shape[] = [
     body: "{ 1: uint, * uint => any }",
     holders: HOLDERS,
   },
+  // -- wrapper axis: check the outer slot against the inner choice body ---------------------------
+  { id: "multi_choice_tagged", desc: "3-arm choice inside a tag head", body: "#6.42(uint / tstr / bytes)", holders: HOLDERS },
+  { id: "multi_choice_parenthesized", desc: "3-arm choice inside parentheses", body: "(uint / tstr / bytes)", holders: HOLDERS },
+  { id: "option_collapse_tagged", desc: "nullable choice inside a tag head", body: "#6.42(uint / null)", holders: HOLDERS },
+  { id: "option_collapse_parenthesized", desc: "nullable choice inside parentheses", body: "(uint / null)", holders: HOLDERS },
+  { id: "two_arm_258_set_parenthesized", desc: "two-arm 258 set idiom inside parentheses", body: "(#6.258([* uint]) / [* uint])", holders: HOLDERS },
+
   // -- the arm-position axis, folded in as shapes --------------------------------------------------
   {
     id: "multi_choice_non_last_arm",
@@ -614,6 +621,15 @@ const HAND_CORPUS: HandCell[] = [
 // is EXPECTED to be byte-identical with/without its directive and to print no acknowledging notice; it
 // is exempted from the FAIL condition (and doubles as the accepted-no-op inventory).
 const ALLOWLIST: Record<string, string> = {
+  multi_choice_tagged__newtype: "as multi_choice__newtype: a multi-arm type choice already mints a nominal enum",
+  multi_choice_tagged__no_alias: "as multi_choice__no_alias: a multi-arm type choice mints an enum, not a `pub type` — nothing to suppress",
+  multi_choice_parenthesized__newtype: "as multi_choice__newtype: a multi-arm type choice already mints a nominal enum",
+  multi_choice_parenthesized__no_alias: "as multi_choice__no_alias: a multi-arm type choice mints an enum, not a `pub type` — nothing to suppress",
+  option_collapse_tagged__newtype: "as tagged__newtype: a tag head already mints a wrapper struct (`pub struct Foo(pub(crate) u64)`) — probed; the request is already granted",
+  option_collapse_tagged__no_alias: "as tagged__no_alias: a tag-head rule mints a wrapper struct, not a `pub type` — nothing to suppress",
+  two_arm_258_set_parenthesized__newtype: "as two_arm_258_set__newtype: the 258 set idiom already nominalizes; a BARE @newtype's inherent `get()` is suppressed to avoid the `OrderedSet::get(index)` Deref shadow (`@newtype <name>` IS honored — see the positive cell)",
+  two_arm_258_set_parenthesized__no_alias: "as two_arm_258_set__no_alias: the 258 set idiom nominalizes into a wrapper struct, not a `pub type` — nothing to suppress",
+  two_arm_258_set_parenthesized__duplicates: "as two_arm_258_set__duplicates: explicit @duplicates reject on a 258 set idiom = registry default (OrderedSet); byte-identical no-op (the explicit directive also suppresses the collapse notice's defaulting clause, so the with-run names no directive)",
   // `@duplicates preserve` is already the default for a plain non-258 array (`Vec`), so writing it is a
   // byte-identical self-documenting no-op — the documented opt-out spelling, not a dropped directive.
   plain_array_preserve:

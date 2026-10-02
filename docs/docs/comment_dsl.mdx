@@ -743,6 +743,8 @@ not a convenience. A type-choice VARIANT position consumes only `@name` (which n
 and `@doc` (which documents it), so a rule-level directive written on any other arm is **a hard
 error**: generation stops and names the directive, the rule, and the remedy. Keep the directive on
 whichever arm is last, and if you reorder the arms, move it with them.
+A tag head or parentheses around a choice carry its outer rule directives to that choice body for validation and application.
+The accepted outside `#6.N(T / null) ; @used_as_key` and `@used_as_elem` spellings remain available; the corresponding inside spellings are refused.
 
 That rejection exists because the alternative was worse than a wrong build. Before it, a reorder
 turned the directive off in silence — the type quietly got its JSON derives back and they collided

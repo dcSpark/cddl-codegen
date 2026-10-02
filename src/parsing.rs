@@ -123,6 +123,7 @@ pub fn parse_rule(
                             &rule.value.type_choices,
                             None,
                             generic_params.clone(),
+                            &RuleMetadata::default(),
                             cli,
                         );
                     }
@@ -2240,6 +2241,7 @@ fn copy_not_extern_rejection(type_name: &RustIdent) -> String {
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn parse_type_choices(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
@@ -2247,6 +2249,8 @@ fn parse_type_choices(
     type_choices: &[TypeChoice],
     tag: Option<usize>,
     generic_params: Option<Vec<GenericParamBinding>>,
+    // Metadata from an enclosing tag head or parentheses of this same rule.
+    inherited_metadata: &RuleMetadata,
     cli: &Cli,
 ) {
     let optional_inner_type = null_collapse_inner(type_choices);
@@ -2319,7 +2323,17 @@ fn parse_type_choices(
         // `Type1::comments_after_type` for a type-choice arm in any spelling (dumped from the AST
         // for all four placements), so that slot is dead and the `@duplicates` / `@ignore`
         // rejections written right below could not fire, nor could `@no_json_schema_export` mark.
-        let rule_metadata = rule_position_metadata(type_choices);
+        let local_metadata = rule_position_metadata(type_choices);
+        let rule_metadata = merge_metadata(inherited_metadata, &local_metadata);
+        // Preserve the accepted outside tagged-collapse spelling; inside demands remain refused.
+        if tag.is_some() {
+            if let Some(demand) = inherited_metadata.key_demand {
+                types.mark_key_demand(name.clone(), demand);
+            }
+            if inherited_metadata.used_as_elem {
+                types.mark_used_as_elem(name.clone());
+            }
+        }
         if let Some(doc) = &rule_metadata.doc {
             types.mark_rule_doc(name.clone(), doc.clone());
         }
@@ -2372,7 +2386,12 @@ fn parse_type_choices(
         // wasm map-key / loose-list minters for a wrapper over an `Optional` inner is its own work,
         // and until it exists the honest answer is still a refusal, with the reason the tagged shape
         // actually has rather than the untagged one's.
-        if null_singleton.is_none() && rule_metadata.key_demand.is_some() {
+        if null_singleton.is_none()
+            && rule_metadata.key_demand.is_some()
+            && !(tag.is_some()
+                && inherited_metadata.key_demand.is_some()
+                && local_metadata.key_demand.is_none())
+        {
             types.record_rejection(if tag.is_some() {
                 format!(
                     "@used_as_key on `{name}`: a tagged `T / null` rule wraps into a struct over an \
@@ -2388,7 +2407,10 @@ fn parse_type_choices(
                 )
             });
         }
-        if null_singleton.is_none() && rule_metadata.used_as_elem {
+        if null_singleton.is_none()
+            && rule_metadata.used_as_elem
+            && !(tag.is_some() && inherited_metadata.used_as_elem && !local_metadata.used_as_elem)
+        {
             types.record_rejection(if tag.is_some() {
                 format!(
                     "@used_as_elem on `{name}`: a tagged `T / null` rule wraps into a struct over an \
@@ -2487,7 +2509,8 @@ fn parse_type_choices(
             AliasInfo::new_from_metadata(final_type, rule_metadata),
         );
     } else {
-        let rule_metadata = rule_position_metadata(type_choices);
+        let local_metadata = rule_position_metadata(type_choices);
+        let rule_metadata = merge_metadata(inherited_metadata, &local_metadata);
         if let Some(demand) = rule_metadata.key_demand {
             types.mark_key_demand(name.clone(), demand);
         }
@@ -4082,41 +4105,13 @@ fn multiline_group_trailing_directive_message(name: &str, tags: &[&str]) -> Stri
     )
 }
 
-#[allow(clippy::too_many_arguments)]
-fn parse_type(
+/// Apply single-body rule directives once, after looking through the rule's wrappers.
+fn apply_single_type_rule_directives(
     types: &mut IntermediateTypes,
-    parent_visitor: &ParentVisitor,
     type_name: &RustIdent,
-    type_choice: &TypeChoice,
-    outer_tag: Option<usize>,
-    generic_params: Option<Vec<GenericParamBinding>>,
-    // Metadata carried in from an enclosing single-type wrapper of the SAME rule (a `#6.n(...)` tag
-    // head or a parenthesized type). The cddl AST attaches the rule's trailing comment DSL (e.g.
-    // `@newtype`) to the OUTER type1, so recursing into the inner type without threading this would
-    // silently drop it — making `tagged = #6.42(text) ; @newtype` a no-op. Empty at the top level.
-    inherited_metadata: &RuleMetadata,
-    cli: &Cli,
+    type1: &Type1,
+    rule_metadata: &RuleMetadata,
 ) {
-    let type1 = &type_choice.type1;
-    let mut rule_metadata = merge_metadata(
-        &merge_metadata(
-            inherited_metadata,
-            &RuleMetadata::from(type1.comments_after_type.as_ref()),
-        ),
-        &RuleMetadata::from(type_choice.comments_after_type.as_ref()),
-    );
-    // The recursive-type boundary's auto-`@newtype` repair enters HERE, at the one seam where a
-    // rule's directives are settled, so an auto-nominalized collection is indistinguishable from
-    // one the spec spelled `; @newtype` on — same wrapper struct, same wasm class, same encoding
-    // sidecars, same emit-tests minting. The set is decided by `crate::recursion_boundary` from a
-    // FINALIZED IR and seeded before this pass runs (see `IntermediateTypes::set_auto_newtype_rules`);
-    // it is empty for every spec with no alias-expansion cycle, so this is inert there. A rule that
-    // already carries the directive is left exactly as written — the boundary never overrides a
-    // custom getter name the author chose.
-    if rule_metadata.newtype.is_none() && types.is_auto_newtype_rule(type_name) {
-        rule_metadata.newtype = Some(None);
-    }
-    let rule_metadata = rule_metadata;
     if let Some(demand) = rule_metadata.key_demand {
         types.mark_key_demand(type_name.clone(), demand);
     }
@@ -4228,8 +4223,8 @@ fn parse_type(
     // A `@custom_encodings` declaration is a property OF the pair: it declares the wire the pair's
     // codec writes and reads, so without both halves at this same position there is no codec for it
     // to describe (and it would be read into the rule's metadata and dropped).
-    reject_custom_encodings_without_pair(types, &format!("rule `{type_name}`"), &rule_metadata);
-    let custom_directives = custom_codec_directives(&rule_metadata);
+    reject_custom_encodings_without_pair(types, &format!("rule `{type_name}`"), rule_metadata);
+    let custom_directives = custom_codec_directives(rule_metadata);
     for directive in &custom_directives {
         // An extern / raw-bytes rule names a type this crate does not define — `new_extern` and
         // `new_raw_bytes` both store `RustStructConfig::default()`, so the pair never reaches
@@ -4321,7 +4316,55 @@ fn parse_type(
     if rule_metadata.ignore && !is_collection_body {
         reject_ignore_not_applicable(types, type_name);
     }
-    handle_rust_name_pin(types, type_name, &rule_metadata);
+    handle_rust_name_pin(types, type_name, rule_metadata);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn parse_type(
+    types: &mut IntermediateTypes,
+    parent_visitor: &ParentVisitor,
+    type_name: &RustIdent,
+    type_choice: &TypeChoice,
+    outer_tag: Option<usize>,
+    generic_params: Option<Vec<GenericParamBinding>>,
+    // Metadata carried in from an enclosing single-type wrapper of the SAME rule (a `#6.n(...)` tag
+    // head or a parenthesized type). The cddl AST attaches the rule's trailing comment DSL (e.g.
+    // `@newtype`) to the OUTER type1, so recursing into the inner type without threading this would
+    // silently drop it — making `tagged = #6.42(text) ; @newtype` a no-op. Empty at the top level.
+    inherited_metadata: &RuleMetadata,
+    cli: &Cli,
+) {
+    let type1 = &type_choice.type1;
+    let mut rule_metadata = merge_metadata(
+        &merge_metadata(
+            inherited_metadata,
+            &RuleMetadata::from(type1.comments_after_type.as_ref()),
+        ),
+        &RuleMetadata::from(type_choice.comments_after_type.as_ref()),
+    );
+    // The recursive-type boundary's auto-`@newtype` repair enters HERE, at the one seam where a
+    // rule's directives are settled, so an auto-nominalized collection is indistinguishable from
+    // one the spec spelled `; @newtype` on — same wrapper struct, same wasm class, same encoding
+    // sidecars, same emit-tests minting. The set is decided by `crate::recursion_boundary` from a
+    // FINALIZED IR and seeded before this pass runs (see `IntermediateTypes::set_auto_newtype_rules`);
+    // it is empty for every spec with no alias-expansion cycle, so this is inert there. A rule that
+    // already carries the directive is left exactly as written — the boundary never overrides a
+    // custom getter name the author chose.
+    if rule_metadata.newtype.is_none() && types.is_auto_newtype_rule(type_name) {
+        rule_metadata.newtype = Some(None);
+    }
+    let rule_metadata = rule_metadata;
+    // The inner call checks the merged slot against its own body shape.
+    let defers_to_inner = match &type1.type2 {
+        Type2::TaggedData { tag, .. } => {
+            outer_tag.is_none() && tag_number(tag, Some(type_name)).is_ok()
+        }
+        Type2::ParenthesizedType { .. } => true,
+        _ => false,
+    };
+    if !defers_to_inner {
+        apply_single_type_rule_directives(types, type_name, type1, &rule_metadata);
+    }
     match &type1.type2 {
         Type2::Typename {
             ident,
@@ -4919,6 +4962,7 @@ fn parse_type(
                         &t.type_choices,
                         Some(tag_unwrap),
                         generic_params,
+                        &rule_metadata,
                         cli,
                     );
                 }
@@ -5079,6 +5123,7 @@ fn parse_type(
                     &pt.type_choices,
                     outer_tag,
                     generic_params,
+                    &rule_metadata,
                     cli,
                 ),
             }

@@ -19641,3 +19641,125 @@ fn default_head_remedy_does_not_name_the_head_it_refuses() {
         "the range-headed member must initialize from the default, got:\n{src}"
     );
 }
+
+#[test]
+fn wrapped_type_choice_rule_checks_its_rule_slot_directives() {
+    for (tag, body, needle) in [
+        (
+            "mt_dup",
+            "foo = #6.42(uint / tstr / bytes) ; @duplicates reject",
+            "@duplicates on rule",
+        ),
+        (
+            "mp_ignore",
+            "foo = (uint / tstr / bytes) ; @ignore",
+            "@ignore on rule",
+        ),
+        (
+            "mt_pair",
+            "foo = #6.42(uint / tstr / bytes) ; @custom_serialize my_ser @custom_deserialize my_deser",
+            "a type-choice rule",
+        ),
+        (
+            "tt_dup",
+            "foo = #6.42(uint / null) ; @duplicates reject",
+            "@duplicates on rule",
+        ),
+        (
+            "tt_pair",
+            "foo = #6.42(uint / null) ; @custom_serialize my_ser @custom_deserialize my_deser",
+            "a tag-head rule",
+        ),
+        (
+            "tp_newtype",
+            "foo = (uint / null) ; @newtype",
+            "rule collapses",
+        ),
+        (
+            "tp_custom_json",
+            "foo = (uint / null) ; @custom_json",
+            "the rule resolves to a transparent alias",
+        ),
+        (
+            "tp_key",
+            "foo = (uint / null) ; @used_as_key",
+            "rule collapses",
+        ),
+        (
+            "sp_ignore",
+            "foo = (#6.258([* uint]) / [* uint]) ; @ignore",
+            "@ignore on rule",
+        ),
+    ] {
+        let spec = format!("{body}\nholder = [f: foo]\n");
+        let msg = expect_graceful_rejection(tag, &spec, &["--wasm=false"]);
+        assert!(msg.contains(needle), "{tag}: {msg}");
+    }
+    for (tag, body, needle) in [
+        (
+            "once_tag",
+            "foo = #6.42(uint) ; @raw_bytes_flavor",
+            "@raw_bytes_flavor on",
+        ),
+        ("once_paren_tag", "foo = (#6.42(uint)) ; @copy", "@copy on"),
+    ] {
+        let msg = expect_graceful_rejection(
+            tag,
+            &format!("{body}\nholder = [f: foo]\n"),
+            &["--wasm=false"],
+        );
+        assert_eq!(msg.matches(needle).count(), 1, "{msg}");
+    }
+    for (tag, body, needle) in [
+        (
+            "tp_pair",
+            "foo = (uint / null) ; @custom_serialize my_ser @custom_deserialize my_deser",
+            "my_ser(",
+        ),
+        (
+            "sp_preserve",
+            "foo = (#6.258([* uint]) / [* uint]) ; @duplicates preserve",
+            "pub struct Foo(pub(crate) Vec<u64>)",
+        ),
+        (
+            "mt_doc",
+            "foo = #6.42(uint / tstr / bytes) ; @doc explains",
+            "/// explains",
+        ),
+    ] {
+        let files = expect_generates(
+            tag,
+            &format!("{body}\nholder = [f: foo]\n"),
+            &["--wasm=false"],
+        );
+        let joined = files.values().cloned().collect::<Vec<_>>().join("\n");
+        assert!(joined.contains(needle), "{tag}: {joined}");
+        if tag == "sp_preserve" {
+            assert!(!joined.contains("OrderedSet<u64>"), "{joined}");
+        }
+    }
+}
+
+#[test]
+fn tagged_nullable_outer_key_and_element_directives_remain_accepted() {
+    for directive in ["@used_as_key", "@used_as_elem"] {
+        let files = expect_generates(
+            "tagged_nullable_outer_demand",
+            &format!("foo = #6.42(uint / null) ; {directive}\nholder = [f: foo]\n"),
+            &["--wasm=true"],
+        );
+        assert!(
+            files["rust/src/generated/mod.rs"].contains("pub struct Foo"),
+            "{files:?}"
+        );
+        let msg = expect_graceful_rejection(
+            "tagged_nullable_inner_demand",
+            &format!("foo = #6.42(uint / null ; {directive}\n)\nholder = [f: foo]\n"),
+            &["--wasm=true"],
+        );
+        assert!(
+            msg.contains("a tagged") && msg.contains("rule wraps"),
+            "{msg}"
+        );
+    }
+}

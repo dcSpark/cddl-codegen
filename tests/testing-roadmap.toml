@@ -369,7 +369,7 @@ body_md = '''- **The arm-position axis's classifier is a compile-time forcing fu
   regression to watch for.** The axis itself is now enumerated: `no_silent_directive` sweeps a
   directive on a NON-LAST arm as two shapes of its own — `multi_choice_non_last_arm` and
   `option_collapse_non_last_arm` — so every directive in `KNOWN_RULE_METADATA_TAGS` is measured
-  there instead of one standing in for thirteen. The rejections stay pinned where they were:
+  there instead of one standing in for thirteen. The wrapper axis also sweeps choice bodies inside tag heads and parentheses, where the outer rule slot must reach the inner body shape. The rejections stay pinned where they were:
   `dsl_position_tests`' `type-choice-non-last-arm` cell with `type-choice-non-last-arm-allowed`
   pinning the `@name`/`@doc` exclusion, `no_silent_directive`'s
   `type_choice_non_last_arm_used_as_key` and `option_collapse_non_last_arm_no_alias` hand cells with
