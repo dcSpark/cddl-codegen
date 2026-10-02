@@ -193,7 +193,6 @@ fn ignore_aware_doc(
 /// element's sidecar by its segment-local index, and canonical mode normalizes that same element
 /// before the following fixed suffix is emitted.
 fn generate_array_segment_serialization(
-    gen_scope: &mut GenerationScope,
     types: &IntermediateTypes,
     rest: &RestRow,
     vars_in_self: bool,
@@ -240,7 +239,6 @@ fn generate_array_segment_serialization(
 
 // generates serialization code for an array-encoded record into ser_func EXCEPT FOR array length
 pub(super) fn generate_array_struct_serialization(
-    gen_scope: &mut GenerationScope,
     types: &IntermediateTypes,
     record: &RustRecord,
     vars_in_self: bool,
@@ -262,7 +260,6 @@ pub(super) fn generate_array_struct_serialization(
             })
         }) {
             generate_array_segment_serialization(
-                gen_scope,
                 types,
                 segment,
                 vars_in_self,
@@ -382,7 +379,6 @@ pub(super) fn generate_array_struct_serialization(
             .is_some_and(|index| previous_source_index.is_none_or(|previous| previous < index))
     }) {
         generate_array_segment_serialization(
-            gen_scope,
             types,
             segment,
             vars_in_self,
@@ -2618,7 +2614,6 @@ fn cbor_type_arm_path(ty: CBORType) -> &'static str {
 /// No sidecar lookup here, and every encoding var is bound to its default: under `force_canonical`
 /// the write is minimal regardless, so the merge's sort key matches the bytes the replay arm writes.
 fn emit_open_table_preserve_order(
-    gen_scope: &mut GenerationScope,
     types: &IntermediateTypes,
     record: &RustRecord,
     ser_func: &mut codegen::Function,
@@ -2726,7 +2721,7 @@ fn emit_open_table_replay(
         } else {
             "key"
         };
-        emit_rest_entry_serialize(gen_scope, types, row, enc_lookup_var, &mut got, cli);
+        emit_rest_entry_serialize(types, row, enc_lookup_var, &mut got, cli);
         arm.push_block(got);
         ser_loop_match.push_block(arm);
     }
@@ -3106,7 +3101,6 @@ fn rest_merge_present_condition(field: &RustField) -> Option<String> {
 /// the `@duplicates preserve` `Vec` sidecar (whose keys repeat). Self-carried `any` content emits
 /// its own encodings (no sidecar, empty `*_encs`).
 fn emit_rest_entry_serialize(
-    gen_scope: &mut GenerationScope,
     types: &IntermediateTypes,
     rest: &RestRow,
     enc_lookup_var: &str,
@@ -5080,7 +5074,6 @@ pub(super) fn codegen_struct(
         let ctor_block = match record.rep {
             Representation::Array => {
                 generate_array_struct_serialization(
-                    gen_scope,
                     types,
                     record,
                     true,
@@ -5290,7 +5283,6 @@ pub(super) fn codegen_struct(
                     let rest_index_base = record.fields.len();
                     if record.is_open_table() {
                         emit_open_table_preserve_order(
-                            gen_scope,
                             types,
                             record,
                             &mut ser_func,
@@ -5471,7 +5463,6 @@ pub(super) fn codegen_struct(
                             "key"
                         };
                         emit_rest_entry_serialize(
-                            gen_scope,
                             types,
                             rest,
                             enc_lookup_var,

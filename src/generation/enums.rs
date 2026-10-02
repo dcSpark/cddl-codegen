@@ -1636,7 +1636,6 @@ fn generate_enum(
                         cli,
                     );
                     generate_array_struct_serialization(
-                        gen_scope,
                         types,
                         record,
                         false,
