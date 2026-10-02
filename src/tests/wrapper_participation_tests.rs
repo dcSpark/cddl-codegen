@@ -1754,8 +1754,9 @@ fn wrapper_participation_mode_floors() {
 /// `requested_collections.rs` from a SIDECAR rather than from this crate's spec, so it is the one
 /// mint whose runtime provisioning (the `ordered_set` / `pair_map` modules), inner-type paths and
 /// `try_from` sources are decided by an input the crate's own rules never mention — one arming
-/// instance of this family was observable only in the host's compile. No wasm32 link: nothing links
-/// against the host here, and the duplicate-symbol property belongs to the CONSUMER's build.
+/// instance of this family was observable only in the host's compile. The additional full-u64
+/// floor builds real consumer/host wasm32 crates for all four bounded carriers and executes their
+/// minimum/duplicate checks on small native values under default and preserved encodings.
 #[test]
 #[ignore]
 fn wrapper_participation_requested_host_floor() {
@@ -1791,6 +1792,9 @@ fn wrapper_participation_requested_host_floor() {
         &export,
         &["check".to_owned()],
     );
+    // Explicit full-u64 windows must preserve all four requested carriers through real
+    // consumer/host wasm32 compilation and small-value checked runtime execution.
+    super::integration_tests::full_u64_wrapper_request_floor(true);
 }
 
 /// Run one nested-cargo floor over a generated crate's `wasm/` sub-crate, memoized on the crate's

@@ -1500,7 +1500,10 @@ the index and workspace columns against the committed wasm-clean dep pair — GR
 `extern_wrapper_index_defers_to_dep`'s RED leg already demonstrates that a non-deferring consumer
 fails the public-surface check at linking or binding generation; and `wrapper_participation_requested_host_floor` (gate
 `wrapper_participation_host_floor`) checks the HOST crate a `--wrapper-requests` run emits, whose
-mints come from a sidecar rather than from its own spec, including both NonEmpty twins. Its import
+mints come from a sidecar rather than from its own spec, including both NonEmpty twins.
+The same full gate also builds actual consumer and host crates for wasm32 with all four bounded carriers at explicit full-`u64` maxima and minima zero/one, under default and preserved encodings, then executes small-value minimum and duplicate checks in the native host crate.
+`workspace_full_u64_requests_preserve_all_four_carriers` runs the generation and carrier-identity portion at local; the compile and runtime portion stays at full.
+Its import
 walk follows each support class's actual emission home: co-hosted classes stay local, own-spec
 classes come from their real root/module, and deferred classes come from the dependency collections
 surface. The always-on controls pin each non-local branch rather than relying on the host compile to

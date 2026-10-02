@@ -1593,6 +1593,12 @@ rule-line hint the not-in-index warning prints moves it into comment position, w
 Without the marker the dependency would rebuild a loose list or a keyed table under a name that
 promises uniqueness or duplicate-preservation, which is the one skew this column exists to prevent.
 
+**Explicit full-`u64` windows retain their bounded carrier in request shapes.**
+For minimum zero or one with maximum `18446744073709551615`, the sidecar retains that numeric maximum: `[*18446744073709551615 foo]` or `[1*18446744073709551615 foo]`, and the corresponding map forms.
+These reconstruct the bounded list, ordered-set, keyed-map or pair-map class and its checked conversion door; collapsing them to `*` or `+` would select a different native carrier and structural name.
+Duplicate-policy markers remain part of flavored shapes.
+A higher minimum already selects a bounded carrier with an absent maximum, so its existing `2*` spelling stays unchanged.
+
 **A borrowed reject set also obliges the key-derive channel.** Its hosted class wraps
 `OrderedSet<Elem>`, whose uniqueness scan needs `Elem: Ord` — a derive that lives in the
 dependency's crate. The consumer records that demand in `borrowed_key_types.rs` (below), so a

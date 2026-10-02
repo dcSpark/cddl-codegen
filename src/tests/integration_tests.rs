@@ -34493,3 +34493,214 @@ fn list_doors_round_trip() {
     assert_eq!(NonEmptyBoolOrderedSet::try_from(&bools).unwrap().len(), 2);
 }
 "#;
+/// Actual consumer sidecars must retain the bounded carrier identity at explicit u64::MAX,
+/// including zero/one minima whose loose/nonempty cardinality ranges otherwise coincide.
+#[test]
+fn workspace_full_u64_requests_preserve_all_four_carriers() {
+    full_u64_wrapper_request_floor(false);
+}
+
+/// Shared generation regression and full-tier consumer/host compile/runtime floor.
+pub(crate) fn full_u64_wrapper_request_floor(compile: bool) {
+    use clap::Parser;
+    let root = std::env::temp_dir().join(format!(
+        "cddl_codegen_full_u64_requests_{:016x}",
+        checkout_hash()
+    ));
+    let _lock = acquire_scratch_lock(&format!(
+        "cddl_codegen_full_u64_requests_{:016x}",
+        checkout_hash()
+    ));
+    let _ = std::fs::remove_dir_all(&root);
+    let extern_dir = root.join("consumer/_CDDL_CODEGEN_EXTERN_DEPS_DIR_/wr_dep");
+    std::fs::create_dir_all(&extern_dir).unwrap();
+    std::fs::write(
+        extern_dir.join("mod.cddl"),
+        "idx_foo = _CDDL_CODEGEN_EXTERN_TYPE_\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("consumer/lib.cddl"), concat!(
+        "set_zero<a0> = [0*18446744073709551615 a0] ; @duplicates reject\n\n",
+        "set_one<a0> = [1*18446744073709551615 a0] ; @duplicates reject\n\n",
+        "holder = [\n",
+        "l0: [0*18446744073709551615 idx_foo], l1: [1*18446744073709551615 idx_foo],\n",
+        "s0: set_zero<idx_foo>, s1: set_one<idx_foo>,\n",
+        "m0: {0*18446744073709551615 idx_foo => uint}, m1: {1*18446744073709551615 idx_foo => uint},\n",
+        "p0: {0*18446744073709551615 idx_foo => uint ; @duplicates preserve\n},\n",
+        "p1: {1*18446744073709551615 idx_foo => uint ; @duplicates preserve\n}\n]\n"
+    )).unwrap();
+    std::fs::write(root.join("dep.cddl"), "idx_foo = [x: uint]\n").unwrap();
+    for preserve in [false, true] {
+        let consumer_path = root.join("consumer").display().to_string();
+        let output = root.join(format!("consumer-{preserve}"));
+        let output_text = output.display().to_string();
+        let preserve_flag = format!("--preserve-encodings={preserve}");
+        let cli = crate::cli::Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            &consumer_path,
+            "--output",
+            &output_text,
+            "--wasm=true",
+            &preserve_flag,
+            "--common-import-override=wr_dep",
+            "--extern-wasm-crate=wr_dep=wr_dep_wasm",
+            "--workspace-dep=wr_dep",
+        ]);
+        let consumer = crate::api::generated_strings(&cli).unwrap();
+        if compile {
+            crate::api::generate_to_disk(&cli).unwrap();
+        }
+        let sidecar = &consumer["wasm/src/generated/borrowed_collections.rs"];
+        for (stem, carrier) in [
+            ("IdxFooList", "BoundedVec"),
+            ("IdxFooBoundedOrderedSet", "BoundedOrderedSet"),
+            ("MapIdxFooToU64", "BoundedMap"),
+            ("PairMapIdxFooToU64", "BoundedPairMap"),
+        ] {
+            for min in [0, 1] {
+                assert!(
+                    sidecar.contains(&format!("{stem}Min{min}")),
+                    "missing {carrier} request: {sidecar}"
+                );
+            }
+        }
+        assert!(sidecar.contains("[*18446744073709551615 idx_foo]"));
+        assert!(sidecar.contains("[1*18446744073709551615 idx_foo]"));
+        assert!(sidecar.contains("@duplicates reject") && sidecar.contains("@duplicates preserve"));
+        let request = root.join(format!("requests-{preserve}.rs"));
+        let keys = root.join(format!("keys-{preserve}.rs"));
+        std::fs::write(&request, sidecar).unwrap();
+        std::fs::write(&keys, &consumer["rust/src/generated/borrowed_key_types.rs"]).unwrap();
+        let dep_input = root.join("dep.cddl").display().to_string();
+        let request_flag = format!("--wrapper-requests=consumer={}", request.display());
+        let keys_flag = format!("--key-requests=consumer={}", keys.display());
+        let host_output = root.join(format!("host-{preserve}"));
+        let host_output_text = host_output.display().to_string();
+        let cli = crate::cli::Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            &dep_input,
+            "--output",
+            &host_output_text,
+            "--lib-name=wr-dep",
+            "--wasm=true",
+            &preserve_flag,
+            &request_flag,
+            &keys_flag,
+        ]);
+        let host = crate::api::generated_strings(&cli).unwrap();
+        if compile {
+            crate::api::generate_to_disk(&cli).unwrap();
+        }
+        let requested = &host["wasm/src/generated/requested_collections.rs"];
+        for (stem, carrier, inner) in [
+            ("IdxFooList", "BoundedVec", "wr_dep::IdxFoo"),
+            (
+                "IdxFooBoundedOrderedSet",
+                "BoundedOrderedSet",
+                "wr_dep::IdxFoo",
+            ),
+            ("MapIdxFooToU64", "BoundedMap", "wr_dep::IdxFoo, u64"),
+            (
+                "PairMapIdxFooToU64",
+                "BoundedPairMap",
+                "wr_dep::IdxFoo, u64",
+            ),
+        ] {
+            for min in [0, 1] {
+                let name = format!("{stem}Min{min}");
+                assert!(
+                    requested.split_whitespace().collect::<String>().contains(
+                        &format!(
+                            "pub struct {name}(pub(crate) {carrier}<{inner}, {min}, {{ u64::MAX }}>"
+                        )
+                        .split_whitespace()
+                        .collect::<String>()
+                    ),
+                    "lost bounded carrier {name}: {requested}"
+                );
+                let body = requested
+                    .split(&format!("impl {name} {{"))
+                    .nth(1)
+                    .unwrap()
+                    .split("\n}")
+                    .next()
+                    .unwrap();
+                assert!(
+                    body.contains("pub fn try_from("),
+                    "lost checked door {name}: {body}"
+                );
+                assert!(host["wasm/src/generated/collections.rs"].contains(&format!(
+                    "pub use crate::generated::requested_collections::{name};"
+                )));
+            }
+        }
+        if compile {
+            append_manifest_deps(
+                &output.join("rust/Cargo.toml"),
+                &[&format!(
+                    "wr-dep = {{ path = \"{}\" }}",
+                    host_output.join("rust").display()
+                )],
+            );
+            append_manifest_deps(
+                &output.join("wasm/Cargo.toml"),
+                &[
+                    &format!(
+                        "wr-dep = {{ path = \"{}\" }}",
+                        host_output.join("rust").display()
+                    ),
+                    &format!(
+                        "wr-dep-wasm = {{ path = \"{}\" }}",
+                        host_output.join("wasm").display()
+                    ),
+                ],
+            );
+            for export in [&host_output, &output] {
+                let check = tool_cmd("cargo")
+                    .args(["build", "--target", "wasm32-unknown-unknown"])
+                    .current_dir(export.join("wasm"))
+                    .output()
+                    .unwrap();
+                assert!(
+                    check.status.success(),
+                    "full-u64 wasm build failed: {}",
+                    String::from_utf8_lossy(&check.stderr)
+                );
+            }
+            let tests = host_output.join("rust/tests");
+            std::fs::create_dir_all(&tests).unwrap();
+            std::fs::write(tests.join("full_u64.rs"), r###"use wr_dep::{IdxFoo, bounded::BoundedVec, bounded_map::BoundedMap, ordered_set::BoundedOrderedSet, pair_map::BoundedPairMap};
+#[test]
+fn full_u64_checked_carriers_retain_minimum_and_duplicate_checks() {
+    assert!(BoundedVec::<IdxFoo, 0, { u64::MAX }>::try_from(Vec::new()).is_ok());
+    assert!(BoundedVec::<IdxFoo, 1, { u64::MAX }>::try_from(Vec::new()).is_err());
+    let mut list = BoundedVec::<IdxFoo, 1, { u64::MAX }>::try_from(vec![IdxFoo::new(1)]).unwrap();
+    assert!(list.pop().is_err());
+    assert_eq!(list.len(), 1);
+    assert!(BoundedOrderedSet::<IdxFoo, 0, { u64::MAX }>::try_from(Vec::new()).is_ok());
+    assert!(BoundedOrderedSet::<IdxFoo, 1, { u64::MAX }>::try_from(Vec::new()).is_err());
+    assert!(BoundedOrderedSet::<IdxFoo, 0, { u64::MAX }>::try_from(vec![IdxFoo::new(1), IdxFoo::new(1)]).is_err());
+    assert!(BoundedMap::<IdxFoo, u64, 0, { u64::MAX }>::try_from(Vec::new()).is_ok());
+    assert!(BoundedMap::<IdxFoo, u64, 1, { u64::MAX }>::try_from(Vec::new()).is_err());
+    assert!(BoundedPairMap::<IdxFoo, u64, 0, { u64::MAX }>::try_from(Vec::new()).is_ok());
+    assert!(BoundedPairMap::<IdxFoo, u64, 1, { u64::MAX }>::try_from(Vec::new()).is_err());
+    let pairs = BoundedPairMap::<IdxFoo, u64, 1, { u64::MAX }>::try_from(vec![(IdxFoo::new(1), 2), (IdxFoo::new(1), 3)]).unwrap();
+    assert_eq!(pairs.len(), 2);
+}
+"###).unwrap();
+            let run = tool_cmd("cargo")
+                .args(["test", "--test", "full_u64"])
+                .current_dir(host_output.join("rust"))
+                .output()
+                .unwrap();
+            assert!(
+                run.status.success(),
+                "full-u64 checked carrier execution failed: {}",
+                String::from_utf8_lossy(&run.stderr)
+            );
+        }
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}

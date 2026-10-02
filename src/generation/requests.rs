@@ -491,6 +491,16 @@ pub(crate) fn render_wrapper_shape(rt: &RustType) -> String {
     }
 }
 
+/// Reconstruct a native bounded carrier's occurrence window for a request shape.
+/// Explicit MAX is necessary for minima zero/one: omitting it selects the loose/nonempty
+/// carrier instead. Higher minima already select a bounded carrier with an absent maximum.
+pub(super) fn bounded_shape_window(min: u64, max: u64) -> IntWindow {
+    (
+        (min != 0).then_some(i128::from(min)),
+        (max != u64::MAX || min <= 1).then_some(i128::from(max)),
+    )
+}
+
 /// The occurrence marker of a collection shape in the `borrowed_collections.rs` shape-column
 /// grammar (`*`, `+`, `?`,
 /// `*5`, `2*`, `2*5`), shared by the list and map arms of [`render_wrapper_shape`].

@@ -706,10 +706,8 @@ impl GenerationScope {
         // look different to a requesting consumer.
         let bounded_shape_type: RustType =
             ConceptualRustType::Array(Box::new(element_type.clone())).into();
-        let bounded_shape_type = bounded_shape_type.with_bounds((
-            (min != 0).then_some(i128::from(min)),
-            (max != u64::MAX).then_some(i128::from(max)),
-        ));
+        let bounded_shape_type =
+            bounded_shape_type.with_bounds(super::requests::bounded_shape_window(min, max));
         let shape = render_wrapper_shape(&bounded_shape_type);
         if self.try_defer_wrapper(
             types,
@@ -910,26 +908,19 @@ impl GenerationScope {
         } else {
             "OrderedSet"
         };
-        // The shape column the sidecar round-trips: the marker is the SHARED const the dep-side
-        // parser consumes, so the writer and the reader cannot drift apart on its spelling.
-        let shape = if let Some((min, max)) = bounds {
-            let occurrence = match (min, max == u64::MAX) {
-                (0, false) if max == 1 => "?".to_owned(),
-                (0, false) => format!("*{max}"),
-                (_, true) => format!("{min}*"),
-                _ => format!("{min}*{max}"),
-            };
-            format!(
-                "[{occurrence} {}] {REJECT_MARKER}",
-                render_wrapper_shape(&element_type)
-            )
+        // Use the same carrier-preserving shape renderer as bounded lists/maps, including
+        // the policy marker consumed by the strict dependency-side parser.
+        let shape_type: RustType = ConceptualRustType::Array(Box::new(element_type.clone())).into();
+        let shape_type = if let Some((min, max)) = bounds {
+            shape_type.with_bounds(super::requests::bounded_shape_window(min, max))
+        } else if non_empty {
+            shape_type.with_bounds((Some(1), None))
         } else {
-            format!(
-                "[{} {}] {REJECT_MARKER}",
-                if non_empty { "+" } else { "*" },
-                render_wrapper_shape(&element_type)
-            )
+            shape_type
         };
+        let shape = render_wrapper_shape(
+            &shape_type.with_duplicates_policy(Some(crate::comment_ast::DuplicatesPolicy::Reject)),
+        );
         // `--extern-wrapper-index` / `--workspace-dep`: the uniqueness twin over a dependency's
         // elements is a defer candidate exactly like the loose list and the NonEmpty twin — the
         // dependency's class is the one JS class for this shape, and re-minting it here is a
@@ -1155,10 +1146,7 @@ impl GenerationScope {
             ConceptualRustType::Map(Box::new(key_type.clone()), Box::new(value_type.clone()))
                 .into();
         let bounded = bounded
-            .with_bounds((
-                (min != 0).then_some(i128::from(min)),
-                (max != u64::MAX).then_some(i128::from(max)),
-            ))
+            .with_bounds(super::requests::bounded_shape_window(min, max))
             .with_duplicates_policy(
                 preserve_pair_map.then_some(crate::comment_ast::DuplicatesPolicy::Preserve),
             );
