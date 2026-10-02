@@ -188,23 +188,15 @@ Generated comments *inside* the replaced span are replaced with it; comments out
 plain comment of yours whose anchor falls inside a span some replace block deletes fails loudly —
 move it into the block.
 
-**Imports and your block's code.** The generated struct modules import the collection helper types
-(`BTreeMap`, `OrderedHashMap`, `NonEmptyVec`, `BoundedVec`, `NonEmptyMap`, `BoundedMap`, `OrderedSet`,
-`NonEmptyOrderedSet`, `BoundedOrderedSet`, `PairMap`, `NonEmptyPairMap`, `BoundedPairMap`) only when
-the file — or one of its descendant modules — references them (see [Output format](./output_format)). The relationship to
-your block's code is asymmetric. Your block cannot make an import *appear*: the initial import
-derivation runs over the pristine generated content, before your edits are applied, so a file whose
-generated code never justified `BTreeMap` won't gain the `use` just because your block names it —
-name such types by a fully qualified path (`std::collections::BTreeMap`) rather than relying on a
-`use` that won't be there. But once your edits are applied, the import set is re-derived from that
-*final* content — your block's code included — so a block that names an import the generated code
-also justified keeps that import alive even if your block replaced the generated reference.
+**Imports and your block's code.** Imports are recomputed from the final content after preservation.
+A user block keeps an existing generated import alive when its code references the imported name.
+The alloc pass also supplies imports for bare `Cow`, `ToOwned`, `Box`, `BTreeMap`, `BTreeSet`, `String`, `ToString`, and `Vec`, the `format!` and `vec!` macros, and the `.to_owned()` and `.to_string()` methods.
+Other generated helper types need an explicit import in your block or a qualified path when pristine generation did not already supply their import.
 
-Conversely, if your replace block removes the *last* generated reference to an import — say you
-replace `pub type Mint = OrderedHashMap<PolicyId, …>` with a hand type that names neither — the now
-unused `use` is pruned for you on the next export. You do **not** need a second replace block to
-delete the orphaned import. This holds even when the reference you removed lived in a different
-file of the module (e.g. a `serialization.rs` edit orphaning a `mod.rs` import).
+If your replace block removes the last reference to a generated import, that unused import is pruned on the next export.
+This also covers references removed from another file in the same module family, such as a `serialization.rs` edit orphaning a `mod.rs` import (see [Output format](./output_format)).
+An import containing a comment or overlapping an insert/replace block is retained intact, even if unused, to preserve your material.
+The alloc pass also retains attributed imports, nested imports, and imports with trailing comments; these imports can require your own warning suppression.
 
 ## When preservation fails: the two failure channels
 
@@ -251,13 +243,11 @@ lost. The reasons you'll see, and what they mean:
 
 ## Guarantees and residual limits
 
-Running the tool twice equals running it once: re-exporting an unchanged spec reproduces the same
-file byte-for-byte, blocks included. The overlay never touches code tokens outside your tagged
-regions — its only effects are inserting your comments/blocks and removing exactly the span a
-recorded original identifies. The one downstream consequence is import pruning: a `use` the
-generated code no longer references — because your replace block removed its last user — is dropped,
-since the import set is always re-derived from the final code (never from prior output), which keeps
-the byte-for-byte reproducibility intact.
+Running the tool twice equals running it once: re-exporting an unchanged spec reproduces the same file byte-for-byte, blocks included.
+The overlay inserts your comments/blocks and removes exactly the token span identified by a replace block's recorded original.
+The final-content passes then prune unused generated imports and recompute the alloc import block.
+Imports containing comments or overlapping user blocks stay intact, so this recomputation cannot silently discard preserved material.
+These passes derive their decisions from final content, never from prior output.
 
 Known residual limits, by design:
 

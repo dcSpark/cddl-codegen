@@ -13,6 +13,8 @@
 //! unchanged and poisons every ancestor it could protect, only private `use` items are candidates
 //! (a `pub use` is API surface a downstream crate may import), and any ident outside a private
 //! `use`, including macro and attribute tokens and `pub use` paths, protects its import.
+//! An item containing a comment or overlapping a user insert/replace block is kept intact, so
+//! final-content recomputation cannot erase carried user material.
 //!
 //! **Module family.** A private import in module F can be consumed only by F and by the
 //! descendants linked to F through an unbroken chain of `use super::*;` edges
@@ -145,11 +147,25 @@ fn splice_private_uses<'a>(
         Err(_) => return Cow::Borrowed(source),
     };
 
+    let protected = match crate::comment_preserve::comment_and_user_block_ranges(source) {
+        Ok(ranges) => ranges,
+        Err(_) => return Cow::Borrowed(source),
+    };
+
     // `syn::parse_file` strips a leading BOM (or shebang line) before parsing, so span byte offsets
     // would then be relative to the stripped text. Generated sources never start with either.
     debug_assert!(!source.starts_with('\u{feff}'), "BOM-prefixed source");
     let mut edits: Vec<(usize, usize, Option<String>)> = Vec::new();
     for use_item in private_uses(&file) {
+        let (start, end) = item_byte_range(use_item);
+        // Token re-emission discards trivia, and deleting user-block code breaks its verbatim
+        // contract. Keep the entire item whenever either kind of user material overlaps it.
+        if protected
+            .iter()
+            .any(|range| range.start < end && start < range.end)
+        {
+            continue;
+        }
         let drop_whole = |edits: &mut Vec<(usize, usize, Option<String>)>| {
             // Drop the whole item, including the line it occupied — plain span deletion would leave a
             // blank-line scar rustfmt does not collapse.
@@ -912,8 +928,7 @@ fn module_is_target_file(file_path: &str, target_base: &str) -> bool {
 /// Returns the filtered tree (`None` when the whole tree becomes empty, so the caller drops the
 /// item) and whether its rendering differs from the input. A rebuilt group differs when a leaf was
 /// dropped, when it collapses to its single survivor (`use x::{Kept};` renders as `use x::Kept;`,
-/// even when nothing was dropped), or when the input group had a trailing comma, which the rebuilt
-/// `Punctuated` omits.
+/// even when nothing was dropped). A trailing comma alone never requires re-emission.
 fn filter_use_tree<'t>(
     tree: &'t UseTree,
     prefix: &mut Vec<&'t Ident>,
@@ -965,7 +980,7 @@ fn filter_use_tree<'t>(
                 0 => (None, true),
                 1 => (Some(kept.into_iter().next().unwrap()), true),
                 _ => {
-                    let changed = any_changed || group.items.trailing_punct();
+                    let changed = any_changed;
                     let mut new_group = group.clone();
                     new_group.items = kept.into_iter().collect();
                     (Some(UseTree::Group(new_group)), changed)
@@ -1041,8 +1056,8 @@ fn join_idents(idents: &[&Ident], separator: &str) -> String {
 }
 
 /// Byte range `[start, end)` covering the whole `use ...;` item (including any leading attributes,
-/// which are part of the item's span). Regular `//` comments are trivia, not tokens, so they fall
-/// OUTSIDE this range and survive the splice.
+/// which are part of the item's span). Leading and trailing plain comments generally lie outside
+/// this range; comments inside a group overlap it and prevent re-emission or deletion.
 fn item_byte_range(item: &ItemUse) -> (usize, usize) {
     let range = item.span().byte_range();
     (range.start, range.end)
@@ -2615,16 +2630,13 @@ mod tests {
         assert!(matches!(prune_unused_type_imports(src), Cow::Borrowed(_)));
     }
 
-    // Pins current behavior for the refactor; postpass-missed-4 will change it to preserve comments.
+    // A trailing comma alone must leave the original text and any trivia intact.
     #[test]
-    fn trailing_comma_group_is_rewritten_even_when_nothing_is_removed() {
+    fn trailing_comma_group_is_not_rewritten_when_nothing_is_removed() {
         let src = "use x::{\n    A, BTreeMap,\n};\npub fn f(_: A, _: BTreeMap<u8, u8>) {}\n";
         let out = prune_unused_type_imports(src);
-        assert!(matches!(out, Cow::Owned(_)));
-        assert!(
-            out.replace(' ', "").starts_with("usex::{A,BTreeMap};"),
-            "{out}"
-        );
+        assert!(matches!(out, Cow::Borrowed(_)));
+        assert_eq!(out, src);
     }
 
     #[test]
@@ -2674,5 +2686,55 @@ mod tests {
                 .collect();
         let a = changed.get("rust/src/generated/a.rs").expect("a.rs pruned");
         assert!(!a.contains("BTreeMap"), "{a}");
+    }
+    #[test]
+    fn commented_import_groups_are_never_rebuilt_or_deleted() {
+        for comment in [
+            "// cddl-codegen:keep user note\n",
+            "/* outer /* inner */ note */",
+        ] {
+            let src = format!("use x::{{\n{comment}A, BTreeMap,\n}};\npub fn f(_: A) {{}}\n");
+            for remove_all in [false, true] {
+                let result =
+                    splice_private_uses(&src, remove_all, &|i| i == "BTreeMap", &BTreeSet::new());
+                assert!(matches!(result, Cow::Borrowed(_)), "{result}");
+                assert_eq!(result, src);
+            }
+        }
+    }
+
+    #[test]
+    fn comment_lookalikes_in_import_attributes_do_not_prevent_pruning() {
+        for attr in [
+            r#"#[doc = "not // a comment"]"#,
+            r##"#[doc = r#"not /* a comment */"#]"##,
+        ] {
+            let src = format!("{attr}\nuse x::BTreeMap;\npub fn f() {{}}\n");
+            let result = splice_private_uses(&src, true, &|_| false, &BTreeSet::new());
+            assert!(!result.contains("use x::BTreeMap"), "{result}");
+        }
+    }
+
+    #[test]
+    fn folded_user_block_markers_keep_import_items() {
+        let src = "pub struct A; // cddl-codegen:insert-start\nuse x::BTreeMap; // cddl-codegen:insert-end\npub struct B;\n";
+        assert_eq!(
+            splice_private_uses(src, true, &|_| false, &BTreeSet::new()),
+            src
+        );
+    }
+
+    #[test]
+    fn import_items_inside_user_blocks_are_never_pruned() {
+        for src in [
+            "// cddl-codegen:insert-start\nuse x::BTreeMap;\n// cddl-codegen:insert-end\npub struct A;\n",
+            "// cddl-codegen:replace-start\nuse x::BTreeMap;\n// cddl-codegen:replaces\n// use x::A;\n// cddl-codegen:replace-end\npub struct A;\n",
+        ] {
+            for remove_all in [false, true] {
+                let result =
+                    splice_private_uses(src, remove_all, &|i| i == "BTreeMap", &BTreeSet::new());
+                assert_eq!(result, src, "user code blocks must stay verbatim");
+            }
+        }
     }
 }

@@ -928,6 +928,39 @@ fn recognize_sentinels(lexed: &Lexed) -> SentinelScan {
     }
 }
 
+/// Byte ranges of comments and user blocks that a final-content post-pass must not erase.
+/// Treat folded reserved markers as own-line markers without changing byte offsets; preservation
+/// has already validated their structure. A lexical or block error leaves the caller conservative.
+pub(crate) fn comment_and_user_block_ranges(
+    source: &str,
+) -> Result<Vec<std::ops::Range<usize>>, PreserveError> {
+    let mut lexed = lex(source)?;
+    for comment in &mut lexed.comments {
+        if ReservedComment::parse(comment.text).is_some() {
+            comment.own_line = true;
+        }
+    }
+    let sentinel = recognize_sentinels(&lexed);
+    let blocks = scan_blocks(&lexed, &sentinel.sentinel_comment)?;
+    Ok(lexed
+        .comments
+        .iter()
+        .map(|comment| comment.start..comment.end)
+        .chain(
+            blocks
+                .blocks
+                .iter()
+                .map(|block| block.byte_start..block.byte_end),
+        )
+        .chain(
+            blocks
+                .replace_blocks
+                .iter()
+                .map(|block| block.byte_start..block.byte_end),
+        )
+        .collect())
+}
+
 /// A recognized verbatim-travelling block in `old`: an
 /// `// cddl-codegen:insert-start` … `// cddl-codegen:insert-end` pair, or a `// cddl-codegen:keep`
 /// marker (whose "interior" is empty — it wraps comment text only). The whole block travels as one

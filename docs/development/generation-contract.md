@@ -39,7 +39,9 @@ See [generated roots](../docs/output_format.mdx#generated-crate-roots-thin-root-
 The overlay must insert or remove no other code tokens.
 Apply it to the in-memory file map before the write loop.
 Then rerun usage-derived [import pruning](../../src/import_prune.rs) once over the post-overlay map, so an import loses its place when a replacement removes its last user.
-Next, [alloc import injection](../../src/alloc_import_inject.rs) strips and recomputes its own `use alloc::…`/`extern crate alloc;` block, adding or removing imports as needed.
+Keep import items containing comments or overlapping user blocks intact, even if their names are unused.
+Next, [alloc import injection](../../src/alloc_import_inject.rs) strips and recomputes its own exact, un-attributed file-top `use alloc::…`/`extern crate alloc;` lines outside user blocks and without comments, adding or removing imports as needed.
+Matching text inside literals, nested modules, attributed items, or user blocks is not owned by that pass.
 Rustfmt every written surface after injection: formatting stability is necessary for a second regeneration to reproduce the first.
 
 These recomputations are pure functions of final content, not extra prior-output reads; they do not widen what prior output itself contributes.

@@ -18,6 +18,10 @@
 //! family never names it. No line satisfies both, so the two passes reach one fixed point in either
 //! order, and both are recomputed after the comment-preservation overlay.
 //!
+//! **Ownership.** Strip only un-attributed file-top imports outside user blocks. Preserve matching
+//! lines inside literals, nested modules, and user blocks; retained imports and alloc bindings
+//! suppress duplicate injection.
+//!
 //! **Scope rules.**
 //! * Path tails never trigger ([`crate::import_prune::walk_ident_uses`] owns the rule): a qualified
 //!   `alloc::collections::BTreeSet::new()` needs no import.
@@ -32,8 +36,9 @@
 //!   scope, or through `super::alloc`/`self::alloc` anywhere, nested modules included, so those
 //!   hand-written nested imports resolve.
 //!
-//! **Known limits.** A name used only inside a consumer's `cddl-codegen:insert` block is the
-//! consumer's to import. A name used only inside a nested inline module without its own import does
+//! **Known limits.** Only the names in [`TABLE`] are supplied automatically; other names introduced
+//! by a user block need an explicit import or a qualified path. A name used only inside a nested
+//! inline module without its own import does
 //! not resolve; in tool output the only such modules are the adapters above and the `--emit-tests`
 //! `#[cfg(test)] mod cddl_generated_tests`, which opens with `use super::*;`.
 
@@ -200,16 +205,55 @@ pub(crate) fn inject(source: &str) -> Cow<'_, str> {
     // owns would read as an "already imported" foreign binding and suppress its own re-addition,
     // and an orphaned line would keep justifying its own `extern crate`.
     //
-    // Only column-0 exact matches are ours. A hand-written `use super::alloc::…;` inside a nested
-    // inline module is indented in rustfmt'd output and is never a candidate.
+    // Only exact, un-attributed file-top items outside user blocks are ours. A line inside a
+    // literal or nested module has another owner even if its spelling matches an injected line.
     let owned: BTreeSet<&'static str> = TABLE
         .iter()
         .map(|row| row.line)
         .chain(std::iter::once(EXTERN_CRATE_ALLOC))
         .collect();
+    let Ok(file) = syn::parse_file(source) else {
+        return Cow::Borrowed(source);
+    };
+    let Ok(protected) = crate::comment_preserve::comment_and_user_block_ranges(source) else {
+        return Cow::Borrowed(source);
+    };
+    // Only un-attributed file-top items can be lines this pass owns. Text inside a literal,
+    // nested module, or user block has a different owner even when its spelling is identical.
+    let owned_starts: BTreeSet<usize> = file
+        .items
+        .iter()
+        .filter_map(|item| {
+            let span = match item {
+                syn::Item::Use(item) if item.attrs.is_empty() => item.span(),
+                syn::Item::ExternCrate(item) if item.attrs.is_empty() => item.span(),
+                _ => return None,
+            };
+            let range = span.byte_range();
+            if protected
+                .iter()
+                .any(|p| p.start < range.end && range.start < p.end)
+            {
+                return None;
+            }
+            source
+                .get(range.clone())
+                .filter(|text| owned.contains(*text))
+                .map(|_| range.start)
+        })
+        .collect();
+    let mut offset = 0;
     let kept: Vec<&str> = source
-        .lines()
-        .filter(|line| !owned.contains(*line))
+        .split_inclusive('\n')
+        .filter_map(|chunk| {
+            let start = offset;
+            offset += chunk.len();
+            let line = chunk
+                .strip_suffix('\n')
+                .map(|line| line.strip_suffix('\r').unwrap_or(line))
+                .unwrap_or(chunk);
+            (!(owned_starts.contains(&start) && owned.contains(line))).then_some(line)
+        })
         .collect();
     let stripped = kept.join("\n");
 
@@ -233,7 +277,12 @@ pub(crate) fn inject(source: &str) -> Cow<'_, str> {
     // The `extern crate` line is needed when anything reaches the crate `alloc` — the lines we are
     // about to add included, plus any `super::alloc`/`self::alloc` in a nested module.
     let mut block: Vec<&str> = Vec::new();
-    if !wanted.is_empty() || references_alloc_crate(&stripped) {
+    let has_alloc_binding = file.items.iter().any(|item| {
+        matches!(item, syn::Item::ExternCrate(item)
+            if item.ident == "alloc"
+                && item.rename.as_ref().is_none_or(|(_, rename)| rename == "alloc"))
+    });
+    if (!wanted.is_empty() || references_alloc_crate(&stripped)) && !has_alloc_binding {
         block.push(EXTERN_CRATE_ALLOC);
     }
     // `wanted` is a `BTreeSet<&'static str>`, so the block is in a stable sorted order by
@@ -773,5 +822,59 @@ mod tests {
     fn unparseable_source_is_left_alone() {
         let src = "pub struct { this is not rust\n";
         assert_eq!(inj(src), src);
+    }
+    #[test]
+    fn alloc_injection_keeps_user_owned_imports_and_extern_crates() {
+        for tags in [
+            ("// cddl-codegen:insert-start", "// cddl-codegen:insert-end"),
+            (
+                "// cddl-codegen:replace-start",
+                "// cddl-codegen:replaces\n// use x::Old;\n// cddl-codegen:replace-end",
+            ),
+        ] {
+            let block = format!(
+                "{}\nextern crate alloc;\nuse alloc::vec::Vec;\n{}\n",
+                tags.0, tags.1
+            );
+            let src = format!("{block}pub struct S(Vec<u8>);\n");
+            let out = inject(&src);
+            assert!(out.contains(&block), "user block changed: {out}");
+            assert_eq!(out.matches("extern crate alloc;").count(), 1, "{out}");
+        }
+    }
+
+    #[test]
+    fn alloc_injection_keeps_owned_line_lookalikes_outside_file_top_imports() {
+        for src in [
+            "pub const S: &str = r#\"\nuse alloc::vec::Vec;\n\"#;\n",
+            "mod nested {\nuse alloc::vec::Vec;\npub struct S(Vec<u8>);\n}\n",
+        ] {
+            let out = inject(src);
+            assert!(out.contains("use alloc::vec::Vec;"), "{out}");
+        }
+    }
+
+    #[test]
+    fn alloc_injection_keeps_trailing_comments_on_existing_imports() {
+        let src = "extern crate alloc; // consumer binding\nuse alloc::vec::Vec; // consumer import\npub struct S(Vec<u8>);\n";
+        let out = inject(src);
+        assert!(
+            out.contains("extern crate alloc; // consumer binding"),
+            "{out}"
+        );
+        assert!(
+            out.contains("use alloc::vec::Vec; // consumer import"),
+            "{out}"
+        );
+        assert_eq!(out.matches("extern crate alloc;").count(), 1, "{out}");
+        assert_eq!(out.matches("use alloc::vec::Vec;").count(), 1, "{out}");
+        assert_eq!(inject(&out), out);
+    }
+
+    #[test]
+    fn alloc_injection_keeps_attributes_on_existing_imports() {
+        let src = "#[cfg(any())]\nuse alloc::vec::Vec;\npub struct S;\n";
+        let out = inject(src);
+        assert!(out.contains("#[cfg(any())]\nuse alloc::vec::Vec;"), "{out}");
     }
 }

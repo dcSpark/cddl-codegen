@@ -930,3 +930,74 @@ fn write_tail_static_crate_preserves_hand_root_merges_manifest_and_gates_notices
         "the reintroduced file is the one named by the notice:\n{reintroduced_stderr}"
     );
 }
+
+/// A kept comment inside an import group survives the real post-overlay prune and reaches a
+/// rustfmt-stable fixed point across repeated exports.
+#[test]
+fn write_tail_overlay_keeps_a_comment_inside_an_import_group() {
+    let dir = scratch("overlay_import_group_comment");
+    let files = finalize(&[(
+        "rust/src/generated/mod.rs",
+        "use x::{ALongFirstImportIdentifierWithEnoughWidth, ALongSecondImportIdentifierWithEnoughWidth, BTreeMap};\npub fn f(_: ALongFirstImportIdentifierWithEnoughWidth, _: ALongSecondImportIdentifierWithEnoughWidth, _: BTreeMap<u8, u8>) {}\n",
+    )]);
+    plan(&dir, files.clone()).run().unwrap();
+    let original = read(&dir, "rust/src/generated/mod.rs");
+    assert!(
+        original.contains("use x::{\n"),
+        "vector must exercise a multiline group: {original}"
+    );
+    edit_prior(
+        &dir,
+        "rust/src/generated/mod.rs",
+        "use x::{\n",
+        "use x::{\n    // cddl-codegen:keep user note inside the group\n",
+    );
+    plan(&dir, files.clone()).run().unwrap();
+    let written = read(&dir, "rust/src/generated/mod.rs");
+    assert!(
+        written.contains("// cddl-codegen:keep user note inside the group"),
+        "{written}"
+    );
+    assert!(!written.contains("compile_error!"), "{written}");
+    let once = snapshot(&dir);
+    plan(&dir, files).run().unwrap();
+    assert_eq!(
+        snapshot(&dir),
+        once,
+        "a repeated export must preserve the same bytes"
+    );
+}
+
+/// Final-content recomputation keeps imports explicitly owned by an insert block, even when the
+/// generated code does not use them; the complete block reaches a formatting fixed point.
+#[test]
+fn write_tail_overlay_keeps_user_owned_import_items() {
+    let dir = scratch("overlay_user_imports");
+    let files = finalize(&[("rust/src/generated/mod.rs", "pub struct A;\n")]);
+    plan(&dir, files.clone()).run().unwrap();
+    edit_prior(
+        &dir,
+        "rust/src/generated/mod.rs",
+        "pub struct A;",
+        "// cddl-codegen:insert-start\nextern crate alloc;\nuse alloc::vec::Vec;\nuse alloc::collections::BTreeMap;\n// cddl-codegen:insert-end\npub struct A;",
+    );
+    plan(&dir, files.clone()).run().unwrap();
+    let written = read(&dir, "rust/src/generated/mod.rs");
+    for text in [
+        "use alloc::vec::Vec;",
+        "use alloc::collections::BTreeMap;",
+        "// cddl-codegen:insert-start",
+        "// cddl-codegen:insert-end",
+    ] {
+        assert!(written.contains(text), "user material vanished: {written}");
+    }
+    assert_eq!(
+        written.matches("extern crate alloc;").count(),
+        1,
+        "{written}"
+    );
+    assert!(!written.contains("compile_error!"), "{written}");
+    let once = snapshot(&dir);
+    plan(&dir, files).run().unwrap();
+    assert_eq!(snapshot(&dir), once);
+}
