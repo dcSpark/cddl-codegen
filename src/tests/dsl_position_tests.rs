@@ -1685,7 +1685,7 @@ const GRID: &[Cell] = &[
         expect: Expect::Reject("not a field"),
     },
     // 39. REJECT: a non-last arm of a multi-choice type rule — the shared rejection every rule-level
-    //     directive gets from `RuleMetadata::non_variant_directives`, pinned per-directive so a new
+    //     directive gets from `parsing::NonLastArmOwner::refuses`, pinned per-directive so a new
     //     directive's omission from that exhaustive list is visible here too.
     Cell {
         directive: "@extern_companions",

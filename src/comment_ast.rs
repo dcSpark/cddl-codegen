@@ -515,19 +515,6 @@ impl RuleMetadata {
         found
     }
 
-    /// The `@`-spellings of every rule-level directive set on this metadata, EXCLUDING the ones a
-    /// type-choice VARIANT position legitimately consumes ([`Directive::is_variant_legal`]).
-    ///
-    /// Exists for the non-last-arm rejections in `parsing` (`parse_type_choices` and the inline
-    /// `T / null` lowering).
-    pub fn non_variant_directives(&self) -> Vec<&'static str> {
-        self.directives()
-            .into_iter()
-            .filter(|directive| !directive.is_variant_legal())
-            .map(Directive::spelling)
-            .collect()
-    }
-
     /// Every directive set on this metadata, sorted by spelling.
     ///
     /// Exists for the refusals that report what an author wrote into a slot where NOTHING is

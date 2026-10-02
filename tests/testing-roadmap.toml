@@ -378,7 +378,7 @@ body_md = '''- **The arm-position axis's classifier is a compile-time forcing fu
   slot. What no sweep can assert is the EXCLUSION set — which directives a variant position
   legitimately consumes — because that is a statement about future fields, not about present ones:
   `comment_ast::RuleMetadata::directives`'s exhaustive destructuring plus `Directive::is_variant_legal`'s
-  exhaustive match make a new `RuleMetadata` field fail to compile until its author classifies it as
+  exhaustive match (consumed per arm owner by `parsing::NonLastArmOwner::refuses`) make a new `RuleMetadata` field fail to compile until its author classifies it as
   rule-level or variant-legal, and `all_directives` (the never-spliced-group refusal's list) inherits
   that same forcing function by building on it. Replacing either exhaustive construct with a hand
   list silently removes the property.

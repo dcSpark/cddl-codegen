@@ -3,7 +3,9 @@ use cddl::ast::parent::ParentVisitor;
 use cddl::{ast::*, token};
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::comment_ast::{DuplicatesPolicy, RuleMetadata, merge_metadata, metadata_from_comments};
+use crate::comment_ast::{
+    Directive, DuplicatesPolicy, RuleMetadata, merge_metadata, metadata_from_comments,
+};
 use crate::intermediate::{
     AliasIdent, AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant,
     EnumVariantData, FixedValue, FloatWindow, ForbiddenField, GenericDef, GenericInstance,
@@ -2249,6 +2251,92 @@ fn copy_not_extern_rejection(type_name: &RustIdent) -> String {
     )
 }
 
+/// Ownership determines which directives a non-last arm can consume.
+#[derive(Clone, Copy)]
+enum NonLastArmOwner<'a> {
+    /// Named enum variants read names and docs.
+    TypeChoiceRule(&'a RustIdent),
+    /// Nullable aliases have no variants; the rule-name pre-scan handles names.
+    NullCollapseRule(&'a RustIdent),
+    /// Collapsed tag-sets have no variants; the preceding enum check handles other directives.
+    TagSetRule(&'a RustIdent),
+    /// Inline enum variants read names and docs.
+    InlineTypeChoice,
+    /// Inline nullable fields have neither variants nor a rule-name pre-scan.
+    InlineNullCollapse,
+}
+
+impl NonLastArmOwner<'_> {
+    fn refuses(self, directive: Directive) -> bool {
+        match self {
+            Self::TypeChoiceRule(_) | Self::InlineTypeChoice => !directive.is_variant_legal(),
+            Self::NullCollapseRule(_) => directive != Directive::Name,
+            Self::TagSetRule(_) => directive.is_variant_legal(),
+            Self::InlineNullCollapse => true,
+        }
+    }
+
+    fn rejection(self, found: &str) -> String {
+        match self {
+            Self::TypeChoiceRule(name) => format!(
+                "{found} on a non-last arm of the multi-choice type rule `{name}`: a rule-level \
+                     directive attaches through the LAST arm's trailing comment, which is the \
+                     rule-position slot — on any other arm only `@name` and `@doc` are read (they \
+                     name and document that variant). Move it to the last arm, or reorder the arms \
+                     so the one carrying it is last."
+            ),
+            Self::NullCollapseRule(name) => format!(
+                "{found} on a non-last arm of the `T / null` rule `{name}`: the rule collapses to a \
+                     transparent `Option<T>` alias, so its arms are not variants and carry no \
+                     directives of their own — a rule-level directive attaches through the LAST \
+                     arm's trailing comment. Move it there (`{name} = … / … ; @…`)."
+            ),
+            Self::TagSetRule(name) => format!(
+                "{found} on a non-last arm of the tag-set rule `{name}`: its two arms collapse \
+                         into one collection whose tag is optional on the wire, so they are not \
+                         enum variants and there is no variant for `@name` to name or `@doc` to \
+                         document. Document the rule with `@doc` in the LAST arm's trailing \
+                         comment, which is the rule-position slot, and remove `@name`."
+            ),
+            Self::InlineTypeChoice => format!(
+                "{found} on a non-last arm of an inline type choice: the choice lowers to an \
+                         anonymous enum whose variants read only `@name` and `@doc`, so that arm \
+                         owns no other directive slot. Move a field directive to the entry's \
+                         trailing comment, or put the annotation on a named type rule."
+            ),
+            Self::InlineNullCollapse => format!(
+                "{found} on a non-last arm of an inline `T / null` choice: the choice lowers \
+                         to an optional field rather than variants, so that arm owns no directive \
+                         slot. Move a field directive to the entry's trailing comment, or put the \
+                         annotation on a named type rule."
+            ),
+        }
+    }
+}
+
+fn reject_non_last_arm_directives(
+    types: &mut IntermediateTypes,
+    arms: &[TypeChoice],
+    owner: NonLastArmOwner<'_>,
+) {
+    if let Some((_, preceding)) = arms.split_last() {
+        for arm in preceding {
+            let mut directives = type_choice_metadata(arm).directives();
+            directives.retain(|directive| owner.refuses(*directive));
+            // Stable Directive::ALL order within each class keeps the existing list order.
+            directives.sort_by_key(|directive| directive.is_variant_legal());
+            if !directives.is_empty() {
+                let found = directives
+                    .iter()
+                    .map(|directive| directive.spelling())
+                    .collect::<Vec<_>>()
+                    .join(" / ");
+                types.record_rejection(owner.rejection(&found));
+            }
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn parse_type_choices(
     types: &mut IntermediateTypes,
@@ -2458,22 +2546,11 @@ fn parse_type_choices(
         // no VARIANTS, so `@name` and `@doc` have nothing to name or document here either and are
         // caught too (`@name` additionally rejects at the parse-walk seam,
         // `rule_position_name_rejection`, which covers both arms of this shape).
-        for choice in &type_choices[..type_choices.len() - 1] {
-            let arm_metadata = type_choice_metadata(choice);
-            let mut misplaced = arm_metadata.non_variant_directives();
-            if arm_metadata.doc.is_some() {
-                misplaced.push("@doc");
-            }
-            if !misplaced.is_empty() {
-                types.record_rejection(format!(
-                    "{} on a non-last arm of the `T / null` rule `{name}`: the rule collapses to a \
-                     transparent `Option<T>` alias, so its arms are not variants and carry no \
-                     directives of their own — a rule-level directive attaches through the LAST \
-                     arm's trailing comment. Move it there (`{name} = … / … ; @…`).",
-                    misplaced.join(" / ")
-                ));
-            }
-        }
+        reject_non_last_arm_directives(
+            types,
+            type_choices,
+            NonLastArmOwner::NullCollapseRule(name),
+        );
         if let Some(fixed_null) = null_singleton {
             // `null / null` has one CBOR and Rust state.  It is a named singleton, not a nullable
             // alias, so rule-scoped class directives remain meaningful just as on `x = null`.
@@ -2559,20 +2636,7 @@ fn parse_type_choices(
         // the directive and the remedy. The `T / null` branch above reads the same rule slot
         // (`rule_position_metadata`) and runs its own non-last-arm check, which also refuses
         // `@name` and `@doc` because a collapse has no variants.
-        for choice in &type_choices[..type_choices.len() - 1] {
-            let arm_metadata = type_choice_metadata(choice);
-            let misplaced = arm_metadata.non_variant_directives();
-            if !misplaced.is_empty() {
-                types.record_rejection(format!(
-                    "{} on a non-last arm of the multi-choice type rule `{name}`: a rule-level \
-                     directive attaches through the LAST arm's trailing comment, which is the \
-                     rule-position slot — on any other arm only `@name` and `@doc` are read (they \
-                     name and document that variant). Move it to the last arm, or reorder the arms \
-                     so the one carrying it is last.",
-                    misplaced.join(" / ")
-                ));
-            }
-        }
+        reject_non_last_arm_directives(types, type_choices, NonLastArmOwner::TypeChoiceRule(name));
         // Build the arms. The tag-258 collapse recognizer below compares the raw arm types for
         // structural equality and then DISCARDS these builds; the surviving product (the nominal set
         // wrapper or a transparent alias) is what registers. Inline `#6.258` occurrences NESTED inside
@@ -2673,26 +2737,7 @@ fn parse_type_choices(
                 reject_ignore_not_applicable(types, name);
             }
             // A collapsed tag-set has no enum variants to own first-arm names or docs.
-            for choice in &type_choices[..type_choices.len() - 1] {
-                let arm_metadata = type_choice_metadata(choice);
-                let mut misplaced = Vec::new();
-                if arm_metadata.name.is_some() {
-                    misplaced.push("@name");
-                }
-                if arm_metadata.doc.is_some() {
-                    misplaced.push("@doc");
-                }
-                if !misplaced.is_empty() {
-                    types.record_rejection(format!(
-                        "{} on a non-last arm of the tag-set rule `{name}`: its two arms collapse \
-                         into one collection whose tag is optional on the wire, so they are not \
-                         enum variants and there is no variant for `@name` to name or `@doc` to \
-                         document. Document the rule with `@doc` in the LAST arm's trailing \
-                         comment, which is the rule-position slot, and remove `@name`.",
-                        misplaced.join(" / ")
-                    ));
-                }
-            }
+            reject_non_last_arm_directives(types, type_choices, NonLastArmOwner::TagSetRule(name));
             let is_set_nominal =
                 is_array && well_known_tag_default_duplicates(set_tag, true).is_some();
             let defaulted = rule_metadata.duplicates.is_none()
@@ -7398,41 +7443,13 @@ fn rust_type(
         let rule_metadata = RuleMetadata::from(
             get_comment_after(parent_visitor, &CDDLType::from(t), None).as_ref(),
         );
-        // Non-last arms belong to variants; the last arm is the containing field's slot.
-        if null_collapse_inner(&t.type_choices).is_some() {
-            for choice in &t.type_choices[..1] {
-                let arm_metadata = type_choice_metadata(choice);
-                let mut misplaced = arm_metadata.non_variant_directives();
-                if arm_metadata.name.is_some() {
-                    misplaced.push("@name");
-                }
-                if arm_metadata.doc.is_some() {
-                    misplaced.push("@doc");
-                }
-                if !misplaced.is_empty() {
-                    types.record_rejection(format!(
-                        "{} on a non-last arm of an inline `T / null` choice: the choice lowers \
-                         to an optional field rather than variants, so that arm owns no directive \
-                         slot. Move a field directive to the entry's trailing comment, or put the \
-                         annotation on a named type rule.",
-                        misplaced.join(" / ")
-                    ));
-                }
-            }
+        // The last arm is the containing field's slot; classify only preceding arms here.
+        let owner = if null_collapse_inner(&t.type_choices).is_some() {
+            NonLastArmOwner::InlineNullCollapse
         } else {
-            for choice in &t.type_choices[..t.type_choices.len() - 1] {
-                let misplaced = type_choice_metadata(choice).non_variant_directives();
-                if !misplaced.is_empty() {
-                    types.record_rejection(format!(
-                        "{} on a non-last arm of an inline type choice: the choice lowers to an \
-                         anonymous enum whose variants read only `@name` and `@doc`, so that arm \
-                         owns no other directive slot. Move a field directive to the entry's \
-                         trailing comment, or put the annotation on a named type rule.",
-                        misplaced.join(" / ")
-                    ));
-                }
-            }
-        }
+            NonLastArmOwner::InlineTypeChoice
+        };
+        reject_non_last_arm_directives(types, &t.type_choices, owner);
         if t.type_choices.len() == 2 {
             // T / null   or   null / T   should map to Option<T>
             let collapse_inner = null_collapse_inner(&t.type_choices);
