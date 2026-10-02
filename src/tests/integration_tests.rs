@@ -1017,7 +1017,8 @@ fn wasm_public_surface(
         let js = std::fs::read_to_string(output_dir.join(format!(
             "{}.js",
             artifact.file_stem().unwrap().to_str().unwrap()
-        ))).unwrap();
+        )))
+        .unwrap();
         for class in classes {
             assert!(
                 js.contains(&format!("class {class} {{")),
