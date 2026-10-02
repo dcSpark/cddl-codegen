@@ -301,6 +301,8 @@ pub struct Bar {
 }
 ```
 
+A nullable `T / null` alias carries `@no_alias` into its extern-interface export, so imported consumers inline its optional body instead of referencing a suppressed alias.
+
 Beside a [`@custom_serialize`/`@custom_deserialize` pair](#custom_serialize--custom_deserialize) on a transparent alias, `@no_alias` is **accepted and redundant**: it asks for exactly the type-projection suppression a pair-carrying alias already performs, so both are honored and the rule generates byte-identically with or without it.
 
 ## @used_as_key
@@ -1562,6 +1564,9 @@ it is honored on a rule in a `_CDDL_CODEGEN_EXTERN_DEPS_DIR_` scope, spliced or 
 
 ## _CDDL_CODEGEN_EXTERN_TYPE_
 
+A marker body may be parenthesized, but a CBOR tag directly around that marker is refused: the marker names an externally defined type and supplies no generated wrapper to own the tag.
+Use a real CDDL body for the tagged wrapper or drop the tag.
+
 While not as a comment, this allows you to compose in hand-written structs into a cddl spec.
 ```cddl
 foo = _CDDL_CODEGEN_EXTERN_TYPE_
@@ -1770,6 +1775,9 @@ crate's link. Finally, if a listed class name is also defined by a rule in this 
 fails naming both: the `use` and the rule would claim one identifier.
 
 ## _CDDL_CODEGEN_RAW_BYTES_TYPE_
+
+A marker body may be parenthesized, but a CBOR tag directly around that marker is refused: the marker names an externally defined type and supplies no generated wrapper to own the tag.
+Use a real CDDL body for the tagged wrapper or drop the tag.
 
 Allows encoding as `bytes` but imposing hand-written constraints defined elsewhere.
 ```cddl

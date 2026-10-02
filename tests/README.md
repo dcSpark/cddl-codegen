@@ -3159,7 +3159,7 @@ A comment-DSL directive is only carried to a marking site by the parse path its 
 and those paths differ — so a written directive can produce output byte-identical to omitting it,
 with nothing acknowledging it. This gate is the systematic catch for that class, and it sweeps the
 whole product rather than a hand corpus, so a shape whose parse path nobody thought about is covered
-by construction. `local` tier (never `fast` — CI cost policy), ~37 s warm.
+by construction. `local` tier (never `fast` — CI cost policy).
 
 Per (shape, directive) cell it generates the built binary twice into throwaway scratch dirs — once
 with the base directives, once with the toggled directive ADDED — and renders one of four verdicts:
@@ -3176,6 +3176,7 @@ Three axes, each with its own authority:
 - **Shape** — hand-enumerated (shapes change far more slowly than directives). The mandatory parse
   paths, the extras each of which proved interesting in a prior delivery, and the arm-position axis
   folded in as two shapes of its own.
+  The wrapper axis also sweeps tagged and parenthesized choices, so an outer rule slot is checked against the inner choice body.
 - **Profile** — the cheapest flag set under which the directive's surface exists at all
   (`@used_as_elem` is a documented no-op without `--wasm`; `@no_json_schema_export` suppresses a
   json-gen row only). Generating a cell outside its witness profile measures nothing.
