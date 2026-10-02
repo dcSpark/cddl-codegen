@@ -115,6 +115,48 @@ fn array_segment_uses_fixed_domain_retry(
     false
 }
 
+/// What delimits an array occurrence segment (or rest tail) on the wire, relative to the live
+/// members authored after it. The four roles partition every row: a final segment never takes the
+/// fixed-domain retry (it has no possible-next member), and an exact-count segment never does
+/// either ([`array_segment_uses_fixed_domain_retry`] refuses it), so each emitter maps one value
+/// to its wording instead of re-deriving the role from the three predicates.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ArraySegmentBoundary {
+    /// No later live wire member ([`array_segment_is_final`]); vacuously every map row. The owner
+    /// array's own boundary delimits it.
+    Final,
+    /// A non-final segment whose exact occurrence count owns its boundary.
+    ExactCount,
+    /// A non-final segment whose finite fixed-domain proof lets the decoder retry the repeated
+    /// element and restore the later-member cursor.
+    FixedDomainRetry,
+    /// A non-final segment whose greedy boundary is proven from the possible-next CBOR majors.
+    MajorDisjoint,
+}
+
+impl ArraySegmentBoundary {
+    fn is_final(self) -> bool {
+        self == Self::Final
+    }
+}
+
+/// Classify `rest`'s boundary role once (see [`ArraySegmentBoundary`]).
+fn array_segment_boundary(
+    types: &IntermediateTypes,
+    record: &RustRecord,
+    rest: &RestRow,
+) -> ArraySegmentBoundary {
+    if array_segment_is_final(record, rest) {
+        ArraySegmentBoundary::Final
+    } else if rest.has_exact_occurrence_window() {
+        ArraySegmentBoundary::ExactCount
+    } else if array_segment_uses_fixed_domain_retry(types, record, rest) {
+        ArraySegmentBoundary::FixedDomainRetry
+    } else {
+        ArraySegmentBoundary::MajorDisjoint
+    }
+}
+
 /// The `@ignore` lossiness breadcrumb text for a rest row/segment, array-worded for an array
 /// segment and map-worded for a map row.
 fn ignore_lossiness_doc(record: &RustRecord, rest: &RestRow) -> &'static str {
@@ -1306,8 +1348,9 @@ pub(super) fn generate_array_struct_deserialization(
         })
         .collect();
     for segment in trailing_segments {
-        let fixed_domain_retry_position =
-            array_segment_uses_fixed_domain_retry(types, record, segment).then(|| {
+        let boundary = array_segment_boundary(types, record, segment);
+        let fixed_domain_retry_position = (boundary == ArraySegmentBoundary::FixedDomainRetry)
+            .then(|| {
                 record
                     .fresh_generated_member_ident(&format!("{}_retry_position", segment.field_name))
             });
@@ -1315,7 +1358,7 @@ pub(super) fn generate_array_struct_deserialization(
             gen_scope,
             types,
             segment,
-            !array_segment_is_final(record, segment),
+            !boundary.is_final(),
             fixed_domain_retry_position,
             vars_in_self,
             cli,
@@ -3744,20 +3787,16 @@ pub(super) fn codegen_struct(
                 rest.element()
                     .from_wasm_boundary_clone_expr(types, &first_arg, false),
             );
-            wasm_new_comments.push(if !array_segment_is_final(record, rest) {
-                if array_segment_uses_fixed_domain_retry(types, record, rest) {
-                    format!(
-                        "* `{first_arg}` - the first finite fixed-domain occurrence-segment element before its possible-next chain (CDDL `+ t` / `1* t`: the segment holds at least one element)"
-                    )
-                } else {
-                    format!(
-                        "* `{first_arg}` - the first major-disjoint occurrence-segment element before its later possible-next member (CDDL `+ t` / `1* t`: the segment holds at least one element)"
-                    )
-                }
-            } else {
-                format!(
+            wasm_new_comments.push(match array_segment_boundary(types, record, rest) {
+                ArraySegmentBoundary::FixedDomainRetry => format!(
+                    "* `{first_arg}` - the first finite fixed-domain occurrence-segment element before its possible-next chain (CDDL `+ t` / `1* t`: the segment holds at least one element)"
+                ),
+                ArraySegmentBoundary::ExactCount | ArraySegmentBoundary::MajorDisjoint => format!(
+                    "* `{first_arg}` - the first major-disjoint occurrence-segment element before its later possible-next member (CDDL `+ t` / `1* t`: the segment holds at least one element)"
+                ),
+                ArraySegmentBoundary::Final => format!(
                     "* `{first_arg}` - the first trailing element (CDDL `+ t` / `1* t`: the tail holds at least one element)"
-                )
+                ),
             });
         }
         // Every bounded array tail is supplied as its complete checked list wrapper. Unlike the
@@ -3784,29 +3823,24 @@ pub(super) fn codegen_struct(
                 &rest.field_name,
                 false,
             ));
-            wasm_new_comments.push(if !array_segment_is_final(record, rest) {
-                if rest.has_exact_occurrence_window() {
-                    format!(
-                        "* `{}` - the complete checked exact-count occurrence-segment wrapper before its later authored member (its CDDL occurrence window is enforced before construction)",
-                        rest.field_name
-                    )
-                } else if array_segment_uses_fixed_domain_retry(types, record, rest) {
-                    format!(
-                        "* `{}` - the complete checked finite fixed-domain occurrence-segment wrapper before its possible-next chain (its CDDL occurrence window is enforced before construction)",
-                        rest.field_name
-                    )
-                } else {
-                    format!(
-                        "* `{}` - the complete checked major-disjoint occurrence-segment wrapper before its later possible-next member (its CDDL occurrence window is enforced before construction)",
-                        rest.field_name
-                    )
-                }
-            } else {
-                format!(
+            wasm_new_comments.push(match array_segment_boundary(types, record, rest) {
+                ArraySegmentBoundary::ExactCount => format!(
+                    "* `{}` - the complete checked exact-count occurrence-segment wrapper before its later authored member (its CDDL occurrence window is enforced before construction)",
+                    rest.field_name
+                ),
+                ArraySegmentBoundary::FixedDomainRetry => format!(
+                    "* `{}` - the complete checked finite fixed-domain occurrence-segment wrapper before its possible-next chain (its CDDL occurrence window is enforced before construction)",
+                    rest.field_name
+                ),
+                ArraySegmentBoundary::MajorDisjoint => format!(
+                    "* `{}` - the complete checked major-disjoint occurrence-segment wrapper before its later possible-next member (its CDDL occurrence window is enforced before construction)",
+                    rest.field_name
+                ),
+                ArraySegmentBoundary::Final => format!(
                     "* `{}` - the complete checked trailing-array wrapper (its CDDL occurrence window \
                      is enforced before construction)",
                     rest.field_name
-                )
+                ),
             });
         }
         // A restricted open-struct rest or open-table catch-all has a read-only wasm getter, so it
@@ -3852,46 +3886,53 @@ pub(super) fn codegen_struct(
             .filter(|r| !record.is_typed_row(r))
         {
             let rest_ty = rest_member_type(rest);
+            let boundary = array_segment_boundary(types, record, rest);
             let mut getter = codegen::Function::new(&rest.field_name);
             getter
                 .arg_ref_self()
                 .ret(gen_scope.wasm_return_type(types, &rest_ty, name, "open-rest getter return"))
                 .vis("pub")
                 .doc(if rest.is_array_tail() && !record.array_segments.is_empty() {
-                    if !array_segment_is_final(record, rest) {
-                        if array_segment_uses_fixed_domain_retry(types, record, rest) {
+                    match boundary {
+                        ArraySegmentBoundary::FixedDomainRetry => {
                             "The captured finite fixed-domain occurrence segment before its possible-next \
                              chain, as its wasm list wrapper; the decoder retries the repeated element \
                              and restores the later-member cursor."
-                        } else {
+                        }
+                        ArraySegmentBoundary::ExactCount | ArraySegmentBoundary::MajorDisjoint => {
                             "The captured array occurrence segment before a later authored member, as its \
                              wasm list wrapper; its greedy boundary is generator-proven from the possible-next \
                              wire heads or owned by its occurrence count."
                         }
-                    } else {
-                        "The captured final authored array occurrence segment, as its wasm list wrapper; \
-                         its occurrence window is enforced before construction."
+                        ArraySegmentBoundary::Final => {
+                            "The captured final authored array occurrence segment, as its wasm list wrapper; \
+                             its occurrence window is enforced before construction."
+                        }
                     }
-                } else if rest.is_array_tail() && !array_segment_is_final(record, rest) {
-                    if array_segment_uses_fixed_domain_retry(types, record, rest) {
-                        "The captured finite fixed-domain occurrence segment before its possible-next \
-                         chain, as the wasm list wrapper; the decoder retries the repeated element \
-                         and restores the later-member cursor."
-                    } else if rest.is_non_empty_array_tail() {
-                        "The captured one-or-more major-disjoint occurrence segment before its later \
-                         possible-next member (CDDL `+ t` / `1* t`), as the restricted wasm list \
-                         wrapper."
-                    } else if rest.is_restricted() {
-                        if rest.has_exact_occurrence_window() {
+                } else if rest.is_array_tail() && !boundary.is_final() {
+                    match boundary {
+                        ArraySegmentBoundary::FixedDomainRetry => {
+                            "The captured finite fixed-domain occurrence segment before its possible-next \
+                             chain, as the wasm list wrapper; the decoder retries the repeated element \
+                             and restores the later-member cursor."
+                        }
+                        _ if rest.is_non_empty_array_tail() => {
+                            "The captured one-or-more major-disjoint occurrence segment before its later \
+                             possible-next member (CDDL `+ t` / `1* t`), as the restricted wasm list \
+                             wrapper."
+                        }
+                        ArraySegmentBoundary::ExactCount if rest.is_restricted() => {
                             "The captured bounded exact-count occurrence segment before a later \
                              authored member, as its checked wasm list wrapper."
-                        } else {
+                        }
+                        _ if rest.is_restricted() => {
                             "The captured bounded major-disjoint occurrence segment before a later \
                              possible-next member, as its checked wasm list wrapper."
                         }
-                    } else {
-                        "The captured major-disjoint occurrence segment before a later possible-next \
-                         member (CDDL `* t`), as the wasm list wrapper."
+                        _ => {
+                            "The captured major-disjoint occurrence segment before a later possible-next \
+                             member (CDDL `* t`), as the wasm list wrapper."
+                        }
                     }
                 } else if rest.is_non_empty_array_tail() {
                     "The captured one-or-more trailing array elements beyond the declared members \
@@ -4304,54 +4345,60 @@ pub(super) fn codegen_struct(
             },
             rest_member_type(rest).for_rust_member(types, false, cli),
         );
+        let boundary = array_segment_boundary(types, record, rest);
         rest_field.doc(if rest.is_array_tail() && !record.array_segments.is_empty() {
-            if !array_segment_is_final(record, rest) {
-                if array_segment_uses_fixed_domain_retry(types, record, rest) {
+            match boundary {
+                ArraySegmentBoundary::FixedDomainRetry => {
                     "Captured finite fixed-domain occurrence-segment elements before their possible-next \
                      chain. The decoder retries the repeated element and restores the later-member cursor. \
                      Serialized at their authored source position; supplied complete to `new()`."
-                } else {
+                }
+                ArraySegmentBoundary::ExactCount | ArraySegmentBoundary::MajorDisjoint => {
                     "Captured array occurrence-segment elements before a later authored array member. Their \
                      greedy boundary is generator-proven from possible-next wire heads or owned by their \
                      occurrence count. Serialized at their authored source position; supplied complete to \
                      `new()`."
                 }
-            } else {
-                "Captured final authored array occurrence-segment elements, whose occurrence window is \
-                 enforced by this carrier. Serialized at their authored source position; supplied complete \
-                 to `new()`."
+                ArraySegmentBoundary::Final => {
+                    "Captured final authored array occurrence-segment elements, whose occurrence window is \
+                     enforced by this carrier. Serialized at their authored source position; supplied complete \
+                     to `new()`."
+                }
             }
-        } else if rest.is_array_tail() && !array_segment_is_final(record, rest) {
-            if array_segment_uses_fixed_domain_retry(types, record, rest) {
-                if rest.is_restricted() {
+        } else if rest.is_array_tail() && !boundary.is_final() {
+            match boundary {
+                ArraySegmentBoundary::FixedDomainRetry if rest.is_restricted() => {
                     "Captured bounded finite fixed-domain occurrence-segment elements before their \
                      possible-next chain; the decoder retries the repeated element and restores the \
                      cursor for the disjoint fixed-domain boundary. Its inclusive CDDL occurrence \
                      window is enforced by this checked carrier. Serialized at its authored source \
                      position; supplied complete to `new()`."
-                } else {
+                }
+                ArraySegmentBoundary::FixedDomainRetry => {
                     "Captured finite fixed-domain occurrence-segment elements before their possible-next \
                      chain (CDDL `* t`); the decoder retries the repeated element and restores the cursor \
                      for the disjoint fixed-domain boundary. Serialized at its authored source \
                      position; defaults empty."
                 }
-            } else if rest.is_non_empty_array_tail() {
-                "Captured one-or-more major-disjoint occurrence-segment elements before a later \
-                 possible-next member (CDDL `+ t` / `1* t`). Serialized at its authored source position; never \
-                 empty."
-            } else if rest.is_restricted() {
-                if rest.has_exact_occurrence_window() {
+                _ if rest.is_non_empty_array_tail() => {
+                    "Captured one-or-more major-disjoint occurrence-segment elements before a later \
+                     possible-next member (CDDL `+ t` / `1* t`). Serialized at its authored source position; never \
+                     empty."
+                }
+                ArraySegmentBoundary::ExactCount if rest.is_restricted() => {
                     "Captured exact-count occurrence-segment elements before a later authored member, \
                      whose inclusive CDDL occurrence window is enforced by this checked carrier. Serialized \
                      at its authored source position; supplied complete to `new()`."
-                } else {
+                }
+                _ if rest.is_restricted() => {
                     "Captured major-disjoint occurrence-segment elements before a later possible-next member, \
                      whose inclusive CDDL occurrence window is enforced by this checked carrier. Serialized \
                      at its authored source position; supplied complete to `new()`."
                 }
-            } else {
-                "Captured major-disjoint occurrence-segment elements before a later possible-next member \
-                 (CDDL `* t`). Serialized at its authored source position; defaults empty."
+                _ => {
+                    "Captured major-disjoint occurrence-segment elements before a later possible-next member \
+                     (CDDL `* t`). Serialized at its authored source position; defaults empty."
+                }
             }
         } else if rest.is_non_empty_array_tail() {
             "Captured one-or-more trailing array elements beyond the declared members (CDDL `+ t` / \
@@ -4524,20 +4571,16 @@ pub(super) fn codegen_struct(
             let first_arg = first_array_tail_element_param_ident(record, rest);
             native_new.arg(&first_arg, rest.element().for_rust_move(types, cli));
             new_arg_count += 1;
-            native_new_comments.push(if !array_segment_is_final(record, rest) {
-                if array_segment_uses_fixed_domain_retry(types, record, rest) {
-                    format!(
-                        "* `{first_arg}` - the first finite fixed-domain occurrence-segment element before its possible-next chain (CDDL `+ t` / `1* t`: the segment holds at least one element)"
-                    )
-                } else {
-                    format!(
-                        "* `{first_arg}` - the first major-disjoint occurrence-segment element before its later possible-next member (CDDL `+ t` / `1* t`: the segment holds at least one element)"
-                    )
-                }
-            } else {
-                format!(
+            native_new_comments.push(match array_segment_boundary(types, record, rest) {
+                ArraySegmentBoundary::FixedDomainRetry => format!(
+                    "* `{first_arg}` - the first finite fixed-domain occurrence-segment element before its possible-next chain (CDDL `+ t` / `1* t`: the segment holds at least one element)"
+                ),
+                ArraySegmentBoundary::ExactCount | ArraySegmentBoundary::MajorDisjoint => format!(
+                    "* `{first_arg}` - the first major-disjoint occurrence-segment element before its later possible-next member (CDDL `+ t` / `1* t`: the segment holds at least one element)"
+                ),
+                ArraySegmentBoundary::Final => format!(
                     "* `{first_arg}` - the first trailing element (CDDL `+ t` / `1* t`: the tail holds at least one element)"
-                )
+                ),
             });
             native_new_block.line(format!(
                 "{}: NonEmptyVec::new({first_arg}),",
@@ -4553,28 +4596,23 @@ pub(super) fn codegen_struct(
                 new_arg_count += 1;
             }
             if !multi_array_segments {
-                native_new_comments.push(if !array_segment_is_final(record, rest) {
-                    if rest.has_exact_occurrence_window() {
-                        format!(
-                            "* `{}` - the complete checked exact-count occurrence-segment carrier before its later authored member (its CDDL occurrence window is enforced by this carrier)",
-                            rest.field_name
-                        )
-                    } else if array_segment_uses_fixed_domain_retry(types, record, rest) {
-                        format!(
-                            "* `{}` - the complete checked finite fixed-domain occurrence-segment carrier before its possible-next chain (the retry decoder preserves the later-member cursor; its CDDL occurrence window is enforced by this carrier)",
-                            rest.field_name
-                        )
-                    } else {
-                        format!(
-                            "* `{}` - the complete checked major-disjoint occurrence-segment carrier before its later possible-next member (its CDDL occurrence window is enforced by this carrier)",
-                            rest.field_name
-                        )
-                    }
-                } else {
-                    format!(
+                native_new_comments.push(match array_segment_boundary(types, record, rest) {
+                    ArraySegmentBoundary::ExactCount => format!(
+                        "* `{}` - the complete checked exact-count occurrence-segment carrier before its later authored member (its CDDL occurrence window is enforced by this carrier)",
+                        rest.field_name
+                    ),
+                    ArraySegmentBoundary::FixedDomainRetry => format!(
+                        "* `{}` - the complete checked finite fixed-domain occurrence-segment carrier before its possible-next chain (the retry decoder preserves the later-member cursor; its CDDL occurrence window is enforced by this carrier)",
+                        rest.field_name
+                    ),
+                    ArraySegmentBoundary::MajorDisjoint => format!(
+                        "* `{}` - the complete checked major-disjoint occurrence-segment carrier before its later possible-next member (its CDDL occurrence window is enforced by this carrier)",
+                        rest.field_name
+                    ),
+                    ArraySegmentBoundary::Final => format!(
                         "* `{}` - the complete checked trailing-array carrier (its CDDL occurrence window is enforced by this carrier)",
                         rest.field_name
-                    )
+                    ),
                 });
             }
             native_new_block.line(format!("{},", rest.field_name));
@@ -4617,26 +4655,26 @@ pub(super) fn codegen_struct(
                                 .expect("array segment has a source index"),
                             row.field_name.clone(),
                             rest_member_type(row).for_rust_move(types, cli),
-                            Some(if row.has_exact_occurrence_window() {
-                                format!(
+                            // A FINAL exact-count segment takes the exact-count wording here: this
+                            // doc checks the count before the role (the other doc sites check the
+                            // role first).
+                            Some(match array_segment_boundary(types, record, row) {
+                                _ if row.has_exact_occurrence_window() => format!(
                                     "* `{}` - the complete carrier for this authored exact-count array occurrence segment; its count owns the boundary and its CDDL occurrence window is enforced by that carrier",
                                     row.field_name
-                                )
-                            } else if array_segment_is_final(record, row) {
-                                format!(
+                                ),
+                                ArraySegmentBoundary::Final => format!(
                                     "* `{}` - the complete carrier for this final authored array occurrence segment; the owner array boundary delimits it and its CDDL occurrence window is enforced by that carrier",
                                     row.field_name
-                                )
-                            } else if array_segment_uses_fixed_domain_retry(types, record, row) {
-                                format!(
+                                ),
+                                ArraySegmentBoundary::FixedDomainRetry => format!(
                                     "* `{}` - the complete carrier for this finite fixed-domain occurrence segment before its possible-next chain (the retry decoder preserves the later-member cursor; its CDDL occurrence window is enforced by that carrier)",
                                     row.field_name
-                                )
-                            } else {
-                                format!(
+                                ),
+                                ArraySegmentBoundary::ExactCount | ArraySegmentBoundary::MajorDisjoint => format!(
                                     "* `{}` - the complete carrier for this authored array occurrence segment; its greedy boundary is proven from possible-next CBOR majors and its CDDL occurrence window is enforced by that carrier",
                                     row.field_name
-                                )
+                                ),
                             }),
                         )
                     }),
