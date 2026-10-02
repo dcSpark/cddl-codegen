@@ -322,98 +322,18 @@ pub(super) fn generate_wrapper_struct(
                 other => unreachable!("set nominal wrapped a non-array type: {other:?}"),
             };
             let native_wrapper = rust_crate_struct_from_wasm(types, type_name, cli);
-            let from_elem =
-                |name: &str| element_type.from_wasm_boundary_clone_expr(types, name, false);
-            wrapper
-                .s_impl
-                .new_fn("len")
-                .vis("pub")
-                .ret("usize")
-                .arg_ref_self()
-                .line("self.0.len()");
-            wrapper
-                .s_impl
-                .new_fn("get")
-                .vis("pub")
-                .ret(gen_scope.wasm_return_type(
-                    types,
-                    &element_type,
-                    type_name,
-                    "set-nominal get return",
-                ))
-                .arg_ref_self()
-                .arg("index", "usize")
-                .line(element_type.to_wasm_boundary(types, "self.0[index]", false));
-            // This is the sole mutable wasm door for a bounded set: both duplicate and overflow
-            // are errors, so it must not normalize an attempted insertion into a no-op.
-            let elem_handover = |name: &str| {
-                super::collections::wasm_direct_storage_expr(&element_type, name, types, cli)
-            };
-            wrapper
-                .s_impl
-                .new_fn("add")
-                .vis("pub")
-                .ret("Result<(), JsError>")
-                .arg_mut_self()
-                .arg(
-                    "elem",
-                    gen_scope.wasm_param_type(
-                        types,
-                        &element_type,
-                        type_name,
-                        "set-nominal add parameter",
-                    ),
-                )
-                .line(format!(
-                    "self.0.push({}).map_err(|e| JsError::new(&e.to_string()))",
-                    elem_handover("elem")
-                ));
-            if !bounded_reject {
-                let mut insert = codegen::Function::new("insert");
-                insert.vis("pub").arg_mut_self().arg(
-                    "elem",
-                    gen_scope.wasm_param_type(
-                        types,
-                        &element_type,
-                        type_name,
-                        "set-nominal insert parameter",
-                    ),
-                );
-                if let Some(handover) =
-                    super::collections::wasm_exact_byte_handover(&element_type, "elem", cli)
-                {
-                    insert
-                        .ret("Result<bool, JsError>")
-                        .line(format!("Ok(self.0.insert({handover}))"));
-                } else {
-                    insert
-                        .ret("bool")
-                        .line(format!("self.0.insert({})", from_elem("elem")));
-                }
-                wrapper.s_impl.push_fn(insert);
-            }
-            let mut contains = codegen::Function::new("contains");
-            contains.vis("pub").arg_ref_self().arg(
-                "elem",
-                gen_scope.wasm_param_type(
-                    types,
-                    &element_type,
-                    type_name,
-                    "set-nominal contains parameter",
-                ),
+            super::collections::push_ordered_set_accessors(
+                gen_scope,
+                &mut wrapper,
+                types,
+                type_name,
+                &element_type,
+                super::collections::OrderedSetAccessorOptions {
+                    with_insert: !bounded_reject,
+                    label_prefix: "set-nominal",
+                },
+                cli,
             );
-            if let Some(handover) =
-                super::collections::wasm_exact_byte_handover(&element_type, "elem", cli)
-            {
-                contains
-                    .ret("Result<bool, JsError>")
-                    .line(format!("Ok(self.0.contains(&{handover}))"));
-            } else {
-                contains
-                    .ret("bool")
-                    .line(format!("self.0.contains(&{})", from_elem("elem")));
-            }
-            wrapper.s_impl.push_fn(contains);
             // A list-taking construction door + the empty-means-absent `try_opt_from` (the wasm
             // mirror of the rust nominal's inherent constructor — its landing removes the matching
             // `PARITY_EXEMPT` entries). Both delegate to the rust nominal's `TryFrom<Vec<Elem>>` /

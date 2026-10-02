@@ -1057,93 +1057,18 @@ impl GenerationScope {
                 .line(format!("Self({twin}::new())"));
             wrapper.s_impl.push_fn(new_func);
         }
-        // len + get (shared conventions), then a CHECKED add (the uniqueness difference)
-        wrapper
-            .s_impl
-            .new_fn("len")
-            .vis("pub")
-            .ret("usize")
-            .arg_ref_self()
-            .line("self.0.len()");
-        wrapper
-            .s_impl
-            .new_fn("get")
-            .vis("pub")
-            .ret(self.wasm_return_type(
-                types,
-                &element_type,
-                wrapper_ident,
-                "ordered-set get return",
-            ))
-            .arg_ref_self()
-            .arg("index", "usize")
-            .line(element_type.to_wasm_boundary(types, "self.0[index]", false));
-        wrapper
-            .s_impl
-            .new_fn("add")
-            .vis("pub")
-            .ret("Result<(), JsError>")
-            .arg_mut_self()
-            .arg(
-                "elem",
-                self.wasm_param_type(
-                    types,
-                    &element_type,
-                    wrapper_ident,
-                    "ordered-set add parameter",
-                ),
-            )
-            .line(format!(
-                "self.0.push({}).map_err(|e| JsError::new(&e.to_string()))",
-                wasm_direct_storage_expr(&element_type, "elem", types, cli)
-            ));
-        // Only loose/non-empty twins expose the standard normalizing insert. Bounded set mutation
-        // must stay checked for both duplicate and maximum overflow.
-        if bounds.is_none() {
-            let mut insert = codegen::Function::new("insert");
-            insert.vis("pub").arg_mut_self().arg(
-                "elem",
-                self.wasm_param_type(
-                    types,
-                    &element_type,
-                    wrapper_ident,
-                    "ordered-set insert parameter",
-                ),
-            );
-            if let Some(handover) = wasm_exact_byte_handover(&element_type, "elem", cli) {
-                insert
-                    .ret("Result<bool, JsError>")
-                    .line(format!("Ok(self.0.insert({handover}))"));
-            } else {
-                insert.ret("bool").line(format!(
-                    "self.0.insert({})",
-                    element_type.from_wasm_boundary_clone_expr(types, "elem", false)
-                ));
-            }
-            wrapper.s_impl.push_fn(insert);
-        }
-        // Membership is a read door and applies to every ordered-set flavor.
-        let mut contains = codegen::Function::new("contains");
-        contains.vis("pub").arg_ref_self().arg(
-            "elem",
-            self.wasm_param_type(
-                types,
-                &element_type,
-                wrapper_ident,
-                "ordered-set contains parameter",
-            ),
+        push_ordered_set_accessors(
+            self,
+            &mut wrapper,
+            types,
+            wrapper_ident,
+            &element_type,
+            OrderedSetAccessorOptions {
+                with_insert: bounds.is_none(),
+                label_prefix: "ordered-set",
+            },
+            cli,
         );
-        if let Some(handover) = wasm_exact_byte_handover(&element_type, "elem", cli) {
-            contains
-                .ret("Result<bool, JsError>")
-                .line(format!("Ok(self.0.contains(&{handover}))"));
-        } else {
-            contains.ret("bool").line(format!(
-                "self.0.contains(&{})",
-                element_type.from_wasm_boundary_clone_expr(types, "elem", false)
-            ));
-        }
-        wrapper.s_impl.push_fn(contains);
         // try_from: the single checked door from the loose form to the restricted wrapper.
         if element_type.vec_of_self_directly_wasm_exposable(types) {
             wrapper
@@ -1782,6 +1707,112 @@ impl GenerationScope {
             _ => (),
         }
     }
+}
+
+/// Accessor placement and diagnostics for one ordered-set WASM surface.
+pub(super) struct OrderedSetAccessorOptions {
+    pub with_insert: bool,
+    pub label_prefix: &'static str,
+}
+
+/// Share the ordered-set read doors and checked mutation without changing constructor identity.
+/// Bounded sets omit the normalizing insert door; exact-byte handovers remain fallible.
+pub(super) fn push_ordered_set_accessors(
+    gen_scope: &mut GenerationScope,
+    wrapper: &mut WasmWrapper,
+    types: &IntermediateTypes,
+    owner: &RustIdent,
+    element_type: &RustType,
+    options: OrderedSetAccessorOptions,
+    cli: &Cli,
+) {
+    // len + get (shared conventions), then a CHECKED add (the uniqueness difference)
+    wrapper
+        .s_impl
+        .new_fn("len")
+        .vis("pub")
+        .ret("usize")
+        .arg_ref_self()
+        .line("self.0.len()");
+    wrapper
+        .s_impl
+        .new_fn("get")
+        .vis("pub")
+        .ret(gen_scope.wasm_return_type(
+            types,
+            element_type,
+            owner,
+            &format!("{} get return", options.label_prefix),
+        ))
+        .arg_ref_self()
+        .arg("index", "usize")
+        .line(element_type.to_wasm_boundary(types, "self.0[index]", false));
+    wrapper
+        .s_impl
+        .new_fn("add")
+        .vis("pub")
+        .ret("Result<(), JsError>")
+        .arg_mut_self()
+        .arg(
+            "elem",
+            gen_scope.wasm_param_type(
+                types,
+                element_type,
+                owner,
+                &format!("{} add parameter", options.label_prefix),
+            ),
+        )
+        .line(format!(
+            "self.0.push({}).map_err(|e| JsError::new(&e.to_string()))",
+            wasm_direct_storage_expr(element_type, "elem", types, cli)
+        ));
+    // Only loose/non-empty twins expose the standard normalizing insert. Bounded set mutation
+    // must stay checked for both duplicate and maximum overflow.
+    if options.with_insert {
+        let mut insert = codegen::Function::new("insert");
+        insert.vis("pub").arg_mut_self().arg(
+            "elem",
+            gen_scope.wasm_param_type(
+                types,
+                element_type,
+                owner,
+                &format!("{} insert parameter", options.label_prefix),
+            ),
+        );
+        if let Some(handover) = wasm_exact_byte_handover(element_type, "elem", cli) {
+            insert
+                .ret("Result<bool, JsError>")
+                .line(format!("Ok(self.0.insert({handover}))"));
+        } else {
+            insert.ret("bool").line(format!(
+                "self.0.insert({})",
+                element_type.from_wasm_boundary_clone_expr(types, "elem", false)
+            ));
+        }
+        wrapper.s_impl.push_fn(insert);
+    }
+    // Membership is a read door and applies to every ordered-set flavor.
+    let mut contains = codegen::Function::new("contains");
+    contains.vis("pub").arg_ref_self().arg(
+        "elem",
+        gen_scope.wasm_param_type(
+            types,
+            element_type,
+            owner,
+            &format!("{} contains parameter", options.label_prefix),
+        ),
+    );
+    if let Some(handover) = wasm_exact_byte_handover(element_type, "elem", cli) {
+        contains
+            .ret("Result<bool, JsError>")
+            .line(format!("Ok(self.0.contains(&{handover}))"));
+    } else {
+        contains.ret("bool").line(format!(
+            "self.0.contains(&{})",
+            element_type.from_wasm_boundary_clone_expr(types, "elem", false)
+        ));
+    }
+    wrapper.s_impl.push_fn(contains);
 }
 
 /// Emit the shared wasm list-wrapper accessor triple — `len`, `get`, `add` — onto `wrapper`'s impl.
