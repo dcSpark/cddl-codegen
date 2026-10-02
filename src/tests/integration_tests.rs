@@ -20802,8 +20802,8 @@ fn extern_wrapper_index_named_rule_reference_unifies_with_dep() {
         "expected the local-mint warning for MapU64ToIdxFoo, got stderr:\n{gen_stderr}"
     );
     assert!(
-        gen_stderr.contains("duplicate-symbol when linked into one cdylib"),
-        "the local-mint warning must state the duplicate-symbol consequence:\n{gen_stderr}"
+        gen_stderr.contains("collide at linking or binding generation when included in one cdylib"),
+        "the local-mint warning must state the public WASM collision consequence:\n{gen_stderr}"
     );
 
     let wasm_mod = std::fs::read_to_string(export.join("wasm/src/generated/mod.rs")).unwrap();

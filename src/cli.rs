@@ -888,7 +888,7 @@ pub struct Cli {
 
     /// Point the consumer at a dependency's committed collection-wrapper index
     /// (`generated/collections.rs`, emitted by every wasm run) so it DEFERS to the dep's wasm
-    /// wrappers instead of re-minting them (a wasm duplicate-symbol link error otherwise). For each
+    /// wrappers instead of re-minting them (a collision at linking or binding generation otherwise). For each
     /// collection wrapper the consumer would mint whose element/key/value types are all extern types
     /// of `<dep>`, if the wrapper's structurally-derived name appears in `<dep>`'s index the consumer
     /// emits a plain `use <dep_wasm>::collections::<Name>;` (routed through `--extern-wasm-crate`)

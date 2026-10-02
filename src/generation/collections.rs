@@ -192,8 +192,8 @@ impl GenerationScope {
                          are structurally identical (values cannot be passed between the two packages \
                          as that type), and if the dependency's wasm crate also exports that name — \
                          its own spec declaring it, or another consumer's request sidecar having asked \
-                         it to mint one — the two duplicate-symbol at link. Remedy: rename the rule, \
-                         or give it a distinct @name."
+                         it to mint one — the two collide at linking or binding generation. Remedy: rename \
+                         the rule, or give it a distinct @name."
                     );
                 }
                 // fall through to the shipped behavior (never a workspace defer)
@@ -297,7 +297,7 @@ impl GenerationScope {
                     crate::warn!(
                         "warning: collection wrapper {structural_name} has only extern elements of \
                          dependency {dep:?} but is absent from its --extern-wrapper-index; minting \
-                         it locally (a dep that later adds it would duplicate-symbol at link time)\n\
+                         it locally (a dep that later adds it would collide at linking or binding generation)\n\
                          hint: add to {dep}'s spec: {rule_line}"
                     );
                 }
@@ -359,9 +359,9 @@ impl GenerationScope {
         crate::warn!(
             "warning: rule-declared table {name} is minted locally, but dependency {dep:?} also \
              lists {name} in its --extern-wrapper-index; a table rule keeps the consumer's own \
-             class, so both crates export a #[wasm_bindgen] {name} and the two duplicate-symbol \
-             when linked into one cdylib. Remedy: rename the rule, or give it a distinct @name, or \
-             drop the rule and let {dep} own the type."
+             class, so both crates export a #[wasm_bindgen] {name} and the two collide at linking \
+             or binding generation when included in one cdylib. Remedy: rename the rule, or \
+             give it a distinct @name, or drop the rule and let {dep} own the type."
         );
     }
 
@@ -420,9 +420,9 @@ impl GenerationScope {
              dependency {dep:?} also lists {name} in its --extern-wrapper-index; this mint reached \
              no deferral decision (its ident is not the structural name of its own constituents, \
              or those constituents are not all extern types of one dependency), so both crates \
-             export a #[wasm_bindgen] {name} and the two duplicate-symbol when linked into one \
-             cdylib. Remedy: rename the rule, or give it a distinct @name, or settle the name on \
-             one owner — declare this shape in {dep}'s spec, or drop {name} from {dep}."
+             export a #[wasm_bindgen] {name} and the two collide at linking or binding generation \
+             when included in one cdylib. Remedy: rename the rule, or give it a distinct @name, \
+             or settle the name on one owner — declare this shape in {dep}'s spec, or drop {name} from {dep}."
         );
     }
 
