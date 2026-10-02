@@ -1603,8 +1603,9 @@ impl GenerationScope {
             // by `mint_sole_owner_table`), and minting a second `pub struct MapKToV` here would clash
             // with that alias (E0428). The alias resolves to the owner, whose conversion methods make
             // `map.clone().into()` work, so sharing it is both correct and necessary.
-            let shape_has_sole_owner = types
-                .table_shape_sole_owners()
+            // `generate` cached the sole-owner projection on entry.
+            let shape_has_sole_owner = self
+                .wasm_collection_reference_sole_owners
                 .contains_key(&loose_ident.to_string());
             if !shape_has_sole_owner {
                 // This mint runs through `try_defer_wrapper` like any other, so a dep-indexed loose
@@ -2326,77 +2327,124 @@ pub(super) fn dep_owns_element(types: &IntermediateTypes, ident: &RustIdent) -> 
     known && types.scope(ident).export()
 }
 
-/// Mint the wasm structural wrapper class for a single visited `ConceptualRustType` (the per-type body
-/// of the wasm-wrapper visit). Shared by the rust-struct walk and the wasm-alias-target walk so both
-/// reach identical minting decisions (sole-owner routing, map-key array wrappers). Idempotent via
-/// `wasm_wrappers_generated`; every class body is derived purely from the shape, so the result is
-/// iteration-order-independent.
-#[allow(clippy::too_many_arguments)]
-pub(super) fn mint_wasm_wrapper_for_visited_type(
-    gen_scope: &mut GenerationScope,
-    types: &IntermediateTypes,
-    ty: &ConceptualRustType,
-    wasm_wrappers_generated: &mut BTreeSet<String>,
-    table_shape_sole_owner: &BTreeMap<String, RustIdent>,
-    // The container flavor of THIS occurrence, supplied by the caller from LOCAL information (a rest
-    // row's `duplicates()`, an alias base `RustType`'s carried policy). A `ConceptualRustType` carries
-    // no policy of its own, so the conceptual visitor passes `false` — it mints only default-flavored
-    // wrappers, and every preserve-flavored mint comes from a RustType-/config-level walk that knows.
-    preserve_pair_map: bool,
-    cli: &Cli,
-) {
-    match ty {
-        ConceptualRustType::Array(elem) => {
-            if !ty.directly_wasm_exposable_ct(types) {
-                let array_ident = elem.name_as_wasm_array(types);
-                if wasm_wrappers_generated.insert(array_ident.clone()) {
-                    gen_scope.generate_array_type(
-                        types,
-                        *elem.clone(),
-                        &RustIdent::new(CDDLIdent::new(array_ident)),
-                        false,
-                        cli,
-                    );
-                }
-            }
+/// The map container flavor a wasm wrapper mint produces for a visited `Map`. A
+/// `ConceptualRustType` carries no `@duplicates` policy of its own, so the caller supplies it from
+/// LOCAL information (a rest row's container, an alias base `RustType`'s carried policy); the
+/// policy-blind conceptual visitor always passes [`MapFlavor::Default`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum MapFlavor {
+    /// The keyed `MapKToV` class.
+    Default,
+    /// The `@duplicates preserve` `PairMapKToV` class.
+    PairMap,
+}
+
+impl MapFlavor {
+    /// The flavor `ty`'s own top-level map carries.
+    pub(super) fn of(ty: &RustType) -> Self {
+        if ty.is_preserve_pair_map() {
+            Self::PairMap
+        } else {
+            Self::Default
         }
-        ConceptualRustType::Map(k, v) => {
-            let map_ident = RustType::wasm_structural_map_name_for(k, v, preserve_pair_map, types);
-            match table_shape_sole_owner.get(&map_ident.to_string()) {
-                // A single named rule owns this shape: this embedded/resolved use
-                // shares that rule-named class (JS-visible under the CDDL
-                // identifier) rather than minting an anonymous structural class.
-                Some(owner) if is_loose_table_owner(types, owner) => mint_sole_owner_table(
-                    gen_scope,
-                    types,
-                    owner,
-                    &map_ident,
-                    wasm_wrappers_generated,
-                    cli,
-                ),
-                // Anonymous-only shape (or a same-shape rule pair): mint the
-                // structural class, whose inner is the raw map (not a rust rule).
-                None | Some(_) => {
-                    if wasm_wrappers_generated.insert(map_ident.to_string()) {
-                        codegen_table_type(
-                            gen_scope,
+    }
+
+    fn is_pair_map(self) -> bool {
+        self == Self::PairMap
+    }
+}
+
+/// The state one `generate` run's wasm wrapper walk shares across every mint: the class names
+/// already minted (so each mint is idempotent) and the table-shape sole-owner projection that
+/// routes an embedded map to its owning rule's class.
+pub(super) struct WrapperMintWalk {
+    pub(super) generated: BTreeSet<String>,
+    sole_owners: BTreeMap<String, RustIdent>,
+}
+
+impl WrapperMintWalk {
+    pub(super) fn new(sole_owners: BTreeMap<String, RustIdent>) -> Self {
+        Self {
+            generated: BTreeSet::new(),
+            sole_owners,
+        }
+    }
+
+    /// The single named table rule that owns the structural map shape `map_ident`, if exactly one
+    /// does.
+    pub(super) fn sole_owner(&self, map_ident: &RustIdent) -> Option<&RustIdent> {
+        self.sole_owners.get(&map_ident.to_string())
+    }
+
+    /// Mint the wasm structural wrapper class for a single visited `ConceptualRustType` (the
+    /// per-type body of the wasm-wrapper visit). Shared by the rust-struct walk and the
+    /// wasm-alias-target walk so both reach identical minting decisions (sole-owner routing,
+    /// map-key array wrappers). Idempotent via `generated`; every class body is derived purely from
+    /// the shape, so the result is iteration-order-independent. `flavor` is THIS occurrence's map
+    /// flavor (see [`MapFlavor`]).
+    pub(super) fn mint(
+        &mut self,
+        gen_scope: &mut GenerationScope,
+        types: &IntermediateTypes,
+        ty: &ConceptualRustType,
+        flavor: MapFlavor,
+        cli: &Cli,
+    ) {
+        match ty {
+            ConceptualRustType::Array(elem) => {
+                if !ty.directly_wasm_exposable_ct(types) {
+                    let array_ident = elem.name_as_wasm_array(types);
+                    if self.generated.insert(array_ident.clone()) {
+                        gen_scope.generate_array_type(
                             types,
-                            &map_ident,
-                            *k.clone(),
-                            *v.clone(),
+                            *elem.clone(),
+                            &RustIdent::new(CDDLIdent::new(array_ident)),
                             false,
-                            // The flavor comes from the CALLER's local knowledge (see the parameter's
-                            // doc); the visited conceptual `Map` has none of its own. `map_ident`
-                            // already encodes it, so the class name and its inner cannot disagree.
-                            preserve_pair_map,
                             cli,
                         );
                     }
                 }
             }
-            mint_wasm_keys_list(gen_scope, types, k, wasm_wrappers_generated, cli);
+            ConceptualRustType::Map(k, v) => {
+                let map_ident =
+                    RustType::wasm_structural_map_name_for(k, v, flavor.is_pair_map(), types);
+                match self.sole_owners.get(&map_ident.to_string()) {
+                    // A single named rule owns this shape: this embedded/resolved use
+                    // shares that rule-named class (JS-visible under the CDDL
+                    // identifier) rather than minting an anonymous structural class.
+                    Some(owner) if is_loose_table_owner(types, owner) => mint_sole_owner_table(
+                        gen_scope,
+                        types,
+                        owner,
+                        &map_ident,
+                        &mut self.generated,
+                        cli,
+                    ),
+                    // Anonymous-only shape (or a same-shape rule pair): mint the
+                    // structural class, whose inner is the raw map (not a rust rule).
+                    None | Some(_) => {
+                        if self.generated.insert(map_ident.to_string()) {
+                            codegen_table_type(
+                                gen_scope,
+                                types,
+                                &map_ident,
+                                *k.clone(),
+                                *v.clone(),
+                                false,
+                                // The flavor comes from the CALLER's local knowledge (see
+                                // `MapFlavor`); the visited conceptual `Map` has none of its own.
+                                // `map_ident` already encodes it, so the class name and its inner
+                                // cannot disagree.
+                                flavor.is_pair_map(),
+                                cli,
+                            );
+                        }
+                    }
+                }
+                mint_wasm_keys_list(gen_scope, types, k, &mut self.generated, cli);
+            }
+            _ => (),
         }
-        _ => (),
     }
 }
 
@@ -2559,8 +2607,8 @@ pub(super) fn codegen_table_type(
     // `MapKToV` builder can be requested BOTH by the wasm-wrapper visitor (a plain `{* k => v}` use)
     // AND directly by `generate_non_empty_map_type` (as a `{+ k => v}` wrapper's `try_from` source);
     // without a shared guard those two paths would double-define the class (E0428). The callers' own
-    // dedup sets (`wasm_wrappers_generated` / `generated`) remain — this only ADDS protection, so
-    // every existing single-mint path stays byte-identical (the guard passes on first request).
+    // dedup sets (`WrapperMintWalk::generated` / `generated`) remain — this only ADDS protection,
+    // so every existing single-mint path stays byte-identical (the guard passes on first request).
     if !gen_scope.already_generated.insert(name.clone()) {
         return;
     }

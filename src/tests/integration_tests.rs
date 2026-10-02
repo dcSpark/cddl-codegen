@@ -3924,7 +3924,7 @@ fn feature_corpus_compiles_no_annotate_shard(shard: usize) {
 /// F1 plain list `{Elem}List` (`name_as_wasm_array_ct`), F2 table builder `Map{K}To{V}`
 /// (`wasm_structural_map_name_for`), F3 `NonEmpty{Elem}List` (`non_empty_wasm_wrapper_name`), F4
 /// `NonEmptyMap{K}To{V}` (`non_empty_wasm_map_wrapper_name`), and F5 the table `keys()` list wrapper
-/// (`mint_wasm_wrapper_for_visited_type`). Each cell below crosses a family with one interaction
+/// (`WrapperMintWalk::mint`). Each cell below crosses a family with one interaction
 /// against user rule names and enforces the invariant **no cell may be exit-0 with a non-compiling
 /// crate**: every cell is pinned to either
 ///   - `Reject(ident)` — a GRACEFUL rejection (the IR-level NonEmpty collision scans for F3/F4, or

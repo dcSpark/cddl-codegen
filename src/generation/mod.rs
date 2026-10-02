@@ -10,7 +10,7 @@ use std::process::{Command, Stdio};
 use crate::intermediate::{
     AliasIdent, AliasInfo, CBOREncodingOperation, CDDLIdent, ConceptualRustType, EnumVariant,
     EnumVariantData, FixedValue, IntWindow, IntermediateTypes, ModuleScope, Primitive, ROOT_SCOPE,
-    Representation, RestKind, RestRow, RestSemantics, RustField, RustIdent, RustRecord,
+    Representation, RestKind, RestRow, RestSemantics, RustField, RustIdent, RustRecord, RustStruct,
     RustStructCBORLen, RustStructConfig, RustStructType, RustType, RustTypeSerializeConfig,
     VariantIdent, escape_rust_str,
 };
@@ -145,8 +145,8 @@ use wrappers::{generate_any_cbor_wasm, generate_int, generate_wrapper_struct};
 
 mod collections;
 use collections::{
-    codegen_table_type, dep_owns_element, is_loose_table_owner, mint_sole_owner_table,
-    mint_wasm_keys_list, mint_wasm_wrapper_for_visited_type, push_table_accessors,
+    MapFlavor, WrapperMintWalk, codegen_table_type, dep_owns_element, is_loose_table_owner,
+    mint_sole_owner_table, mint_wasm_keys_list, push_table_accessors,
 };
 
 mod requests;
@@ -1182,7 +1182,7 @@ impl GenerationScope {
         // Structs
         {
             // we can ignore types already handled by the alias
-            // otherwise wasm_wrappers_generated may cause us to pointlessly create aliases to aliases
+            // otherwise the mint walk may cause us to pointlessly create aliases to aliases
             let mut existing_aliases = types
                 .type_aliases()
                 .keys()
@@ -1198,215 +1198,21 @@ impl GenerationScope {
             // structural `MapKToV` name becomes a `pub type` alias to it. Same-shape rule PAIRS (2+
             // owners) and anonymous-only shapes are absent — they keep the structural fallback class
             // at the crate root. Shared with `scope_references`'s Map arm (import placement) via the
-            // one helper so emission and import placement CANNOT disagree.
-            let table_shape_sole_owner = types.table_shape_sole_owners();
+            // one helper so emission and import placement CANNOT disagree. `generate` cached that
+            // projection on entry.
+            let mut mint_walk =
+                WrapperMintWalk::new(self.wasm_collection_reference_sole_owners.clone());
 
-            let mut wasm_wrappers_generated = BTreeSet::new();
             for (rust_ident, rust_struct) in types.rust_structs() {
                 assert_eq!(rust_ident, rust_struct.ident());
                 if cli.wasm {
-                    rust_struct.visit_types_excluding(
+                    self.mint_struct_wasm_wrappers(
                         types,
-                        &mut |ty| {
-                            mint_wasm_wrapper_for_visited_type(
-                                self,
-                                types,
-                                ty,
-                                &mut wasm_wrappers_generated,
-                                &table_shape_sole_owner,
-                                // the conceptual visitor is policy-blind, so it mints only
-                                // DEFAULT-flavored wrappers; every `@duplicates preserve` mint comes
-                                // from a RustType-/config-level walk that knows its own flavor
-                                false,
-                                cli,
-                            )
-                        },
+                        rust_struct,
+                        &mut mint_walk,
                         &mut existing_aliases,
+                        cli,
                     );
-                    // The conceptual visitor above can't see array LENGTH bounds (they live on the
-                    // RustType, stripped before it recurses), so mint the restricted `NonEmpty*List`
-                    // wrappers for inline `[+ T]` shapes from a RustType-level walk that does.
-                    match rust_struct.variant() {
-                        RustStructType::Record(record) => {
-                            for field in &record.fields {
-                                self.ensure_non_empty_wrappers(types, &field.rust_type, cli);
-                                // The conceptual visitor above intentionally cannot see a field's
-                                // `@duplicates preserve` policy. Restricted pair maps route through
-                                // `ensure_non_empty_wrappers`, but the loose `{* …}` twin has no
-                                // bounds to trigger that path. Mint it from the policy-bearing
-                                // RustType so an all-one-dependency field records/defer-imports
-                                // `PairMapKToV`, never the default `MapKToV` class.
-                                if field.rust_type.is_preserve_pair_map()
-                                    && !field.rust_type.is_non_empty_map()
-                                    && !field.rust_type.is_bounded_map()
-                                {
-                                    mint_wasm_wrapper_for_visited_type(
-                                        self,
-                                        types,
-                                        &field.rust_type.conceptual_type,
-                                        &mut wasm_wrappers_generated,
-                                        &table_shape_sole_owner,
-                                        true,
-                                        cli,
-                                    );
-                                }
-                            }
-                            // Open struct-map rest row (CAPTURE only): its container is a
-                            // `Map(domain, range)` the conceptual visitor above never sees as a
-                            // composite (it walks domain/range separately). Mint the map's wasm
-                            // wrapper explicitly — the rest field's getter returns it — via the SAME
-                            // path a map field's wrapper takes, with the flavor read straight off the
-                            // row (`RestRow::duplicates()`): a `@duplicates preserve` rest mints the
-                            // PairMap-backed `PairMapKToV`, a default row the keyed `MapKToV`, so two
-                            // rows of the same key/value and different policies mint two distinct
-                            // classes. An `@ignore` row has no field/getter, so no wasm map wrapper is
-                            // minted for it (its wasm class is a closed struct's).
-                            // An open table's TYPED row is deliberately NOT in this loop: its map
-                            // surface is FLATTENED onto the minted struct's own wasm class
-                            // (`insert`/`get`/`len`/`keys`, the set-nominal call), so it has no
-                            // whole-map getter and mints no container class at all — only the
-                            // `<K_t>List` its flattened `keys()` returns, claimed just below. The
-                            // CATCH-ALL row keeps its `rest()` getter and therefore its container.
-                            for rest in record
-                                .captured_dynamic_rows()
-                                .filter(|r| !r.is_array_tail() && !record.is_typed_row(r))
-                            {
-                                let rest_map = rest.container_type();
-                                if rest_map.is_non_empty_map() || rest_map.is_bounded_map() {
-                                    // A restricted open-struct row / open-table catch-all crosses
-                                    // wasm through its checked structural wrapper, never through a
-                                    // loose map that would let JS erase the window before Rust sees
-                                    // it. `ensure_non_empty_wrappers` owns both the NonEmpty and
-                                    // Bounded map families despite its historical name.
-                                    self.ensure_non_empty_wrappers(types, &rest_map, cli);
-                                } else {
-                                    mint_wasm_wrapper_for_visited_type(
-                                        self,
-                                        types,
-                                        &rest_map.conceptual_type,
-                                        &mut wasm_wrappers_generated,
-                                        &table_shape_sole_owner,
-                                        rest_map.is_preserve_pair_map(),
-                                        cli,
-                                    );
-                                }
-                                self.ensure_non_empty_wrappers(types, rest.domain(), cli);
-                                self.ensure_non_empty_wrappers(types, rest.range(), cli);
-                            }
-                            // The open table's TYPED row: the keys-list half of the mint above, and
-                            // nothing else. Without it the flattened `keys()` returns an undeclared
-                            // class (E0425 in the wasm crate) for every non-exposable `K_t`.
-                            if let Some(typed) = record.typed_row().filter(|r| !r.is_array_tail()) {
-                                mint_wasm_keys_list(
-                                    self,
-                                    types,
-                                    typed.domain(),
-                                    &mut wasm_wrappers_generated,
-                                    cli,
-                                );
-                                self.ensure_non_empty_wrappers(types, typed.domain(), cli);
-                                self.ensure_non_empty_wrappers(types, typed.range(), cli);
-                                // A bounded typed row remains flattened on its owner class, so it
-                                // mints NO restricted whole-row class. Its wasm constructor
-                                // nevertheless needs one loose same-flavor builder to present the
-                                // complete row at the checked native carrier door — minimum zero
-                                // included. This is intentionally the only typed-row map-wrapper
-                                // exception.
-                                if typed.container_type().bounded_map_u64_bounds().is_some() {
-                                    let builder = typed.staging_container_type();
-                                    mint_wasm_wrapper_for_visited_type(
-                                        self,
-                                        types,
-                                        &builder.conceptual_type,
-                                        &mut wasm_wrappers_generated,
-                                        &table_shape_sole_owner,
-                                        builder.is_preserve_pair_map(),
-                                        cli,
-                                    );
-                                }
-                            }
-                            // Open ARRAY `* t` tail (CAPTURE only): its container is an
-                            // `Array(element)` the conceptual visitor above never sees as a composite
-                            // (it walks only the element). Mint the list's wasm wrapper explicitly —
-                            // the tail field's getter returns it — via the SAME path a list field's
-                            // wrapper takes. An `@ignore` tail has no field/getter, so nothing is minted
-                            // (its wasm class is a closed struct's).
-                            for rest in record.captured_dynamic_rows().filter(|r| r.is_array_tail())
-                            {
-                                let rest_list = rest.container_type();
-                                mint_wasm_wrapper_for_visited_type(
-                                    self,
-                                    types,
-                                    &rest_list.conceptual_type,
-                                    &mut wasm_wrappers_generated,
-                                    &table_shape_sole_owner,
-                                    // an array tail has no key domain, so no map flavor to carry
-                                    false,
-                                    cli,
-                                );
-                                self.ensure_non_empty_wrappers(types, &rest_list, cli);
-                                self.ensure_non_empty_wrappers(types, rest.element(), cli);
-                            }
-                        }
-                        RustStructType::Table { domain, range, .. } => {
-                            // the named table's OWN restricted wrapper (`{+ k => v}`) is minted in
-                            // the variant match below (under the rule ident); here just mint wrappers
-                            // its domain/range need (nested `{+ …}` in a key or value position)
-                            self.ensure_non_empty_wrappers(types, domain, cli);
-                            self.ensure_non_empty_wrappers(types, range, cli);
-                        }
-                        RustStructType::Wrapper { wrapped, .. } => {
-                            // A `@newtype`/TAG-forced wrapper over an INLINE `@duplicates preserve`
-                            // table stores a `Map` inner carrying the policy (threaded onto the
-                            // wrapped type by `register_rust_struct`). The conceptual visitor above
-                            // is policy-blind, so it mints only the DEFAULT-flavored `MapKToV` while
-                            // this wrapper's own wasm boundary (`new`/`get`) names the `PairMapKToV`
-                            // twin — E0425 on a class nobody minted. Mint that twin here, from the
-                            // RustType-level walk that can read the flavor, exactly as the array
-                            // sibling's `@duplicates reject` inner reaches
-                            // `generate_reject_ordered_set_type` through
-                            // `ensure_non_empty_wrappers` below. The `{+ …}` preserve flavor routes
-                            // through that same call (its `NonEmptyPairMapKToV` door), so only the
-                            // LOOSE `{* …}` shape is claimed here.
-                            if wrapped.is_preserve_pair_map() && !wrapped.is_non_empty_map() {
-                                mint_wasm_wrapper_for_visited_type(
-                                    self,
-                                    types,
-                                    &wrapped.conceptual_type,
-                                    &mut wasm_wrappers_generated,
-                                    &table_shape_sole_owner,
-                                    true,
-                                    cli,
-                                );
-                            }
-                            self.ensure_non_empty_wrappers(types, wrapped, cli);
-                        }
-                        RustStructType::GroupChoice { variants, .. }
-                        | RustStructType::TypeChoice { variants } => {
-                            for v in variants {
-                                match &v.data {
-                                    EnumVariantData::RustType(t) => {
-                                        self.ensure_non_empty_wrappers(types, t, cli)
-                                    }
-                                    EnumVariantData::Inlined(rec) => {
-                                        for f in &rec.fields {
-                                            self.ensure_non_empty_wrappers(
-                                                types,
-                                                &f.rust_type,
-                                                cli,
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        RustStructType::Array { element_type, .. } => {
-                            // the named rule's own wrapper is minted in the variant match below;
-                            // here just mint wrappers its element needs (nested `[+ [+ int]]`)
-                            self.ensure_non_empty_wrappers(types, element_type, cli);
-                        }
-                        _ => (),
-                    }
                 }
                 match rust_struct.variant() {
                     RustStructType::Record(record) => {
@@ -1476,8 +1282,7 @@ impl GenerationScope {
                                 rust_struct.config().duplicates_preserve(),
                                 types,
                             );
-                            if table_shape_sole_owner.get(&map_ident.to_string())
-                                == Some(rust_ident)
+                            if mint_walk.sole_owner(&map_ident) == Some(rust_ident)
                                 && is_loose_table_owner(types, rust_ident)
                             {
                                 // Sole owner of this shape: emit the real JS class under the rule name
@@ -1489,10 +1294,10 @@ impl GenerationScope {
                                     types,
                                     rust_ident,
                                     &map_ident,
-                                    &mut wasm_wrappers_generated,
+                                    &mut mint_walk.generated,
                                     cli,
                                 );
-                            } else if wasm_wrappers_generated.insert(rust_ident.to_string()) {
+                            } else if mint_walk.generated.insert(rust_ident.to_string()) {
                                 // Shared shape: a same-shape rule PAIR, or a shape also reached by
                                 // anonymous/embedded uses. Every named rule STILL surfaces as its own
                                 // real JS class under its identifier (unconditionally, independent of
@@ -1688,7 +1493,7 @@ impl GenerationScope {
             // alias (not a struct). Its `Map` target is embedded elsewhere only as `Alias(Rust(x), Map)`,
             // and `x` sits in `existing_aliases`, so the rust-struct walk above never descends into that
             // Map — leaving the emitted `pub type X = MapKToV` alias naming a class no one minted. Walk
-            // each wasm-alias base type through the same minting path (shared `wasm_wrappers_generated` /
+            // each wasm-alias base type through the same minting path (shared `mint_walk` /
             // `existing_aliases`, so it stays idempotent with the walk above and self-referential/other
             // named aliases are not re-descended).
             if cli.wasm {
@@ -1707,28 +1512,18 @@ impl GenerationScope {
                         if base.is_preserve_pair_map()
                             && let ConceptualRustType::Map(k, v) = &base.conceptual_type
                         {
-                            mint_wasm_wrapper_for_visited_type(
+                            mint_walk.mint(
                                 self,
                                 types,
                                 &base.conceptual_type,
-                                &mut wasm_wrappers_generated,
-                                &table_shape_sole_owner,
-                                true,
+                                MapFlavor::PairMap,
                                 cli,
                             );
                             for inner in [k, v] {
                                 inner.conceptual_type.visit_types_excluding(
                                     types,
                                     &mut |ty| {
-                                        mint_wasm_wrapper_for_visited_type(
-                                            self,
-                                            types,
-                                            ty,
-                                            &mut wasm_wrappers_generated,
-                                            &table_shape_sole_owner,
-                                            false,
-                                            cli,
-                                        )
+                                        mint_walk.mint(self, types, ty, MapFlavor::Default, cli)
                                     },
                                     &mut existing_aliases,
                                 );
@@ -1737,17 +1532,7 @@ impl GenerationScope {
                         }
                         base.conceptual_type.visit_types_excluding(
                             types,
-                            &mut |ty| {
-                                mint_wasm_wrapper_for_visited_type(
-                                    self,
-                                    types,
-                                    ty,
-                                    &mut wasm_wrappers_generated,
-                                    &table_shape_sole_owner,
-                                    false,
-                                    cli,
-                                )
-                            },
+                            &mut |ty| mint_walk.mint(self, types, ty, MapFlavor::Default, cli),
                             &mut existing_aliases,
                         );
                     }
@@ -2629,6 +2414,198 @@ impl GenerationScope {
             );
         }
         Ok(())
+    }
+
+    /// Mint the wasm structural wrapper classes one rust struct's members need (the per-struct half
+    /// of `generate`'s wasm wrapper walk; the rule's OWN class is minted by the caller's variant
+    /// match). `walk` is shared by the whole walk so every mint stays idempotent.
+    fn mint_struct_wasm_wrappers(
+        &mut self,
+        types: &IntermediateTypes,
+        rust_struct: &RustStruct,
+        walk: &mut WrapperMintWalk,
+        existing_aliases: &mut BTreeSet<RustIdent>,
+        cli: &Cli,
+    ) {
+        rust_struct.visit_types_excluding(
+            types,
+            &mut |ty| {
+                walk.mint(
+                    self,
+                    types,
+                    ty,
+                    // the conceptual visitor is policy-blind, so it mints only
+                    // DEFAULT-flavored wrappers; every `@duplicates preserve` mint comes
+                    // from a RustType-/config-level walk that knows its own flavor
+                    MapFlavor::Default,
+                    cli,
+                )
+            },
+            existing_aliases,
+        );
+        // The conceptual visitor above can't see array LENGTH bounds (they live on the
+        // RustType, stripped before it recurses), so mint the restricted `NonEmpty*List`
+        // wrappers for inline `[+ T]` shapes from a RustType-level walk that does.
+        match rust_struct.variant() {
+            RustStructType::Record(record) => {
+                for field in &record.fields {
+                    self.ensure_non_empty_wrappers(types, &field.rust_type, cli);
+                    // The conceptual visitor above intentionally cannot see a field's
+                    // `@duplicates preserve` policy. Restricted pair maps route through
+                    // `ensure_non_empty_wrappers`, but the loose `{* …}` twin has no
+                    // bounds to trigger that path. Mint it from the policy-bearing
+                    // RustType so an all-one-dependency field records/defer-imports
+                    // `PairMapKToV`, never the default `MapKToV` class.
+                    if field.rust_type.is_preserve_pair_map()
+                        && !field.rust_type.is_non_empty_map()
+                        && !field.rust_type.is_bounded_map()
+                    {
+                        walk.mint(
+                            self,
+                            types,
+                            &field.rust_type.conceptual_type,
+                            MapFlavor::PairMap,
+                            cli,
+                        );
+                    }
+                }
+                // Open struct-map rest row (CAPTURE only): its container is a
+                // `Map(domain, range)` the conceptual visitor above never sees as a
+                // composite (it walks domain/range separately). Mint the map's wasm
+                // wrapper explicitly — the rest field's getter returns it — via the SAME
+                // path a map field's wrapper takes, with the flavor read straight off the
+                // row (`RestRow::duplicates()`): a `@duplicates preserve` rest mints the
+                // PairMap-backed `PairMapKToV`, a default row the keyed `MapKToV`, so two
+                // rows of the same key/value and different policies mint two distinct
+                // classes. An `@ignore` row has no field/getter, so no wasm map wrapper is
+                // minted for it (its wasm class is a closed struct's).
+                // An open table's TYPED row is deliberately NOT in this loop: its map
+                // surface is FLATTENED onto the minted struct's own wasm class
+                // (`insert`/`get`/`len`/`keys`, the set-nominal call), so it has no
+                // whole-map getter and mints no container class at all — only the
+                // `<K_t>List` its flattened `keys()` returns, claimed just below. The
+                // CATCH-ALL row keeps its `rest()` getter and therefore its container.
+                for rest in record
+                    .captured_dynamic_rows()
+                    .filter(|r| !r.is_array_tail() && !record.is_typed_row(r))
+                {
+                    let rest_map = rest.container_type();
+                    if rest_map.is_non_empty_map() || rest_map.is_bounded_map() {
+                        // A restricted open-struct row / open-table catch-all crosses
+                        // wasm through its checked structural wrapper, never through a
+                        // loose map that would let JS erase the window before Rust sees
+                        // it. `ensure_non_empty_wrappers` owns both the NonEmpty and
+                        // Bounded map families despite its historical name.
+                        self.ensure_non_empty_wrappers(types, &rest_map, cli);
+                    } else {
+                        walk.mint(
+                            self,
+                            types,
+                            &rest_map.conceptual_type,
+                            MapFlavor::of(&rest_map),
+                            cli,
+                        );
+                    }
+                    self.ensure_non_empty_wrappers(types, rest.domain(), cli);
+                    self.ensure_non_empty_wrappers(types, rest.range(), cli);
+                }
+                // The open table's TYPED row: the keys-list half of the mint above, and
+                // nothing else. Without it the flattened `keys()` returns an undeclared
+                // class (E0425 in the wasm crate) for every non-exposable `K_t`.
+                if let Some(typed) = record.typed_row().filter(|r| !r.is_array_tail()) {
+                    mint_wasm_keys_list(self, types, typed.domain(), &mut walk.generated, cli);
+                    self.ensure_non_empty_wrappers(types, typed.domain(), cli);
+                    self.ensure_non_empty_wrappers(types, typed.range(), cli);
+                    // A bounded typed row remains flattened on its owner class, so it
+                    // mints NO restricted whole-row class. Its wasm constructor
+                    // nevertheless needs one loose same-flavor builder to present the
+                    // complete row at the checked native carrier door — minimum zero
+                    // included. This is intentionally the only typed-row map-wrapper
+                    // exception.
+                    if typed.container_type().bounded_map_u64_bounds().is_some() {
+                        let builder = typed.staging_container_type();
+                        walk.mint(
+                            self,
+                            types,
+                            &builder.conceptual_type,
+                            MapFlavor::of(&builder),
+                            cli,
+                        );
+                    }
+                }
+                // Open ARRAY `* t` tail (CAPTURE only): its container is an
+                // `Array(element)` the conceptual visitor above never sees as a composite
+                // (it walks only the element). Mint the list's wasm wrapper explicitly —
+                // the tail field's getter returns it — via the SAME path a list field's
+                // wrapper takes. An `@ignore` tail has no field/getter, so nothing is minted
+                // (its wasm class is a closed struct's).
+                for rest in record.captured_dynamic_rows().filter(|r| r.is_array_tail()) {
+                    let rest_list = rest.container_type();
+                    walk.mint(
+                        self,
+                        types,
+                        &rest_list.conceptual_type,
+                        // an array tail has no key domain, so no map flavor to carry
+                        MapFlavor::Default,
+                        cli,
+                    );
+                    self.ensure_non_empty_wrappers(types, &rest_list, cli);
+                    self.ensure_non_empty_wrappers(types, rest.element(), cli);
+                }
+            }
+            RustStructType::Table { domain, range, .. } => {
+                // the named table's OWN restricted wrapper (`{+ k => v}`) is minted in
+                // the variant match below (under the rule ident); here just mint wrappers
+                // its domain/range need (nested `{+ …}` in a key or value position)
+                self.ensure_non_empty_wrappers(types, domain, cli);
+                self.ensure_non_empty_wrappers(types, range, cli);
+            }
+            RustStructType::Wrapper { wrapped, .. } => {
+                // A `@newtype`/TAG-forced wrapper over an INLINE `@duplicates preserve`
+                // table stores a `Map` inner carrying the policy (threaded onto the
+                // wrapped type by `register_rust_struct`). The conceptual visitor above
+                // is policy-blind, so it mints only the DEFAULT-flavored `MapKToV` while
+                // this wrapper's own wasm boundary (`new`/`get`) names the `PairMapKToV`
+                // twin — E0425 on a class nobody minted. Mint that twin here, from the
+                // RustType-level walk that can read the flavor, exactly as the array
+                // sibling's `@duplicates reject` inner reaches
+                // `generate_reject_ordered_set_type` through
+                // `ensure_non_empty_wrappers` below. The `{+ …}` preserve flavor routes
+                // through that same call (its `NonEmptyPairMapKToV` door), so only the
+                // LOOSE `{* …}` shape is claimed here.
+                if wrapped.is_preserve_pair_map() && !wrapped.is_non_empty_map() {
+                    walk.mint(
+                        self,
+                        types,
+                        &wrapped.conceptual_type,
+                        MapFlavor::PairMap,
+                        cli,
+                    );
+                }
+                self.ensure_non_empty_wrappers(types, wrapped, cli);
+            }
+            RustStructType::GroupChoice { variants, .. }
+            | RustStructType::TypeChoice { variants } => {
+                for v in variants {
+                    match &v.data {
+                        EnumVariantData::RustType(t) => {
+                            self.ensure_non_empty_wrappers(types, t, cli)
+                        }
+                        EnumVariantData::Inlined(rec) => {
+                            for f in &rec.fields {
+                                self.ensure_non_empty_wrappers(types, &f.rust_type, cli);
+                            }
+                        }
+                    }
+                }
+            }
+            RustStructType::Array { element_type, .. } => {
+                // the named rule's own wrapper is minted in the variant match below;
+                // here just mint wrappers its element needs (nested `[+ [+ int]]`)
+                self.ensure_non_empty_wrappers(types, element_type, cli);
+            }
+            _ => (),
+        }
     }
 
     /// Generates in the appropriate scope for `ident`

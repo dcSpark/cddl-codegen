@@ -3844,7 +3844,7 @@ pub(super) fn codegen_struct(
         // rows mutate the parent through the record-level `insert_<row>` door below. Restricted map
         // rows enter `new()` as a complete checked wrapper and use that same checked mutation door.
         // The wrapper
-        // class is minted in the wasm pass (`mint_wasm_wrapper_for_visited_type` for the rest map/list).
+        // class is minted in the wasm pass (`WrapperMintWalk::mint` for the rest map/list).
         // An `@ignore` row/tail stores nothing, so it has no getter (its wasm class is a closed struct's).
         // An open table's TYPED row is excluded — its surface is flattened above.
         for rest in record
