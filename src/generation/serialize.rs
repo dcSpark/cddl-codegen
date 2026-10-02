@@ -779,10 +779,7 @@ pub(super) fn generate_serialize(
         ));
     } else {
         match serializing_rust_type {
-            SerializingRustType::EncodingOperation(
-                CBOREncodingOperation::Tagged(tag),
-                child,
-            ) => {
+            SerializingRustType::EncodingOperation(CBOREncodingOperation::Tagged(tag), child) => {
                 // level (tag_depth + 1) counted outside-in; the infix keeps the member name in
                 // lockstep with `encoding_fields_impl`, and the child recurses one level deeper.
                 let tag_level = config.tag_depth + 1;
@@ -1020,9 +1017,7 @@ pub(super) fn generate_serialize(
                         // NaN, so `as` can differ between the const-evaluated and runtime paths
                         // of one binary. A float round-trips byte-exactly, payload included.
                         let value = if p.float_carrier_is_f32() {
-                            Cow::Owned(format!(
-                                "cbor_event::se::f32_to_f64_exact({expr_deref})"
-                            ))
+                            Cow::Owned(format!("cbor_event::se::f32_to_f64_exact({expr_deref})"))
                         } else {
                             Cow::Borrowed(expr_deref.as_str())
                         };
@@ -1280,8 +1275,7 @@ pub(super) fn generate_serialize(
                         );
                     }
                     RustStructType::Array { element_type, .. } => {
-                        let structural =
-                            ConceptualRustType::Array(Box::new(element_type.clone()));
+                        let structural = ConceptualRustType::Array(Box::new(element_type.clone()));
                         let cfg = nominal_collection_cfg(types, t, &type_cfg);
                         generate_serialize(
                             types,
@@ -1321,9 +1315,7 @@ pub(super) fn generate_serialize(
                 // `alias_to_plain_group_in_array_positions_matches_the_direct_reference`; its
                 // deserialize counterpart is the element-read arm in `generate_deserialize`.
                 let len_expr = match ty.conceptual_type.resolve_alias_shallow() {
-                    ConceptualRustType::Rust(elem_ident)
-                        if types.is_plain_group(elem_ident) =>
-                    {
+                    ConceptualRustType::Rust(elem_ident) if types.is_plain_group(elem_ident) => {
                         // you should not be able to indiscriminately encode a plain group like this as it
                         // could be multiple elements. This would require special handling if it's even permitted in CDDL.
                         assert!(ty.encodings.is_empty());
@@ -1376,13 +1368,7 @@ pub(super) fn generate_serialize(
                     // or `.cbor` payload reads a depth-inflated var the struct never minted).
                     .tag_depth(0)
                     .cbor_depth(0);
-                generate_serialize(
-                    types,
-                    (&**ty).into(),
-                    &mut loop_block,
-                    elem_config,
-                    cli,
-                );
+                generate_serialize(types, (&**ty).into(), &mut loop_block, elem_config, cli);
                 body.push_block(loop_block);
                 // `.end()` takes the serializer as an ARGUMENT, so it needs the pass form
                 // (`&mut <name>` for a `.cbor`-payload local `Serializer::new_vec()`), not the
@@ -1457,13 +1443,7 @@ pub(super) fn generate_serialize(
                                 .end(false)
                                 .serializer_name_overload(("buf", true))
                                 .encoding_var_is_ref(false);
-                        generate_serialize(
-                            types,
-                            (&**key).into(),
-                            &mut key_order,
-                            key_config,
-                            cli,
-                        );
+                        generate_serialize(types, (&**key).into(), &mut key_order, key_config, cli);
                         if preserve_pair_map {
                             key_order.line("Ok((buf.finalize(), i, k, v))").after(
                                 ").collect::<Result<Vec<(Vec<u8>, usize, &_, &_)>, cbor_event::Error>>()?;",
@@ -1509,8 +1489,7 @@ pub(super) fn generate_serialize(
                                 "for (key_bytes, {key_loop_var}, value) in key_order"
                             ))
                         };
-                        ser_loop
-                            .line(format!("{serializer_use}.write_raw_bytes(&key_bytes)?;"));
+                        ser_loop.line(format!("{serializer_use}.write_raw_bytes(&key_bytes)?;"));
                         ser_loop
                     } else {
                         let mut ser_loop = if preserve_pair_map {
@@ -1553,13 +1532,7 @@ pub(super) fn generate_serialize(
                             // `encoding_fields_impl`'s map-key reset.
                             .tag_depth(0)
                             .cbor_depth(0);
-                        generate_serialize(
-                            types,
-                            (&**key).into(),
-                            &mut ser_loop,
-                            key_config,
-                            cli,
-                        );
+                        generate_serialize(types, (&**key).into(), &mut ser_loop, key_config, cli);
                         ser_loop
                     };
                     if !value_enc_fields.is_empty() {
@@ -1581,13 +1554,7 @@ pub(super) fn generate_serialize(
                         // `encoding_fields_impl`'s map-value reset.
                         .tag_depth(0)
                         .cbor_depth(0);
-                    generate_serialize(
-                        types,
-                        (&**value).into(),
-                        &mut ser_loop,
-                        value_config,
-                        cli,
-                    );
+                    generate_serialize(types, (&**value).into(), &mut ser_loop, value_config, cli);
                     ser_loop
                 } else {
                     let mut ser_loop =
@@ -1610,20 +1577,8 @@ pub(super) fn generate_serialize(
                         .var_name(format!("{}_value", config.var_name))
                         .tag_depth(0)
                         .cbor_depth(0);
-                    generate_serialize(
-                        types,
-                        (&**key).into(),
-                        &mut ser_loop,
-                        key_config,
-                        cli,
-                    );
-                    generate_serialize(
-                        types,
-                        (&**value).into(),
-                        &mut ser_loop,
-                        value_config,
-                        cli,
-                    );
+                    generate_serialize(types, (&**key).into(), &mut ser_loop, key_config, cli);
+                    generate_serialize(types, (&**value).into(), &mut ser_loop, value_config, cli);
                     ser_loop
                 };
                 body.push_block(ser_loop);
@@ -1648,13 +1603,7 @@ pub(super) fn generate_serialize(
                     .expr("x")
                     .expr_is_ref(true)
                     .end(config.is_end);
-                generate_serialize(
-                    types,
-                    (&**ty).into(),
-                    &mut some_block,
-                    opt_config,
-                    cli,
-                );
+                generate_serialize(types, (&**ty).into(), &mut some_block, opt_config, cli);
                 some_block.after(",");
                 opt_block.push_block(some_block);
                 if config.is_end {

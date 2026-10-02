@@ -4922,13 +4922,7 @@ pub(super) fn codegen_struct(
                     .encoding_var_is_ref(false)
                     .serializer_name_overload(("serializer", true))
                     .tag_depth(0);
-                generate_serialize(
-                    types,
-                    rest.domain().into(),
-                    &mut validator,
-                    key_config,
-                    cli,
-                );
+                generate_serialize(types, rest.domain().into(), &mut validator, key_config, cli);
                 validator.line(
                     "let mut candidate = cbor_event::de::Deserializer::from(serializer.finalize());",
                 );
