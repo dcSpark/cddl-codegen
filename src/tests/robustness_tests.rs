@@ -944,11 +944,6 @@ fn size_on_unsizable_head_rejects_gracefully() {
             "x = bool .size 1\n",
             "a range or `.size` control operator on `bool` is unsupported",
         ),
-        (
-            "alias_uint_rule",
-            "u = uint\nx = u .size 2\n",
-            "a range or `.size` control operator on `u` is unsupported",
-        ),
     ] {
         let msg = expect_graceful_rejection(tag, spec, &["--wasm=false"]);
         assert!(msg.contains(needle), "{tag}: {msg}");
@@ -19903,4 +19898,100 @@ fn tags_on_extern_and_raw_marker_rules_reject_instead_of_disappearing() {
         );
         assert_eq!(bare, grouped);
     }
+}
+
+#[test]
+fn unsigned_alias_size_rule_positions_preserve_domains() {
+    for (tag, spec, spelling) in [
+        ("direct", "u = uint\nx = u .size 2\n", "pub type X = u16;"),
+        ("forward", "x = u .size 2\nu = uint\n", "pub type X = u16;"),
+        (
+            "chain",
+            "u = uint\nv = u\nx = v .size 2\n",
+            "pub type X = u16;",
+        ),
+        (
+            "inner_paren",
+            "u = uint\nx = (u .size 2)\n",
+            "pub type X = u16;",
+        ),
+        (
+            "narrow_wider",
+            "u = uint .size 1\nx = u .size 2\n",
+            "pub type X = u8;",
+        ),
+        (
+            "narrow_tighter",
+            "u = uint .size 2\nx = u .size 1\n",
+            "pub type X = u8;",
+        ),
+        (
+            "range",
+            "u = uint\nx = u .size (1..2)\n",
+            "pub type X = u16;",
+        ),
+        ("large", "u = uint\nx = u .size 9\n", "pub type X = u64;"),
+    ] {
+        let source = expect_generates(tag, spec, &["--wasm=false"])
+            .into_values()
+            .collect::<String>();
+        assert!(
+            source.contains(spelling),
+            "{tag}: missing {spelling}: {source}"
+        );
+    }
+    for (tag, spec) in [
+        ("source_newtype", "u = uint ; @newtype\nx = u .size 2\n"),
+        ("residual", "u = uint .le 5\nx = u .size 2\n"),
+        ("tagged", "u = #6.42(uint)\nx = u .size 2\n"),
+        ("encoded", "u = bytes .cbor uint\nx = u .size 2\n"),
+        ("text", "u = tstr\nx = u .size 2\n"),
+        ("signed", "u = int\nx = u .size 2\n"),
+        (
+            "custom_codec",
+            "u = uint ; @custom_serialize write_u @custom_deserialize read_u\nx = u .size 2\n",
+        ),
+        (
+            "inherited_codec",
+            "u = uint ; @custom_serialize write_u @custom_deserialize read_u\nv = u\nx = v .size 2\n",
+        ),
+    ] {
+        let error = expect_graceful_rejection(tag, spec, &["--wasm=false"]);
+        assert!(
+            error.contains("a range or `.size` control operator"),
+            "{tag}: {error}"
+        );
+    }
+    for (tag, suffix, diagnostic) in [
+        ("alias_float_size", ".size 2.0", "float `.size` operand"),
+        (
+            "alias_negative_size",
+            ".size -1",
+            "negative `.size` operand",
+        ),
+        ("alias_empty_size", ".size (0...0)", "empty `.size` window"),
+        (
+            "alias_named_operand",
+            ".size u",
+            "is not an integer literal or an integer literal range",
+        ),
+        (
+            "alias_value_control",
+            ".le 5",
+            "a range or `.size` control operator",
+        ),
+    ] {
+        let spec = format!("u = uint\nx = u {suffix}\n");
+        let error = expect_graceful_rejection(tag, &spec, &["--wasm=false"]);
+        assert!(error.contains(diagnostic), "{tag}: {error}");
+    }
+    let error = expect_graceful_rejection(
+        "unsupported_alias_control",
+        "u = uint\nx = u .within (0..5)\n",
+        &["--wasm=false"],
+    );
+    assert!(
+        error.contains("the `.within` control operator is unsupported"),
+        "{error}"
+    );
 }

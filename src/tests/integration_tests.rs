@@ -34273,6 +34273,13 @@ fc = tstr / f .lt 3
 fm = { * tstr => f .le 3 }
 u = uint
 u8a = uint .size 1
+alias_width = u .size 2
+narrow_width = u8a .size 2
+alias_holder = [value: alias_width]
+prelude_holder = [value: uint .size 2]
+narrow_holder = [value: narrow_width]
+alias_newtype = u .size 2 ; @newtype
+alias_tagged = #6.42(u .size 2)
 uw = [a: u .size 2, b: (u) .size (1..2), c: u8a .size 2, d: (uint) .size 2, e: u .size 9]
 uk = { * u .size 2 => tstr }
 n = nint
@@ -34281,11 +34288,12 @@ nr = uint .ne -1
 ";
     let input = root.join("input.cddl");
     std::fs::write(&input, spec).unwrap();
-    let target_dir = root.join("target");
     for (profile, extra) in [
         ("plain", None),
         ("preserve", Some("--preserve-encodings=true")),
     ] {
+        // Same-name generated packages in distinct encoding profiles must not reuse crate artifacts.
+        let target_dir = root.join(format!("target_{profile}"));
         let out = root.join(format!("out_{profile}"));
         let mut cmd = codegen_cmd();
         cmd.args([
@@ -34317,6 +34325,47 @@ nr = uint .ne -1
                 String::from_utf8_lossy(&check.stderr)
             );
         }
+
+        let test_dir = out.join("rust/tests");
+        std::fs::create_dir_all(&test_dir).unwrap();
+        std::fs::write(
+            test_dir.join("alias_size.rs"),
+            r#"use cddl_lib::*;
+use cddl_lib::serialization::{Deserialize, ToCBORBytes};
+#[test]
+fn alias_size_admission_matches_prelude_and_preserves_narrow_domain() {
+    let boundary = [0x81, 0x19, 0xff, 0xff];
+    assert!(AliasHolder::from_cbor_bytes(&boundary).is_ok());
+    assert!(PreludeHolder::from_cbor_bytes(&boundary).is_ok());
+    assert_eq!(AliasHolder::new(65535).to_cbor_bytes(),
+               PreludeHolder::new(65535).to_cbor_bytes());
+    assert_eq!(AliasHolder::from_cbor_bytes(&boundary).unwrap().to_cbor_bytes(),
+               boundary);
+    let overflow = [0x81, 0x1a, 0x00, 0x01, 0x00, 0x00];
+    assert!(AliasHolder::from_cbor_bytes(&overflow).is_err());
+    assert!(PreludeHolder::from_cbor_bytes(&overflow).is_err());
+    assert!(NarrowHolder::from_cbor_bytes(&[0x81, 0x18, 0xff]).is_ok());
+    assert!(NarrowHolder::from_cbor_bytes(&[0x81, 0x19, 0x01, 0x00]).is_err());
+    assert!(AliasNewtype::from_cbor_bytes(&[0x19, 0xff, 0xff]).is_ok());
+    assert!(AliasNewtype::from_cbor_bytes(&[0x1a, 0x00, 0x01, 0x00, 0x00]).is_err());
+    assert!(AliasTagged::from_cbor_bytes(&[0xd8, 0x2a, 0x19, 0xff, 0xff]).is_ok());
+    assert!(AliasTagged::from_cbor_bytes(&[0x19, 0xff, 0xff]).is_err());
+}
+"#,
+        )
+        .unwrap();
+        let execution = tool_cmd("cargo")
+            .args(["test", "--test", "alias_size"])
+            .current_dir(out.join("rust"))
+            .env("CARGO_TARGET_DIR", &target_dir)
+            .output()
+            .unwrap();
+        assert!(
+            execution.status.success(),
+            "{profile}: alias-size native admission: stdout: {}\nstderr: {}",
+            String::from_utf8_lossy(&execution.stdout),
+            String::from_utf8_lossy(&execution.stderr)
+        );
     }
     let _ = std::fs::remove_dir_all(&root);
 }

@@ -4385,14 +4385,48 @@ fn parse_type(
                         match control {
                             ControlOperator::Range(min_max) => {
                                 // when declared top-level we make a new type as the default behavior like before
-                                let Some(primitive) = ident_to_primitive(&cddl_ident) else {
+                                // Only SIZE gains a transparent unsigned-alias route. Other
+                                // controls retain their existing named-head refusal.
+                                let alias_primitive = type1.operator.as_ref().and_then(|op| {
+                                    if !matches!(
+                                        op.operator,
+                                        RangeCtlOp::CtlOp {
+                                            ctrl: token::ControlOperator::SIZE,
+                                            ..
+                                        }
+                                    ) {
+                                        return None;
+                                    }
+                                    let alias = types
+                                        .type_aliases()
+                                        .get(&AliasIdent::new(cddl_ident.clone()))?;
+                                    // Custom wire codecs are not transparent primitive contracts.
+                                    if alias.carries_custom_pair()
+                                        || !alias.base_type.encodings.is_empty()
+                                    {
+                                        return None;
+                                    }
+                                    resolved_head_primitive(types, &type1.type2)
+                                        .filter(|primitive| is_uint_primitive(*primitive))
+                                });
+                                let Some(primitive) =
+                                    ident_to_primitive(&cddl_ident).or(alias_primitive)
+                                else {
                                     types.record_rejection(unmapped_control_head_rejection(
                                         type_name,
                                         &cddl_ident,
                                     ));
                                     return;
                                 };
-                                let min_max = length_window(primitive, min_max);
+                                // A wider size cannot widen an already sized alias.
+                                let min_max =
+                                    match (alias_primitive, integer_primitive_domain(primitive)) {
+                                        (Some(_), Some((min, max))) => (
+                                            Some(min_max.0.unwrap_or(min).max(min)),
+                                            Some(min_max.1.unwrap_or(max).min(max)),
+                                        ),
+                                        _ => length_window(primitive, min_max),
+                                    };
                                 let ranged_type =
                                     range_to_primitive(min_max.0, min_max.1, primitive);
                                 // An exact byte `.size` becomes a Rust array length.  Validate at
