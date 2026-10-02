@@ -19795,3 +19795,32 @@ fn rule_position_name_is_refused_through_a_tag_or_parentheses() {
         assert!(files.values().any(|s| s.contains("Bar(")), "{files:?}");
     }
 }
+
+#[test]
+fn tag_set_collapse_refuses_variant_directives_on_its_non_last_arm() {
+    for directive in ["@name a", "@doc a set"] {
+        let msg = expect_graceful_rejection(
+            "tag_set_arm_doc",
+            &format!("foo = #6.258([* uint]) ; {directive}\n / [* uint]\nholder = [f: foo]\n"),
+            &["--wasm=false"],
+        );
+        assert!(
+            msg.contains("on a non-last arm of the tag-set rule"),
+            "{msg}"
+        );
+        assert!(
+            msg.contains("its two arms collapse into one collection"),
+            "{msg}"
+        );
+        assert!(msg.contains(directive.split(' ').next().unwrap()), "{msg}");
+    }
+    let files = expect_generates(
+        "tag_set_rule_doc",
+        "foo = #6.258([* uint])\n / [* uint] ; @doc the set\nholder = [f: foo]\n",
+        &["--wasm=false"],
+    );
+    assert!(
+        files.values().any(|s| s.contains("/// the set")),
+        "{files:?}"
+    );
+}

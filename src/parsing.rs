@@ -2672,6 +2672,27 @@ fn parse_type_choices(
             if rule_metadata.ignore {
                 reject_ignore_not_applicable(types, name);
             }
+            // A collapsed tag-set has no enum variants to own first-arm names or docs.
+            for choice in &type_choices[..type_choices.len() - 1] {
+                let arm_metadata = type_choice_metadata(choice);
+                let mut misplaced = Vec::new();
+                if arm_metadata.name.is_some() {
+                    misplaced.push("@name");
+                }
+                if arm_metadata.doc.is_some() {
+                    misplaced.push("@doc");
+                }
+                if !misplaced.is_empty() {
+                    types.record_rejection(format!(
+                        "{} on a non-last arm of the tag-set rule `{name}`: its two arms collapse \
+                         into one collection whose tag is optional on the wire, so they are not \
+                         enum variants and there is no variant for `@name` to name or `@doc` to \
+                         document. Document the rule with `@doc` in the LAST arm's trailing \
+                         comment, which is the rule-position slot, and remove `@name`.",
+                        misplaced.join(" / ")
+                    ));
+                }
+            }
             let is_set_nominal =
                 is_array && well_known_tag_default_duplicates(set_tag, true).is_some();
             let defaulted = rule_metadata.duplicates.is_none()
