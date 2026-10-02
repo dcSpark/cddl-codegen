@@ -1749,6 +1749,9 @@ Each file begins with a strict versioned **seam header** on its first line:
 ; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1
 ```
 
+The exporter uses `v2` for every file when its finalized IR uses `any`; otherwise it uses `v1`.
+The consumer accepts both versions.
+
 The header is per-file (not a manifest) so a physically-copied single file still carries its seam. A
 consumer feeding a file through `--extern-import` **strictly parses** it against this header: a
 missing/unknown header, or any `@`-annotation outside the recognized comment-DSL set, is a hard error

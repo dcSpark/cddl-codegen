@@ -118,7 +118,7 @@ impl GenerationScope {
         // never on the struct variant (no dep
         // edge, so neither dependency-keyed mechanism below can reach it). Reference it instead of
         // minting a second `#[wasm_bindgen]` class of the same name — two such classes in one cdylib
-        // are a `rust-lld: duplicate symbol __wbg_<class>_free`.
+        // are rejected during linking or by wasm-bindgen during binding generation.
         //
         // Three things this arm deliberately does NOT do. It consults no index (there is none — the
         // sibling's class may be HAND-written, which is the reported case), so the not-in-index
@@ -933,8 +933,8 @@ impl GenerationScope {
         // `--extern-wrapper-index` / `--workspace-dep`: the uniqueness twin over a dependency's
         // elements is a defer candidate exactly like the loose list and the NonEmpty twin — the
         // dependency's class is the one JS class for this shape, and re-minting it here is a
-        // `rust-lld: duplicate symbol __wbg_<class>_free` the moment both crates link into one
-        // cdylib. The shape column carries the `@duplicates reject` marker, so a dep hosting the
+        // duplicate exported class when both crates compose into one cdylib; linking or wasm-bindgen
+        // binding generation rejects it. The shape column carries the `@duplicates reject` marker, so a dep hosting the
         // request rebuilds the uniqueness twin rather than a loose list. Only the STRUCTURAL name is
         // a candidate (`try_defer_wrapper`'s screen: a named reject rule whose ident differs from the
         // structural name is the consumer's own class and is never suppressed).
