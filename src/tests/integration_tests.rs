@@ -1009,14 +1009,23 @@ fn wasm_public_surface(
         .unwrap();
     let stderr = String::from_utf8_lossy(&output.stderr);
     if duplicate_classes.is_empty() {
-        assert!(output.status.success(), "deferred WASM bindings must succeed:\n{stderr}");
-        assert!(output_dir.join(format!("{}.js", artifact.file_stem().unwrap().to_str().unwrap())).is_file());
+        assert!(
+            output.status.success(),
+            "deferred WASM bindings must succeed:\n{stderr}"
+        );
+        assert!(
+            output_dir
+                .join(format!(
+                    "{}.js",
+                    artifact.file_stem().unwrap().to_str().unwrap()
+                ))
+                .is_file()
+        );
     } else {
         assert!(
             !output.status.success()
-                && duplicate_classes.iter().any(|name| stderr.contains(&format!(
-                    "the name `{name}` is exported multiple times"
-                ))),
+                && duplicate_classes.iter().any(|name| stderr
+                    .contains(&format!("the name `{name}` is exported multiple times"))),
             "duplicated WASM classes must fail binding generation by name; success={}, stderr:\n{stderr}",
             output.status.success()
         );
@@ -20648,7 +20657,13 @@ fn extern_wrapper_index_defers_to_dep() {
     wasm_public_surface(
         &red,
         &red_export.join("wasm/target/wasm32-unknown-unknown/debug/cddl_lib_wasm.wasm"),
-        &["IdxBarList", "IdxFooList", "ArrIdxFooList", "MapU64ToIdxFoo", "NonEmptyIdxFooList"],
+        &[
+            "IdxBarList",
+            "IdxFooList",
+            "ArrIdxFooList",
+            "MapU64ToIdxFoo",
+            "NonEmptyIdxFooList",
+        ],
     );
 }
 
@@ -21468,7 +21483,9 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[];
         );
         wasm_public_surface(
             &green,
-            &base.join(output).join("wasm/target/wasm32-unknown-unknown/debug/cddl_lib_wasm.wasm"),
+            &base
+                .join(output)
+                .join("wasm/target/wasm32-unknown-unknown/debug/cddl_lib_wasm.wasm"),
             &[],
         );
     }
@@ -21504,7 +21521,13 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[];
     wasm_public_surface(
         &red,
         &base.join("export_nodefer/wasm/target/wasm32-unknown-unknown/debug/cddl_lib_wasm.wasm"),
-        &["IdxBarList", "IdxFooList", "ArrIdxFooList", "MapU64ToIdxFoo", "NonEmptyIdxFooList"],
+        &[
+            "IdxBarList",
+            "IdxFooList",
+            "ArrIdxFooList",
+            "MapU64ToIdxFoo",
+            "NonEmptyIdxFooList",
+        ],
     );
 }
 
@@ -33921,50 +33944,51 @@ fn extern_companions_defers_to_sibling_wasm_crate() {
     std::fs::create_dir_all(&red_inputs).unwrap();
     let spec = std::fs::read_to_string(test_path.join("inputs/lib.cddl")).unwrap();
     for class in ["IdxFooList", "IdxHashList"] {
-    let directive = format!(" ; @extern_companions index_dep_crate_wasm={class}");
-    let stripped = spec.replace(&directive, "");
-    assert_eq!(
-        spec.matches(" ; @extern_companions ").count(),
-        2,
-        "the RED edit must find both directives to remove"
-    );
-    assert!(
-        !stripped.contains(&directive) && stripped.matches("@extern_companions").count() == 1,
-        "each RED edit must remove only its own directive"
-    );
-    std::fs::write(red_inputs.join("lib.cddl"), stripped).unwrap();
-    let red_export = test_path.join("export_nodefer");
-    let _ = std::fs::remove_dir_all(&red_export);
-    let generate_red = codegen_cmd()
-        .arg(format!("--input={}", red_inputs.display()))
-        .arg(format!("--output={}", red_export.display()))
-        .arg("--wasm=true")
-        .arg("--preserve-encodings=true")
-        .arg("--common-import-override=index_dep_crate")
-        .arg("--extern-wasm-crate=index_dep_crate=index_dep_crate_wasm")
-        .output()
-        .unwrap();
-    assert!(
-        generate_red.status.success(),
-        "RED generation failed:\n{}",
-        String::from_utf8_lossy(&generate_red.stderr)
-    );
-    seed_roots(&red_export);
-    let red_mod = std::fs::read_to_string(red_export.join("wasm/src/generated/mod.rs")).unwrap();
+        let directive = format!(" ; @extern_companions index_dep_crate_wasm={class}");
+        let stripped = spec.replace(&directive, "");
+        assert_eq!(
+            spec.matches(" ; @extern_companions ").count(),
+            2,
+            "the RED edit must find both directives to remove"
+        );
+        assert!(
+            !stripped.contains(&directive) && stripped.matches("@extern_companions").count() == 1,
+            "each RED edit must remove only its own directive"
+        );
+        std::fs::write(red_inputs.join("lib.cddl"), stripped).unwrap();
+        let red_export = test_path.join("export_nodefer");
+        let _ = std::fs::remove_dir_all(&red_export);
+        let generate_red = codegen_cmd()
+            .arg(format!("--input={}", red_inputs.display()))
+            .arg(format!("--output={}", red_export.display()))
+            .arg("--wasm=true")
+            .arg("--preserve-encodings=true")
+            .arg("--common-import-override=index_dep_crate")
+            .arg("--extern-wasm-crate=index_dep_crate=index_dep_crate_wasm")
+            .output()
+            .unwrap();
+        assert!(
+            generate_red.status.success(),
+            "RED generation failed:\n{}",
+            String::from_utf8_lossy(&generate_red.stderr)
+        );
+        seed_roots(&red_export);
+        let red_mod =
+            std::fs::read_to_string(red_export.join("wasm/src/generated/mod.rs")).unwrap();
         assert!(
             red_mod.contains(&format!("pub struct {class}")),
             "without the directive {class} must be minted locally (the RED premise):\n{red_mod}"
         );
-    let red = tool_cmd("cargo")
-        .args(["build", "--target", "wasm32-unknown-unknown"])
-        .current_dir(red_export.join("wasm"))
-        .output()
-        .unwrap();
-    wasm_public_surface(
-        &red,
-        &red_export.join("wasm/target/wasm32-unknown-unknown/debug/cddl_lib_wasm.wasm"),
-        &[class],
-    );
+        let red = tool_cmd("cargo")
+            .args(["build", "--target", "wasm32-unknown-unknown"])
+            .current_dir(red_export.join("wasm"))
+            .output()
+            .unwrap();
+        wasm_public_surface(
+            &red,
+            &red_export.join("wasm/target/wasm32-unknown-unknown/debug/cddl_lib_wasm.wasm"),
+            &[class],
+        );
     }
     let _ = std::fs::remove_dir_all(&red_inputs);
 }
