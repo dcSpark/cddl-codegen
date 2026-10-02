@@ -4236,6 +4236,19 @@ fn parse_type(
             RuleBodyShape::single_type(type1),
         );
     }
+    // Marker rules name an externally defined type; they own no tag-bearing wrapper here.
+    if outer_tag.is_some()
+        && let Type2::Typename { ident, .. } = &type1.type2
+        && matches!(ident.ident, EXTERN_MARKER | RAW_BYTES_MARKER)
+    {
+        types.record_rejection(format!(
+            "rule `{type_name}`: a tag around `{}` would be ignored because the marker names an \
+             externally defined type. Define the tagged wrapper as a separate type with a real \
+             CDDL body, or drop the tag.",
+            ident.ident
+        ));
+        return;
+    }
     match &type1.type2 {
         Type2::Typename {
             ident,

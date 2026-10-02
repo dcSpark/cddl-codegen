@@ -19863,3 +19863,44 @@ fn inline_type_choice_non_last_arm_directives() {
         assert!(msg.contains("optional field rather than variants"), "{msg}");
     }
 }
+
+#[test]
+fn tags_on_extern_and_raw_marker_rules_reject_instead_of_disappearing() {
+    for marker in [
+        "_CDDL_CODEGEN_EXTERN_TYPE_",
+        "_CDDL_CODEGEN_RAW_BYTES_TYPE_",
+    ] {
+        for body in [
+            format!("#6.42({marker})"),
+            format!("#6.42(({marker}))"),
+            format!("(#6.42({marker}))"),
+        ] {
+            for wasm in ["--wasm=false", "--wasm=true"] {
+                let msg = expect_graceful_rejection(
+                    "tagged_marker",
+                    &format!("foo = {body}\nholder = [f: foo]\n"),
+                    &[wasm],
+                );
+                assert!(
+                    msg.contains("a tag around") && msg.contains(marker),
+                    "{msg}"
+                );
+                assert!(
+                    msg.contains("externally defined type") && msg.contains("drop the tag"),
+                    "{msg}"
+                );
+            }
+        }
+        let bare = expect_generates(
+            "bare_marker_control",
+            &format!("foo = {marker} ; @copy\nholder = [f: foo]\n"),
+            &["--wasm=false"],
+        );
+        let grouped = expect_generates(
+            "grouped_marker_control",
+            &format!("foo = ({marker}) ; @copy\nholder = [f: foo]\n"),
+            &["--wasm=false"],
+        );
+        assert_eq!(bare, grouped);
+    }
+}
