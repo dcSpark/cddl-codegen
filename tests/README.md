@@ -39,7 +39,7 @@ that registry rather than rely on the IR check indirectly.
 
 ## Running everything
 
-On NixOS, put a Nix-packaged `wasm-bindgen` CLI matching the generated crate's resolved version on `PATH` before running WASM packaging tests.
+On NixOS, put a Nix-packaged `wasm-bindgen` CLI matching the generated crate's resolved version on `PATH` before running WASM packaging and public-surface tests.
 `wasm-pack` selects a matching executable on `PATH` ahead of its download cache; its generic Linux aarch64 release helper requires an ELF loader NixOS does not provide by default.
 Package the matching upstream helper with its runtime dependencies in the project environment, and verify `wasm-bindgen --version`; a working `wasm-pack --version` alone does not qualify the helper.
 

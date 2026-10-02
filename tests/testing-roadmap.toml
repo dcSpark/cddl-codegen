@@ -87,8 +87,6 @@ entries = [
   "testing.generated-local-collision.general-mangling-remedy",
   "testing.maintainer-ruling-force-convenience-cbor-bytes-door-turns",
   "testing.persistent-fixture-lock-offline-warmup",
-  "testing.wasm-duplicate-link-controls-current-toolchain",
-  "testing.rust-oracle-tag-leniency-optional-segment-roundtrip",
   "testing.full-tier-command-oracles-unavailable",
   "testing.nixos-wasm-pack-helper-environment",
 ]
@@ -2184,7 +2182,7 @@ body_md = '''Provision the reviewed Ruby `cddl` gem and Rust `cddl` command orac
 On 2026-09-25, `bun run check.ts full --keep-going` at `master` `2f3970b3` finished with `ir_conformance_corpus` failing because the Ruby gem was absent and `verify` failing its startup preflight because both command oracles were absent.
 The separate `rust_oracle_fingerprint` and `ir_conformance_multifile` gates passed against the pinned Rust crate dependency; those passes do not supply either missing command.
 After provisioning, rerun the affected gates with their normal oracle settings, then run the full tier before claiming it green.
-The Rust oracle's known tag-leniency defect is tracked separately by `testing.rust-oracle-tag-leniency-optional-segment-roundtrip` and may still make `ir_conformance_corpus` fail.
+The Rust oracle's tag-leniency defect remains open in `cddl-matrix/README.md` gap #20; `ir_conformance_corpus` contains a guarded per-rule accommodation for it.
 
 '''
 work_state = "pending_review"
