@@ -4752,78 +4752,46 @@ const TYPE_COMPLEXITY_THRESHOLD: u64 = 250;
 /// whether an emitted encoding field type would trip the lint. clippy walks the type and adds
 /// `10 * nest` for every path / tuple / array / slice / reference node, incrementing `nest` by one
 /// when descending into that node's children. The emitted encoding types use only paths (`Foo`,
-/// `Foo<..>`, `a::b`) and tuples (no refs/slices), so scoring those node kinds suffices.
+/// `Foo<..>`, `a::b`) and tuples (no refs/slices), so scoring those node kinds suffices: every
+/// other node (an exact-byte `[u8; N]` key, for one) scores as a childless `10 * nest` leaf.
 /// Over-estimating here is harmless (it only mints an extra alias); the clippy gate is the backstop
-/// if the real boundary ever shifts.
+/// if the real boundary ever shifts. Text that does not parse as a type scores as over the
+/// threshold, so it is hoisted rather than risking the lint.
 fn type_complexity_score(ty: &str) -> u64 {
-    /// Split `s` on top-level `delim` (bracket depth 0 over `<>` and `()`), trimming each piece.
-    fn split_top_level(s: &str, delim: char) -> Vec<&str> {
-        let mut depth = 0i32;
-        let mut parts = Vec::new();
-        let mut start = 0;
-        for (i, c) in s.char_indices() {
-            match c {
-                '<' | '(' => depth += 1,
-                '>' | ')' => depth -= 1,
-                c if c == delim && depth == 0 => {
-                    parts.push(s[start..i].trim());
-                    start = i + c.len_utf8();
-                }
-                _ => {}
+    fn score(ty: &syn::Type, nest: u64) -> u64 {
+        match ty {
+            // A single `(T)` grouping is just `T` (no HIR node).
+            syn::Type::Paren(paren) => score(&paren.elem, nest),
+            syn::Type::Group(group) => score(&group.elem, nest),
+            // `()` is a unit.
+            syn::Type::Tuple(tuple) if tuple.elems.is_empty() => 1,
+            // A tuple is one node whose elements are children.
+            syn::Type::Tuple(tuple) => {
+                10 * nest + tuple.elems.iter().map(|e| score(e, nest + 1)).sum::<u64>()
             }
-        }
-        parts.push(s[start..].trim());
-        parts
-    }
-    /// True iff every prefix of `s` has non-negative `<>`/`()` depth and the whole is balanced —
-    /// i.e. an outermost `(...)` pair actually wraps the entire string.
-    fn is_balanced(s: &str) -> bool {
-        let mut depth = 0i32;
-        for c in s.chars() {
-            match c {
-                '<' | '(' => depth += 1,
-                '>' | ')' => {
-                    depth -= 1;
-                    if depth < 0 {
-                        return false;
-                    }
-                }
-                _ => {}
+            // A path (`u64`, `cbor_event::Sz`, `Vec<..>`) is one node whose generic type
+            // arguments are children.
+            syn::Type::Path(path) => {
+                10 * nest
+                    + path
+                        .path
+                        .segments
+                        .iter()
+                        .filter_map(|segment| match &segment.arguments {
+                            syn::PathArguments::AngleBracketed(args) => Some(&args.args),
+                            _ => None,
+                        })
+                        .flatten()
+                        .filter_map(|arg| match arg {
+                            syn::GenericArgument::Type(arg) => Some(score(arg, nest + 1)),
+                            _ => None,
+                        })
+                        .sum::<u64>()
             }
+            _ => 10 * nest,
         }
-        depth == 0
     }
-    fn score(ty: &str, nest: u64) -> u64 {
-        let ty = ty.trim();
-        // Parenthesized: a tuple (>=2 top-level elements) is one node whose elements are children;
-        // a single `(T)` grouping is just `T` (no HIR node); `()` is a unit.
-        if let Some(inner) = ty
-            .strip_prefix('(')
-            .and_then(|s| s.strip_suffix(')'))
-            .filter(|inner| is_balanced(inner))
-        {
-            let parts = split_top_level(inner, ',');
-            return if inner.trim().is_empty() {
-                1 // unit ()
-            } else if parts.len() >= 2 {
-                10 * nest + parts.iter().map(|p| score(p, nest + 1)).sum::<u64>()
-            } else {
-                score(inner, nest) // grouping, not a tuple
-            };
-        }
-        // Path with generics `Ident<..>` / `a::b::Ident<..>`: one node, generic args are children.
-        if let (Some(open), Some(close)) = (ty.find('<'), ty.rfind('>')) {
-            let args = &ty[open + 1..close];
-            return 10 * nest
-                + split_top_level(args, ',')
-                    .iter()
-                    .map(|a| score(a, nest + 1))
-                    .sum::<u64>();
-        }
-        // Plain path node (`u64`, `LenEncoding`, `cbor_event::Sz`, ...).
-        10 * nest
-    }
-    score(ty, 1)
+    syn::parse_str::<syn::Type>(ty).map_or(u64::MAX, |ty| score(&ty, 1))
 }
 
 /// Add one field to an encoding struct, hoisting an over-`type_complexity` field type into a
@@ -5693,5 +5661,32 @@ fn add_struct_derives<T: DataType>(
                 data_type.derive(key_derive);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod type_complexity_tests {
+    use super::type_complexity_score;
+
+    /// clippy's structural score for the node shapes encoding field types use: a leaf path is
+    /// `10 * nest`, generic arguments and tuple elements are children one level deeper, a `(T)`
+    /// grouping is transparent, and `()` scores 1.
+    #[test]
+    fn type_complexity_score_vectors() {
+        for (ty, expected) in [
+            ("u64", 10),
+            ("()", 1),
+            ("(u64)", 10),
+            ("(LenEncoding, StringEncoding)", 50),
+            ("Option<cbor_event::Sz>", 30),
+            ("BTreeMap<[u8; 4], StringEncoding>", 50),
+            (
+                "Vec<(LenEncoding, BTreeMap<PolicyId, StringEncoding>)>",
+                170,
+            ),
+        ] {
+            assert_eq!(type_complexity_score(ty), expected, "{ty}");
+        }
+        assert_eq!(type_complexity_score("Vec<"), u64::MAX);
     }
 }
