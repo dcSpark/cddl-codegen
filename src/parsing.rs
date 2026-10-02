@@ -225,25 +225,7 @@ pub fn parse_rule(
 pub fn rule_position_name_rejection(cddl_rule: &cddl::ast::Rule) -> Option<String> {
     let has_rule_position_name = match cddl_rule {
         cddl::ast::Rule::Type { rule, .. } => {
-            let choices = &rule.value.type_choices;
-            // Single-type-choice rules, plus the T/null two-choice Option-collapse (no enum is
-            // generated there, so no variant exists for a `@name` to name). Every other
-            // multi-choice rule's `@name`s legitimately name enum variants.
-            let in_scope: &[cddl::ast::TypeChoice] = match choices.len() {
-                1 => std::slice::from_ref(&choices[0]),
-                2 if type2_is_null(&choices[0].type1.type2)
-                    || type2_is_null(&choices[1].type1.type2) =>
-                {
-                    choices.as_slice()
-                }
-                _ => return None,
-            };
-            // Mirror `parse_type`'s top-level metadata merge (inherited defaults to empty there):
-            // the cddl parser can attach the rule's trailing comment to either the Type1 or the
-            // enclosing TypeChoice, so read both.
-            in_scope
-                .iter()
-                .any(|tc| type_choice_metadata(tc).name.is_some())
+            type_choices_carry_rule_position_name(&rule.value.type_choices)
         }
         cddl::ast::Rule::Group { rule, .. } => match &rule.entry {
             cddl::ast::GroupEntry::InlineGroup {
@@ -259,6 +241,32 @@ pub fn rule_position_name_rejection(cddl_rule: &cddl::ast::Rule) -> Option<Strin
         Some(rule_position_name_message(&cddl_rule.name()))
     } else {
         None
+    }
+}
+
+/// Inspect rule slots through tag heads and parentheses. Nullable collapses have no variants;
+/// other multi-choice bodies reserve their arm metadata for variant names.
+fn type_choices_carry_rule_position_name(choices: &[TypeChoice]) -> bool {
+    let in_scope = match choices.len() {
+        1 => choices,
+        2 if null_collapse_inner(choices).is_some() => choices,
+        _ => return false,
+    };
+    if in_scope
+        .iter()
+        .any(|choice| type_choice_metadata(choice).name.is_some())
+    {
+        return true;
+    }
+    match choices {
+        [only] => match &only.type1.type2 {
+            Type2::TaggedData { t, .. } => type_choices_carry_rule_position_name(&t.type_choices),
+            Type2::ParenthesizedType { pt, .. } => {
+                type_choices_carry_rule_position_name(&pt.type_choices)
+            }
+            _ => false,
+        },
+        _ => false,
     }
 }
 

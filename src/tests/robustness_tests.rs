@@ -19763,3 +19763,35 @@ fn tagged_nullable_outer_key_and_element_directives_remain_accepted() {
         );
     }
 }
+
+#[test]
+fn rule_position_name_is_refused_through_a_tag_or_parentheses() {
+    for body in [
+        "foo = #6.42(uint ; @name bar\n)",
+        "foo = (uint ; @name bar\n)",
+        "foo = #6.42(uint / null ; @name bar\n)",
+        "foo = (uint / null ; @name bar\n)",
+        "foo = #6.42(uint ; @name bar\n / null)",
+    ] {
+        let msg = expect_graceful_rejection(
+            "wrapped_rule_name",
+            &format!("{body}\nholder = [f: foo]\n"),
+            &["--wasm=false"],
+        );
+        assert!(
+            msg.contains("does not rename a top-level rule or group"),
+            "{msg}"
+        );
+    }
+    for body in [
+        "foo = #6.42(uint / tstr ; @name bar\n)",
+        "foo = (uint / tstr / bytes ; @name bar\n)",
+    ] {
+        let files = expect_generates(
+            "wrapped_variant_name",
+            &format!("{body}\nholder = [f: foo]\n"),
+            &["--wasm=false"],
+        );
+        assert!(files.values().any(|s| s.contains("Bar(")), "{files:?}");
+    }
+}
