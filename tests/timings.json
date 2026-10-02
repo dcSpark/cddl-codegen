@@ -1073,7 +1073,17 @@
       ]
     },
     {
-      "gate": "rustdoc_links"
+      "gate": "rustdoc_links",
+      "warm_ms": 3000,
+      "n": 3,
+      "measured": "2026-10-02",
+      "machine": "24aede5e",
+      "history": [
+        {
+          "date": "2026-10-02",
+          "warm_ms": 3000
+        }
+      ]
     },
     {
       "gate": "self_checks",
