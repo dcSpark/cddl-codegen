@@ -1,201 +1,83 @@
-//! Carry user-added comments across a regeneration of the tool-owned `src/generated/**` trees.
+//! Carry user edits across a regeneration of the tool-owned `src/generated/**` trees.
 //!
-//! At export time, for each generated `.rs` file that already exists on disk, [`preserve`] overlays
-//! the comments a user added to the previous output onto the freshly generated string. It NEVER
-//! uses a textual/positional diff: generated Rust has strongly named top-level structure, so a
-//! comment is re-anchored by symbol identity (which named item it sits in/above) and token equality
-//! (the safety test). A comment that cannot be safely re-placed is not dropped silently — it is
-//! turned into a tagged `compile_error!` block so the generated crate fails to build and the user
-//! reviews it.
+//! [`preserve`] overlays the tagged edits and comments of the file on disk onto the freshly
+//! generated string. The user-facing contract (the `keep`, `insert` and `replace` tags, the two
+//! failure channels, the residual limits) is `docs/docs/preserving_edits.mdx`. The driver order
+//! (overlay, then import re-prune and alloc re-injection over the post-overlay map) is
+//! "Preservation and final-content recomputation" in `docs/development/generation-contract.md`.
+//! The composed runtime statics and the `--export-static-crate` target are outside that map and
+//! carry no prunable imports; `generation::write_tail::write_rs_with_preserve` preserves them per
+//! file.
 //!
-//! **Driver ordering.** `export` applies this overlay to the in-memory file map (the mapped
-//! `.rs` files) BEFORE the common write loop, then runs the usage-derived import prune
-//! (`import_prune::prune_generated_files`) once more over the post-overlay map, then writes each entry
-//! plainly. The order matters: a `cddl-codegen:replace` block can delete the last user of an import
-//! the freshly-generated content still justified, and the prune's "an import is justified iff the
-//! FINAL code references the name" premise must hold for what ships — so the overlay runs first and
-//! the prune re-derives the import set against post-overlay content (map-level, because a replace
-//! block in a descendant such as `serialization.rs` can orphan an import in the parent `mod.rs`).
-//! The composed runtime static files (`error.rs`, the collection runtimes) and the
-//! `--export-static-crate` target are NOT in that map, carry no prunable imports, and get their
-//! preservation per file via `export`'s `write_rs_with_preserve` instead.
+//! **Never silent.** Every carried comment or block either lands in the new file or is trapped in a
+//! `// cddl-codegen:unpreserved-comment` `compile_error!` block at the top of the file, which
+//! carries forward verbatim until the user deletes it. Malformed tag structure is a hard
+//! [`PreserveError`] instead; a block-shape error carries the block's start line so the caller can
+//! print `file:line:`.
 //!
-//! Anchoring escalates through tiers, each stricter about what "safe" means:
-//! * identity — the file's code tokens are unchanged, so every user comment transfers at the same
-//!   token index (the dominant case);
-//! * per-item — the file changed elsewhere, but the named item holding the comment is unchanged, so
-//!   the comment transfers within it, or the comment sits above a still-present item;
-//! * unique-statement — the item's body changed, but the exact statement the comment annotates
-//!   appears exactly once on BOTH sides (unique-in-new alone would let a deleted duplicate's comment
-//!   silently re-attach to the survivor), so the comment re-attaches above it;
-//! * otherwise the comment fails loudly.
+//! **Anchoring by structure, never by textual diff.** A comment or block is anchored to the code
+//! token after it and re-placed through tiers, each stricter than the last: identity (the file's
+//! code tokens are unchanged, so the index transfers); per-item (the enclosing named top-level item
+//! is unchanged, or the anchor is the item's first token); unique-statement (the annotated
+//! statement appears exactly once on BOTH sides, because unique-in-new alone would re-attach a
+//! deleted duplicate's comment to the survivor). Anything else fails loudly.
 //!
-//! **Ownership: outside a user block, a comment is tool-owned.** This is the load-bearing rule, and
-//! it follows from what the overlay is. A two-way merge has `ours` (the file on disk) and `theirs`
-//! (this run's fresh output) but no `base` — what the tool emitted on the PREVIOUS run — and "is
-//! this on-disk comment user-owned?" is answerable only from `base`. Any rule that answers it
-//! without `base` is a substitute for `base`, and every such substitute fails the same way: it
-//! cannot distinguish "the tool reworded its own comment" from "the user wrote this". Guessing
-//! "user" there does not merely duplicate text, it CORRUPTS prose — a reworded tool comment
-//! re-anchors below the new one, and a reflowed paragraph leaves exactly the lines whose wrap
-//! changed spliced into the middle of maintained documentation.
+//! **Outside a user block, every comment is tool-owned.** A two-way merge has no record of what the
+//! previous run emitted, so it cannot tell a reworded tool comment from a user comment, and
+//! guessing
+//! "user" splices stale tool prose into maintained text. The rare side is marked: a user comment
+//! declares itself with a `keep` marker ([`ReservedTag::Keep`]), and any other comment this run
+//! does
+//! not emit is unclassified and trapped. The remaining ownership checks can only suppress a
+//! trap, never insert text, so a
+//! wrong answer is a spurious loud error rather than a silent mangle: positional self-cancel,
+//! insertion-point dedup, text-presence dedup (an own-line comment `new` carries anywhere is this
+//! run's output, which keeps a cross-version regen quiet), and doc ownership (an old doc block at
+//! an anchor `new` documents, or an unplaceable doc block, is tool output; the user channel for doc
+//! text is `@doc`).
 //!
-//! Ownership ambiguity is symmetric, so the fix is to mark one side, and the RARE side is the user's:
-//! the generator emits comments into these trees constantly (the header banner, the static prelude
-//! merged into `serialization.rs`, `.doc()`-rendered `///` blocks, the wasm redefine notes), while
-//! genuine hand-written comments in a generated tree number in the single digits even in a large
-//! consumer. So a user comment DECLARES itself with a `// cddl-codegen:keep` marker (see
-//! [`ReservedTag::Keep`]), and anything that is neither this run's output nor marked is
-//! UNCLASSIFIED: it is trapped in a `compile_error!` naming both possibilities, never re-anchored
-//! on a guess.
+//! **Blocks.** `keep` markers and `insert` blocks are [`InsertBlock`]s (a `keep` block has an empty
+//! interior) and `replace` blocks are [`ReplaceBlock`]s, all found by [`scan_blocks`]. Anchoring
+//! runs on a virtual pristine old stream: an insert block's interior code is removed, and a replace
+//! block's user code is substituted by its recorded original (the needle), so the identity tier
+//! still fires and anchors stay sound. A replace block splices by byte range over the needle's
+//! match
+//! in its enclosing item: at the same offset when the whole item regenerated token-identically,
+//! otherwise only where the needle is unique on both sides. An insertion whose target lies strictly
+//! inside a replaced span fails loudly; one at a splice's start byte lands above it. An empty user
+//! section deletes the recorded original.
 //!
-//! What remains of the old ownership heuristics survives only as SUPPRESSION, never as insertion,
-//! so each can now fail in the loud direction only: positional self-cancel (an old comment `new`
-//! carries at the same anchor is the generator's), insertion-point dedup (a comment re-anchoring to
-//! where `new` already carries the identical text is a shifted generator comment — skip),
-//! text-presence dedup (an own-line comment `new` carries ANYWHERE is this run's output whatever
-//! its position — the anchor-free answer for a cross-version regen, which shifts and rewrites the
-//! code a comment annotates and so defeats both anchored checks), and doc
-//! ownership (an anchor `new` documents is tool-owned: an old `///`/`//!` block there is stale tool
-//! output — and an UNPLACEABLE doc block drops the same way, so deleting a documented type never
-//! traps the tool's own docs in compile_error blocks; the user channel for doc text is the
-//! CDDL/`@doc` DSL). A heuristic that wrongly fires suppresses a comment that would otherwise have
-//! been reported; a heuristic that wrongly does NOT fire produces a spurious unclassified error. The
-//! silent-mangle direction is closed. (The CRLF trailing-`\r` strip covers line comments only; a
-//! multi-line `/* */` interior keeps its `\r` bytes — cosmetic for user text, unreachable for tool
-//! text since the generator emits no block comments.)
+//! **Reserved namespace.** An own-line `// cddl-codegen:` comment that is not part of a well-formed
+//! structure is a hard error, never user text, so a stray or mistyped tag cannot end a block early
+//! and let its remaining lines be clobbered. [`unfold_trailing_markers`] first moves every trailing
+//! marker, including rustfmt's folded `} // cddl-codegen:replaces`, onto its own line, so both
+//! spellings reach one fixed point.
 //!
-//! v1 scope is own-line comments (only whitespace before them on their line). A user-added trailing
-//! (end-of-line) comment is detected but not re-placed — it fails loudly with a hint to move it to
-//! its own line — so the never-silent property holds without a trailing-anchor flavor. One class of
-//! trailing marker is NOT a user typo but rustfmt's own canonical form: match-tail markers can fold
-//! onto the arm's closing `}` (`} // cddl-codegen:replaces`, with following recorded-original lines
-//! re-indented as an aligned block). [`unfold_trailing_markers`] accepts that form — and every other
-//! trailing `cddl-codegen:` marker regardless of construct — at the shared entry of both scan paths
-//! ([`preserve`] and the never-silent harness), moving it back onto its own line below the code it
-//! trailed. Both spellings then parse and the rustfmt'd on-disk form reaches a stable fixed point, so
-//! "run twice = run once" survives the format step with no consumer `cargo fmt` needed. The fixture
-//! corpus holds keep/insert/replace witnesses at six additional tail geometries; they are currently
-//! own-line fixed-point tripwires, while match tails are the known active folded family. Emission is
-//! unchanged (own-line everywhere); rustfmt re-folds where its current rules choose to. Trailing
-//! comments whose exact text appears in `new`'s trailing set cancel silently. INVARIANT: the
-//! generator emits NO trailing comment on a row a spec change can delete — such a comment strands on
-//! the deleted row and re-injects as a `compile_error!` trap that carries forward across regens, so
-//! the two generated files that once carried per-row `// <cddl>` markers (`extern_interface_check.rs`,
-//! `key_demand_assertions.rs`) were made banner-only. This cancellation rule is therefore
-//! defense-in-depth: if the generator ever regrows a trailing comment, it must not spam compile
-//! errors. (The `// <cddl>` lines in some `--emit-tests` fixtures live in harness-appended
-//! hand-written test modules outside the overlay-covered trees, not in tool-owned generated code.)
+//! **Delimiters.** An insert block's code must be balanced. A replace block's user section and
+//! recorded original must each never close a delimiter they did not open, and must change the depth
+//! of each of `{}`, `()` and `[]` by the same net amount: then every downstream token keeps its
+//! depth, so top-level item splitting survives even a wrong needle.
 //!
-//! A user comment is declared with the reserved `// cddl-codegen:keep` marker, in one of two forms.
-//! INLINE — `// cddl-codegen:keep <text>` — makes the whole line the comment; it travels verbatim,
-//! marker included, because an unmarked copy would be unclassified on the next run. BARE — a
-//! `// cddl-codegen:keep` line on its own — claims the contiguous own-line comment run directly
-//! below it (same anchor, each line immediately after the last, stopping at a blank line, a reserved
-//! tag, or a code token), and is the only form that can carry `///`/`//!` doc comments, since the
-//! inline form's text is necessarily a `//` comment. Either form is represented as an [`InsertBlock`]
-//! with an EMPTY interior (`code_start == code_end`) — it wraps comment text, never code — so it
-//! removes nothing from the virtual pristine stream and anchors on the following code token through
-//! the same tiers as everything else. A bare marker with nothing to claim is a hard [`PreserveError`],
-//! and `keep-<anything>` stays an unknown tag rather than degrading to `keep`.
+//! **Trailing comments.** Only own-line comments are carried; a trailing comment fails loudly
+//! unless
+//! `new` carries the same text. The generator must emit no trailing comment on a row a spec change
+//! can delete, or that comment strands on the deleted row and re-traps on every regeneration; this
+//! is pinned by `extern_interface_check_regen_over_deletion_no_trap` and
+//! `extern_interface_check_has_no_trailing_row_comments`. (The `// <cddl>` lines in some
+//! `--emit-tests` fixtures sit in harness-appended test modules outside the overlay.)
 //!
-//! Beyond comments, a user can keep hand-written CODE across a regen with an
-//! `// cddl-codegen:insert-start` … `// cddl-codegen:insert-end` own-line comment pair. The whole
-//! block — its two tag lines, the interior code, and any interior comments — travels as ONE opaque
-//! verbatim unit, anchored exactly like a comment: by the code token immediately following the block,
-//! through the identity → per-item → unique-statement tiers. To anchor it we first reconstruct a
-//! virtual pristine `old` stream in which a block's interior code tokens are REMOVED (the generator
-//! never emitted them, so leaving them in would read as item drift and doom every anchor in that
-//! item); the block's tag/interior comments are excluded from the comment pass by the same
-//! exclusion-set pattern as a `sentinel_comment`. Recognition is comment-text based on the lexed
-//! stream, so a tag-lookalike inside a string literal is inert for free. An unplaceable block is not
-//! left in place — its ENTIRE text is escaped into the same `compile_error!` fail-loudly payload an
-//! unplaceable comment uses (a bigger message, zero new machinery), so a failed block carries forward
-//! verbatim on the next regen instead of being recounted as a user edit.
+//! **Do not** replace replace blocks with a `#[cfg(any())]`-style insert that compiles out
+//! generated
+//! code and carries a copy: the copy has no drift detection and goes silently stale. Do not
+//! pick the
+//! Nth same-keyed item or duplicate fragment without a whole-item identity guard: a canonical
+//! reorder would silently retarget it.
 //!
-//! A user can also SWAP generated code with an `// cddl-codegen:replace-start` … `:replaces` …
-//! `:replace-end` block: the user's replacement sits between `replace-start` and `replaces`; every
-//! line between `replaces` and `replace-end` is a `//`-commented copy of the generated code it
-//! replaced. That recorded original does three jobs — it is the placement ANCHOR (uncomment it, lex
-//! it into a NEEDLE, find that token run in the regenerated item, splice the user block over it),
-//! the DRIFT detector (needle gone ⇒ the generator's output for that region changed ⇒ fail loudly
-//! with the recorded original in the message, killing silently-stale overrides), and the review
-//! record (every override is visible in diffs next to what it replaced). To anchor it we substitute
-//! the block's user-code span in the virtual pristine stream with the NEEDLE (not merely remove it):
-//! then the identity tier still fires when generator output is unchanged, and the needle regains
-//! BOTH-sides uniqueness. Placement anchors by one of two paths. First the ITEM-IDENTITY fast path: if
-//! the whole enclosing top-level item regenerated token-identically, the block splices at the same
-//! offset it physically occupied — position disambiguates, so the recorded original need NOT be unique
-//! within the item, which is what lets two different occurrences of a duplicated fragment both be
-//! replaced. It is sound by construction: the substitution placed the needle at that offset, so an
-//! identical item carries the recorded original's exact tokens there; a wrong/drifted needle makes the
-//! item non-identical and falls through. Otherwise the strict BOTH-sides-uniqueness path: the needle
-//! must be unique in the virtual old item AND in the matched new item — the deleted-duplicate hazard
-//! the comment engine documents is here a LOUD failure, not a residual: a recorded original that is
-//! non-unique in the virtual old (a genuine duplicate the generator still emits twice, when the item
-//! also changed) fails loudly rather than guessing which occurrence it overrides. The
-//! splice is BYTE-RANGE, not line-based (from the first matched token's start to the last's end), so
-//! a needle beginning mid-line in a one-liner match arm splices correctly and generator comments
-//! interior to that span are deleted with it while comments before/after survive. Whole-item replaces
-//! (a member fn, a whole `impl`) are the same path with a bigger needle; a member fn's enclosing
-//! TOP-LEVEL item is its impl, and `find_subsequence` within the impl slice locates it without real
-//! Rust parsing. The merge engine is now a set of non-overlapping delete+insert ops on `new`: an
-//! insertion (comment / insert block) whose target offset falls STRICTLY INSIDE a replaced span fails
-//! loudly (its referent is being replaced — move it into the block); an insert block or comment at a
-//! splice's START byte lands ABOVE the spliced code (ordered before the splice). Hard `PreserveError`
-//! (pre-splice) on a malformed block: a missing `replaces`/`replace-end`, an empty recorded original
-//! (lexes to zero code tokens), a user section or recorded original that closes a delimiter it does not
-//! open, a user section and recorded original whose net delimiter deltas differ (the delta rule below),
-//! a recorded original that fails to lex, an orphaned/nested tag, or a recorded original that straddles
-//! a top-level item boundary. The block-shape errors (delimiter deltas, empty recorded original)
-//! tag the offending block's `*-start` line on the [`PreserveError`], so the caller renders a
-//! `file:line:` prefix editors turn into a clickable jump (one on-disk file can hold many blocks). An
-//! empty user section is a (undocumented) deletion — allowed, pinned by
-//! a fixture. Every fail-loudly `compile_error!` names its payload correctly — "a user comment" for a
-//! `keep` block or a trailing comment, "a user code block" for an insert/replace block — and an
-//! unclassified comment gets a headline that makes NO ownership claim at all, since that is exactly
-//! what is unknown about it.
-//!
-//! Namespace reservation makes never-silent hold in the presence of tags: any own-line comment
-//! beginning `// cddl-codegen:` that is not part of a well-formed known structure — a valid
-//! `unpreserved-comment` fail-loudly block, a well-formed insert block, a well-formed replace block,
-//! or a well-formed `keep` marker — is a hard [`PreserveError`] naming the offending line, NEVER a
-//! silent demotion to user text. This closes the gap where a stray tag inside a block would terminate it early and clobber
-//! the trailing user lines as untagged code: premature termination always leaves an orphaned tag,
-//! which errors instead of truncating. So a bare `unpreserved-comment` marker NOT backed by the
-//! `compile_error!` shape is a hard error too (it is a malformed fail-loudly block, not a user
-//! comment), and an orphaned `replaces`/`replace-end` errors rather than degrading to a user comment.
-//! Because [`unfold_trailing_markers`] moves EVERY trailing `cddl-codegen:` marker onto its own line
-//! before the scan, this reservation now covers the rustfmt-folded position uniformly: a trailing
-//! marker with an UNKNOWN tag (`} // cddl-codegen:not-a-real-tag`) becomes the same hard
-//! namespace-reservation error an own-line unknown tag raises, rather than the softer "move it to its
-//! own line" trailing-comment trap it fell to before — never-silent applied in one place regardless of
-//! where rustfmt put the marker.
-//! An INSERT block's user section must have absolutely balanced `{}`/`()`/`[]` (it has no recorded
-//! original to pair against). A REPLACE block instead obeys the DELTA rule: the user section and the
-//! recorded original must each be never-negative (neither closes a delimiter it does not open) and must
-//! change delimiter depth by the SAME per-delimiter net amount (each of `{}`/`()`/`[]` compared
-//! separately). Equal net delta means every token downstream of the splice keeps its exact delimiter
-//! depth, so top-level item splitting is preserved even under a wrong needle (which then still fails
-//! loudly as drift/ambiguity/straddle) — absolute balance was sufficient but not necessary. So a
-//! natural `if flag {` paired with a recorded `if <long generated cond> {` (both Δ+1 on `{}`) is legal.
-//! Interior dips are rejected because a `} else {` fragment (net Δ0 with a −1 dip) could close the
-//! enclosing item in the splitter's view; a hard error otherwise, since an ill-formed fragment cannot
-//! be placed by the statement-run model and would corrupt item splitting for the whole file.
-//!
-//! Rejected alternatives (do not "rediscover" as shortcuts): a `#[cfg(any())]`-style insert-block hack
-//! that compiles out a generated statement while carrying a duplicated copy is rejected — it has ZERO
-//! drift detection, so the copy goes silently stale on any generator change, defeating the overlay's
-//! purpose. Occurrence-ordinal matching (pick the Nth duplicate) WITHOUT a whole-item identity guard is
-//! rejected — it silently retargets under a canonical reorder; the item-identity fast path gets the
-//! same disambiguation safely only because it is gated on whole-item token identity.
-//!
-//! The lexer is string-aware by necessity, not thoroughness: Rust string/raw-string literals span
-//! lines, so a line can begin with `//` while inside a literal; a comment cannot be classified
-//! without tracking literal state first. The input is our own generated output plus user comments (a
-//! constrained Rust subset), but a user edit that breaks the splitter's assumptions must land in the
-//! fail-loudly path, never a silent misplacement — so imperfect splitting degrades to item-match
-//! failure, which is loud.
+//! The lexer tracks string and raw-string literals, because a line inside a literal can begin with
+//! `//`; tags are recognized on lexed comments, so a tag lookalike inside a string is inert.
+//! Imperfect item splitting degrades to an item-match failure, which is loud. Line comments
+//! lose a trailing `\r`; a multi-line `/* */` interior keeps it (the generator emits no block
+//! comments).
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -1751,41 +1633,16 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
         .filter(|c| c.own_line)
         .map(|c| (c.anchor, c.text))
         .collect();
-    // Every own-line comment text `new` carries ANYWHERE, keyed by text alone. The anchored sets
-    // above cancel a generator comment only where the two sides agree on position, which a
-    // CROSS-VERSION regen breaks: a run that both adds code tokens (`extern crate alloc;`, the
-    // `use alloc::…` block) and rewrites others (`::std::borrow::Cow` → `alloc::borrow::Cow`)
-    // shifts every anchor and drifts the items the rewrite touched, so a comment the fresh
-    // emission carries VERBATIM traps as unclassified — a `compile_error!` asserting a comment was
-    // lost while sitting a few lines above that same comment. Text presence is the anchor-free
-    // answer: this run emits the comment, so it is this run's output whatever its position. Same
-    // bound as the anchored sets and the trailing cancellation above — a pure function of
-    // (old, new) that can only SUPPRESS a trap, never insert a comment or cause one — and the same
-    // residual class: a USER comment textually identical to tool output elsewhere in the file is
-    // dropped silently rather than trapped. Matching is per LINE, so a multi-line run suppresses
-    // exactly those of its lines the fresh emission carries.
+    // Text-presence dedup: every own-line comment text `new` carries anywhere (module docs,
+    // "Outside a user block…").
     let new_own_line_texts: BTreeSet<&str> = new_lex
         .comments
         .iter()
         .filter(|c| c.own_line)
         .map(|c| c.text)
         .collect();
-    // Trailing comments whose text `new` also carries somewhere cancel silently. INVARIANT: the
-    // generator must emit NO trailing (end-of-line) comment on any row a spec change can delete —
-    // such a comment would be stranded on the deleted row and re-injected here as a
-    // `cddl-codegen:unpreserved-comment` compile_error trap. What the `keep` rule DOES relax is the
-    // self-perpetuating half: the trap block's payload is a bare trailing comment, so re-injecting
-    // it on the next regen no longer requires the user to hand-delete a sentinel that keeps
-    // regrowing from an unmarked own-line copy. What it does NOT relax is the trap itself — a
-    // stranded trailing tool comment still fails the crate's build once per deleted row, and the
-    // trailing path has no `keep` form (the marker is own-line only). So the invariant STANDS as a
-    // generator-side rule; the two pinned generated files that once carried per-row `// <cddl>`
-    // markers (`extern_interface_check.rs`, `key_demand_assertions.rs`) stay banner-only, pinned by
-    // `extern_interface_check_regen_over_deletion_no_trap` and
-    // `extern_interface_check_has_no_trailing_row_comments`. This cancellation is therefore
-    // defense-in-depth; it matches by exact text, not position, because trailing anchors shift with
-    // any edit. Residual: a user trailing comment textually identical to one in `new` is skipped
-    // rather than failed.
+    // Trailing comments whose text `new` also carries cancel silently: defense-in-depth for the
+    // generator's no-trailing-comment invariant (module docs, "Trailing comments").
     let new_trailing_texts: BTreeSet<&str> = new_lex
         .comments
         .iter()

@@ -1,74 +1,41 @@
 //! Alloc-import injection for rust-crate-destined generated files.
 //!
-//! # Why this exists
+//! Generated rust-crate code uses std-prelude names the core prelude lacks (`String`, `Vec`, `Box`,
+//! `Cow`, `ToString`, `ToOwned`, `format!`, `vec!`). Each generated module therefore needs its own
+//! `use alloc::…;` lines and an in-scope `extern crate alloc;`, which the seed-once crate root
+//! cannot
+//! add to a crate that already exists.
 //!
-//! Emitted rust-crate code leans on the std prelude for `String`, `Vec`, `Box`, `Cow`, `ToString`,
-//! `ToOwned`, `format!` and `vec!` — names the **core** prelude does not carry. Once the emitted
-//! paths moved to `core::`/`alloc::`, each generated module file needs its own `use alloc::…;`
-//! lines and its own `extern crate alloc;`, because `use alloc::…` does not resolve without an
-//! `extern crate alloc;` **in scope** and the seed-once crate root cannot deliver one to a crate
-//! that already exists.
+//! [`inject`] is a pure function of the final file content: it strips the lines it owns, scans the
+//! file's tokens against [`TABLE`], and injects exactly the lines the content needs. Flags threaded
+//! from the emission sites would duplicate what the final content already says and miss future
+//! sites silently. Unconditional imports plus the prune cannot cover traits, whose use is a method
+//! call that never names them, so every file that never calls `.to_string()` would warn and fail
+//! the `feature_corpus_compiles` gate.
 //!
-//! # The mechanism: a usage scan, not a prediction
+//! **No fight with the pruner.** This pass adds a line only when the name is used where a file-top
+//! import resolves it and no existing `use` binds it; the prune removes a line only when the module
+//! family never names it. No line satisfies both, so the two passes reach one fixed point in either
+//! order, and both are recomputed after the comment-preservation overlay.
 //!
-//! This pass is a **pure function of the final file content** — the same premise
-//! [`crate::import_prune`] already holds. It scans each rust-crate-destined file's own tokens
-//! against a fixed name→import table and injects exactly the lines the content needs. The
-//! alternatives were rejected for concrete reasons, recorded so they are not re-litigated:
+//! **Scope rules.**
+//! * Path tails never trigger ([`crate::import_prune::walk_ident_uses`] owns the rule): a qualified
+//!   `alloc::collections::BTreeSet::new()` needs no import.
+//! * `use` items never trigger: an import is not a use of the name it binds.
+//! * Nested inline `mod X { … }` bodies never trigger: a file-top import does not reach them. The
+//!   nested serde adapters in `static/any_cbor_json*.rs` that name an alloc type carry their own
+//!   `use super::alloc::…;` line (the rationale is on `natural_any_cbor_btreemap`'s import); their
+//!   content is unconditional within its fragment, so a hand import there cannot duplicate an
+//!   injected one. The `json_schema` profile of `cddl-matrix/no_std_check.ts` catches a missing
+//!   one.
+//! * `extern crate alloc;` is broader: it is emitted when the file names the crate `alloc` at file
+//!   scope, or through `super::alloc`/`self::alloc` anywhere, nested modules included, so those
+//!   hand-written nested imports resolve.
 //!
-//! * *Fully-qualified call forms* (`alloc::string::ToString::to_string(&x)`) change body bytes, so
-//!   the bless diff stops being classifiable as paths-and-imports-only.
-//! * *Emit-when-used flags threaded from the ~40 emission sites* duplicate knowledge the final
-//!   content already carries, and miss future sites silently.
-//! * *Unconditional imports plus a prune* cannot cover TRAITS — a trait's use is a method call
-//!   whose ident is never the trait name, so it is outside the pruner's name-scan model — and an
-//!   unconditional trait import warns as unused in every file that never calls `.to_string()`.
-//!   Unused-import warnings fail the `feature_corpus_compiles` gate.
-//!
-//! # Soundness, and why it cannot fight the pruner
-//!
-//! Injection and pruning have **disjoint** conditions: this pass adds a line only when the name is
-//! used in a form that resolves through the module namespace AND no existing `use` already binds
-//! it; the prune removes a line only when the name is unused across the module family. A line can
-//! never satisfy both, so recomputing them in either order reaches the same fixed point and no
-//! oscillation is possible. That is what lets the injector run after the prune and be recomputed
-//! after the comment-preservation overlay.
-//!
-//! # Scope rules (each one earns its place)
-//!
-//! * **Path tails never trigger.** An ident preceded by `::` resolves relative to the preceding
-//!   segment, so a fully-qualified `alloc::collections::BTreeSet::new()` needs no import; injecting
-//!   one would be an unused-import warning. Delegated to [`crate::import_prune::walk_ident_uses`],
-//!   which owns that rule for both passes.
-//! * **Nested inline `mod X { … }` bodies never trigger.** A file-top `use` does not reach a nested
-//!   inline module, so a nested usage must not pull a file-top import in: the import would be
-//!   unused at file scope and the nested module would still not resolve. Nested modules that need
-//!   alloc names carry their own `use super::alloc::…;` lines by hand: the `natural_any_cbor_*`
-//!   serde adapters in `static/any_cbor_json*.rs` are the only such sites, and six of the eight
-//!   carry one (the four map adapters `BTreeMap`, the two seq adapters `Vec`; plain
-//!   `natural_any_cbor`/`natural_any_cbor_opt` name no alloc type at all). Their content is static
-//!   and unconditional within their fragment, so they cannot hit the duplicate-import hazard that
-//!   hand imports elsewhere in `static/` would. The full rationale for the `super::alloc` spelling
-//!   is the canonical comment on `natural_any_cbor_btreemap`'s import (repeated on the preserve
-//!   file's first import, since a cross-file pointer would not resolve); the two seq imports
-//!   point at it.
-//!   A hand import MISSED here is invisible under `std` and an E0425 without it, so the systematic
-//!   net is the `json_schema` profile of `cddl-matrix/no_std_check.ts`, whose CDDL carries one
-//!   member of every adapter shape.
-//! * **`use` items never trigger.** An import is not a use of the name it binds.
-//! * **The `extern crate alloc;` line is broader on purpose**: it is emitted when the file
-//!   references the crate `alloc` at file scope OR through `super::alloc`/`self::alloc` ANYWHERE in
-//!   the file, nested modules included — precisely so the hand-written nested imports above have a
-//!   file-scope binding to resolve through.
-//!
-//! # Known limits (documented, not solved)
-//!
-//! * A name used ONLY inside a consumer's `cddl-codegen:insert` block is the consumer's
-//!   responsibility — their block, their imports.
-//! * A name used ONLY inside a nested inline module that does not carry its own import will not
-//!   resolve. In tool output the only nested inline modules are the hand-carried adapters above and
-//!   the `--emit-tests` `#[cfg(test)] mod cddl_generated_tests`, which opens with `use super::*;`
-//!   and so inherits the file's own (private) injected bindings.
+//! **Known limits.** A name used only inside a consumer's `cddl-codegen:insert` block is the
+//! consumer's to import. A name used only inside a nested inline module without its own import does
+//! not resolve; in tool output the only such modules are the adapters above and the `--emit-tests`
+//! `#[cfg(test)] mod cddl_generated_tests`, which opens with `use super::*;`.
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};

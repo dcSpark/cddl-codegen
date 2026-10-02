@@ -1,151 +1,60 @@
-//! Usage-derived pruning of blindly-emitted type imports.
+//! Usage-derived pruning of blindly emitted imports.
 //!
-//! Several emission sites in `generation/` push a fixed set of collection-type imports into every
-//! generated struct file unconditionally (or gated only on spec-global facts), so files that never
-//! reference the type still import it — the `warning: unused import` walls consumers see. Rather
-//! than teach each of ~30 emission sites to predict whether it will need `BTreeMap` (an IR-side
-//! prediction that must mirror every local decision of a ~13k-line generator and silently drifts),
-//! the emission sites stay dumb (they may over-import) and this single post-pass derives the final
-//! import set from the rendered token streams: an import is justified iff the generated code
-//! references the imported name. [`prune_generated_files`] is the entry point — the driver in
-//! `generated_files` calls it once over the whole file map.
+//! Emission sites in `generation/` may over-import; this post-pass keeps an import only when the
+//! final code of its module family names it. Predicting imports at each emission site would have to
+//! mirror every local decision of the generator, and that prediction drifts silently.
+//! [`prune_generated_files`] is the entry point. `generation::export::finalize_generated_imports`
+//! runs it over the freshly generated map and again after the comment-preservation overlay, because
+//! a replace block can remove an import's last user (see "Preservation and final-content
+//! recomputation" in `docs/development/generation-contract.md`).
 //!
-//! **The prune runs against FINAL content.** "The generated code references the name" must hold for
-//! the bytes that ship, so `export` calls [`prune_generated_files`] a SECOND time after the
-//! comment-preservation overlay (`comment_preserve`) has been applied to the in-memory file map. A
-//! user `cddl-codegen:replace` block can delete the last reference to an import the freshly-generated
-//! content still justified (e.g. replacing `pub type Mint = OrderedHashMap<…>` with a hand type that
-//! names neither), so the justified set is recomputed against the post-overlay content. The recorded
-//! original under a `:replaces` marker is a `//` comment — trivia, never a token — so it cannot
-//! re-justify the import it removed. This second pass is still the same pure function of the file map,
-//! so it stays deterministic and idempotent (a later run regenerates the same fresh imports, the
-//! overlay re-applies the same blocks, and this pass re-removes the same imports).
+//! **Failure asymmetry.** A wrongly removed import is a compile error in the generated crate; a
+//! wrongly kept one is a warning. So every rule is conservative-keep: an unparseable file is left
+//! unchanged and poisons every ancestor it could protect, only private `use` items are candidates
+//! (a `pub use` is API surface a downstream crate may import), and any ident outside a private
+//! `use`, including macro and attribute tokens and `pub use` paths, protects its import.
 //!
-//! **Module family via the super-glob edge graph.** The unit of analysis for a file F is F plus the
-//! descendants that can actually CONSUME its private imports. A child re-exports the parent's
-//! *private* imports only through `use super::*;` (`serialization.rs` reaches the `BTreeMap` it uses
-//! through `use super::*;` from `mod.rs`, even though `mod.rs`'s own body never names `BTreeMap`), so
-//! pruning F on its own idents alone breaks the crate (E0433 at the child). Privacy bounds who can do
-//! this: a private `use` binding in module M is nameable only from M and M's descendants — a glob
-//! from a NON-descendant imports only `pub` items, never M's private imports — and a descendant
-//! reaches it EXCLUSIVELY through an unbroken chain of `use super::*;` edges (explicit `super::X`
-//! paths are not emitted by the generator; verified). So F's protectors are exactly the descendants
-//! D linked to F by such a chain ([`reachable_via_super`]); a sub-scope `serialization.rs` whose own
-//! scope `mod.rs` does NOT re-glob the root can never consume the root's imports even though it names
-//! the same idents. F is protected by its own used idents plus each super-reachable D's used idents,
-//! MINUS the idents D resolves through a nearer binding of its own. Rust resolves to the NEAREST
-//! binding, so three disqualifiers drop D as a protector of ident X:
-//!   1. **Direct import** — D carries `use …::X;` of its own; D's uses of `X` resolve to that, never
-//!      to F's copy reached through `use super::*;` (the `cbor_encodings.rs` shape).
-//!   2. **Target file** — D IS the file of the module F imports X FROM (`use crate::<segs>::X;` →
-//!      module `crate::<segs>`, whose file is `<segs>.rs`/`<segs>/mod.rs`). That file DEFINES X (the
-//!      `serialization.rs` static prelude, concatenated LATER — invisible to this generated-only
-//!      pass, so the target is read from the import PATH), so D resolves X locally. Restricted to the
-//!      target FILE, not everything under it: a deeper descendant reaches the target's items only via
-//!      its own `super::*` chain (the un-modeled intermediate case, kept conservative), and a
-//!      crate-ROOT target (`use crate::generated::X;`) must not disqualify every file merely nested
-//!      under `generated/`.
-//!   3. **Source glob** — D carries a `use M::*;` of the SAME module F imports X from, so D resolves X
-//!      through its own glob (the `--common-import-override` shape where the sub-scope
-//!      `serialization.rs` globs `<dep>::serialization::*` and the definition is external, so
-//!      disqualifier 2 can't see it).
+//! **Module family.** A private import in module F can be consumed only by F and by the
+//! descendants linked to F through an unbroken chain of `use super::*;` edges
+//! ([`reachable_via_super`]); a glob from a non-descendant imports only `pub` items, and the
+//! generator emits no explicit `super::X` paths. F's import of X is protected by F's own idents and
+//! by each such descendant D that names X, unless D resolves X through a nearer binding:
+//!   1. **Direct import**: D carries its own `use …::X;`.
+//!   2. **Target file**: D is the file of the module F imports X from (`use crate::<segs>::X;` →
+//!      `<segs>.rs` or `<segs>/mod.rs`), which defines X. Only that file qualifies: files nested
+//!      under it still protect, and a crate-root target (`crate::generated::X`) disqualifies only
+//!      the root `mod.rs`.
+//!   3. **Source glob**: D globs the module F imports X from (`use M::*;`).
 //!
-//! The `/src/` crate split (`rust` / `wasm` / `wasm/json-gen` are separate crates) stays the outer
-//! boundary; a leaf file (no super-reachable descendants) is pruned purely on its own idents.
+//! Crates (split at `/src/`) never protect each other. A leaf file is pruned on its own idents.
 //!
-//! **Glob pruning.** Two blindly-pushed private globs are themselves prunable when provably unused,
-//! each against a fully-enumerable universe (conservative-keep when it can't be enumerated):
-//!   - `use super::*;` — universe = the PARENT module's bound names ([`bound_names`]: its item defs,
-//!     its `use`-bound leaves, and its own globs' exports, recursively). Removed from a file with no
-//!     super-reachable descendant whose body names no parent-bound name it doesn't itself bind/define
-//!     ([`super_glob_needed`]). Drops the `cbor_encodings.rs` `super::*` that only needs its own
-//!     direct encoding imports; KEPT where an encoding struct is keyed by a parent-scope generated
-//!     type (`BTreeMap<Ikey, StringEncoding>`).
-//!   - `use <path>::error::*;` — universe = the fixed [`ERROR_MODULE_EXPORTS`]. Removed when neither F
-//!     nor a super-reachable descendant demands an error export it doesn't resolve locally
-//!     ([`enumerated_glob_needed`]); the sub-scope `serialization.rs` carries its OWN `error::*`, so it
-//!     resolves error names through that (source-glob), not the parent copy.
-//!   - `use super::cbor_encodings::*;` — universe = the top-level definitions in the generated
-//!     sibling `cbor_encodings.rs`. Removed when the final `serialization.rs` module family names no
-//!     encoding type. This is the serialize-only-record shape: the struct stores an encoding sidecar
-//!     and serialization accesses it through `self.encodings`, while only a generated deserialize
-//!     constructor names `<Type>Encoding` directly.
+//! **Glob pruning.** A private glob is removed only when its universe is enumerable and neither F
+//! nor a protecting descendant names a member it does not resolve locally:
+//!   - `use super::*;`: the parent module's [`bound_names`], and only in a file with no protecting
+//!     descendant ([`super_glob_needed`]);
+//!   - `use <path>::error::*;`: the fixed [`ERROR_MODULE_EXPORTS`] ([`enumerated_glob_needed`]);
+//!   - `use super::cbor_encodings::*;`: the top-level definitions of the sibling
+//!     `cbor_encodings.rs`.
 //!
-//! **Documented-conservative residue.** The disqualifiers can still leave a protector standing and
-//! KEEP a would-be-prunable import — never remove one a consumer needs, so any imprecision is
-//! warning-severity, never a compile error: an INTERMEDIATE module M between F and a deeper
-//! descendant D that consumes F's copy for everything at/below M, yet the per-descendant rule still
-//! counts D — which reaches X through M, not F — as a protector. Watched by the
-//! generated-code unused-import scan in the `feature_corpus_compiles` gate (src/tests), which fails
-//! on ANY `unused import` rustc warning in the generated crates.
+//! **Name-scan candidates.** An absent ident proves an import unused only for a concrete type or a
+//! macro; a trait is exercised by method calls that never name it. So only [`ALLOWLIST`] and
+//! [`PruneConfig::extra_candidates`] are removed by name, and the emitter imports a method-only
+//! trait such as `cbor_event::se::Serialize` by name under `#[allow(unused_imports)]` instead.
 //!
-//! **Soundness boundary — the name-scan candidate set.** Ident-scanning can prove a *concrete type*
-//! unused: a type can only be used by naming it, so "ident absent from the module family" ⇒ unused.
-//! That implication does NOT hold for traits (`use std::io::Write;` is exercised by `w.write_all(..)`
-//! — the ident `Write` never appears). So name-scan pruning is restricted to concrete-type / macro
-//! candidates: the built-in [`ALLOWLIST`] (collection helpers, `--preserve-encodings` encoding
-//! enums, and `cbor_event`'s `Deserializer`) plus the per-run [`PruneConfig::extra_candidates`] — the wasm prelude names (`JsError` /
-//! `JsValue` concrete types, the `wasm_bindgen` attribute macro exercised only via `#[wasm_bindgen]`,
-//! whose ident the scan sees), the `--wasm-*-macro` leaf names (each exercised only via `name!(…)`),
-//! and the cross-scope generator-minted type idents `scope_references` over-imports. Everything
-//! else is kept untouched; that is why the serialization prelude imports the method-call-only
-//! `cbor_event::se::Serialize` trait by name under `#[allow(unused_imports)]`. The named import
-//! takes precedence over a runtime serialization glob's `Serialize` trait. Globs are handled by
-//! the separate glob-prune above, never by name-scan.
+//! **Path tails.** The used-ident scan ignores an ident preceded by `::`: it resolves relative to
+//! the previous segment and cannot consume a `use` binding, so counting it would keep dead imports
+//! and globs alive. A lone `:` (a field or `let` type) is not a separator, and the ident after it
+//! still counts. [`walk_ident_uses`] owns this rule for this pass and the alloc-import injector.
 //!
-//! **Soundness boundary — path-tail idents.** The used-ident scan counts a bare ident as a use but
-//! must NOT count an ident that is a PATH TAIL — the segment after a `::` (a module path, an
-//! associated item, an enum variant, a macro-path segment). Such an ident is always resolved
-//! relative to the preceding path segment, never through the local module namespace, so it can never
-//! consume a `use` binding — counting it would wrongly PROTECT an import or glob that the code does
-//! not actually reference (the residual behind the sidecar `use super::*;` that survived because the
-//! body's `<dep>::sub::module::X` path made the scan count `sub`, which the parent module binds via
-//! `pub mod sub;`). [`collect_idents_in_tokens`] therefore skips an ident immediately preceded by
-//! `::` (two adjacent joint `Punct(':')`), keeping the direction of the failure asymmetry: a LONE
-//! `:` (a struct field type, `let x: BTreeMap<…>`) is NOT a path separator and its following ident
-//! still counts — over-skipping there would un-protect a load-bearing import (over-prune = consumer
-//! compile error; under-prune = warning; when in doubt, count).
+//! **Re-export-only files.** A file whose items are all `use`s, with no descendant module and only
+//! `crate::`-anchored `Name`/`Rename` non-private uses ([`is_reexport_only_file`]), loses every
+//! private `use`, traits and globs included, because nothing can consume them. The anchoring
+//! condition prevents a relative `pub use self::Foo;` from resolving through a deleted private
+//! glob.
 //!
-//! **Second rule — re-export-only files (file-shape scoped).** An extern-only CDDL scope generates
-//! a `mod.rs` containing nothing but extern re-export glue (`pub use crate::Address;`). The
-//! unconditional common-import push still adds `error::*` and (under `--preserve-encodings`) the
-//! encoding enums into it, none of which the allowlist rule above can touch (`error::*` is a glob).
-//! For a file whose *shape* proves
-//! nothing local can consume any import, [`prune_generated_files`] applies a stronger rule that
-//! removes ALL private `use` items (traits, globs, macros included — allowlist irrelevant). A file
-//! F **qualifies** (see [`is_reexport_only_file`] plus the driver's descendant check) when: (a) it
-//! is a prunable generated `.rs`; (b) it parses and every top-level `syn::Item` is `Item::Use`
-//! (comments are trivia, not items — `Item::Mod` even bodyless, `Item::Macro`, verbatim, any code
-//! item disqualifies); (c) the file map holds no other `.rs` under F's module dir in the same crate
-//! (no descendant modules — regardless of whether that descendant parses); and (d) every NON-private
-//! `use` is a plain `crate::`-anchored path chain ending in `Name`/`Rename` (a glob or group
-//! anywhere in a non-private use disqualifies — conservatively).
-//!
-//! Soundness of the second rule: a private `use` binding is consumable only by (1) code in the same
-//! file — none exists (condition b: only `use` items), or (2) descendant modules via `use super::*;`
-//! chains — none exist (condition c). A glob from a NON-descendant (`use crate::generated::x::*;`
-//! from a sibling) imports only `pub` items, never private bindings. So nothing can consume the
-//! private imports; wholesale removal is total and sound. Condition (d) guards the one escape hatch:
-//! 2018+ uniform paths let a relative `pub use self::Foo;` resolve *through* a private glob we would
-//! be deleting; a `crate::`-anchored `pub use` cannot (these files are never the crate root — a
-//! generated root carries `mod` declarations, excluded by (b)). Removal is all-or-nothing, so import
-//! chaining (`use a::B; use B::c;`) is moot. This preserves the pass's failure asymmetry
-//! (conservative-keep: parse failure, any descendant, a non-anchored `pub use`, or any code item all
-//! leave the file untouched) and future-proofs the wasm side — if the wasm glue/blanket-import
-//! ordering ever flips, the otherwise-unprunable `wasm_bindgen` macro import would be removed here.
-//!
-//! **Only private imports are candidates.** A `pub use` is API surface: a downstream crate may
-//! import the re-exported name, so no amount of in-crate usage analysis can justify removing it.
-//! Any `use` item whose visibility is not inherited (private) is skipped entirely. This also
-//! closes the privacy argument above: only private uses are pruned, and only descendants can
-//! consume private uses.
-//!
-//! **Failure asymmetry.** A wrongly-removed import breaks the generated crate (compile error at the
-//! consumer); a wrongly-kept one is a warning. So the pass is conservative-keep everywhere: a file
-//! that fails to parse is returned unchanged (and poisons every file it could be protecting — its
-//! ancestors — so none of them are pruned either), and any ident found anywhere outside a private
-//! `use` item — field types, fn signatures, expressions, the token streams of macro invocations
-//! and attributes, and `pub use` re-export paths — keeps its import family-wide.
+//! **Known conservative residue.** An intermediate module M between F and a deeper descendant D is
+//! not modeled, so D can keep F's import alive although it reaches X through M. That can only leave
+//! an unused-import warning, which the `feature_corpus_compiles` gate fails on.
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -778,7 +687,7 @@ pub(crate) enum IdentForm {
 /// (`crate::alloc_import_inject`) so the two can never disagree about what counts as a use of a
 /// name. Reports every ident EXCEPT path tails, classified by [`IdentForm`].
 ///
-/// Path-tail exclusion (see the module docs' "Soundness boundary — path-tail idents"): an `Ident`
+/// Path-tail exclusion (see the module docs' "Path tails"): an `Ident`
 /// immediately preceded by the path separator `::` is a path-tail segment (module path, associated
 /// item, enum variant) that resolves relative to the preceding segment, NEVER through the local
 /// module namespace, so it can never consume a `use` binding — it must not protect an import here,
