@@ -3965,6 +3965,68 @@ struct EncodingField {
 }
 
 impl EncodingField {
+    /// An `Option<cbor_event::Sz>` integer/float/tag size slot, filled from a decoded `Sz`.
+    fn sz(field_name: String) -> Self {
+        Self {
+            field_name,
+            type_name: "Option<cbor_event::Sz>".to_owned(),
+            default_expr: "None",
+            enc_conversion_before: "Some(",
+            enc_conversion_after: ")",
+            is_copy: true,
+        }
+    }
+
+    /// A text/bytes `StringEncoding` slot, converted from the decoded string length encoding.
+    fn string(field_name: String) -> Self {
+        Self {
+            field_name,
+            type_name: "StringEncoding".to_owned(),
+            default_expr: "StringEncoding::default()",
+            enc_conversion_before: "StringEncoding::from(",
+            enc_conversion_after: ")",
+            is_copy: false,
+        }
+    }
+
+    /// An array/map `LenEncoding` slot.
+    fn len(field_name: String) -> Self {
+        Self {
+            field_name,
+            type_name: "LenEncoding".to_owned(),
+            default_expr: "LenEncoding::default()",
+            enc_conversion_before: "",
+            enc_conversion_after: "",
+            is_copy: true,
+        }
+    }
+
+    /// The tri-state `TagPresenceEncoding` slot of an optionally tagged value. The deserialize
+    /// preamble produces it fully formed, so no conversion is applied.
+    fn tag_presence(field_name: String) -> Self {
+        Self {
+            field_name,
+            type_name: "TagPresenceEncoding".to_owned(),
+            default_expr: "TagPresenceEncoding::default()",
+            enc_conversion_before: "",
+            enc_conversion_after: "",
+            is_copy: true,
+        }
+    }
+
+    /// A collection sidecar (`Vec<..>` / `BTreeMap<..>`) holding the inner encodings of each
+    /// element or entry.
+    fn sidecar(field_name: String, type_name: String, default_expr: &'static str) -> Self {
+        Self {
+            field_name,
+            type_name,
+            default_expr,
+            enc_conversion_before: "",
+            enc_conversion_after: "",
+            is_copy: false,
+        }
+    }
+
     pub fn enc_conversion(&self, expr: &str) -> String {
         format!(
             "{}{}{}",
@@ -3974,24 +4036,11 @@ impl EncodingField {
 }
 
 fn key_encoding_field(name: &str, key: &FixedValue) -> EncodingField {
+    let field_name = format!("{name}_key_encoding");
     match key {
-        FixedValue::Text(_) => EncodingField {
-            field_name: format!("{name}_key_encoding"),
-            type_name: "StringEncoding".to_owned(),
-            default_expr: "StringEncoding::default()",
-            enc_conversion_before: "StringEncoding::from(",
-            enc_conversion_after: ")",
-            is_copy: false,
-        },
-        FixedValue::Uint(_) => EncodingField {
-            field_name: format!("{name}_key_encoding"),
-            type_name: "Option<cbor_event::Sz>".to_owned(),
-            default_expr: "None",
-            enc_conversion_before: "Some(",
-            enc_conversion_after: ")",
-            is_copy: true,
-        },
-        _ => unimplemented!(),
+        FixedValue::Text(_) => EncodingField::string(field_name),
+        FixedValue::Uint(_) => EncodingField::sz(field_name),
+        _ => unimplemented!("preserve-encodings key encoding for fixed map key {key:?}"),
     }
 }
 
@@ -4020,30 +4069,9 @@ fn declared_encoding_fields(name: &str, kinds: &[EncodingKind]) -> Vec<EncodingF
                 format!("{name}_encoding{}", i + 1)
             };
             match kind {
-                EncodingKind::Sz => EncodingField {
-                    field_name,
-                    type_name: "Option<cbor_event::Sz>".to_owned(),
-                    default_expr: "None",
-                    enc_conversion_before: "Some(",
-                    enc_conversion_after: ")",
-                    is_copy: true,
-                },
-                EncodingKind::Str => EncodingField {
-                    field_name,
-                    type_name: "StringEncoding".to_owned(),
-                    default_expr: "StringEncoding::default()",
-                    enc_conversion_before: "StringEncoding::from(",
-                    enc_conversion_after: ")",
-                    is_copy: false,
-                },
-                EncodingKind::Len => EncodingField {
-                    field_name,
-                    type_name: "LenEncoding".to_owned(),
-                    default_expr: "LenEncoding::default()",
-                    enc_conversion_before: "",
-                    enc_conversion_after: "",
-                    is_copy: true,
-                },
+                EncodingKind::Sz => EncodingField::sz(field_name),
+                EncodingKind::Str => EncodingField::string(field_name),
+                EncodingKind::Len => EncodingField::len(field_name),
             }
         })
         .collect()
@@ -4290,14 +4318,7 @@ fn encoding_fields_impl(
     assert!(cli.preserve_encodings);
     match ty {
         SerializingRustType::Root(ConceptualRustType::Array(elem_ty), _cfg) => {
-            let base = EncodingField {
-                field_name: format!("{name}_encoding"),
-                type_name: "LenEncoding".to_owned(),
-                default_expr: "LenEncoding::default()",
-                enc_conversion_before: "",
-                enc_conversion_after: "",
-                is_copy: true,
-            };
+            let base = EncodingField::len(format!("{name}_encoding"));
             let inner_encs = encoding_fields_impl(
                 types,
                 &format!("{name}_elem"),
@@ -4313,26 +4334,16 @@ fn encoding_fields_impl(
                 let type_name_elem = tuple_type_name(&inner_encs);
                 vec![
                     base,
-                    EncodingField {
-                        field_name: format!("{name}_elem_encodings"),
-                        type_name: format!("Vec<{type_name_elem}>"),
-                        default_expr: "Vec::new()",
-                        enc_conversion_before: "",
-                        enc_conversion_after: "",
-                        is_copy: false,
-                    },
+                    EncodingField::sidecar(
+                        format!("{name}_elem_encodings"),
+                        format!("Vec<{type_name_elem}>"),
+                        "Vec::new()",
+                    ),
                 ]
             }
         }
         SerializingRustType::Root(ConceptualRustType::Map(k, v), cfg) => {
-            let mut encs = vec![EncodingField {
-                field_name: format!("{name}_encoding"),
-                type_name: "LenEncoding".to_owned(),
-                default_expr: "LenEncoding::default()",
-                enc_conversion_before: "",
-                enc_conversion_after: "",
-                is_copy: true,
-            }];
+            let mut encs = vec![EncodingField::len(format!("{name}_encoding"))];
             let key_encs = encoding_fields_impl(
                 types,
                 &format!("{name}_key"),
@@ -4361,8 +4372,13 @@ fn encoding_fields_impl(
             let preserve_pair_map =
                 cfg.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve);
 
-            if !key_encs.is_empty() {
-                let type_name_value = tuple_type_name(&key_encs);
+            // Both sidecars are indexed the same way (by position, or by the entry's KEY), so the
+            // value sidecar is keyed by `k` too.
+            for (suffix, inner_encs) in [("key", &key_encs), ("value", &val_encs)] {
+                if inner_encs.is_empty() {
+                    continue;
+                }
+                let type_name_value = tuple_type_name(inner_encs);
                 let (type_name, default_expr) = if preserve_pair_map {
                     (format!("Vec<{type_name_value}>"), "Vec::new()")
                 } else {
@@ -4375,50 +4391,18 @@ fn encoding_fields_impl(
                         "BTreeMap::new()",
                     )
                 };
-                encs.push(EncodingField {
-                    field_name: format!("{name}_key_encodings"),
+                encs.push(EncodingField::sidecar(
+                    format!("{name}_{suffix}_encodings"),
                     type_name,
                     default_expr,
-                    enc_conversion_before: "",
-                    enc_conversion_after: "",
-                    is_copy: false,
-                });
-            }
-
-            if !val_encs.is_empty() {
-                let type_name_value = tuple_type_name(&val_encs);
-                let (type_name, default_expr) = if preserve_pair_map {
-                    (format!("Vec<{type_name_value}>"), "Vec::new()")
-                } else {
-                    (
-                        format!(
-                            "BTreeMap<{}, {}>",
-                            k.for_rust_member(types, false, cli),
-                            type_name_value
-                        ),
-                        "BTreeMap::new()",
-                    )
-                };
-                encs.push(EncodingField {
-                    field_name: format!("{name}_value_encodings"),
-                    type_name,
-                    default_expr,
-                    enc_conversion_before: "",
-                    enc_conversion_after: "",
-                    is_copy: false,
-                });
+                ));
             }
             encs
         }
         SerializingRustType::Root(ConceptualRustType::Primitive(p), _cfg) => match p {
-            Primitive::Bytes | Primitive::Str => vec![EncodingField {
-                field_name: format!("{name}_encoding"),
-                type_name: "StringEncoding".to_owned(),
-                default_expr: "StringEncoding::default()",
-                enc_conversion_before: "StringEncoding::from(",
-                enc_conversion_after: ")",
-                is_copy: false,
-            }],
+            Primitive::Bytes | Primitive::Str => {
+                vec![EncodingField::string(format!("{name}_encoding"))]
+            }
             Primitive::I8
             | Primitive::I16
             | Primitive::I32
@@ -4433,68 +4417,33 @@ fn encoding_fields_impl(
             | Primitive::F32
             | Primitive::F64
             | Primitive::F16To32
-            | Primitive::F32To64 => vec![EncodingField {
-                field_name: format!("{name}_encoding"),
-                type_name: "Option<cbor_event::Sz>".to_owned(),
-                default_expr: "None",
-                enc_conversion_before: "Some(",
-                enc_conversion_after: ")",
-                is_copy: true,
-            }],
+            | Primitive::F32To64 => vec![EncodingField::sz(format!("{name}_encoding"))],
             Primitive::Bool =>
             /* bool only has 1 encoding */
             {
                 vec![]
             }
         },
-        SerializingRustType::Root(ConceptualRustType::Fixed(f), _cfg) => match f {
-            FixedValue::Bool(_) | FixedValue::Null | FixedValue::Undefined => vec![],
-            FixedValue::Nint(_) => encoding_fields_impl(
+        SerializingRustType::Root(ConceptualRustType::Fixed(f), _cfg) => {
+            // A fixed value encodes exactly as its carrying primitive does.
+            let primitive = match f {
+                FixedValue::Bool(_) | FixedValue::Null | FixedValue::Undefined => return vec![],
+                FixedValue::Nint(_) => Primitive::I64,
+                FixedValue::Uint(_) => Primitive::U64,
+                FixedValue::Float(_) => Primitive::Float,
+                FixedValue::Text(_) => Primitive::Str,
+                FixedValue::Bytes(_) => Primitive::Bytes,
+            };
+            encoding_fields_impl(
                 types,
                 name,
-                (&ConceptualRustType::Primitive(Primitive::I64)).into(),
+                (&ConceptualRustType::Primitive(primitive)).into(),
                 cli,
                 tag_depth,
                 cbor_depth,
                 decls,
-            ),
-            FixedValue::Uint(_) => encoding_fields_impl(
-                types,
-                name,
-                (&ConceptualRustType::Primitive(Primitive::U64)).into(),
-                cli,
-                tag_depth,
-                cbor_depth,
-                decls,
-            ),
-            FixedValue::Float(_) => encoding_fields_impl(
-                types,
-                name,
-                (&ConceptualRustType::Primitive(Primitive::Float)).into(),
-                cli,
-                tag_depth,
-                cbor_depth,
-                decls,
-            ),
-            FixedValue::Text(_) => encoding_fields_impl(
-                types,
-                name,
-                (&ConceptualRustType::Primitive(Primitive::Str)).into(),
-                cli,
-                tag_depth,
-                cbor_depth,
-                decls,
-            ),
-            FixedValue::Bytes(_) => encoding_fields_impl(
-                types,
-                name,
-                (&ConceptualRustType::Primitive(Primitive::Bytes)).into(),
-                cli,
-                tag_depth,
-                cbor_depth,
-                decls,
-            ),
-        },
+            )
+        }
         SerializingRustType::Root(ConceptualRustType::Alias(alias_ident, ty), cfg) => {
             // A type-level custom codec OWNS the wire from this node down, so when its rule declares
             // the wire's encoding variables (`@custom_encodings`) the declaration IS the answer here
@@ -4647,14 +4596,9 @@ fn encoding_fields_impl(
             // produces a fully-formed `TagPresenceEncoding`, so no enc conversion is applied.
             let tag_level = tag_depth + 1;
             let tag_infix = tag_encoding_infix(tag_level);
-            let mut encs = vec![EncodingField {
-                field_name: format!("{name}_{tag_infix}_encoding"),
-                type_name: "TagPresenceEncoding".to_owned(),
-                default_expr: "TagPresenceEncoding::default()",
-                enc_conversion_before: "",
-                enc_conversion_after: "",
-                is_copy: true,
-            }];
+            let mut encs = vec![EncodingField::tag_presence(format!(
+                "{name}_{tag_infix}_encoding"
+            ))];
             encs.append(&mut encoding_fields_impl(
                 types, name, *child, cli, tag_level, cbor_depth, decls,
             ));

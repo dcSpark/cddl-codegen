@@ -486,25 +486,17 @@ pub(super) fn enum_rule_tag_encoding_name(
 
 /// The outer array/map length encoding stored on a preserve-encodings enum variant.
 fn len_encoding_field() -> EncodingField {
-    EncodingField {
-        field_name: "len_encoding".to_owned(),
-        type_name: "LenEncoding".to_owned(),
-        default_expr: "LenEncoding::default()",
-        enc_conversion_before: "",
-        enc_conversion_after: "",
-        is_copy: true,
-    }
+    EncodingField::len("len_encoding".to_owned())
 }
 
 /// The shared rule-tag size field `field_name` stored on every variant of a preserve-tagged enum.
+/// The [`EncodingField::sz`] slot without its `Some(..)` conversion (`enc_conversion` is only
+/// applied to map-key encodings, never to this field).
 fn rule_tag_encoding_field(field_name: &str) -> EncodingField {
     EncodingField {
-        field_name: field_name.to_owned(),
-        type_name: "Option<cbor_event::Sz>".to_owned(),
-        default_expr: "None",
         enc_conversion_before: "",
         enc_conversion_after: "",
-        is_copy: true,
+        ..EncodingField::sz(field_name.to_owned())
     }
 }
 
