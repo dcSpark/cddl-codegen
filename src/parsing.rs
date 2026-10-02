@@ -2340,6 +2340,11 @@ fn parse_type_choices(
         if rule_metadata.no_json_schema_export {
             types.mark_no_json_schema_export(name.clone());
         }
+        // Project the suppressed nullable alias into extern-interface inputs, so consumers
+        // inline its optional body instead of naming a type this dependency never emits.
+        if rule_metadata.no_alias {
+            types.mark_no_alias_rule(name.clone());
+        }
         // Sibling parity: the same three "valid only on an extern / raw-bytes marker rule"
         // rejections the multi-arm branch records, for the same reason — a `T / null` rule can never
         // be either marker, so each of these is a misplacement, and the silent flavor re-mints the

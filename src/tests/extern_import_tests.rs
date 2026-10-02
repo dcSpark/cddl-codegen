@@ -2802,3 +2802,34 @@ fn extern_import_open_table_borrows_its_typed_key_like_a_table() {
 
     let _ = std::fs::remove_dir_all(&export_dir);
 }
+
+/// A dependency that suppresses a nullable alias must project that choice, so a consumer inlines
+/// the optional primitive instead of naming an alias the dependency never emits.
+#[test]
+fn extern_import_projects_no_alias_on_null_collapse_rules() {
+    let export = mint_export("opt = uint / null ; @no_alias\n", "dep", "noaliasopt");
+    let body = export
+        .values()
+        .find(|c| c.contains("opt = "))
+        .expect("the export must contain opt");
+    assert!(body.contains("opt = uint / null ; @no_alias"), "{body}");
+    let root = scratch("noaliasopt_flag");
+    write(&root, "lib.cddl", "user = [z: opt]\n");
+    let exported = write_export(&export, "dep", "noaliasopt");
+    let import_arg = format!("dep={}", exported.display());
+    let with_na = generate(&root.join("lib.cddl"), &["--extern-import", &import_arg]).unwrap();
+    let with_mod = &with_na["rust/src/generated/mod.rs"];
+    assert!(with_mod.contains("pub z: Option<u64>"), "{with_mod}");
+    let stripped: BTreeMap<String, String> = export
+        .iter()
+        .map(|(p, c)| (p.clone(), c.replace("@no_alias ", "")))
+        .collect();
+    let stripped_dir = write_export(&stripped, "dep", "noaliasopt_stripped");
+    let stripped_arg = format!("dep={}", stripped_dir.display());
+    let without_na = generate(&root.join("lib.cddl"), &["--extern-import", &stripped_arg]).unwrap();
+    let without_mod = &without_na["rust/src/generated/mod.rs"];
+    assert!(without_mod.contains("pub z: Opt"), "{without_mod}");
+    for dir in [root, exported, stripped_dir] {
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
