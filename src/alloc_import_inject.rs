@@ -150,7 +150,8 @@ const EXTERN_CRATE_ALLOC: &str = "extern crate alloc;";
 /// wasm and json-gen crates are excluded because they stay `std` — rewriting them would be churn
 /// with no consumer.
 pub(crate) fn is_rust_crate_destined(path: &str) -> bool {
-    path.ends_with(".rs") && path.starts_with("rust/src/generated/")
+    path.ends_with(".rs")
+        && crate::generation::layout::is_under(path, crate::generation::layout::RUST_GENERATED_DIR)
 }
 
 /// Inject into every rust-crate-destined entry of a `files` map, in place, and return the paths

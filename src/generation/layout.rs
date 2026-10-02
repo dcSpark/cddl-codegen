@@ -11,10 +11,12 @@
 //! flag points at a file nobody writes, which surfaces as a missing wrapper in someone else's build.
 //! One `const` is what makes that rename a type-checked edit instead of a grep.
 //!
-//! This module owns only the SHARED facts. Paths the emitter alone spells (the `rust/`/`wasm/`
-//! generated trees, the seed-once crate roots, the json-gen crate's `lib.rs`/`main.rs`/`generated/`)
-//! stay at their emission sites: a constant is worth minting when a second file would otherwise have
-//! to know the string, and those have no second file.
+//! This module owns only the SHARED facts: a constant is worth minting when a second file would
+//! otherwise have to know the string. The seed-once crate roots and the generated `.rs` trees
+//! qualify on that rule inside this crate: `export.rs` produces them, and `write_tail.rs` decides
+//! from the same spellings which files it seeds only once and which trees its stale-file scan
+//! covers (`alloc_import_inject.rs` also selects the rust tree). Paths only one file spells (the
+//! json-gen crate's `main.rs`) stay at their emission site.
 //!
 //! The `--package-json` NESTING RULE is deliberately absent, because it is code and not a string:
 //! see the LOCKSTEP pair on `config::crate_relative` and `GenerationScope::export`'s `rust_dir`.
@@ -59,6 +61,39 @@ pub(crate) const JSON_GEN_DIR: &str = "wasm/json-gen";
 
 /// The json-gen crate's manifest, which `--json-gen-dep` writes path dependencies into.
 pub(crate) const JSON_GEN_MANIFEST: &str = "wasm/json-gen/Cargo.toml";
+
+/// The seed-once crate roots: each generated crate's `src/lib.rs`, written only when absent
+/// (`WriteTailPlan::run` checks existence and never reads them back into generation). `export.rs`
+/// produces the fresh form of each.
+pub(crate) const RUST_LIB_RS: &str = "rust/src/lib.rs";
+pub(crate) const WASM_LIB_RS: &str = "wasm/src/lib.rs";
+pub(crate) const JSON_GEN_LIB_RS: &str = "wasm/json-gen/src/lib.rs";
+pub(crate) const COMPONENT_LIB_RS: &str = "component/src/lib.rs";
+/// Every seed-once root above.
+pub(crate) const SEED_ONCE_ROOTS: [&str; 4] =
+    [RUST_LIB_RS, WASM_LIB_RS, JSON_GEN_LIB_RS, COMPONENT_LIB_RS];
+
+/// The always-clobbered generated `.rs` trees, one per crate (subject to the comment-preservation
+/// overlay).
+pub(crate) const RUST_GENERATED_DIR: &str = "rust/src/generated";
+pub(crate) const WASM_GENERATED_DIR: &str = "wasm/src/generated";
+pub(crate) const JSON_GEN_GENERATED_DIR: &str = "wasm/json-gen/src/generated";
+pub(crate) const COMPONENT_GENERATED_DIR: &str = "component/src/generated";
+/// Every generated `.rs` tree above, in the order the stale-file scan reports orphans.
+/// `component/wit` is deliberately absent: it is delete-and-recreated ([`COMPONENT_WIT_DIR`]),
+/// which cannot orphan by construction, and the scan's collector is `.rs`-only anyway.
+pub(crate) const GENERATED_RS_TREES: [&str; 4] = [
+    RUST_GENERATED_DIR,
+    WASM_GENERATED_DIR,
+    JSON_GEN_GENERATED_DIR,
+    COMPONENT_GENERATED_DIR,
+];
+
+/// Whether the output-relative `path` lies strictly inside the directory `tree`.
+pub(crate) fn is_under(path: &str, tree: &str) -> bool {
+    path.strip_prefix(tree)
+        .is_some_and(|rest| rest.starts_with('/'))
+}
 
 /// The wasm crate's cargo package name: `--lib-name` plus this. Spelled in the manifest change log
 /// (`static/manifest_changes/`) as part of `cddl-lib-wasm`, which the `cddl-lib` → `--lib-name`

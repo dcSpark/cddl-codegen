@@ -1,4 +1,8 @@
 use super::*;
+use crate::generation::layout::{
+    COMPONENT_GENERATED_DIR, COMPONENT_LIB_RS, JSON_GEN_GENERATED_DIR, JSON_GEN_LIB_RS,
+    RUST_GENERATED_DIR, RUST_LIB_RS, WASM_GENERATED_DIR, WASM_LIB_RS, is_under,
+};
 
 /// The seed-once thin root written to a generated crate's `src/lib.rs` on the first export only.
 /// All regenerated code lives under `src/generated/**` (a subtree the tool always clobbers); this
@@ -80,9 +84,9 @@ pub(crate) const CODEGEN_HEADER: &str = "// This file was code-generated using a
 /// provenance rides the file-class comment the materializer prepends instead.
 pub(crate) fn is_header_stamped_path(path: &str) -> bool {
     (path.ends_with(".rs")
-        && (path.starts_with("rust/src/generated/")
-            || path.starts_with("wasm/src/generated/")
-            || path.starts_with("component/src/generated/")))
+        && (is_under(path, RUST_GENERATED_DIR)
+            || is_under(path, WASM_GENERATED_DIR)
+            || is_under(path, COMPONENT_GENERATED_DIR)))
         || (path.ends_with(".wit")
             && path.starts_with(crate::generation::layout::COMPONENT_WIT_DIR)
             && !path.starts_with(crate::generation::layout::COMPONENT_WIT_DEPS_DIR))
@@ -98,10 +102,9 @@ pub(crate) fn is_header_stamped_path(path: &str) -> bool {
 pub(crate) fn is_preservable_generated_path(path: &str) -> bool {
     path == "wasm/json-gen/src/main.rs"
         || (path.ends_with(".rs")
-            && (path.starts_with("rust/src/generated/")
-                || path.starts_with("wasm/src/generated/")
-                || path.starts_with("wasm/json-gen/src/generated/")
-                || path.starts_with("component/src/generated/")))
+            && crate::generation::layout::GENERATED_RS_TREES
+                .iter()
+                .any(|tree| is_under(path, tree)))
 }
 
 /// The stderr notice body for a newly-written `--export-static-crate` runtime file (see
@@ -1083,9 +1086,9 @@ impl GenerationScope {
         // names — a contract the generator alone knows the exact required set of at emission time.
         // Printing it here (deterministic, sorted; rust then wasm) turns a bare E0432 on a stale root
         // into an actionable checklist. Reads only this run's computed sets, never prior output.
-        print_required_reexports("rust/src/lib.rs", &self.required_rust_reexports);
+        print_required_reexports(RUST_LIB_RS, &self.required_rust_reexports);
         if cli.wasm {
-            print_required_reexports("wasm/src/lib.rs", &self.required_wasm_reexports);
+            print_required_reexports(WASM_LIB_RS, &self.required_wasm_reexports);
         }
 
         // The extern-interface projection, computed ONCE for this export: `generated_files` derives
@@ -1122,7 +1125,7 @@ impl GenerationScope {
             // this rebuilt version (static prelude + merged ROOT serialize scope) replaces it, so it
             // needs the header applied here too (this is a header-stamped path).
             files.insert(
-                "rust/src/generated/serialization.rs".to_owned(),
+                format!("{RUST_GENERATED_DIR}/serialization.rs"),
                 stamp_codegen_header(&rustfmt_generated_string(&merged.to_string())?),
             );
             // The import prune in `generated_files` saw serialization.rs GENERATED-ONLY (no prelude),
@@ -1197,7 +1200,7 @@ impl GenerationScope {
             )?;
             for (filename, content) in &runtime_files {
                 composed_runtime_files.push((
-                    format!("rust/src/generated/{filename}"),
+                    format!("{RUST_GENERATED_DIR}/{filename}"),
                     inject_formatted(content)?,
                 ));
             }
@@ -1417,7 +1420,7 @@ impl GenerationScope {
         // crate root `lib.rs` is a seed-once thin root (added below) that the tool never clobbers.
         Self::merge_scopes_to_strings(
             &mut out,
-            "rust/src/generated",
+            RUST_GENERATED_DIR,
             self.rust_lib_scope.clone(),
             &self.rust_scopes,
             "mod.rs",
@@ -1427,7 +1430,7 @@ impl GenerationScope {
         // mirroring `ManifestOp::SeedOnce`). Included in the producer so clean runs / snapshots carry
         // it, but `export`'s write loop skips it when the file already exists so user edits survive.
         out.insert(
-            "rust/src/lib.rs".to_owned(),
+            RUST_LIB_RS.to_owned(),
             rustfmt_generated_string(SEEDED_RUST_CRATE_ROOT)?.into_owned(),
         );
 
@@ -1436,7 +1439,7 @@ impl GenerationScope {
         serialize_scope.append(&self.rust_serialize_lib_scope);
         Self::merge_scopes_to_strings(
             &mut out,
-            "rust/src/generated",
+            RUST_GENERATED_DIR,
             serialize_scope,
             &self.serialize_scopes,
             "serialization.rs",
@@ -1447,10 +1450,10 @@ impl GenerationScope {
             for (scope, contents) in self.cbor_encodings_scopes.iter() {
                 if scope.export() {
                     let path = if *scope == *ROOT_SCOPE {
-                        "rust/src/generated/cbor_encodings.rs".to_owned()
+                        format!("{RUST_GENERATED_DIR}/cbor_encodings.rs")
                     } else {
                         format!(
-                            "rust/src/generated/{}/cbor_encodings.rs",
+                            "{RUST_GENERATED_DIR}/{}/cbor_encodings.rs",
                             scope.components().join("/")
                         )
                     };
@@ -1689,7 +1692,7 @@ impl GenerationScope {
                 file.push_str("}\n");
             }
             out.insert(
-                "rust/src/generated/key_demand_assertions.rs".to_owned(),
+                format!("{RUST_GENERATED_DIR}/key_demand_assertions.rs"),
                 rustfmt_generated_string(&file)?.into_owned(),
             );
         }
@@ -1865,7 +1868,7 @@ impl GenerationScope {
             }
             file.push_str("}\n");
             out.insert(
-                "rust/src/generated/extern_interface_check.rs".to_owned(),
+                format!("{RUST_GENERATED_DIR}/extern_interface_check.rs"),
                 rustfmt_generated_string(&file)?.into_owned(),
             );
         }
@@ -1877,7 +1880,7 @@ impl GenerationScope {
             // `wasm/src/lib.rs` is a seed-once thin root (added below) the tool never clobbers.
             Self::merge_scopes_to_strings(
                 &mut out,
-                "wasm/src/generated",
+                WASM_GENERATED_DIR,
                 self.wasm_lib_scope.clone(),
                 &self.wasm_scopes,
                 "mod.rs",
@@ -1887,14 +1890,16 @@ impl GenerationScope {
             // cross-crate contract names (its `pub mod requested_collections;` decl and the index's
             // `crate::generated::requested_collections::…` re-exports resolve to either layout). Every
             // other exported scope keeps its `<name>/mod.rs` form (it may nest submodules).
-            if let Some(content) = out.remove("wasm/src/generated/requested_collections/mod.rs") {
+            if let Some(content) = out.remove(&format!(
+                "{WASM_GENERATED_DIR}/requested_collections/mod.rs"
+            )) {
                 out.insert(
-                    "wasm/src/generated/requested_collections.rs".to_owned(),
+                    format!("{WASM_GENERATED_DIR}/requested_collections.rs"),
                     content,
                 );
             }
             out.insert(
-                "wasm/src/lib.rs".to_owned(),
+                WASM_LIB_RS.to_owned(),
                 rustfmt_generated_string(SEEDED_CRATE_ROOT)?.into_owned(),
             );
 
@@ -2012,13 +2017,13 @@ impl GenerationScope {
             // producer is the shared one so a later split needs no change here.
             Self::merge_scopes_to_strings(
                 &mut out,
-                "component/src/generated",
+                COMPONENT_GENERATED_DIR,
                 self.component_lib_scope.clone(),
                 &self.component_scopes,
                 "mod.rs",
             )?;
             out.insert(
-                "component/src/lib.rs".to_owned(),
+                COMPONENT_LIB_RS.to_owned(),
                 rustfmt_generated_string(SEEDED_CRATE_ROOT)?.into_owned(),
             );
             // The `None` here is the FRESH form only, exactly as for the sibling manifests: `export`
@@ -2201,11 +2206,11 @@ impl GenerationScope {
             // root's glob re-export (so `<lib>_json_schema_gen::export_schemas()` in main.rs still
             // resolves). `main.rs` stays fully tool-owned and unchanged.
             out.insert(
-                "wasm/json-gen/src/generated/mod.rs".to_owned(),
+                format!("{JSON_GEN_GENERATED_DIR}/mod.rs"),
                 rustfmt_generated_string(&lib_str)?.into_owned(),
             );
             out.insert(
-                "wasm/json-gen/src/lib.rs".to_owned(),
+                JSON_GEN_LIB_RS.to_owned(),
                 rustfmt_generated_string(SEEDED_CRATE_ROOT)?.into_owned(),
             );
 

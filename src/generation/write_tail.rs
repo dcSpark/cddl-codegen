@@ -22,6 +22,11 @@ use crate::import_prune::PruneConfig;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+use super::layout::{
+    GENERATED_RS_TREES, RUST_GENERATED_DIR, RUST_LIB_RS, SEED_ONCE_ROOTS, WASM_GENERATED_DIR,
+    WASM_LIB_RS,
+};
+
 use super::export::{
     finalize_generated_imports, is_preservable_generated_path, missing_reexports,
     new_static_file_notice, rustfmt_generated_string,
@@ -236,14 +241,7 @@ impl WriteTailPlan {
             // written only if absent (existence check only — the same bounded exception the manifest
             // changeset carves out of the no-prior-output invariant). Everything else under
             // `generated/**` clobbers as always.
-            if matches!(
-                rel_path.as_str(),
-                "rust/src/lib.rs"
-                    | "wasm/src/lib.rs"
-                    | "wasm/json-gen/src/lib.rs"
-                    | "component/src/lib.rs"
-            ) && path.exists()
-            {
+            if SEED_ONCE_ROOTS.contains(&rel_path.as_str()) && path.exists() {
                 // Two diagnostics fire here, both reading this already-existing (seed-skipped) root.
                 // Like the manifest changeset, this is a bounded existence-adjacent peek: it emits
                 // stderr guidance ONLY and writes ZERO bytes (the seed is skipped either way), so the
@@ -274,7 +272,7 @@ impl WriteTailPlan {
                     // the survival scan can subtract names whose glue a `cddl-codegen:replace` block
                     // deleted from this run's output. Only the rust/wasm roots have a required set
                     // (json-gen has none), so only those are collected.
-                    if matches!(rel_path.as_str(), "rust/src/lib.rs" | "wasm/src/lib.rs") {
+                    if matches!(rel_path.as_str(), RUST_LIB_RS | WASM_LIB_RS) {
                         deferred_reexport_candidates.push((rel_path.clone(), existing));
                     }
                 }
@@ -317,8 +315,8 @@ impl WriteTailPlan {
         // changes. Still emits stderr guidance ONLY and writes ZERO bytes.
         for (rel_path, existing) in &deferred_reexport_candidates {
             let (required, generated_prefix) = match rel_path.as_str() {
-                "rust/src/lib.rs" => (&required_rust_reexports, "rust/src/generated"),
-                "wasm/src/lib.rs" => (&required_wasm_reexports, "wasm/src/generated"),
+                RUST_LIB_RS => (&required_rust_reexports, RUST_GENERATED_DIR),
+                WASM_LIB_RS => (&required_wasm_reexports, WASM_GENERATED_DIR),
                 _ => continue,
             };
             // Post-overlay written bytes of this crate's generated `.rs` files (the glue lives in a
@@ -419,17 +417,11 @@ impl WriteTailPlan {
         // excluded-with-record (a `; unexported:` comment) rather than aborting generation, so a
         // leaf/test spec still regenerates cleanly. Placed under `<output>/extern-interface/`, a
         // sibling of `rust/`/`wasm/`.
-        let extern_interface_dir = output_dir.join(crate::generation::layout::EXTERN_INTERFACE_DIR);
-        if extern_interface_dir.exists() {
-            std::fs::remove_dir_all(&extern_interface_dir)?;
-        }
-        for (rel_path, content) in &extern_interface_files {
-            let path = output_dir.join(rel_path);
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            std::fs::write(path, content)?;
-        }
+        recreate_tree(
+            &output_dir,
+            crate::generation::layout::EXTERN_INTERFACE_DIR,
+            &extern_interface_files,
+        )?;
 
         // The no-std-check shim crate: the same always-clobbered sibling-tree shape as the
         // extern-interface export directly above, and emitted unconditionally for the same reason
@@ -442,17 +434,11 @@ impl WriteTailPlan {
         // `src/generated` trees, where a removed rule leaves a `.rs` nothing declares any more.
         // Delete-and-recreate cannot orphan anything — a file this run did not write does not exist
         // after it — so a scan here could only ever report the empty set.
-        let no_std_check_dir = output_dir.join(crate::generation::no_std_check::NO_STD_CHECK_DIR);
-        if no_std_check_dir.exists() {
-            std::fs::remove_dir_all(&no_std_check_dir)?;
-        }
-        for (rel_path, content) in &no_std_check_files {
-            let path = output_dir.join(rel_path);
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            std::fs::write(path, content)?;
-        }
+        recreate_tree(
+            &output_dir,
+            crate::generation::no_std_check::NO_STD_CHECK_DIR,
+            &no_std_check_files,
+        )?;
 
         // Stale-file scan: a `.rs` under a tool-owned generated tree that this run did not produce
         // was generated by a PRIOR run (removed/renamed type or scope). Its `mod` declaration is
@@ -553,6 +539,28 @@ fn warn_new_static_file(is_new: bool, filename: &str) {
     }
 }
 
+/// Delete-and-recreate the always-clobbered sibling tree `dir` under `output_dir`: remove whatever
+/// a prior run left there, then write `files` (keyed relative to `output_dir`, each under `dir`).
+/// Nothing is read from the old tree, and a file this run does not write does not exist afterwards.
+fn recreate_tree(
+    output_dir: &Path,
+    dir: &str,
+    files: &BTreeMap<String, String>,
+) -> std::io::Result<()> {
+    let tree = output_dir.join(dir);
+    if tree.exists() {
+        std::fs::remove_dir_all(&tree)?;
+    }
+    for (rel_path, content) in files {
+        let path = output_dir.join(rel_path);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, content)?;
+    }
+    Ok(())
+}
+
 /// The tool-owned generated trees the stale-file scan covers, and the orphans it finds under them:
 /// a `.rs` this run did not write, sorted within each tree and returned in tree order (the order
 /// the warnings are emitted in). Split out from the warning loop so the "which files count as
@@ -563,14 +571,7 @@ pub(crate) fn stale_orphans(
     written_generated_rs: &BTreeSet<PathBuf>,
 ) -> std::io::Result<Vec<PathBuf>> {
     let mut found = Vec::new();
-    for tree in [
-        "rust/src/generated",
-        "wasm/src/generated",
-        "wasm/json-gen/src/generated",
-        // `component/wit` is deliberately ABSENT: it is delete-and-recreated (above), which
-        // cannot orphan by construction, and this scan's collector is `.rs`-only anyway.
-        "component/src/generated",
-    ] {
+    for tree in GENERATED_RS_TREES {
         let mut orphans = Vec::new();
         collect_rs_files(&rust_dir.join(tree), &mut orphans)?;
         orphans.retain(|p| !written_generated_rs.contains(p));
