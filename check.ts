@@ -2067,6 +2067,20 @@ function runMatrixTypecheck(): Outcome {
   return exit === 0 ? { status: "PASS" } : { status: "FAIL", reason: `tsc --noEmit exit ${exit}` };
 }
 
+/** Check links on both the published library surface and implementation documentation. */
+function runRustdocLinks(): Outcome {
+  const flags = `${process.env.RUSTDOCFLAGS ?? ""} -D rustdoc::private_intra_doc_links -D rustdoc::broken_intra_doc_links -D rustdoc::invalid_html_tags`;
+  for (const privateItems of [false, true]) {
+    const surface = privateItems ? "private items" : "public library";
+    const exit = sh([
+      "cargo", "doc", "--locked", "--no-deps", "--lib", "--all-features",
+      ...(privateItems ? ["--document-private-items"] : []),
+    ], ROOT, { RUSTDOCFLAGS: flags });
+    if (exit !== 0) return { status: "FAIL", reason: `${surface} rustdoc exit ${exit}` };
+  }
+  return { status: "PASS" };
+}
+
 // ==================================================================================================
 // THE REGISTRY — one entry per gate. Execution order is registry order; a run at tier T executes
 // every non-stub gate whose tier rank <= rank(T). fast ⊂ local ⊂ full holds by construction.
@@ -2120,6 +2134,8 @@ export const REGISTRY: Gate[] = [
     desc: "fresh shipped Rust manifest's direct cbor_event resolution matches the reviewed workspace Cargo.lock" },
   { id: "build", tier: "local", kind: "cmd", cmd: ["cargo", "build", "--locked", "--workspace", "--all-features", "--all-targets"],
     desc: "workspace build" },
+  { id: "rustdoc_links", tier: "local", kind: "fn", run: runRustdocLinks,
+    desc: "library rustdoc links and HTML on public and private-item surfaces" },
   { id: "test", tier: "local", kind: "cmd", cmd: ["cargo", "test", "--all-features", "--all-targets"],
     desc: "full test suite (incl. corpus + wasm-matrix compile gates)" },
   // Named separately from the `test` sweep above (which also runs it) so a component-face failure is

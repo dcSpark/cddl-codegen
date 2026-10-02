@@ -37,6 +37,13 @@ rustfmt; current parser rules reject bare fixed count-permitting collection elem
 minting, so they are not misrepresented as an end-to-end vector. Future wrapper minters must enter
 that registry rather than rely on the IR check indirectly.
 
+## Library documentation links
+
+The `rustdoc_links` gate runs at `local` and `full` and builds the library documentation with all features, both with and without `--document-private-items`.
+It denies private intra-doc links, broken intra-doc links, and invalid HTML tags.
+Public module documentation must spell implementation-only items as inline code rather than linking to private items, so the published surface has usable references without widening visibility.
+The private-item pass also checks links within implementation documentation.
+
 ## Running everything
 
 On NixOS, put a Nix-packaged `wasm-bindgen` CLI matching the generated crate's resolved version on `PATH` before running WASM packaging and public-surface tests.
