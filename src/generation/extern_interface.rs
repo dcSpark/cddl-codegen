@@ -838,7 +838,8 @@ pub(crate) fn project_extern_interface(types: &IntermediateTypes, cli: &Cli) -> 
         let Some((source, components)) = candidate(types, ident, &mut seen) else {
             continue;
         };
-        let (projected, kind) = project_struct_row(types, ident, source, rust_struct, &generic_bases);
+        let (projected, kind) =
+            project_struct_row(types, ident, source, rust_struct, &generic_bases);
         stage_rule(
             &mut included,
             &mut excluded,
@@ -1059,14 +1060,13 @@ fn project_struct_row(
                         annotations.push("@no_alias".to_string());
                     }
                     annotations.extend(duplicates_annotation(&alias.base_type));
-                    render_transparent_rule_body(source, &alias.base_type, Some(&md), types)
-                        .map(|body| {
-                            ProjectedRow {
-                                body,
-                                annotations,
-                                rule_refs: collect_rule_refs(&alias.base_type, types),
-                            }
-                        })
+                    render_transparent_rule_body(source, &alias.base_type, Some(&md), types).map(
+                        |body| ProjectedRow {
+                            body,
+                            annotations,
+                            rule_refs: collect_rule_refs(&alias.base_type, types),
+                        },
+                    )
                 }
                 None => Err(unrenderable(
                     source,
@@ -1086,8 +1086,11 @@ fn project_struct_row(
         // lives in the dep, so it still needs the `@rust_name` pin. Value choices reference no
         // rules. The self-check is a `use` existence check on the enum.
         RustStructType::CStyleEnum { variants } => (
-            render_c_style_enum_body(source, variants, Some(&md))
-                .map(|body| ProjectedRow { body, annotations: Vec::new(), rule_refs: BTreeSet::new() }),
+            render_c_style_enum_body(source, variants, Some(&md)).map(|body| ProjectedRow {
+                body,
+                annotations: Vec::new(),
+                rule_refs: BTreeSet::new(),
+            }),
             ExternCheckKind::Use,
         ),
     }
@@ -1159,7 +1162,11 @@ fn project_alias_row(
             if types.source_rule_name(target).is_some() {
                 refs.insert(target.clone());
             }
-            ProjectedRow { body, annotations: extra_annotations, rule_refs: refs }
+            ProjectedRow {
+                body,
+                annotations: extra_annotations,
+                rule_refs: refs,
+            }
         })
     } else {
         render_transparent_rule_body(
@@ -1168,12 +1175,10 @@ fn project_alias_row(
             alias_info.rule_metadata.as_ref(),
             types,
         )
-        .map(|body| {
-            ProjectedRow {
-                body,
-                annotations: extra_annotations,
-                rule_refs: collect_rule_refs(&alias_info.base_type, types),
-            }
+        .map(|body| ProjectedRow {
+            body,
+            annotations: extra_annotations,
+            rule_refs: collect_rule_refs(&alias_info.base_type, types),
         })
     };
     // A transparent alias materializes a named rust surface (a `pub type`) only when
@@ -1228,7 +1233,11 @@ fn project_plain_group(
                 for field in &record.fields {
                     refs.extend(collect_rule_refs(&field.rust_type, types));
                 }
-                ProjectedRow { body, annotations: Vec::new(), rule_refs: refs }
+                ProjectedRow {
+                    body,
+                    annotations: Vec::new(),
+                    rule_refs: refs,
+                }
             }),
             ExternCheckKind::EmbeddedGroup,
         ),
@@ -1270,7 +1279,11 @@ fn stage_rule(
     kind: ExternCheckKind,
 ) {
     match projected {
-        Ok(ProjectedRow { body, mut annotations, rule_refs }) => {
+        Ok(ProjectedRow {
+            body,
+            mut annotations,
+            rule_refs,
+        }) => {
             annotations.push(format!("@rust_name {ident}"));
             included.insert(
                 ident.clone(),

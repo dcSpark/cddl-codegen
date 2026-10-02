@@ -259,13 +259,7 @@ pub(super) fn generate_array_struct_serialization(
                     && previous_source_index.is_none_or(|previous| previous < index)
             })
         }) {
-            generate_array_segment_serialization(
-                types,
-                segment,
-                vars_in_self,
-                ser_func,
-                cli,
-            );
+            generate_array_segment_serialization(types, segment, vars_in_self, ser_func, cli);
         }
         previous_source_index = Some(field.source_index);
         let field_expr = format!("{}{}", opt_self, field.name);
@@ -378,13 +372,7 @@ pub(super) fn generate_array_struct_serialization(
             .array_source_index()
             .is_some_and(|index| previous_source_index.is_none_or(|previous| previous < index))
     }) {
-        generate_array_segment_serialization(
-            types,
-            segment,
-            vars_in_self,
-            ser_func,
-            cli,
-        );
+        generate_array_segment_serialization(types, segment, vars_in_self, ser_func, cli);
     }
 }
 
@@ -5073,13 +5061,7 @@ pub(super) fn codegen_struct(
         let in_embedded = types.is_plain_group(name);
         let ctor_block = match record.rep {
             Representation::Array => {
-                generate_array_struct_serialization(
-                    types,
-                    record,
-                    true,
-                    &mut ser_func,
-                    cli,
-                );
+                generate_array_struct_serialization(types, record, true, &mut ser_func, cli);
                 let mut code = generate_array_struct_deserialization(
                     gen_scope,
                     types,
@@ -5282,12 +5264,7 @@ pub(super) fn codegen_struct(
                 if cli.preserve_encodings {
                     let rest_index_base = record.fields.len();
                     if record.is_open_table() {
-                        emit_open_table_preserve_order(
-                            types,
-                            record,
-                            &mut ser_func,
-                            cli,
-                        );
+                        emit_open_table_preserve_order(types, record, &mut ser_func, cli);
                     } else if let Some(rest) = &record.rest {
                         // OPEN struct: the wire-position index space is `0..N` (declared fields) then
                         // `N + i` (i-th rest entry). The self-heal replay uses `orig_deser_order` when
@@ -5462,13 +5439,7 @@ pub(super) fn codegen_struct(
                         } else {
                             "key"
                         };
-                        emit_rest_entry_serialize(
-                            types,
-                            rest,
-                            enc_lookup_var,
-                            &mut got,
-                            cli,
-                        );
+                        emit_rest_entry_serialize(types, rest, enc_lookup_var, &mut got, cli);
                         rest_arm.push_block(got);
                         ser_loop_match.push_block(rest_arm);
                         ser_loop_match.after(";");

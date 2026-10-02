@@ -1635,13 +1635,7 @@ fn generate_enum(
                         &record.definite_info("", true, types, cli),
                         cli,
                     );
-                    generate_array_struct_serialization(
-                        types,
-                        record,
-                        false,
-                        &mut case_block,
-                        cli,
-                    );
+                    generate_array_struct_serialization(types, record, false, &mut case_block, cli);
                     end_len(&mut case_block, "serializer", "len_encoding", false, cli);
                     case_block.line("Ok(serializer)");
                 }
