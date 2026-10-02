@@ -1865,25 +1865,7 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
     } else {
         Vec::new()
     };
-    // (kind, name) -> new item indices, in order (occurrence index disambiguates duplicates).
-    let mut new_by_key: BTreeMap<(&str, &str), Vec<usize>> = BTreeMap::new();
-    for (i, it) in new_items.iter().enumerate() {
-        new_by_key
-            .entry((it.kind.as_str(), it.name.as_str()))
-            .or_default()
-            .push(i);
-    }
-    // occurrence index of each old item among same-keyed old items, plus per-key totals (occurrence
-    // matching is only sound when the same-key counts agree on both sides).
-    let mut old_occ = vec![0usize; old_items.len()];
-    let mut old_key_counts: BTreeMap<(&str, &str), usize> = BTreeMap::new();
-    for (i, it) in old_items.iter().enumerate() {
-        let c = old_key_counts
-            .entry((it.kind.as_str(), it.name.as_str()))
-            .or_default();
-        old_occ[i] = *c;
-        *c += 1;
-    }
+    let index = ItemIndex::new(&old_code, &new_lex.code, &old_items, &new_items);
 
     // A replace block's needle must fall within a single top-level item of the virtual stream — a
     // recorded original that straddles a top-level item boundary can't be placed by the item matcher
@@ -1891,9 +1873,7 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
     for (bi, rb) in block_scan.replace_blocks.iter().enumerate() {
         let vstart = remap[rb.user_code_start];
         let vlen = needle_lexed[bi].code.len();
-        let containing = old_items
-            .iter()
-            .find(|it| it.start <= vstart && vstart < it.end);
+        let containing = index.containing_old(vstart).map(|oi| &old_items[oi]);
         match containing {
             Some(it) if vstart + vlen <= it.end => {}
             _ => {
@@ -1930,16 +1910,7 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
         } else if identity {
             Ok(Some(a)) // identity tier: same index in new
         } else {
-            place_tier2(
-                a,
-                &old_code,
-                &new_lex.code,
-                &old_items,
-                &new_items,
-                &new_by_key,
-                &old_occ,
-                &old_key_counts,
-            )
+            index.place_comment(a)
         }
     };
 
@@ -1950,17 +1921,7 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
     for (bi, rb) in block_scan.replace_blocks.iter().enumerate() {
         let needle = &needle_lexed[bi].code;
         let vstart = remap[rb.user_code_start];
-        match place_replace(
-            vstart,
-            needle,
-            &old_code,
-            &new_lex.code,
-            &old_items,
-            &new_items,
-            &new_by_key,
-            &old_occ,
-            &old_key_counts,
-        ) {
+        match index.place_replace(vstart, needle) {
             Ok((nstart, nlen)) => {
                 let first = &new_lex.code[nstart];
                 let last = &new_lex.code[nstart + nlen - 1];
@@ -2198,170 +2159,200 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
     })
 }
 
-/// The per-item / unique-statement tiers, for a comment at code index `a` when the file's tokens
-/// differ. Returns the target index in `new` (`Some`), an EOF sentinel (`None` is not produced
-/// here), or a fail-loudly reason (`Err`).
-#[allow(clippy::too_many_arguments)]
-fn place_tier2(
-    a: usize,
-    old_code: &[CodeTok],
-    new_code: &[CodeTok],
-    old_items: &[Item],
-    new_items: &[Item],
-    new_by_key: &BTreeMap<(&str, &str), Vec<usize>>,
-    old_occ: &[usize],
-    old_key_counts: &BTreeMap<(&str, &str), usize>,
-) -> Result<Option<usize>, String> {
-    let oi = match old_items.iter().position(|it| it.start <= a && a < it.end) {
-        Some(oi) => oi,
-        None => return Err("It could not be attached to any generated item.".to_owned()),
-    };
-    let ni = match_new_item(oi, old_items, new_by_key, old_occ, old_key_counts)?;
-    let item = &old_items[oi];
-    let nitem = &new_items[ni];
-    let old_slice = &old_code[item.start..item.end];
-    let new_slice = &new_code[nitem.start..nitem.end];
-    let unchanged = code_eq(old_slice, new_slice);
+/// The top-level item partitions of the virtual old stream and of `new`, with the (kind, name) +
+/// occurrence tables that match an old item to its regenerated counterpart. Shared by comment and
+/// replace placement.
+struct ItemIndex<'a> {
+    old_code: &'a [CodeTok<'a>],
+    new_code: &'a [CodeTok<'a>],
+    old_items: &'a [Item],
+    new_items: &'a [Item],
+    /// (kind, name) -> new item indices, in order (occurrence index disambiguates duplicates).
+    new_by_key: BTreeMap<(&'a str, &'a str), Vec<usize>>,
+    /// Occurrence index of each old item among same-keyed old items.
+    old_occ: Vec<usize>,
+    /// Per-key old totals: occurrence matching is only sound when the same-key counts agree on
+    /// both sides.
+    old_key_counts: BTreeMap<(&'a str, &'a str), usize>,
+}
 
-    // Comment sitting above the item (its first token): re-attach above the matched item even if the
-    // body changed — such a comment is about the item, not a body line. Exception: with several
-    // same-keyed items whose bodies changed, occurrence order is the only tiebreak and a canonical
-    // reorder would silently retarget the comment — refuse.
-    if a == item.start {
-        let group_len = new_by_key
-            .get(&(item.kind.as_str(), item.name.as_str()))
-            .map(Vec::len)
-            .unwrap_or(0);
-        if group_len > 1 && !unchanged {
+impl<'a> ItemIndex<'a> {
+    fn new(
+        old_code: &'a [CodeTok<'a>],
+        new_code: &'a [CodeTok<'a>],
+        old_items: &'a [Item],
+        new_items: &'a [Item],
+    ) -> Self {
+        let mut new_by_key: BTreeMap<(&str, &str), Vec<usize>> = BTreeMap::new();
+        for (i, it) in new_items.iter().enumerate() {
+            new_by_key
+                .entry((it.kind.as_str(), it.name.as_str()))
+                .or_default()
+                .push(i);
+        }
+        let mut old_occ = vec![0usize; old_items.len()];
+        let mut old_key_counts: BTreeMap<(&str, &str), usize> = BTreeMap::new();
+        for (i, it) in old_items.iter().enumerate() {
+            let c = old_key_counts
+                .entry((it.kind.as_str(), it.name.as_str()))
+                .or_default();
+            old_occ[i] = *c;
+            *c += 1;
+        }
+        ItemIndex {
+            old_code,
+            new_code,
+            old_items,
+            new_items,
+            new_by_key,
+            old_occ,
+            old_key_counts,
+        }
+    }
+
+    /// The old item containing code index `a`. [`split_items`] partitions the stream into
+    /// contiguous, non-empty items in order, so a binary search finds it.
+    fn containing_old(&self, a: usize) -> Option<usize> {
+        let oi = self.old_items.partition_point(|it| it.end <= a);
+        (oi < self.old_items.len() && self.old_items[oi].start <= a).then_some(oi)
+    }
+
+    /// The per-item / unique-statement tiers, for a comment at code index `a` when the file's tokens
+    /// differ. Returns the target index in `new` (`Some`), an EOF sentinel (`None` is not produced
+    /// here), or a fail-loudly reason (`Err`).
+    fn place_comment(&self, a: usize) -> Result<Option<usize>, String> {
+        let oi = match self.containing_old(a) {
+            Some(oi) => oi,
+            None => return Err("It could not be attached to any generated item.".to_owned()),
+        };
+        let ni = self.match_new(oi)?;
+        let item = &self.old_items[oi];
+        let nitem = &self.new_items[ni];
+        let old_slice = &self.old_code[item.start..item.end];
+        let new_slice = &self.new_code[nitem.start..nitem.end];
+        let unchanged = code_eq(old_slice, new_slice);
+
+        // Comment sitting above the item (its first token): re-attach above the matched item even if the
+        // body changed — such a comment is about the item, not a body line. Exception: with several
+        // same-keyed items whose bodies changed, occurrence order is the only tiebreak and a canonical
+        // reorder would silently retarget the comment — refuse.
+        if a == item.start {
+            let group_len = self
+                .new_by_key
+                .get(&(item.kind.as_str(), item.name.as_str()))
+                .map(Vec::len)
+                .unwrap_or(0);
+            if group_len > 1 && !unchanged {
+                return Err(format!(
+                    "It sat above one of {} same-named `{} {}` items whose generated code changed, so \
+                     its owner cannot be re-identified.",
+                    group_len, item.kind, item.name
+                ));
+            }
+            return Ok(Some(nitem.start));
+        }
+
+        let rel = a - item.start;
+
+        // Per-item identity: the item's body is unchanged → transfer at the same relative index.
+        if unchanged {
+            return Ok(Some(nitem.start + rel));
+        }
+
+        // Unique-statement tier: the annotated statement must appear exactly once on BOTH sides. Unique
+        // in `new` alone is not enough: with two identical old statements (one deleted), the survivor is
+        // unique in `new` and the deleted line's comment would silently re-attach to it.
+        let run = statement_run(old_slice, rel);
+        if find_subsequence(old_slice, run).len() == 1 {
+            let matches = find_subsequence(new_slice, run);
+            if matches.len() == 1 {
+                return Ok(Some(nitem.start + matches[0]));
+            }
+        }
+        Err(format!(
+            "It was attached inside `{} {}`, whose generated code changed.",
+            item.kind, item.name
+        ))
+    }
+
+    /// Match old item `oi` to its counterpart in `new` by (kind, name) + occurrence — the shared item
+    /// matcher for both the comment tiers and replace placement. Errs (naming the item) when the item
+    /// vanished or its same-key count changed (occurrence matching then unsound).
+    fn match_new(&self, oi: usize) -> Result<usize, String> {
+        let item = &self.old_items[oi];
+        let key = (item.kind.as_str(), item.name.as_str());
+        let group = self.new_by_key.get(&key).map(Vec::as_slice).unwrap_or(&[]);
+        if group.is_empty() {
             return Err(format!(
-                "It sat above one of {} same-named `{} {}` items whose generated code changed, so \
-                 its owner cannot be re-identified.",
-                group_len, item.kind, item.name
+                "It was attached to `{} {}`, which no longer exists in the regenerated code.",
+                item.kind, item.name
             ));
         }
-        return Ok(Some(nitem.start));
-    }
-
-    let rel = a - item.start;
-
-    // Per-item identity: the item's body is unchanged → transfer at the same relative index.
-    if unchanged {
-        return Ok(Some(nitem.start + rel));
-    }
-
-    // Unique-statement tier: the annotated statement must appear exactly once on BOTH sides. Unique
-    // in `new` alone is not enough: with two identical old statements (one deleted), the survivor is
-    // unique in `new` and the deleted line's comment would silently re-attach to it.
-    let run = statement_run(old_slice, rel);
-    if find_subsequence(old_slice, run).len() == 1 {
-        let matches = find_subsequence(new_slice, run);
-        if matches.len() == 1 {
-            return Ok(Some(nitem.start + matches[0]));
+        if group.len() != self.old_key_counts.get(&key).copied().unwrap_or(0) {
+            return Err(format!(
+                "It was attached to `{} {}`, but the number of same-named items changed in the \
+                 regenerated code.",
+                item.kind, item.name
+            ));
         }
+        Ok(group[self.old_occ[oi]])
     }
-    Err(format!(
-        "It was attached inside `{} {}`, whose generated code changed.",
-        item.kind, item.name
-    ))
-}
 
-/// Match old item `oi` to its counterpart in `new` by (kind, name) + occurrence — the shared item
-/// matcher for both the comment tiers and replace placement. Errs (naming the item) when the item
-/// vanished or its same-key count changed (occurrence matching then unsound).
-fn match_new_item(
-    oi: usize,
-    old_items: &[Item],
-    new_by_key: &BTreeMap<(&str, &str), Vec<usize>>,
-    old_occ: &[usize],
-    old_key_counts: &BTreeMap<(&str, &str), usize>,
-) -> Result<usize, String> {
-    let item = &old_items[oi];
-    let key = (item.kind.as_str(), item.name.as_str());
-    let group = new_by_key.get(&key).map(Vec::as_slice).unwrap_or(&[]);
-    if group.is_empty() {
-        return Err(format!(
-            "It was attached to `{} {}`, which no longer exists in the regenerated code.",
-            item.kind, item.name
-        ));
-    }
-    if group.len() != old_key_counts.get(&key).copied().unwrap_or(0) {
-        return Err(format!(
-            "It was attached to `{} {}`, but the number of same-named items changed in the \
-             regenerated code.",
-            item.kind, item.name
-        ));
-    }
-    Ok(group[old_occ[oi]])
-}
-
-/// Place a replace block: match the enclosing item (containing the needle's virtual-stream start
-/// `vstart`) into `new`, then anchor by one of two paths. First the ITEM-IDENTITY fast path: if the
-/// whole enclosing item regenerated token-identically, position disambiguates — the block splices at
-/// the same offset it occupied, so the recorded original need not be unique within the item (this is
-/// what lets two different occurrences of a duplicated fragment both be replaced). Otherwise the strict
-/// BOTH-SIDES-UNIQUENESS path: the needle must be unique in the virtual old item AND in the matched new
-/// item (the same rule as the comment engine — unique-in-new alone would let a deleted duplicate's
-/// block silently re-attach to the survivor). On success returns the matched new token run as
-/// `(start_index, len)`; otherwise a fail-loudly reason (drift / ambiguity / vanished / reshaped item)
-/// that names the item.
-#[allow(clippy::too_many_arguments)]
-fn place_replace(
-    vstart: usize,
-    needle: &[CodeTok],
-    old_code: &[CodeTok],
-    new_code: &[CodeTok],
-    old_items: &[Item],
-    new_items: &[Item],
-    new_by_key: &BTreeMap<(&str, &str), Vec<usize>>,
-    old_occ: &[usize],
-    old_key_counts: &BTreeMap<(&str, &str), usize>,
-) -> Result<(usize, usize), String> {
-    let oi = old_items
-        .iter()
-        .position(|it| it.start <= vstart && vstart < it.end)
-        .ok_or_else(|| {
+    /// Place a replace block: match the enclosing item (containing the needle's virtual-stream start
+    /// `vstart`) into `new`, then anchor by one of two paths. First the ITEM-IDENTITY fast path: if the
+    /// whole enclosing item regenerated token-identically, position disambiguates — the block splices at
+    /// the same offset it occupied, so the recorded original need not be unique within the item (this is
+    /// what lets two different occurrences of a duplicated fragment both be replaced). Otherwise the strict
+    /// BOTH-SIDES-UNIQUENESS path: the needle must be unique in the virtual old item AND in the matched new
+    /// item (the same rule as the comment engine — unique-in-new alone would let a deleted duplicate's
+    /// block silently re-attach to the survivor). On success returns the matched new token run as
+    /// `(start_index, len)`; otherwise a fail-loudly reason (drift / ambiguity / vanished / reshaped item)
+    /// that names the item.
+    fn place_replace(&self, vstart: usize, needle: &[CodeTok]) -> Result<(usize, usize), String> {
+        let oi = self.containing_old(vstart).ok_or_else(|| {
             "Its recorded original could not be attached to any generated item.".to_owned()
         })?;
-    let ni = match_new_item(oi, old_items, new_by_key, old_occ, old_key_counts)?;
-    let item = &old_items[oi];
-    let nitem = &new_items[ni];
-    let old_slice = &old_code[item.start..item.end];
-    let new_slice = &new_code[nitem.start..nitem.end];
-    // Item-identity fast path. The virtual old item carries the needle at offset `rel` by
-    // construction — the substitution put the recorded original there in place of the user tokens. So
-    // when the whole enclosing item regenerated token-identically, the new item carries the recorded
-    // original's exact tokens at exactly that offset: position — where the user's block physically sits
-    // — disambiguates duplicated fragments perfectly, no uniqueness needed. Soundness is by
-    // construction, not heuristic: a wrong or drifted needle makes `code_eq` false and falls through to
-    // the strict both-sides-uniqueness path below, which fails loudly. The straddle check in the caller
-    // (`vstart + vlen <= item.end`) plus token identity (equal length) keep the returned span in-bounds.
-    if code_eq(old_slice, new_slice) {
-        let rel = vstart - item.start;
-        return Ok((nitem.start + rel, needle.len()));
-    }
-    // Both-sides uniqueness. Non-unique in the virtual old item = a deleted duplicate; the block's
-    // referent is ambiguous, so fail loudly rather than guess (the deleted-duplicate hazard the comment
-    // engine also refuses).
-    if find_subsequence(old_slice, needle).len() != 1 {
-        return Err(format!(
-            "Its recorded original is not unique within `{} {}` (a deleted duplicate?), so which \
-             occurrence it replaces is ambiguous.",
-            item.kind, item.name
-        ));
-    }
-    let matches = find_subsequence(new_slice, needle);
-    match matches.len() {
-        0 => Err(format!(
-            "The generated code for `{} {}` changed, so its recorded original no longer appears \
-             (drift). Re-review the block and re-record the original under `replaces`.",
-            item.kind, item.name
-        )),
-        1 => Ok((nitem.start + matches[0], needle.len())),
-        _ => Err(format!(
-            "Its recorded original appears more than once in the regenerated `{} {}`, so which \
-             occurrence it replaces is ambiguous.",
-            item.kind, item.name
-        )),
+        let ni = self.match_new(oi)?;
+        let item = &self.old_items[oi];
+        let nitem = &self.new_items[ni];
+        let old_slice = &self.old_code[item.start..item.end];
+        let new_slice = &self.new_code[nitem.start..nitem.end];
+        // Item-identity fast path. The virtual old item carries the needle at offset `rel` by
+        // construction — the substitution put the recorded original there in place of the user tokens. So
+        // when the whole enclosing item regenerated token-identically, the new item carries the recorded
+        // original's exact tokens at exactly that offset: position — where the user's block physically sits
+        // — disambiguates duplicated fragments perfectly, no uniqueness needed. Soundness is by
+        // construction, not heuristic: a wrong or drifted needle makes `code_eq` false and falls through to
+        // the strict both-sides-uniqueness path below, which fails loudly. The straddle check in the caller
+        // (`vstart + vlen <= item.end`) plus token identity (equal length) keep the returned span in-bounds.
+        if code_eq(old_slice, new_slice) {
+            let rel = vstart - item.start;
+            return Ok((nitem.start + rel, needle.len()));
+        }
+        // Both-sides uniqueness. Non-unique in the virtual old item = a deleted duplicate; the block's
+        // referent is ambiguous, so fail loudly rather than guess (the deleted-duplicate hazard the comment
+        // engine also refuses).
+        if find_subsequence(old_slice, needle).len() != 1 {
+            return Err(format!(
+                "Its recorded original is not unique within `{} {}` (a deleted duplicate?), so which \
+                 occurrence it replaces is ambiguous.",
+                item.kind, item.name
+            ));
+        }
+        let matches = find_subsequence(new_slice, needle);
+        match matches.len() {
+            0 => Err(format!(
+                "The generated code for `{} {}` changed, so its recorded original no longer appears \
+                 (drift). Re-review the block and re-record the original under `replaces`.",
+                item.kind, item.name
+            )),
+            1 => Ok((nitem.start + matches[0], needle.len())),
+            _ => Err(format!(
+                "Its recorded original appears more than once in the regenerated `{} {}`, so which \
+                 occurrence it replaces is ambiguous.",
+                item.kind, item.name
+            )),
+        }
     }
 }
 
@@ -2566,5 +2557,21 @@ mod tests {
                 .iter()
                 .any(|t| t.kind == TokKind::Literal && t.text == "'x'")
         );
+    }
+
+    #[test]
+    fn split_items_partitions_every_token_contiguously() {
+        let src = "#![allow(x)]\nuse a::{b, c};\nfn f() { g(); }\nimpl T for U { fn h() {} }\nconst K: u8 = 1;\n;\n";
+        let lexed = lex(src).unwrap();
+        let items = split_items(&lexed.code);
+        assert_eq!(items.first().unwrap().start, 0);
+        assert_eq!(items.last().unwrap().end, lexed.code.len());
+        for it in &items {
+            assert!(it.start < it.end);
+        }
+        for w in items.windows(2) {
+            assert_eq!(w[0].end, w[1].start);
+        }
+        assert_eq!(items.len(), 6);
     }
 }
