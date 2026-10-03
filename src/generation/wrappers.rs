@@ -213,6 +213,7 @@ struct WrapperFacts<'a> {
     getter_name: &'a str,
     emit_getter: bool,
     set_nominal: bool,
+    set_demand: crate::comment_ast::DemandSet,
 }
 
 // This is used mostly for when thing are tagged have specific ranges.
@@ -275,6 +276,7 @@ pub(super) fn generate_wrapper_struct(
         getter_name,
         emit_getter,
         set_nominal,
+        set_demand,
     };
     if cli.wasm {
         emit_wrapper_wasm_face(
@@ -323,113 +325,22 @@ pub(super) fn generate_wrapper_struct(
         &facts,
         self_var,
     );
-    s.vis("pub");
-    // A complete pair makes this wrapper's wire self-carrying. In particular, preserve mode must
-    // not infer the wrapped collection's length/key/value sidecars: they describe the DEFAULT map
-    // wire the pair replaced and would both leak a false hand-code contract and make a decoded
-    // value appear to retain bytes the pair never saw.
-    let custom_pair = match (
-        struct_config.custom_serialize.as_ref(),
-        struct_config.custom_deserialize.as_ref(),
-    ) {
-        (Some(custom_serialize), Some(custom_deserialize)) => {
-            Some((custom_serialize, custom_deserialize))
-        }
-        _ => None,
-    };
-    let encoding_name = RustIdent::new(CDDLIdent::new(format!("{type_name}Encoding")));
-    let enc_fields = if cli.preserve_encodings {
-        // Ordinary wrappers retain `pub(crate)`, matching the default profile's tuple field: hand-written
-        // modules outside the generated subtree can legitimately need their carrier. Checked scalar
-        // wrappers (`requires_checked_try_from`) differ: their private field makes `TryFrom` the
-        // only public construction door.
-        // (Named-field shape, so it is NOT routed through `push_overwidth_guarded_tuple_field`: the
-        // rustfmt#5703 hazard that helper guards needs a visibility token on a TUPLE field, and a
-        // named field of any width is unaffected. The default profile's tuple shape below does go
-        // through it, as do the wasm-crate wrappers.)
-        s.field(
-            if checked_scalar {
-                "inner"
-            } else {
-                "pub(crate) inner"
-            },
-            field_type.for_rust_member(types, false, cli),
-        );
-        // DECLARED type (see `EncodingField::type_name`): these become the wrapper's encoding-struct
-        // field types, beside the `inner` field spelled from the same `field_type` just above.
-        let enc_fields = if custom_pair.is_some() {
-            Vec::new()
-        } else {
-            encoding_fields(types, "inner", field_type, true, cli)
-        };
-
-        if !enc_fields.is_empty() {
-            // A set nominal derives always-on comparisons (see `create_base_rust_struct` above), so its
-            // encodings field must be derivative-IGNORED exactly like a key-demanded struct's — union
-            // the full set demand into whatever key demand the rule already carries.
-            let enc_demand = match (types.key_demand(type_name), set_nominal) {
-                (Some(d), true) => Some(d.union(set_demand)),
-                (d, false) => d,
-                (None, true) => Some(set_demand),
-            };
-            s.field(
-                format!(
-                    "{}pub encodings",
-                    encoding_var_macros(enc_demand, true, cli)
-                ),
-                format!("Option<{encoding_name}>"),
-            );
-            let mut encoding_struct = make_encoding_struct(encoding_name.as_ref());
-            let mut encoding_aliases: Vec<(String, String)> = Vec::new();
-            for field_enc in &enc_fields {
-                push_encoding_struct_field(
-                    &mut encoding_struct,
-                    &mut encoding_aliases,
-                    type_name,
-                    &field_enc.field_name,
-                    &field_enc.type_name,
-                );
-            }
-            let enc_scope = gen_scope.cbor_encodings(types, type_name);
-            for (alias, target) in encoding_aliases {
-                enc_scope.push_type_alias(TypeAlias::new(&alias, &target).vis("pub").clone());
-            }
-            enc_scope.push_struct(encoding_struct);
-        }
-        Some(enc_fields)
-    } else {
-        // Ordinary wrappers use the shared crate-private tuple policy (including its rustfmt
-        // workaround); checked scalar wrappers are short primitive/bytes carriers and stay private.
-        let inner_type = codegen::Type::new(field_type.for_rust_member(types, false, cli));
-        if checked_scalar {
-            s.tuple_field(None, inner_type);
-        } else {
-            push_overwidth_guarded_tuple_field(&mut s, inner_type);
-        }
-        None
-    };
-    // TODO: is there a way to know if the encoding object is also copyable?
-    if field_type.conceptual_type.is_copy(types) && !cli.preserve_encodings {
-        s.derive("Copy");
-    }
-    if emit_getter {
-        let mut get = codegen::Function::new(getter_name);
-        get.vis("pub").arg_ref_self();
-        if field_type.conceptual_type.is_copy(types) {
-            get.ret(field_type.for_rust_member(types, false, cli)).line(
-                field_type
-                    .conceptual_type
-                    .clone_if_not_copy(types, self_var),
-            );
-        } else {
-            get.ret(format!(
-                "&{}",
-                field_type.for_rust_member(types, false, cli)
-            ))
-            .line(format!("&{self_var}"));
-        }
-        s_impl.push_fn(get);
-    }
+    let WrapperStorage {
+        encoding_name,
+        enc_fields,
+        custom_pair,
+    } = emit_wrapper_struct_and_encodings(
+        gen_scope,
+        types,
+        type_name,
+        field_type,
+        struct_config,
+        cli,
+        &facts,
+        self_var,
+        &mut s,
+        &mut s_impl,
+    );
     // A complete pair on a self-nominalized table owns the COMPLETE item. The wrapper is still a
     // normal map-wrapper API (`new`/`From`/`get` below), but neither direct bytes APIs nor embedded
     // references may walk that map structurally: both trait shells call the same free functions.
@@ -1380,6 +1291,149 @@ fn emit_wrapper_json_impls(
         serde_deser_impl,
         json_schema_impl,
         json_hex_bytes,
+    }
+}
+
+/// Storage metadata is derived only after JSON assembly and owns its encoding vector.
+struct WrapperStorage<'a> {
+    encoding_name: RustIdent,
+    enc_fields: Option<Vec<EncodingField>>,
+    custom_pair: Option<(&'a String, &'a String)>,
+}
+
+/// Emit native storage, encoding declarations and the getter without retaining mutable scopes.
+#[allow(clippy::too_many_arguments)] // Builders and phase inputs remain explicit for borrow splitting.
+fn emit_wrapper_struct_and_encodings<'a>(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    type_name: &RustIdent,
+    field_type: &RustType,
+    struct_config: &'a RustStructConfig,
+    cli: &Cli,
+    facts: &WrapperFacts<'_>,
+    self_var: &str,
+    s: &mut codegen::Struct,
+    s_impl: &mut codegen::Impl,
+) -> WrapperStorage<'a> {
+    let WrapperFacts {
+        checked_scalar,
+        getter_name,
+        emit_getter,
+        set_nominal,
+        set_demand,
+        ..
+    } = *facts;
+    s.vis("pub");
+    // A complete pair makes this wrapper's wire self-carrying. In particular, preserve mode must
+    // not infer the wrapped collection's length/key/value sidecars: they describe the DEFAULT map
+    // wire the pair replaced and would both leak a false hand-code contract and make a decoded
+    // value appear to retain bytes the pair never saw.
+    let custom_pair = match (
+        struct_config.custom_serialize.as_ref(),
+        struct_config.custom_deserialize.as_ref(),
+    ) {
+        (Some(custom_serialize), Some(custom_deserialize)) => {
+            Some((custom_serialize, custom_deserialize))
+        }
+        _ => None,
+    };
+    let encoding_name = RustIdent::new(CDDLIdent::new(format!("{type_name}Encoding")));
+    let enc_fields = if cli.preserve_encodings {
+        // Ordinary wrappers retain `pub(crate)`, matching the default profile's tuple field: hand-written
+        // modules outside the generated subtree can legitimately need their carrier. Checked scalar
+        // wrappers (`requires_checked_try_from`) differ: their private field makes `TryFrom` the
+        // only public construction door.
+        // (Named-field shape, so it is NOT routed through `push_overwidth_guarded_tuple_field`: the
+        // rustfmt#5703 hazard that helper guards needs a visibility token on a TUPLE field, and a
+        // named field of any width is unaffected. The default profile's tuple shape below does go
+        // through it, as do the wasm-crate wrappers.)
+        s.field(
+            if checked_scalar {
+                "inner"
+            } else {
+                "pub(crate) inner"
+            },
+            field_type.for_rust_member(types, false, cli),
+        );
+        // DECLARED type (see `EncodingField::type_name`): these become the wrapper's encoding-struct
+        // field types, beside the `inner` field spelled from the same `field_type` just above.
+        let enc_fields = if custom_pair.is_some() {
+            Vec::new()
+        } else {
+            encoding_fields(types, "inner", field_type, true, cli)
+        };
+
+        if !enc_fields.is_empty() {
+            // A set nominal derives always-on comparisons (see `create_base_rust_struct` above), so its
+            // encodings field must be derivative-IGNORED exactly like a key-demanded struct's — union
+            // the full set demand into whatever key demand the rule already carries.
+            let enc_demand = match (types.key_demand(type_name), set_nominal) {
+                (Some(d), true) => Some(d.union(set_demand)),
+                (d, false) => d,
+                (None, true) => Some(set_demand),
+            };
+            s.field(
+                format!(
+                    "{}pub encodings",
+                    encoding_var_macros(enc_demand, true, cli)
+                ),
+                format!("Option<{encoding_name}>"),
+            );
+            let mut encoding_struct = make_encoding_struct(encoding_name.as_ref());
+            let mut encoding_aliases: Vec<(String, String)> = Vec::new();
+            for field_enc in &enc_fields {
+                push_encoding_struct_field(
+                    &mut encoding_struct,
+                    &mut encoding_aliases,
+                    type_name,
+                    &field_enc.field_name,
+                    &field_enc.type_name,
+                );
+            }
+            let enc_scope = gen_scope.cbor_encodings(types, type_name);
+            for (alias, target) in encoding_aliases {
+                enc_scope.push_type_alias(TypeAlias::new(&alias, &target).vis("pub").clone());
+            }
+            enc_scope.push_struct(encoding_struct);
+        }
+        Some(enc_fields)
+    } else {
+        // Ordinary wrappers use the shared crate-private tuple policy (including its rustfmt
+        // workaround); checked scalar wrappers are short primitive/bytes carriers and stay private.
+        let inner_type = codegen::Type::new(field_type.for_rust_member(types, false, cli));
+        if checked_scalar {
+            s.tuple_field(None, inner_type);
+        } else {
+            push_overwidth_guarded_tuple_field(s, inner_type);
+        }
+        None
+    };
+    // TODO: is there a way to know if the encoding object is also copyable?
+    if field_type.conceptual_type.is_copy(types) && !cli.preserve_encodings {
+        s.derive("Copy");
+    }
+    if emit_getter {
+        let mut get = codegen::Function::new(getter_name);
+        get.vis("pub").arg_ref_self();
+        if field_type.conceptual_type.is_copy(types) {
+            get.ret(field_type.for_rust_member(types, false, cli)).line(
+                field_type
+                    .conceptual_type
+                    .clone_if_not_copy(types, self_var),
+            );
+        } else {
+            get.ret(format!(
+                "&{}",
+                field_type.for_rust_member(types, false, cli)
+            ))
+            .line(format!("&{self_var}"));
+        }
+        s_impl.push_fn(get);
+    }
+    WrapperStorage {
+        encoding_name,
+        enc_fields,
+        custom_pair,
     }
 }
 
