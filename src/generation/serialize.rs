@@ -1375,6 +1375,87 @@ fn ser_optional(
     body.push_block(opt_block);
 }
 
+#[allow(clippy::too_many_arguments)]
+fn ser_array(
+    ty: &RustType,
+    types: &IntermediateTypes,
+    body: &mut dyn CodeBlock,
+    config: SerializeConfig,
+    cli: &Cli,
+    serializer_use: &str,
+    serializer_pass: &str,
+    encoding_var: &str,
+) {
+    // Resolve the element's aliases before classifying it: an alias is transparent,
+    // so `[* kv_alias]` splices exactly as many items per element as `[* kv]` does.
+    // Matching the bare `Rust` ident wrote a header counting ELEMENTS while the loop
+    // below wrote each element's members FLAT — an array whose header disagrees with
+    // its own contents, at exit 0 in a crate that compiles. Pinned by
+    // `alias_to_plain_group_in_array_positions_matches_the_direct_reference`; its
+    // deserialize counterpart is the element-read arm in `generate_deserialize`.
+    let len_expr = match ty.conceptual_type.resolve_alias_shallow() {
+        ConceptualRustType::Rust(elem_ident) if types.is_plain_group(elem_ident) => {
+            // you should not be able to indiscriminately encode a plain group like this as it
+            // could be multiple elements. This would require special handling if it's even permitted in CDDL.
+            assert!(ty.encodings.is_empty());
+            if let Some(fixed_elem_size) = ty.expanded_field_count(types) {
+                format!("{} * {}.len() as u64", fixed_elem_size, config.expr)
+            } else {
+                format!(
+                    "{}.iter().map(|e| {}).sum()",
+                    config.expr,
+                    ty.definite_info("e", true, types, cli)
+                )
+            }
+        }
+        _ => format!("{}.len() as u64", config.expr),
+    };
+    start_len(
+        body,
+        Representation::Array,
+        serializer_use,
+        encoding_var,
+        &len_expr,
+        cli,
+    );
+    let elem_var_name = format!("{}_elem", config.var_name);
+    let elem_encs = if cli.preserve_encodings {
+        encoding_fields(types, &elem_var_name, ty, false, cli)
+    } else {
+        vec![]
+    };
+    let mut loop_block = if !elem_encs.is_empty() {
+        let mut block = Block::new(format!(
+            "for (i, element) in {}.iter().enumerate()",
+            config.expr
+        ));
+        block.line(config.container_encoding_lookup("elem", &elem_encs, "i"));
+        block
+    } else {
+        Block::new(format!("for element in {}.iter()", config.expr))
+    };
+    let elem_config = config
+        .clone()
+        .expr("element")
+        .expr_is_ref(true)
+        .var_name(elem_var_name)
+        .end(false)
+        .encoding_var_no_option_struct()
+        .encoding_var_is_ref(false)
+        // fresh `{name}_elem` name namespace: reset both depths to 0 to match
+        // `encoding_fields_impl`'s array-element reset (else the element's own tag
+        // or `.cbor` payload reads a depth-inflated var the struct never minted).
+        .tag_depth(0)
+        .cbor_depth(0);
+    generate_serialize(types, ty.into(), &mut loop_block, elem_config, cli);
+    body.push_block(loop_block);
+    // `.end()` takes the serializer as an ARGUMENT, so it needs the pass form
+    // (`&mut <name>` for a `.cbor`-payload local `Serializer::new_vec()`), not the
+    // method-receiver form `serializer_use`. For the top-level `serializer` the two
+    // are identical; they diverge only for the `is_local` inner-buffer overload.
+    end_len(body, serializer_pass, encoding_var, config.is_end, cli);
+}
+
 /// Write code for serializing {serializing_rust_type} directly into {body}
 pub(super) fn generate_serialize(
     types: &IntermediateTypes,
@@ -1557,74 +1638,16 @@ pub(super) fn generate_serialize(
                 );
             }
             SerializingRustType::Root(ConceptualRustType::Array(ty), _cfg) => {
-                // Resolve the element's aliases before classifying it: an alias is transparent,
-                // so `[* kv_alias]` splices exactly as many items per element as `[* kv]` does.
-                // Matching the bare `Rust` ident wrote a header counting ELEMENTS while the loop
-                // below wrote each element's members FLAT — an array whose header disagrees with
-                // its own contents, at exit 0 in a crate that compiles. Pinned by
-                // `alias_to_plain_group_in_array_positions_matches_the_direct_reference`; its
-                // deserialize counterpart is the element-read arm in `generate_deserialize`.
-                let len_expr = match ty.conceptual_type.resolve_alias_shallow() {
-                    ConceptualRustType::Rust(elem_ident) if types.is_plain_group(elem_ident) => {
-                        // you should not be able to indiscriminately encode a plain group like this as it
-                        // could be multiple elements. This would require special handling if it's even permitted in CDDL.
-                        assert!(ty.encodings.is_empty());
-                        if let Some(fixed_elem_size) = ty.expanded_field_count(types) {
-                            format!("{} * {}.len() as u64", fixed_elem_size, config.expr)
-                        } else {
-                            format!(
-                                "{}.iter().map(|e| {}).sum()",
-                                config.expr,
-                                ty.definite_info("e", true, types, cli)
-                            )
-                        }
-                    }
-                    _ => format!("{}.len() as u64", config.expr),
-                };
-                start_len(
+                ser_array(
+                    ty,
+                    types,
                     body,
-                    Representation::Array,
-                    serializer_use,
-                    &encoding_var,
-                    &len_expr,
+                    config,
                     cli,
+                    serializer_use,
+                    &serializer_pass,
+                    &encoding_var,
                 );
-                let elem_var_name = format!("{}_elem", config.var_name);
-                let elem_encs = if cli.preserve_encodings {
-                    encoding_fields(types, &elem_var_name, ty, false, cli)
-                } else {
-                    vec![]
-                };
-                let mut loop_block = if !elem_encs.is_empty() {
-                    let mut block = Block::new(format!(
-                        "for (i, element) in {}.iter().enumerate()",
-                        config.expr
-                    ));
-                    block.line(config.container_encoding_lookup("elem", &elem_encs, "i"));
-                    block
-                } else {
-                    Block::new(format!("for element in {}.iter()", config.expr))
-                };
-                let elem_config = config
-                    .clone()
-                    .expr("element")
-                    .expr_is_ref(true)
-                    .var_name(elem_var_name)
-                    .end(false)
-                    .encoding_var_no_option_struct()
-                    .encoding_var_is_ref(false)
-                    // fresh `{name}_elem` name namespace: reset both depths to 0 to match
-                    // `encoding_fields_impl`'s array-element reset (else the element's own tag
-                    // or `.cbor` payload reads a depth-inflated var the struct never minted).
-                    .tag_depth(0)
-                    .cbor_depth(0);
-                generate_serialize(types, (&**ty).into(), &mut loop_block, elem_config, cli);
-                body.push_block(loop_block);
-                // `.end()` takes the serializer as an ARGUMENT, so it needs the pass form
-                // (`&mut <name>` for a `.cbor`-payload local `Serializer::new_vec()`), not the
-                // method-receiver form `serializer_use`. For the top-level `serializer` the two
-                // are identical; they diverge only for the `is_local` inner-buffer overload.
-                end_len(body, &serializer_pass, &encoding_var, config.is_end, cli);
             }
             SerializingRustType::Root(ConceptualRustType::Map(key, value), cfg) => {
                 // `@duplicates preserve` (the pair-map twin): the encoding sidecar is POSITIONAL
