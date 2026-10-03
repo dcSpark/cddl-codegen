@@ -4682,12 +4682,9 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`, `
 
 ### Synthesized-name interaction sweep + duplicate-ident backstop
 
-The generator mints structural wasm-boundary classes whose names derive from user type names — the
-loose `{Elem}List` / `Map{K}To{V}` builders, the restricted `NonEmpty*` wrappers, and the table
-`keys()` list wrappers. How those names interact with USER rule names (and with each other) is a
-NAME-shaped axis the shape catalogs never reach: they mint one rule per shape and never spell a
-colliding user name or a named+inline coexistence, so a bug in this class ships as **generation exits
-0 but the wasm crate doesn't compile**. Three standing layers own it:
+The generator mints structural wasm-boundary classes whose names derive from user type names — the loose `{Elem}List` / `Map{K}To{V}` builders, restricted `NonEmpty*` and bounded collections, duplicate-reject sets, preserve pair maps, and the table `keys()` list wrappers.
+How those names interact with USER rule names (and with each other) is a NAME-shaped axis the shape catalogs never reach: they mint one rule per shape and never spell a colliding user name or a named+inline coexistence, so a bug in this class ships as **generation exits 0 but the wasm crate doesn't compile**.
+Three standing layers own it:
 
 - **Duplicate-ident backstop** (`generation/export.rs::top_level_type_ident` + the scan in
   `generated_files`). Before export, every generated `src/generated/**` file (all three crates) is
@@ -4696,10 +4693,11 @@ colliding user name or a named+inline coexistence, so a bug in this class ships 
   and the duplicated ident(s). This observes the ACTUAL emitted source rather than an IR prediction,
   so it is the backstop for every mint path present and future — turning the silent E0428
   redefinition (a user rule colliding with a synthesized ident) into a loud, graceful generator
-  error. The plain F1/F2/F5 families have no IR-level collision scan (only the `NonEmpty*` families
-  do, in `intermediate/wrapper_collisions.rs`), so for them the backstop is the sole pinned layer;
-  `loose_builder_name_claimed_plain_message_names_ident_and_file` pins its message identity and its
-  robustness-catalog row pins the outcome label.
+  error.
+  IR-level checks in `intermediate/wrapper_collisions.rs` already cover plain loose-list and map-builder claims as well as nonempty/bounded collections, duplicate-reject sets, and preserve pair maps.
+  They also check loose builders required by restricted wrappers, open-table flattened accessor names, and local rule claims against declared extern companions.
+  `loose_builder_name_claimed_plain_message_names_ident_and_use` pins the plain-list diagnostic before the duplicate-ident backstop, and `default_rest_row_loose_map_wrapper_ident_collision_rejects_gracefully` pins the map-side diagnostic.
+  The emitted-source backstop still owns mint paths the IR collection scan cannot see: `used_as_elem_wrapper_ident_collision_reaches_the_duplicate_ident_backstop` uses an `@used_as_elem` tag without any `[* elem]` RustType and requires the colliding ident plus generated filename in the error.
 - **`synthesized_name_interaction_sweep`** (`integration_tests.rs`). A table-driven sweep crossing
   each synthesized-name FAMILY (F1 plain list, F2 table builder, F3 `NonEmpty*` list, F4 `NonEmpty*`
   map, F5 table `keys()` list) with each INTERACTION (I-a different-shape rule claims the synthesized
