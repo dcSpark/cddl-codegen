@@ -1766,34 +1766,7 @@ impl Emitter<'_, '_> {
             // wasm face's own `kind()` reads, so a preserve/non-preserve arm-shape fork can never
             // exist here in one spelling and there in another.
             WitMemberOp::VariantKind => {
-                let (variants, variant_rep, tag) = self
-                    .choice_variants(ident)
-                    .expect("a `kind` member is only projected for a choice");
-                let rule_tag_encoding =
-                    enum_rule_tag_encoding_name(self.types, variants, variant_rep, tag, self.cli);
-                let kind = self
-                    .kind_enum(ident)
-                    .expect("a `kind` member is projected beside its `<name>-kind` enum");
-                let wit_kind = format!("{alias}::{}", kebab_to_camel(&kind.name));
-                lines.push("let me = self.0.borrow();".to_owned());
-                lines.push("match &*me {".to_owned());
-                for (variant, case) in variants.iter().zip(&kind.cases) {
-                    let arm = EnumVariantInRust::new(
-                        self.types,
-                        variant,
-                        variant_rep,
-                        tag,
-                        rule_tag_encoding.as_deref(),
-                        self.cli,
-                    );
-                    lines.push(format!(
-                        "    {rust}::{}{} => {wit_kind}::{},",
-                        variant.name,
-                        arm.capture_ignore_all(),
-                        kebab_to_camel(&case.name)
-                    ));
-                }
-                lines.push("}".to_owned());
+                self.member_variant_kind_body(&mut lines, ident, rust, alias);
             }
             // `as-<variant>`: the payload as a SNAPSHOT (every composite arm of `rust_to_wit`
             // clones), `None` on every other arm.
@@ -1873,6 +1846,43 @@ impl Emitter<'_, '_> {
         }
         lines
     }
+    fn member_variant_kind_body(
+        &self,
+        lines: &mut Vec<String>,
+        ident: &RustIdent,
+        rust: &str,
+        alias: &str,
+    ) {
+        let (variants, variant_rep, tag) = self
+            .choice_variants(ident)
+            .expect("a `kind` member is only projected for a choice");
+        let rule_tag_encoding =
+            enum_rule_tag_encoding_name(self.types, variants, variant_rep, tag, self.cli);
+        let kind = self
+            .kind_enum(ident)
+            .expect("a `kind` member is projected beside its `<name>-kind` enum");
+        let wit_kind = format!("{alias}::{}", kebab_to_camel(&kind.name));
+        lines.push("let me = self.0.borrow();".to_owned());
+        lines.push("match &*me {".to_owned());
+        for (variant, case) in variants.iter().zip(&kind.cases) {
+            let arm = EnumVariantInRust::new(
+                self.types,
+                variant,
+                variant_rep,
+                tag,
+                rule_tag_encoding.as_deref(),
+                self.cli,
+            );
+            lines.push(format!(
+                "    {rust}::{}{} => {wit_kind}::{},",
+                variant.name,
+                arm.capture_ignore_all(),
+                kebab_to_camel(&case.name)
+            ));
+        }
+        lines.push("}".to_owned());
+    }
+
     fn member_from_raw_body(
         &self,
         lines: &mut Vec<String>,

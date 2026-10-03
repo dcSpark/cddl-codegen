@@ -1377,6 +1377,10 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 // Component result invariant guard now belongs to component.rs::member_wrapper_getter_body:
 // "a wrapper getter always returns something" retains its exact expect payload and position.
 // No active panic allowance is added; main must qualify normalized production frame keys.
+// Component choice invariant guards now belong to component.rs::member_variant_kind_body:
+// "a `kind` member is only projected for a choice" and
+// "a `kind` member is projected beside its `<name>-kind` enum" retain exact expect payloads.
+// No active panic allowance is added; main must qualify normalized production frame keys.
 // Component setter index invariants now belong to component.rs::member_setter_body:
 // member.params[0] selects the sole projected setter parameter; args[0] selects the
 // materialized argument for that same one-parameter input in both storage branches.
