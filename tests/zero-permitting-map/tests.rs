@@ -220,12 +220,20 @@ fn exact_zero_restricted_rest_insertions_preserve_carrier_windows() {
     let before = declared.to_cbor_bytes();
     let collision = declared
         .insert_rest(1, 10)
-        .expect_err("collision wins before a full bounded carrier's max error");
+        .expect_err("declared-key collision is rejected while capacity remains");
     assert!(matches!(collision.failure(), DeserializeFailure::DuplicateKey(_)));
     assert_eq!(declared.to_cbor_bytes(), before, "bounded collision is atomic");
     declared.insert_rest(3, 10).unwrap();
-    assert_eq!(declared.rest().len(), 2);
-    assert!(declared.insert_rest(4, 11).is_err(), "max remains checked and atomic");
+    assert_eq!(declared.rest().len(), 2, "the competing-error control must start full");
+    let full_before = declared.to_cbor_bytes();
+    let collision = declared
+        .insert_rest(1, 10)
+        .expect_err("declared-key collision wins before full-carrier maximum");
+    assert!(matches!(collision.failure(), DeserializeFailure::DuplicateKey(_)));
+    assert_eq!(declared.to_cbor_bytes(), full_before, "full collision is atomic");
+    let overflow = declared.insert_rest(4, 11).expect_err("noncolliding key isolates maximum");
+    assert!(matches!(overflow.failure(), DeserializeFailure::RangeCheck { .. }));
+    assert_eq!(declared.to_cbor_bytes(), full_before, "maximum rejection is atomic");
 }
 
 #[test]
