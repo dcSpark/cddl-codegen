@@ -887,6 +887,68 @@ fn deser_any(
     deser_code
 }
 
+fn deser_fixed(
+    f: &FixedValue,
+    mut deser_code: DeserializationCode,
+    config: DeserializeConfig,
+    before_after: DeserializeBeforeAfter,
+    cli: &Cli,
+    deserializer_name: &str,
+) -> DeserializationCode {
+    // Without encodings a fixed value carries zero information: this branch only
+    // VERIFIES the constant, so the value it evaluates to is the unit `()`. It is
+    // still a value, and a caller MAY wrap it — the `.cbor` payload arm stages its
+    // target's read into `let {var}_payload = ` / `;` and then USES that binding, so
+    // `[bytes .cbor 42]` reaches here with wrapper text and needs something bound.
+    // Emitting the unit through the caller's wrapper (below, after the match) serves
+    // both: an unwrapped caller gets exactly what it got when this branch asserted
+    // its before/after away, and a wrapping caller gets a well-typed `()`.
+    if config.optional_field {
+        deser_code.content.line("read_len.read_elems(1)?;");
+        deser_code.throws = true;
+        deser_code.read_len_used = true;
+    }
+    match FixedValueCheck::new(f, config.var_name) {
+        Some(check) => emit_fixed_value_check(
+            &mut deser_code,
+            &check,
+            deserializer_name,
+            config.var_name,
+            &before_after,
+            config.final_exprs,
+            cli,
+        ),
+        // `null` / `undefined` (the only values `new` declines): a special
+        // with no value to compare.
+        None => {
+            let (special, failure) = if matches!(f, FixedValue::Null) {
+                ("Null", "ExpectedNull")
+            } else {
+                ("Undefined", "ExpectedUndefined")
+            };
+            let mut special_block = Block::new(format!(
+                "if {deserializer_name}.special()? != cbor_event::Special::{special}"
+            ));
+            special_block.line(format!("return Err(DeserializeFailure::{failure}.into());"));
+            deser_code.content.push_block(special_block);
+            if cli.preserve_encodings {
+                line_verified_unit(&mut deser_code, &before_after, config.final_exprs);
+            }
+        }
+    }
+    deser_code.throws = true;
+    // The verified constant's value is the unit `()`, emitted through the caller's
+    // wrapper — which yields `Ok(())` for a block that must evaluate to a Result.
+    // Together with the discard suppression inside the helper this reproduces the
+    // previous contract EXACTLY for every caller that passes no wrapper (which, when
+    // this branch asserted its before/after away, was every caller): an empty
+    // `before` with `expects_result` emits `Ok(())`, without it emits nothing.
+    if !cli.preserve_encodings {
+        line_unit_value(&mut deser_code, &before_after);
+    }
+    deser_code
+}
+
 // joins all config.final_expr together (possibly) with the actual value into a tuple type (if multiple)
 // or otherwise the value just goes through on its own
 fn final_expr(encoding_exprs: Vec<String>, actual_value: Option<String>) -> String {
@@ -991,62 +1053,8 @@ impl GenerationScope {
         } else {
             match serializing_rust_type {
                 SerializingRustType::Root(ConceptualRustType::Fixed(f), _cfg) => {
-                    // Without encodings a fixed value carries zero information: this branch only
-                    // VERIFIES the constant, so the value it evaluates to is the unit `()`. It is
-                    // still a value, and a caller MAY wrap it — the `.cbor` payload arm stages its
-                    // target's read into `let {var}_payload = ` / `;` and then USES that binding, so
-                    // `[bytes .cbor 42]` reaches here with wrapper text and needs something bound.
-                    // Emitting the unit through the caller's wrapper (below, after the match) serves
-                    // both: an unwrapped caller gets exactly what it got when this branch asserted
-                    // its before/after away, and a wrapping caller gets a well-typed `()`.
-                    if config.optional_field {
-                        deser_code.content.line("read_len.read_elems(1)?;");
-                        deser_code.throws = true;
-                        deser_code.read_len_used = true;
-                    }
-                    match FixedValueCheck::new(f, config.var_name) {
-                        Some(check) => emit_fixed_value_check(
-                            &mut deser_code,
-                            &check,
-                            deserializer_name,
-                            config.var_name,
-                            &before_after,
-                            config.final_exprs,
-                            cli,
-                        ),
-                        // `null` / `undefined` (the only values `new` declines): a special
-                        // with no value to compare.
-                        None => {
-                            let (special, failure) = if matches!(f, FixedValue::Null) {
-                                ("Null", "ExpectedNull")
-                            } else {
-                                ("Undefined", "ExpectedUndefined")
-                            };
-                            let mut special_block = Block::new(format!(
-                                "if {deserializer_name}.special()? != cbor_event::Special::{special}"
-                            ));
-                            special_block
-                                .line(format!("return Err(DeserializeFailure::{failure}.into());"));
-                            deser_code.content.push_block(special_block);
-                            if cli.preserve_encodings {
-                                line_verified_unit(
-                                    &mut deser_code,
-                                    &before_after,
-                                    config.final_exprs,
-                                );
-                            }
-                        }
-                    }
-                    deser_code.throws = true;
-                    // The verified constant's value is the unit `()`, emitted through the caller's
-                    // wrapper — which yields `Ok(())` for a block that must evaluate to a Result.
-                    // Together with the discard suppression inside the helper this reproduces the
-                    // previous contract EXACTLY for every caller that passes no wrapper (which, when
-                    // this branch asserted its before/after away, was every caller): an empty
-                    // `before` with `expects_result` emits `Ok(())`, without it emits nothing.
-                    if !cli.preserve_encodings {
-                        line_unit_value(&mut deser_code, &before_after);
-                    }
+                    deser_code =
+                        deser_fixed(f, deser_code, config, before_after, cli, deserializer_name);
                 }
                 SerializingRustType::Root(ConceptualRustType::Primitive(p), type_cfg) => {
                     if config.optional_field {
