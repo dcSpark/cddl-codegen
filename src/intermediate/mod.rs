@@ -3906,674 +3906,12 @@ impl<'a> IntermediateTypes<'a> {
             return Err(self.rejections_error());
         }
         self.propagate_key_demand();
-        // `@used_as_key` / `@used_as_elem` ask for a wasm surface keyed on the rule's OWN type, and a
-        // generic DEFINITION has none — only its instantiations name concrete types. `@used_as_key`
-        // was dropped silently (the demand-propagation walk skips a root with no `rust_structs`
-        // entry), and `@used_as_elem` was worse: the exposable-element check below resolves the
-        // marked ident's element type, whose `directly_wasm_exposable` walk asserts that a
-        // non-struct ident is a generic INSTANCE — so a marked generic DEF aborted the run at exit
-        // 101 with an `assertion failed` and no diagnosis. Both refuse here, in the house style,
-        // naming the instantiating rule as the placement that works.
-        //
-        // Placed before the `cli.wasm` block (which owns the abort site) and flag-independently,
-        // like every sibling placement rejection: whether a directive may sit somewhere is a
-        // property of the spec, not of the build profile. Keyed on `generic_defs` rather than on
-        // "absent from `rust_structs`" so it covers every generic-def body spelling at once — the
-        // record body the parse walk marks from, and the tag-set idiom the choice path marks from —
-        // and refuses nothing else. Determinism: `BTreeSet`/`BTreeMap` iteration.
-        // Named by their CDDL SOURCE spelling: a generic definition mints no rust type, and the
-        // remedy is CDDL the author writes back into the spec.
-        let generic_def_source = |ident: &RustIdent| {
-            self.source_rule_name(ident)
-                .unwrap_or(ident.as_ref())
-                .to_owned()
-        };
-        let generic_def_elem = self
-            .rule_directives
-            .used_as_elem
-            .iter()
-            .filter(|ident| self.generic_defs.contains_key(*ident))
-            .map(generic_def_source)
-            .collect::<Vec<_>>();
-        let generic_def_key = self
-            .key_demand_roots
-            .keys()
-            .filter(|ident| self.generic_defs.contains_key(*ident))
-            .map(generic_def_source)
-            .collect::<Vec<_>>();
-        for ident in generic_def_key {
-            self.record_rejection(format!(
-                "@used_as_key on `{ident}`: a generic DEFINITION names no concrete type — only its \
-                 instantiations do — so there is no type for the map-key comparison derives to be \
-                 demanded on, and the demand is dropped. Put the directive on the instantiating \
-                 rule instead (`inst = {ident}<uint> ; @used_as_key`), which is where the concrete \
-                 type is minted."
-            ));
-        }
-        for ident in generic_def_elem {
-            self.record_rejection(format!(
-                "@used_as_elem on `{ident}`: a generic DEFINITION names no concrete type — only its \
-                 instantiations do — so there is no element type for a loose-list wrapper to hold. \
-                 Put the directive on the instantiating rule instead (`inst = {ident}<uint> ; \
-                 @used_as_elem`), which is where the concrete type is minted."
-            ));
-        }
-        // NonEmptyVec wasm-wrapper name collisions: an inline `[+ elem]` mints a `NonEmpty<Elem>List`
-        // wasm class; if a user rule already OWNS that identifier, silently sharing it would emit a
-        // wrapper of the wrong shape (loose `Vec` vs restricted `NonEmptyVec`). Reject clearly rather
-        // than shadow. Only relevant with wasm bindings (the collision is on the wasm class name).
-        if cli.wasm {
-            for msg in self.non_empty_wrapper_name_collisions() {
-                self.record_rejection(msg);
-            }
-            for msg in self.bounded_array_wrapper_name_collisions() {
-                self.record_rejection(msg);
-            }
-            for msg in self.bounded_reject_ordered_set_wrapper_name_collisions() {
-                self.record_rejection(msg);
-            }
-            // NonEmptyMap wasm-wrapper name collisions — the map-side twin of the above.
-            for msg in self.non_empty_map_wrapper_name_collisions() {
-                self.record_rejection(msg);
-            }
-            // Finite/exact/lower-bounded unique-key table wrapper names are their own family:
-            // `MapKToVMinN/MaxN` cannot share the NonEmptyMap detector because their checked door
-            // and structural identity include both occurrence endpoints.
-            for msg in self.bounded_map_wrapper_name_collisions() {
-                self.record_rejection(msg);
-            }
-            for msg in self.bounded_pair_map_wrapper_name_collisions() {
-                self.record_rejection(msg);
-            }
-            // Keep `@duplicates reject` uniqueness-twin wasm-wrapper collision detection as a
-            // per-kind sibling: its diagnostic differs from the other containers' messages.
-            // See docs/development/decisions.md, "WASM wrapper-name collisions".
-            for msg in self.reject_ordered_set_wrapper_name_collisions() {
-                self.record_rejection(msg);
-            }
-            // `@duplicates preserve` pair-map wrapper-name collisions — the fourth container kind's
-            // siblings (loose `PairMapKToV`, restricted `NonEmptyPairMapKToV`). The flavored
-            // structural names make the preserve-vs-default SHAPE collision unrepresentable, so what
-            // is left is the same rule-ident-vs-wrapper-ident hazard the other kinds guard.
-            for msg in self.preserve_pair_map_loose_wrapper_name_collisions() {
-                self.record_rejection(msg);
-            }
-            for msg in self.preserve_pair_map_non_empty_wrapper_name_collisions() {
-                self.record_rejection(msg);
-            }
-            // The OPEN TABLE (`t = { * K_t => V_t, * K_r => V_r }`) is the fifth container kind, and
-            // it is the one that gets NO sibling of its own — recorded here so the standing ruling
-            // reads as satisfied rather than skipped. Two independent reasons, both structural:
-            //   * its minted struct is named by the RULE IDENT, which is the author's own name by
-            //     construction. The four siblings above each guard a name the generator DERIVES
-            //     (`NonEmpty<Elem>List`, `MapKToV`, `<Elem>OrderedSet`, `PairMapKToV`) against a
-            //     rule that shadows it; an open table synthesizes no such name because the shape is
-            //     a NAMED-RULE concession (an inline anonymous open table is refused at
-            //     recognition, naming the named-rule form). If that concession is ever lifted, the
-            //     synthesized name arrives with it and so does the fifth sibling.
-            //   * its TYPED row mints no container class at all — the map surface is flattened onto
-            //     the struct's own class — so the `MapKToV`/`PairMapKToV` hazard is unrepresentable
-            //     for it, the same move that retired the family's wrapper-vs-wrapper detector.
-            // What the open table DOES claim is covered by legs on the detectors above: the
-            // `<K_t>List` its flattened `keys()` returns, and the catch-all row's own map class in
-            // whichever flavor the row carries.
-            //
-            // What flattening DOES create is a MEMBER-name hazard on one class rather than a class-
-            // name one, which is why it is checked here and not in that family: the accessors the
-            // typed row contributes and the getter the catch-all contributes land on the SAME wasm
-            // impl, so a `@name`d catch-all spelling one of the five reserved accessor names would
-            // emit two methods of one name (rustc E0592 in the wasm crate).
-            for msg in self.open_table_flattened_accessor_name_collisions() {
-                self.record_rejection(msg);
-            }
-            // `@extern_companions` names classes this crate must NOT define, so a same-crate RULE of
-            // one of those names is a contradiction the deferral cannot resolve: the `use
-            // <prefix>::<Class>;` and the rule's own class would claim one identifier (rustc E0255).
-            // Sibling in spirit to the four wrapper-name detectors above — a rule ident contending
-            // with a name the generator routes elsewhere — but its own function because the contested
-            // name comes from the SPEC's declaration rather than a structural derivation, so it needs
-            // neither shape reconstruction nor a per-container-kind twin.
-            for msg in self.extern_companion_rule_name_collisions() {
-                self.record_rejection(msg);
-            }
-            // `@used_as_elem` mints the loose-list wasm wrapper `<Elem>List` for each tagged
-            // element. A directly-wasm-exposable element (e.g. a transparent `coin = uint` alias)
-            // has NO such wrapper — the list lowers to a bare `Vec<..>` at the wasm boundary — so
-            // the tag has nothing to mint. Reject gracefully here (mirroring the `--wrapper-requests`
-            // exposable diagnostic) rather than silently no-op. Collected into a local set to
-            // sidestep the borrow checker, like the float-key rejections above.
-            let mut exposable_elem_rejections = BTreeSet::new();
-            for ident in &self.rule_directives.used_as_elem {
-                // A generic DEFINITION is refused earlier in this fn (it names no concrete type),
-                // and the resolution below cannot survive one: its exposability walk asserts that a
-                // non-struct ident is a generic INSTANCE, which a definition is not. Skipping keeps
-                // that assert an unreachable re-earning guard instead of the abort it used to be.
-                if self.generic_defs.contains_key(ident) {
-                    continue;
-                }
-                let element_type = self.used_as_elem_element_type(ident);
-                if ConceptualRustType::Array(Box::new(element_type.conceptual_type.clone().into()))
-                    .directly_wasm_exposable_ct(self)
-                {
-                    let member = element_type.name_as_wasm_array(self);
-                    exposable_elem_rejections.insert(format!(
-                        "@used_as_elem on `{ident}`: the loose list `[* {ident}]` is directly \
-                         wasm-exposable — it lowers to `{member}` with no wrapper class, so there \
-                         is no wrapper for this tag to mint. Remove `@used_as_elem` (the element \
-                         already crosses the wasm boundary as a bare `{member}`)."
-                    ));
-                }
-            }
-            for msg in exposable_elem_rejections {
-                self.record_rejection(msg);
-            }
-        }
-        // The component face's own detector family, on exactly the terms the wasm block above
-        // states: a name that is legal on the rust and wasm faces can be broken on the WIT one, so
-        // the check is flag-gated on the face that has the restriction.
-        //
-        // Placed HERE — after every `register_rust_struct` in this fn (they all run in the generic
-        // resolution at the top) — because the detector walks `rust_structs` and `scopes`, which are
-        // complete from that point on.
-        //
-        // Its SIBLING — the strong-uniqueness name-collision detector — deliberately does NOT run
-        // here: its verdict depends on which types the rust face gives a `Deserialize` impl (a
-        // `from-cbor-bytes` static the tool never emits cannot collide with anything), which only
-        // that face's own walk reaches. It runs in `GenerationScope::generate` instead and surfaces
-        // through the graceful error channel `generated_files`/`export` already carry. A spec with
-        // BOTH a cycle and a collision therefore reports the cycle first, which is correct: a cyclic
-        // package has no resolvable WIT to have collisions in.
-        if cli.component {
-            // WIT requires interfaces linked with `use` to be acyclic, and each exported module
-            // scope becomes one interface. Cyclic cross-scope references generate fine on the rust
-            // face, so this restriction arrives with `--component` and nowhere else.
-            for msg in crate::generation::wit::wit_scope_cycles(self) {
-                self.record_rejection(msg);
-            }
-        }
-        // `@no_json_schema_export` suppresses a rule's schema-registration row. A rule that registers
-        // NO `RustStruct` at all — a transparent alias (`x = uint`), a `@no_alias` alias, a named
-        // binding to a set nominal, a generic DEFINITION (only its instantiations are types), a
-        // plain group no rule splices — has no row for the directive to
-        // suppress, so it would be silently dead: reject it in the house style of the other
-        // directive-misplacement rejections. Deliberately NOT rejected on a rule that registers a
-        // struct the row loop skips for other reasons (an `Array`/`Table` typedef, a generic-extern
-        // base): those are redundant-but-honest annotations, and keeping the rule "valid wherever a
-        // rust type is produced" keeps it simple and flag-independent. Deferred to here rather than
-        // the parse walk because a generic INSTANCE (`my_foo = foo<uint>`) only registers its struct
-        // during the generic resolution above. Flag-independent (outside the `cli.wasm` block above):
-        // the directive means the same thing under every flag set. Determinism: `BTreeSet` iteration.
-        let struct_less_no_json_schema_export = self
-            .rule_directives
-            .no_json_schema_export
-            .iter()
-            .filter(|ident| !self.rust_structs.contains_key(ident))
-            .cloned()
-            .collect::<Vec<_>>();
-        for ident in struct_less_no_json_schema_export {
-            self.record_rejection(format!(
-                "@no_json_schema_export on `{ident}`: this rule registers no rust struct, so there \
-                 is no schema-registration row to suppress and the directive would silently do \
-                 nothing. Either it is a transparent alias (a plain type alias `{ident} = uint`, a \
-                 `@no_alias` alias, or a named binding to a generic instantiation), or it is a \
-                 generic DEFINITION whose instantiations own the types (annotate the instance — \
-                 `inst = {ident}<uint> ; @no_json_schema_export` — not the definition), or it is a \
-                 plain group no rule splices. Remove it from this rule, or move it to the rule that \
-                 actually produces the type."
-            ));
-        }
-        // A plain GROUP rule becomes a rust type only by being SPLICED into a rule that materializes
-        // it (`holder = [foo]`); a group nothing splices emits no struct and no fields, so every
-        // rule-position directive written on it is inert — under the rule reading AND under the
-        // field reading of the slot cddl binds it to. One uniform refusal covers the whole
-        // vocabulary rather than thirteen per-directive sites, because the reason is the same for
-        // all of them and does not depend on which directive it is.
-        //
-        // Deferred to here for the reason `@no_json_schema_export` above is: splicedness is a
-        // whole-spec property, decided by rules the parse seam that reads the directives has not
-        // reached yet. Two directives are excluded from the list — `@name`, which gets its own
-        // long-standing message just below (one misplacement, one wording), and
-        // `@no_json_schema_export`, whose refusal right above already names this exact shape.
-        // `@rust_name` is excluded because a NON-exported (extern-deps) scope honors it there;
-        // in an exported scope the parse walk has already refused it and finalize never runs.
-        // Determinism: `BTreeMap` iteration, and each directive list is sorted at its source.
-        // Named by its CDDL SOURCE spelling throughout, not its `RustIdent`: an unspliced group
-        // materializes no rust type, so there is no rust name to report, and every remedy below is
-        // CDDL the author writes back into the spec.
-        let unspliced_annotated_groups = self
-            .rule_directives
-            .plain_group_rule_directives
-            .iter()
-            .filter(|(ident, _)| !self.rust_structs.contains_key(*ident))
-            .map(|(ident, directives)| {
-                (
-                    self.source_rule_name(ident)
-                        .unwrap_or(ident.as_ref())
-                        .to_owned(),
-                    directives.clone(),
-                )
-            })
-            .collect::<Vec<_>>();
-        for (ident, directives) in unspliced_annotated_groups {
-            if directives.contains(&"@name") {
-                self.record_rejection(crate::parsing::rule_position_name_message(&ident));
-            }
-            let remaining = directives
-                .iter()
-                .copied()
-                .filter(|directive| {
-                    !matches!(
-                        *directive,
-                        "@name" | "@no_json_schema_export" | "@rust_name"
-                    )
-                })
-                .collect::<Vec<_>>();
-            if !remaining.is_empty() {
-                self.record_rejection(format!(
-                    "{} on `{ident}`: the plain group `{ident}` is never spliced into any rule, so \
-                     it materializes no rust type and no fields — a rule-position directive on it \
-                     has nothing to act on and would be silently dropped. Splice the group into a \
-                     rule that materializes it (`holder = [{ident}]` for an array shape, \
-                     `holder = {{{ident}}}` for a map shape), which is where a rule-position \
-                     directive on a group is read, or remove the directive.",
-                    remaining.join(" / ")
-                ));
-            }
-        }
-        // The `@custom_serialize`/`@custom_deserialize` pair is a TYPE-level override: it replaces
-        // the codec of the rust type a rule resolves to. The parse-walk rejections cover the
-        // placements that DELETE or BYPASS the node it keys on (`@no_alias`, `@newtype`, an extern /
-        // raw-bytes marker, a row-entry slot). The struct-kind checks below cover the remaining
-        // placements that cannot honor the pair, while preserving the audited complete-pair owners:
-        //
-        //   - an ENUM rule (type choice, group choice, or the fixed-value C-style enum): its
-        //     serialize side is generated unconditionally while `generate_deserialize`'s
-        //     `Root(Rust(ident))` arm rewrites every embed site to the named reader — the same
-        //     read-one-format/write-another asymmetry `@newtype` is rejected for.
-        //   - a RECORD rule carrying only ONE half. Serialize-only emits no `Serialize` impl and
-        //     never calls the named function (an undiagnosed non-compiling crate);
-        //     deserialize-only keeps the type's own generated `Deserialize` impl while rewriting
-        //     every embed site, so one type decodes the same bytes two ways — and the rule projects
-        //     OPAQUELY across the extern-interface seam, carrying the divergence to consumers.
-        //     BOTH halves on a record rule is deliberately NOT rejected: it suppresses the generated
-        //     impls for the author to hand-own, which is unspecified-and-at-risk rather than wrong
-        //     (see `docs/docs/comment_dsl.mdx`).
-        //   - a TABLE rule (`t = { * k => v }`) carrying a LONE half. A complete pair takes the
-        //     separately audited implicit map-wrapper owner; only a table left as `Table` lowers
-        //     through `AliasInfo::new_manual`, whose `rule_metadata` is hardcoded `None`, so its
-        //     remaining half is unhonored and rejects.
-        //
-        // Deferred to here rather than the parse walk for the same reason `@no_json_schema_export`
-        // above is: the struct KIND decides, and a generic instance only materializes its struct
-        // during the resolution above. Collected into a `BTreeSet` (determinism + no duplicate line
-        // if two registrations ever land on one ident), like the float-key rejections.
-        let mut custom_codec_rejections = BTreeSet::new();
-        // The COLLECTION-RULE flavors of the transparent-alias `@custom_json` refusal
-        // (`register_type_alias` owns the rest of that family). A named table or array rule DOES
-        // register a `RustStruct`, so its config carries the flag — but the struct only exists to
-        // drive the wasm wrapper and the keys-list mint; the rust rule itself lowers to a
-        // transparent `pub type` alias (registered through `AliasInfo::new_manual`, which drops the
-        // metadata, so `register_type_alias` cannot see these two). No consumer of `custom_json`
-        // reads either shape, on either the rust or the wasm side — same inert class, same message,
-        // same `@newtype` remedy. Collected here and recorded once the `&self` borrow ends.
-        let mut custom_json_alias_rejections: BTreeSet<RustIdent> = BTreeSet::new();
-        for (ident, rust_struct) in &self.rust_structs {
-            let config = rust_struct.config();
-            if config.custom_json
-                && matches!(
-                    rust_struct.variant(),
-                    RustStructType::Table { .. } | RustStructType::Array { .. }
-                )
-            {
-                custom_json_alias_rejections.insert(ident.clone());
-            }
-            let enum_shape = match rust_struct.variant() {
-                RustStructType::TypeChoice { .. } => Some("a type-choice rule (`a / b`)"),
-                RustStructType::GroupChoice { .. } => {
-                    Some("a group-choice rule (`{ … } // { … }`)")
-                }
-                RustStructType::CStyleEnum { .. } => {
-                    Some("a fixed-value type-choice rule (`0 / 1`, a C-style enum)")
-                }
-                _ => None,
-            };
-            if let Some(shape) = enum_shape {
-                for directive in ["@custom_serialize", "@custom_deserialize"] {
-                    let present = match directive {
-                        "@custom_serialize" => config.custom_serialize.is_some(),
-                        _ => config.custom_deserialize.is_some(),
-                    };
-                    if present {
-                        custom_codec_rejections.insert(format!(
-                            "{directive} on `{ident}`: {shape} mints an enum whose serialize side is \
-                             generated unconditionally, while the deserialize CALL SITES do route \
-                             through the custom reader — so the pair would make the enum read one \
-                             wire format and write another. Put the pair on the rule of the variant \
-                             type that needs the custom format, or declare `{ident}` as a \
-                             {EXTERN_MARKER} rule and hand-write the type in full."
-                        ));
-                    }
-                }
-            }
-            if matches!(rust_struct.variant(), RustStructType::Table { .. }) {
-                for directive in ["@custom_serialize", "@custom_deserialize"] {
-                    let present = match directive {
-                        "@custom_serialize" => config.custom_serialize.is_some(),
-                        _ => config.custom_deserialize.is_some(),
-                    };
-                    if present {
-                        custom_codec_rejections.insert(format!(
-                            "{directive} on `{ident}`: this table has only one custom-codec half; a \
-                             complete pair would self-nominalize as the supported whole-table owner, \
-                             but a lone half remains a transparent map alias with no codec to \
-                             override and is dropped rather than honored. Put it on the rule that defines the table's \
-                             KEY or VALUE type (`k = bytes ; {directive} …`, then `{ident} = \
-                             {{ * k => v }}`), or declare `{ident}` as a {EXTERN_MARKER} rule and \
-                             hand-write the type in full."
-                        ));
-                    }
-                }
-            }
-            // The ARRAY sibling of the table rule above, and unhonored for the same reason: a named
-            // collection rule (`items = [* uint]`, `[+ uint]`, `[3*5 uint]`, and both `@duplicates`
-            // flavors) lowers to a transparent collection TYPEDEF registered through
-            // `AliasInfo::new_manual`, whose `rule_metadata` is hardcoded `None` — so the pair
-            // reaches neither the collection's standalone codec nor a holder's field call sites, and
-            // ANY presence rejects rather than only a lone half. Keyed on the `Array` struct variant,
-            // which is exactly the family that lowers this way (a `[a: uint]` RECORD body mints
-            // `Record` and is handled below); the flavors differ only in the container the typedef
-            // names (`Vec` / `NonEmptyVec` / `OrderedSet`), never in the metadata drop.
-            if matches!(rust_struct.variant(), RustStructType::Array { .. }) {
-                for directive in ["@custom_serialize", "@custom_deserialize"] {
-                    let present = match directive {
-                        "@custom_serialize" => config.custom_serialize.is_some(),
-                        _ => config.custom_deserialize.is_some(),
-                    };
-                    if present {
-                        custom_codec_rejections.insert(format!(
-                            "{directive} on `{ident}`: a named collection rule (`{ident} = [* t]`) \
-                             lowers to a transparent collection typedef that owns no codec for the \
-                             directive to override, so it is dropped rather than honored — in both \
-                             directions, whichever half is written. Put it on the rule that defines \
-                             the collection's ELEMENT type (`t = bytes ; {directive} …`, then \
-                             `{ident} = [* t]`), or declare `{ident}` as a {EXTERN_MARKER} rule and \
-                             hand-write the type in full to own the whole collection's wire."
-                        ));
-                    }
-                }
-            }
-            // A TAGGED wrapper — a tag-head rule (`x = #6.42(uint)`), and the tag-258 set idiom,
-            // which nominalizes into one — is outside the one wrapper contract B3-026 audited: an
-            // implicit, untagged homogeneous-table map owner with a COMPLETE pair. Do not infer the
-            // semantics of tag framing, set policy, encoding preservation, or cross-face projections
-            // from that narrow owner; reject either half here. Rejected on tag presence rather than
-            // on `Wrapper` at large so range-bounded wrappers remain an explicit unexpanded surface.
-            // `@newtype` wrappers never reach here — their parse-walk rejection short-circuits
-            // `finalize` — so one misplacement still reports once.
-            if let RustStructType::Wrapper { wrapped, .. } = rust_struct.variant()
-                && (rust_struct.tag().is_some()
-                    || wrapped
-                        .encodings
-                        .iter()
-                        .any(|op| matches!(op, CBOREncodingOperation::Tagged(_))))
-            {
-                let shape = if config.set_nominal {
-                    "the tag-258 set idiom, which nominalizes into a set wrapper,"
-                } else {
-                    "a tag-head rule (`#6.n(…)`)"
-                };
-                for directive in ["@custom_serialize", "@custom_deserialize"] {
-                    let present = match directive {
-                        "@custom_serialize" => config.custom_serialize.is_some(),
-                        _ => config.custom_deserialize.is_some(),
-                    };
-                    if present {
-                        custom_codec_rejections.insert(format!(
-                            "{directive} on `{ident}`: {shape} is a tagged wrapper, while this \
-                             delivery supports and audits a complete pair only on the implicit \
-                             homogeneous-table map owner. Its custom-codec contract (tag framing, \
-                             encoding preservation, and cross-face behavior) is not defined here. \
-                             Declare `{ident}` \
-                             as a {EXTERN_MARKER} rule and hand-write the type in full, or give the \
-                             rule a body that resolves to a transparent alias and write the wire \
-                             framing in your own codec (`{ident} = <inner> ; @custom_serialize \
-                             <fn> @custom_deserialize <fn>`)."
-                        ));
-                    }
-                }
-            }
-            // BOTH halves on a record rule, and the complete pair's implicit whole-table map
-            // wrapper, are the accepted rule-position pairs (each gets thin generated impls
-            // delegating to the named functions). They are the only struct owners where a
-            // `@custom_encodings` declaration would be read into rule metadata and then have
-            // nowhere to go: a struct carries its encoding metadata INSIDE itself, so no
-            // codec-visible tuple crosses the boundary. Other wrapper forms remain rejected by the
-            // pair checks above; this fires once and only for an accepted owner that would otherwise
-            // drop the declaration silently. (A declaration with one half or none is the parse
-            // walk's `reject_custom_encodings_without_pair`, so it cannot double-report here.)
-            // Only parsing's complete homogeneous-table path creates an untagged, non-`@newtype`
-            // map wrapper. Explicit/newtype and tagged map wrappers are rejected elsewhere and must
-            // not be treated as this accepted owner merely because they wrap a map.
-            let is_complete_pair_map_wrapper = matches!(
-                rust_struct.variant(),
-                RustStructType::Wrapper {
-                    wrapped,
-                    ..
-                } if matches!(wrapped.conceptual_type, ConceptualRustType::Map(_, _))
-                    && rust_struct.tag().is_none()
-                    && config.newtype_getter.is_none()
-                    && !wrapped
-                        .encodings
-                        .iter()
-                        .any(|op| {
-                            matches!(
-                                op,
-                                CBOREncodingOperation::Tagged(_)
-                                    | CBOREncodingOperation::OptionallyTagged(_)
-                            )
-                        })
-            );
-            if config.custom_encodings.is_some()
-                && config.custom_serialize.is_some()
-                && config.custom_deserialize.is_some()
-                && (matches!(rust_struct.variant(), RustStructType::Record(_))
-                    || is_complete_pair_map_wrapper)
-            {
-                custom_codec_rejections.insert(format!(
-                    "@custom_encodings on `{ident}`: this rule mints a STRUCT, whose encoding \
-                     metadata lives inside the struct itself (its `encodings` member) — the custom \
-                     pair on a record rule delegates through generated thin impls, and \
-                     hands no encoding tuple across the call, so there is nothing for a declaration \
-                     to describe. Put the declaration where the pair takes encoding arguments: \
-                     beside a FIELD's pair, or on a transparent alias rule's pair \
-                     (`<rule> = <inner> ; @custom_serialize <fn> @custom_deserialize <fn> \
-                     @custom_encodings <kinds>`)."
-                ));
-            }
-            // The `@custom_wire_major` sibling of the check above, and for the same reason: the
-            // declared major is read only through the ALIAS channel (`AliasInfo::rule_metadata`),
-            // when the rule keys an open table's typed row or proves a variable middle array
-            // boundary. A struct-minting rule has no such channel, so the declaration would be read
-            // into the rule's metadata and dropped. (A declaration with one half of the pair or
-            // none is the parse walk's
-            // `reject_custom_encodings_without_pair`, so it cannot double-report here.)
-            if config.custom_wire_major.is_some()
-                && config.custom_serialize.is_some()
-                && config.custom_deserialize.is_some()
-            {
-                custom_codec_rejections.insert(format!(
-                    "@custom_wire_major on `{ident}`: this rule mints a STRUCT, and the declared \
-                     major is read only where a transparent ALIAS keys an OPEN TABLE's typed row or \
-                     proves a variable middle ARRAY boundary; a struct-minting rule has no such \
-                     alias entry. Put the declaration on the alias rule whose codec writes that \
-                     boundary item (`<wire> = <inner> ; @custom_serialize <fn> \
-                     @custom_deserialize <fn> @custom_wire_major <major>`)."
-                ));
-            }
-            if matches!(rust_struct.variant(), RustStructType::Record(_)) {
-                if config.custom_serialize.is_some() && config.custom_deserialize.is_none() {
-                    custom_codec_rejections.insert(format!(
-                        "@custom_serialize alone on `{ident}`: a record rule with only the serialize \
-                         half emits no `Serialize` impl for the type and never calls the named \
-                         function, so the generated crate does not compile — every site holding a \
-                         `{ident}` calls `.serialize(..)` on a type that has no impl. Move the pair \
-                         to the field (or to the type rule of the member) that needs the custom \
-                         format, or declare `{ident}` as a {EXTERN_MARKER} rule and hand-write the \
-                         type in full."
-                    ));
-                }
-                if config.custom_deserialize.is_some() && config.custom_serialize.is_none() {
-                    custom_codec_rejections.insert(format!(
-                        "@custom_deserialize alone on `{ident}`: a record rule with only the \
-                         deserialize half still emits the type's own generated `Deserialize` impl, \
-                         while every site holding a `{ident}` is rewritten to call the named function \
-                         — so `{ident}::from_cbor_bytes` and a field of type `{ident}` decode the \
-                         same bytes differently. The rule also projects OPAQUELY across the \
-                         extern-interface seam, so a consumer decodes it the generated way. Move the \
-                         pair to the field (or to the type rule of the member) that needs the custom \
-                         format, or declare `{ident}` as a {EXTERN_MARKER} rule and hand-write the \
-                         type in full."
-                    ));
-                }
-            }
-        }
-        // A single half on a TRANSPARENT ALIAS rule — the alias twin of the record rule's
-        // single-half rejection above, refused for that rejection's own stated reason: one type
-        // decodes the same bytes two ways. An alias's lone half is the more insidious shape, because
-        // unlike serialize-only on a record (no `Serialize` impl at all, so the crate does not
-        // compile) it COMPILES and routes — `generate_serialize`/`generate_deserialize` lift each
-        // half independently, so every embed site is rewritten in the declared direction while the
-        // opposite direction keeps the aliased type's generated codec. The alias then writes one wire
-        // format and reads another.
-        //
-        // Walked over the alias table rather than the struct loop above because the alias ENTRY is
-        // what "lowers to a transparent alias" means — the collection and table rules register
-        // through `AliasInfo::new_manual` (whose `rule_metadata` is `None`, so they are skipped here
-        // and rejected by their own kind arms), and the struct-minting kinds have no entry at all.
-        // Only a rule's OWN declaration reports: `strip_alias_for_registration` copies both halves
-        // wholesale, so an INHERITED single half can only descend from an origin that is itself
-        // reported here, and reporting each link would name rules nobody wrote the directive on.
-        let mut single_half_alias_rejections = BTreeSet::new();
-        for (alias_ident, info) in &self.type_aliases {
-            let AliasIdent::Rust(ident) = alias_ident else {
-                continue;
-            };
-            if info.wire_metadata_inherited_from.is_some() {
-                continue;
-            }
-            let Some(metadata) = info.rule_metadata.as_ref() else {
-                continue;
-            };
-            let (directive, half, rewritten, missing) =
-                match (&metadata.custom_serialize, &metadata.custom_deserialize) {
-                    (Some(_), None) => (
-                        "@custom_serialize",
-                        "serialize",
-                        "WRITES",
-                        "@custom_deserialize",
-                    ),
-                    (None, Some(_)) => (
-                        "@custom_deserialize",
-                        "deserialize",
-                        "READS",
-                        "@custom_serialize",
-                    ),
-                    _ => continue,
-                };
-            single_half_alias_rejections.insert(format!(
-                "{directive} alone on `{ident}`: a transparent alias rule with only the {half} \
-                 half rewrites every embed site that {rewritten} through the named function, while \
-                 the opposite direction keeps the aliased type's own generated codec — so `{ident}` \
-                 reads one wire format and writes another, at every position that reaches it. Write \
-                 both halves (`{ident} = <body> ; @custom_serialize <fn> @custom_deserialize \
-                 <fn>`), adding the missing {missing}, or drop the directive."
-            ));
-        }
-        for msg in single_half_alias_rejections {
-            self.record_rejection(msg);
-        }
-        for msg in custom_codec_rejections {
-            self.record_rejection(msg);
-        }
-        for ident in custom_json_alias_rejections {
-            self.record_custom_json_on_transparent_alias_rejection(&ident);
-        }
-        // A custom codec whose replaced type demands NO encoding variables, under
-        // `--preserve-encodings`, and with no `@custom_encodings` declaration to say what its own wire
-        // needs. The pair replaces the codec, so the CODEC owns the wire — but the signature and the
-        // sidecar slots are inferred from the REPLACED type, and a self-carrying leaf (an extern, a
-        // record, `bool`, `any`, a `null`-fixed) infers NOTHING. Every framing byte the custom wire
-        // writes is then unrecorded, and the round trip silently NORMALIZES it — invisible to a
-        // round-trip test (both directions agree), visible only as a re-encoded artifact whose bytes
-        // no longer hash the same. The declaration makes that state representable, so refusing the
-        // undeclared spelling makes the silent one unrepresentable.
-        //
-        // Asked of `generation::encoding_fields_decls` — the SAME function the emission sites use to
-        // build the argument list — rather than a twin predicate, so "empty demand" cannot come to
-        // mean two different things. `Blind` because a pair governs its whole subtree (a declaration
-        // beneath describes a codec this one's wire has swallowed). Gated on `--preserve-encodings`:
-        // without it no encoding variable exists anywhere and the directive family is inert (one
-        // spec, many flag sets). Skipped when rejections already exist — the demand walk reads
-        // registered structs, which a failed registration may have left absent.
-        if cli.preserve_encodings && !self.has_rejections() {
-            let mut zero_demand_rejections = BTreeSet::new();
-            for (ident, alias_info) in &self.type_aliases {
-                let Some(rmd) = alias_info.rule_metadata.as_ref() else {
-                    continue;
-                };
-                if rmd.custom_serialize.is_none()
-                    || rmd.custom_deserialize.is_none()
-                    || rmd.custom_encodings.is_some()
-                {
-                    continue;
-                }
-                // The codec-visible type is the alias's INNER type: the pair is lifted AT the alias
-                // node, so any encoding operation the rule itself owns (`x = bytes .cbor y`) has
-                // already been written by the enclosing generated code and is not the codec's to
-                // record. Same slice the emission site sees one recursion level down.
-                let mut codec_visible = alias_info.base_type.clone();
-                codec_visible.encodings.clear();
-                if crate::generation::custom_codec_demand_is_empty(self, &codec_visible, cli) {
-                    zero_demand_rejections.insert(custom_codec_zero_demand_rejection(
-                        &format!("rule `{ident}`"),
-                        matches!(
-                            codec_visible.conceptual_type.clone().resolve_aliases(),
-                            ConceptualRustType::Rust(_)
-                        ),
-                    ));
-                }
-            }
-            for (struct_ident, rust_struct) in &self.rust_structs {
-                let RustStructType::Record(record) = rust_struct.variant() else {
-                    continue;
-                };
-                for field in &record.fields {
-                    let rmd = &field.rule_metadata;
-                    if rmd.custom_serialize.is_none()
-                        || rmd.custom_deserialize.is_none()
-                        || rmd.custom_encodings.is_some()
-                    {
-                        continue;
-                    }
-                    // A FIELD-level pair fires at the top of the member's recursion, so its
-                    // codec-visible list is the member's WHOLE type — encoding operations included
-                    // (a `#6.9(uint)` field hands its tag width to the custom writer).
-                    if crate::generation::custom_codec_demand_is_empty(self, &field.rust_type, cli)
-                    {
-                        zero_demand_rejections.insert(custom_codec_zero_demand_rejection(
-                            &format!("field `{}` of `{struct_ident}`", field.name),
-                            matches!(
-                                field.rust_type.clone().resolve_aliases().conceptual_type,
-                                ConceptualRustType::Rust(_)
-                            ),
-                        ));
-                    }
-                }
-            }
-            for msg in zero_demand_rejections {
-                self.record_rejection(msg);
-            }
-        }
+        self.reject_generic_definition_directive_placements();
+        self.reject_wasm_collisions_and_exposable_elements(cli);
+        self.reject_component_scope_cycles(cli);
+        self.reject_structless_rule_directives();
+        self.reject_unhonored_custom_codecs();
+        self.reject_custom_codecs_without_encoding_demand(cli);
         // The final post-construction floor is deliberately last: generic resolution, deferred
         // wrappers and inline-set nominalization all mutate the IR name surface. It validates the
         // names that actually survive those passes; `nominal_mint_claims` above separately retains
@@ -5052,6 +4390,692 @@ impl<'a> IntermediateTypes<'a> {
         }
         for msg in float_key_rejections {
             self.record_rejection(msg);
+        }
+    }
+
+    fn reject_generic_definition_directive_placements(&mut self) {
+        // `@used_as_key` / `@used_as_elem` ask for a wasm surface keyed on the rule's OWN type, and a
+        // generic DEFINITION has none — only its instantiations name concrete types. `@used_as_key`
+        // was dropped silently (the demand-propagation walk skips a root with no `rust_structs`
+        // entry), and `@used_as_elem` was worse: the exposable-element check below resolves the
+        // marked ident's element type, whose `directly_wasm_exposable` walk asserts that a
+        // non-struct ident is a generic INSTANCE — so a marked generic DEF aborted the run at exit
+        // 101 with an `assertion failed` and no diagnosis. Both refuse here, in the house style,
+        // naming the instantiating rule as the placement that works.
+        //
+        // Placed before the `cli.wasm` block (which owns the abort site) and flag-independently,
+        // like every sibling placement rejection: whether a directive may sit somewhere is a
+        // property of the spec, not of the build profile. Keyed on `generic_defs` rather than on
+        // "absent from `rust_structs`" so it covers every generic-def body spelling at once — the
+        // record body the parse walk marks from, and the tag-set idiom the choice path marks from —
+        // and refuses nothing else. Determinism: `BTreeSet`/`BTreeMap` iteration.
+        // Named by their CDDL SOURCE spelling: a generic definition mints no rust type, and the
+        // remedy is CDDL the author writes back into the spec.
+        let generic_def_source = |ident: &RustIdent| {
+            self.source_rule_name(ident)
+                .unwrap_or(ident.as_ref())
+                .to_owned()
+        };
+        let generic_def_elem = self
+            .rule_directives
+            .used_as_elem
+            .iter()
+            .filter(|ident| self.generic_defs.contains_key(*ident))
+            .map(generic_def_source)
+            .collect::<Vec<_>>();
+        let generic_def_key = self
+            .key_demand_roots
+            .keys()
+            .filter(|ident| self.generic_defs.contains_key(*ident))
+            .map(generic_def_source)
+            .collect::<Vec<_>>();
+        for ident in generic_def_key {
+            self.record_rejection(format!(
+                "@used_as_key on `{ident}`: a generic DEFINITION names no concrete type — only its \
+                 instantiations do — so there is no type for the map-key comparison derives to be \
+                 demanded on, and the demand is dropped. Put the directive on the instantiating \
+                 rule instead (`inst = {ident}<uint> ; @used_as_key`), which is where the concrete \
+                 type is minted."
+            ));
+        }
+        for ident in generic_def_elem {
+            self.record_rejection(format!(
+                "@used_as_elem on `{ident}`: a generic DEFINITION names no concrete type — only its \
+                 instantiations do — so there is no element type for a loose-list wrapper to hold. \
+                 Put the directive on the instantiating rule instead (`inst = {ident}<uint> ; \
+                 @used_as_elem`), which is where the concrete type is minted."
+            ));
+        }
+    }
+
+    fn reject_wasm_collisions_and_exposable_elements(&mut self, cli: &Cli) {
+        // NonEmptyVec wasm-wrapper name collisions: an inline `[+ elem]` mints a `NonEmpty<Elem>List`
+        // wasm class; if a user rule already OWNS that identifier, silently sharing it would emit a
+        // wrapper of the wrong shape (loose `Vec` vs restricted `NonEmptyVec`). Reject clearly rather
+        // than shadow. Only relevant with wasm bindings (the collision is on the wasm class name).
+        if cli.wasm {
+            for msg in self.non_empty_wrapper_name_collisions() {
+                self.record_rejection(msg);
+            }
+            for msg in self.bounded_array_wrapper_name_collisions() {
+                self.record_rejection(msg);
+            }
+            for msg in self.bounded_reject_ordered_set_wrapper_name_collisions() {
+                self.record_rejection(msg);
+            }
+            // NonEmptyMap wasm-wrapper name collisions — the map-side twin of the above.
+            for msg in self.non_empty_map_wrapper_name_collisions() {
+                self.record_rejection(msg);
+            }
+            // Finite/exact/lower-bounded unique-key table wrapper names are their own family:
+            // `MapKToVMinN/MaxN` cannot share the NonEmptyMap detector because their checked door
+            // and structural identity include both occurrence endpoints.
+            for msg in self.bounded_map_wrapper_name_collisions() {
+                self.record_rejection(msg);
+            }
+            for msg in self.bounded_pair_map_wrapper_name_collisions() {
+                self.record_rejection(msg);
+            }
+            // Keep `@duplicates reject` uniqueness-twin wasm-wrapper collision detection as a
+            // per-kind sibling: its diagnostic differs from the other containers' messages.
+            // See docs/development/decisions.md, "WASM wrapper-name collisions".
+            for msg in self.reject_ordered_set_wrapper_name_collisions() {
+                self.record_rejection(msg);
+            }
+            // `@duplicates preserve` pair-map wrapper-name collisions — the fourth container kind's
+            // siblings (loose `PairMapKToV`, restricted `NonEmptyPairMapKToV`). The flavored
+            // structural names make the preserve-vs-default SHAPE collision unrepresentable, so what
+            // is left is the same rule-ident-vs-wrapper-ident hazard the other kinds guard.
+            for msg in self.preserve_pair_map_loose_wrapper_name_collisions() {
+                self.record_rejection(msg);
+            }
+            for msg in self.preserve_pair_map_non_empty_wrapper_name_collisions() {
+                self.record_rejection(msg);
+            }
+            // The OPEN TABLE (`t = { * K_t => V_t, * K_r => V_r }`) is the fifth container kind, and
+            // it is the one that gets NO sibling of its own — recorded here so the standing ruling
+            // reads as satisfied rather than skipped. Two independent reasons, both structural:
+            //   * its minted struct is named by the RULE IDENT, which is the author's own name by
+            //     construction. The four siblings above each guard a name the generator DERIVES
+            //     (`NonEmpty<Elem>List`, `MapKToV`, `<Elem>OrderedSet`, `PairMapKToV`) against a
+            //     rule that shadows it; an open table synthesizes no such name because the shape is
+            //     a NAMED-RULE concession (an inline anonymous open table is refused at
+            //     recognition, naming the named-rule form). If that concession is ever lifted, the
+            //     synthesized name arrives with it and so does the fifth sibling.
+            //   * its TYPED row mints no container class at all — the map surface is flattened onto
+            //     the struct's own class — so the `MapKToV`/`PairMapKToV` hazard is unrepresentable
+            //     for it, the same move that retired the family's wrapper-vs-wrapper detector.
+            // What the open table DOES claim is covered by legs on the detectors above: the
+            // `<K_t>List` its flattened `keys()` returns, and the catch-all row's own map class in
+            // whichever flavor the row carries.
+            //
+            // What flattening DOES create is a MEMBER-name hazard on one class rather than a class-
+            // name one, which is why it is checked here and not in that family: the accessors the
+            // typed row contributes and the getter the catch-all contributes land on the SAME wasm
+            // impl, so a `@name`d catch-all spelling one of the five reserved accessor names would
+            // emit two methods of one name (rustc E0592 in the wasm crate).
+            for msg in self.open_table_flattened_accessor_name_collisions() {
+                self.record_rejection(msg);
+            }
+            // `@extern_companions` names classes this crate must NOT define, so a same-crate RULE of
+            // one of those names is a contradiction the deferral cannot resolve: the `use
+            // <prefix>::<Class>;` and the rule's own class would claim one identifier (rustc E0255).
+            // Sibling in spirit to the four wrapper-name detectors above — a rule ident contending
+            // with a name the generator routes elsewhere — but its own function because the contested
+            // name comes from the SPEC's declaration rather than a structural derivation, so it needs
+            // neither shape reconstruction nor a per-container-kind twin.
+            for msg in self.extern_companion_rule_name_collisions() {
+                self.record_rejection(msg);
+            }
+            // `@used_as_elem` mints the loose-list wasm wrapper `<Elem>List` for each tagged
+            // element. A directly-wasm-exposable element (e.g. a transparent `coin = uint` alias)
+            // has NO such wrapper — the list lowers to a bare `Vec<..>` at the wasm boundary — so
+            // the tag has nothing to mint. Reject gracefully here (mirroring the `--wrapper-requests`
+            // exposable diagnostic) rather than silently no-op. Collected into a local set to
+            // sidestep the borrow checker, like the float-key rejections above.
+            let mut exposable_elem_rejections = BTreeSet::new();
+            for ident in &self.rule_directives.used_as_elem {
+                // A generic DEFINITION is refused earlier in this fn (it names no concrete type),
+                // and the resolution below cannot survive one: its exposability walk asserts that a
+                // non-struct ident is a generic INSTANCE, which a definition is not. Skipping keeps
+                // that assert an unreachable re-earning guard instead of the abort it used to be.
+                if self.generic_defs.contains_key(ident) {
+                    continue;
+                }
+                let element_type = self.used_as_elem_element_type(ident);
+                if ConceptualRustType::Array(Box::new(element_type.conceptual_type.clone().into()))
+                    .directly_wasm_exposable_ct(self)
+                {
+                    let member = element_type.name_as_wasm_array(self);
+                    exposable_elem_rejections.insert(format!(
+                        "@used_as_elem on `{ident}`: the loose list `[* {ident}]` is directly \
+                         wasm-exposable — it lowers to `{member}` with no wrapper class, so there \
+                         is no wrapper for this tag to mint. Remove `@used_as_elem` (the element \
+                         already crosses the wasm boundary as a bare `{member}`)."
+                    ));
+                }
+            }
+            for msg in exposable_elem_rejections {
+                self.record_rejection(msg);
+            }
+        }
+    }
+
+    fn reject_component_scope_cycles(&mut self, cli: &Cli) {
+        // The component face's own detector family, on exactly the terms the wasm block above
+        // states: a name that is legal on the rust and wasm faces can be broken on the WIT one, so
+        // the check is flag-gated on the face that has the restriction.
+        //
+        // Placed HERE — after every `register_rust_struct` in this fn (they all run in the generic
+        // resolution at the top) — because the detector walks `rust_structs` and `scopes`, which are
+        // complete from that point on.
+        //
+        // Its SIBLING — the strong-uniqueness name-collision detector — deliberately does NOT run
+        // here: its verdict depends on which types the rust face gives a `Deserialize` impl (a
+        // `from-cbor-bytes` static the tool never emits cannot collide with anything), which only
+        // that face's own walk reaches. It runs in `GenerationScope::generate` instead and surfaces
+        // through the graceful error channel `generated_files`/`export` already carry. A spec with
+        // BOTH a cycle and a collision therefore reports the cycle first, which is correct: a cyclic
+        // package has no resolvable WIT to have collisions in.
+        if cli.component {
+            // WIT requires interfaces linked with `use` to be acyclic, and each exported module
+            // scope becomes one interface. Cyclic cross-scope references generate fine on the rust
+            // face, so this restriction arrives with `--component` and nowhere else.
+            for msg in crate::generation::wit::wit_scope_cycles(self) {
+                self.record_rejection(msg);
+            }
+        }
+    }
+
+    fn reject_structless_rule_directives(&mut self) {
+        // `@no_json_schema_export` suppresses a rule's schema-registration row. A rule that registers
+        // NO `RustStruct` at all — a transparent alias (`x = uint`), a `@no_alias` alias, a named
+        // binding to a set nominal, a generic DEFINITION (only its instantiations are types), a
+        // plain group no rule splices — has no row for the directive to
+        // suppress, so it would be silently dead: reject it in the house style of the other
+        // directive-misplacement rejections. Deliberately NOT rejected on a rule that registers a
+        // struct the row loop skips for other reasons (an `Array`/`Table` typedef, a generic-extern
+        // base): those are redundant-but-honest annotations, and keeping the rule "valid wherever a
+        // rust type is produced" keeps it simple and flag-independent. Deferred to here rather than
+        // the parse walk because a generic INSTANCE (`my_foo = foo<uint>`) only registers its struct
+        // during the generic resolution above. Flag-independent (outside the `cli.wasm` block above):
+        // the directive means the same thing under every flag set. Determinism: `BTreeSet` iteration.
+        let struct_less_no_json_schema_export = self
+            .rule_directives
+            .no_json_schema_export
+            .iter()
+            .filter(|ident| !self.rust_structs.contains_key(ident))
+            .cloned()
+            .collect::<Vec<_>>();
+        for ident in struct_less_no_json_schema_export {
+            self.record_rejection(format!(
+                "@no_json_schema_export on `{ident}`: this rule registers no rust struct, so there \
+                 is no schema-registration row to suppress and the directive would silently do \
+                 nothing. Either it is a transparent alias (a plain type alias `{ident} = uint`, a \
+                 `@no_alias` alias, or a named binding to a generic instantiation), or it is a \
+                 generic DEFINITION whose instantiations own the types (annotate the instance — \
+                 `inst = {ident}<uint> ; @no_json_schema_export` — not the definition), or it is a \
+                 plain group no rule splices. Remove it from this rule, or move it to the rule that \
+                 actually produces the type."
+            ));
+        }
+        // A plain GROUP rule becomes a rust type only by being SPLICED into a rule that materializes
+        // it (`holder = [foo]`); a group nothing splices emits no struct and no fields, so every
+        // rule-position directive written on it is inert — under the rule reading AND under the
+        // field reading of the slot cddl binds it to. One uniform refusal covers the whole
+        // vocabulary rather than thirteen per-directive sites, because the reason is the same for
+        // all of them and does not depend on which directive it is.
+        //
+        // Deferred to here for the reason `@no_json_schema_export` above is: splicedness is a
+        // whole-spec property, decided by rules the parse seam that reads the directives has not
+        // reached yet. Two directives are excluded from the list — `@name`, which gets its own
+        // long-standing message just below (one misplacement, one wording), and
+        // `@no_json_schema_export`, whose refusal right above already names this exact shape.
+        // `@rust_name` is excluded because a NON-exported (extern-deps) scope honors it there;
+        // in an exported scope the parse walk has already refused it and finalize never runs.
+        // Determinism: `BTreeMap` iteration, and each directive list is sorted at its source.
+        // Named by its CDDL SOURCE spelling throughout, not its `RustIdent`: an unspliced group
+        // materializes no rust type, so there is no rust name to report, and every remedy below is
+        // CDDL the author writes back into the spec.
+        let unspliced_annotated_groups = self
+            .rule_directives
+            .plain_group_rule_directives
+            .iter()
+            .filter(|(ident, _)| !self.rust_structs.contains_key(*ident))
+            .map(|(ident, directives)| {
+                (
+                    self.source_rule_name(ident)
+                        .unwrap_or(ident.as_ref())
+                        .to_owned(),
+                    directives.clone(),
+                )
+            })
+            .collect::<Vec<_>>();
+        for (ident, directives) in unspliced_annotated_groups {
+            if directives.contains(&"@name") {
+                self.record_rejection(crate::parsing::rule_position_name_message(&ident));
+            }
+            let remaining = directives
+                .iter()
+                .copied()
+                .filter(|directive| {
+                    !matches!(
+                        *directive,
+                        "@name" | "@no_json_schema_export" | "@rust_name"
+                    )
+                })
+                .collect::<Vec<_>>();
+            if !remaining.is_empty() {
+                self.record_rejection(format!(
+                    "{} on `{ident}`: the plain group `{ident}` is never spliced into any rule, so \
+                     it materializes no rust type and no fields — a rule-position directive on it \
+                     has nothing to act on and would be silently dropped. Splice the group into a \
+                     rule that materializes it (`holder = [{ident}]` for an array shape, \
+                     `holder = {{{ident}}}` for a map shape), which is where a rule-position \
+                     directive on a group is read, or remove the directive.",
+                    remaining.join(" / ")
+                ));
+            }
+        }
+    }
+
+    fn reject_unhonored_custom_codecs(&mut self) {
+        // The `@custom_serialize`/`@custom_deserialize` pair is a TYPE-level override: it replaces
+        // the codec of the rust type a rule resolves to. The parse-walk rejections cover the
+        // placements that DELETE or BYPASS the node it keys on (`@no_alias`, `@newtype`, an extern /
+        // raw-bytes marker, a row-entry slot). The struct-kind checks below cover the remaining
+        // placements that cannot honor the pair, while preserving the audited complete-pair owners:
+        //
+        //   - an ENUM rule (type choice, group choice, or the fixed-value C-style enum): its
+        //     serialize side is generated unconditionally while `generate_deserialize`'s
+        //     `Root(Rust(ident))` arm rewrites every embed site to the named reader — the same
+        //     read-one-format/write-another asymmetry `@newtype` is rejected for.
+        //   - a RECORD rule carrying only ONE half. Serialize-only emits no `Serialize` impl and
+        //     never calls the named function (an undiagnosed non-compiling crate);
+        //     deserialize-only keeps the type's own generated `Deserialize` impl while rewriting
+        //     every embed site, so one type decodes the same bytes two ways — and the rule projects
+        //     OPAQUELY across the extern-interface seam, carrying the divergence to consumers.
+        //     BOTH halves on a record rule is deliberately NOT rejected: it suppresses the generated
+        //     impls for the author to hand-own, which is unspecified-and-at-risk rather than wrong
+        //     (see `docs/docs/comment_dsl.mdx`).
+        //   - a TABLE rule (`t = { * k => v }`) carrying a LONE half. A complete pair takes the
+        //     separately audited implicit map-wrapper owner; only a table left as `Table` lowers
+        //     through `AliasInfo::new_manual`, whose `rule_metadata` is hardcoded `None`, so its
+        //     remaining half is unhonored and rejects.
+        //
+        // Deferred to here rather than the parse walk for the same reason `@no_json_schema_export`
+        // above is: the struct KIND decides, and a generic instance only materializes its struct
+        // during the resolution above. Collected into a `BTreeSet` (determinism + no duplicate line
+        // if two registrations ever land on one ident), like the float-key rejections.
+        let mut custom_codec_rejections = BTreeSet::new();
+        // The COLLECTION-RULE flavors of the transparent-alias `@custom_json` refusal
+        // (`register_type_alias` owns the rest of that family). A named table or array rule DOES
+        // register a `RustStruct`, so its config carries the flag — but the struct only exists to
+        // drive the wasm wrapper and the keys-list mint; the rust rule itself lowers to a
+        // transparent `pub type` alias (registered through `AliasInfo::new_manual`, which drops the
+        // metadata, so `register_type_alias` cannot see these two). No consumer of `custom_json`
+        // reads either shape, on either the rust or the wasm side — same inert class, same message,
+        // same `@newtype` remedy. Collected here and recorded once the `&self` borrow ends.
+        let mut custom_json_alias_rejections: BTreeSet<RustIdent> = BTreeSet::new();
+        for (ident, rust_struct) in &self.rust_structs {
+            let config = rust_struct.config();
+            if config.custom_json
+                && matches!(
+                    rust_struct.variant(),
+                    RustStructType::Table { .. } | RustStructType::Array { .. }
+                )
+            {
+                custom_json_alias_rejections.insert(ident.clone());
+            }
+            let enum_shape = match rust_struct.variant() {
+                RustStructType::TypeChoice { .. } => Some("a type-choice rule (`a / b`)"),
+                RustStructType::GroupChoice { .. } => {
+                    Some("a group-choice rule (`{ … } // { … }`)")
+                }
+                RustStructType::CStyleEnum { .. } => {
+                    Some("a fixed-value type-choice rule (`0 / 1`, a C-style enum)")
+                }
+                _ => None,
+            };
+            if let Some(shape) = enum_shape {
+                for directive in ["@custom_serialize", "@custom_deserialize"] {
+                    let present = match directive {
+                        "@custom_serialize" => config.custom_serialize.is_some(),
+                        _ => config.custom_deserialize.is_some(),
+                    };
+                    if present {
+                        custom_codec_rejections.insert(format!(
+                            "{directive} on `{ident}`: {shape} mints an enum whose serialize side is \
+                             generated unconditionally, while the deserialize CALL SITES do route \
+                             through the custom reader — so the pair would make the enum read one \
+                             wire format and write another. Put the pair on the rule of the variant \
+                             type that needs the custom format, or declare `{ident}` as a \
+                             {EXTERN_MARKER} rule and hand-write the type in full."
+                        ));
+                    }
+                }
+            }
+            if matches!(rust_struct.variant(), RustStructType::Table { .. }) {
+                for directive in ["@custom_serialize", "@custom_deserialize"] {
+                    let present = match directive {
+                        "@custom_serialize" => config.custom_serialize.is_some(),
+                        _ => config.custom_deserialize.is_some(),
+                    };
+                    if present {
+                        custom_codec_rejections.insert(format!(
+                            "{directive} on `{ident}`: this table has only one custom-codec half; a \
+                             complete pair would self-nominalize as the supported whole-table owner, \
+                             but a lone half remains a transparent map alias with no codec to \
+                             override and is dropped rather than honored. Put it on the rule that defines the table's \
+                             KEY or VALUE type (`k = bytes ; {directive} …`, then `{ident} = \
+                             {{ * k => v }}`), or declare `{ident}` as a {EXTERN_MARKER} rule and \
+                             hand-write the type in full."
+                        ));
+                    }
+                }
+            }
+            // The ARRAY sibling of the table rule above, and unhonored for the same reason: a named
+            // collection rule (`items = [* uint]`, `[+ uint]`, `[3*5 uint]`, and both `@duplicates`
+            // flavors) lowers to a transparent collection TYPEDEF registered through
+            // `AliasInfo::new_manual`, whose `rule_metadata` is hardcoded `None` — so the pair
+            // reaches neither the collection's standalone codec nor a holder's field call sites, and
+            // ANY presence rejects rather than only a lone half. Keyed on the `Array` struct variant,
+            // which is exactly the family that lowers this way (a `[a: uint]` RECORD body mints
+            // `Record` and is handled below); the flavors differ only in the container the typedef
+            // names (`Vec` / `NonEmptyVec` / `OrderedSet`), never in the metadata drop.
+            if matches!(rust_struct.variant(), RustStructType::Array { .. }) {
+                for directive in ["@custom_serialize", "@custom_deserialize"] {
+                    let present = match directive {
+                        "@custom_serialize" => config.custom_serialize.is_some(),
+                        _ => config.custom_deserialize.is_some(),
+                    };
+                    if present {
+                        custom_codec_rejections.insert(format!(
+                            "{directive} on `{ident}`: a named collection rule (`{ident} = [* t]`) \
+                             lowers to a transparent collection typedef that owns no codec for the \
+                             directive to override, so it is dropped rather than honored — in both \
+                             directions, whichever half is written. Put it on the rule that defines \
+                             the collection's ELEMENT type (`t = bytes ; {directive} …`, then \
+                             `{ident} = [* t]`), or declare `{ident}` as a {EXTERN_MARKER} rule and \
+                             hand-write the type in full to own the whole collection's wire."
+                        ));
+                    }
+                }
+            }
+            // A TAGGED wrapper — a tag-head rule (`x = #6.42(uint)`), and the tag-258 set idiom,
+            // which nominalizes into one — is outside the one wrapper contract B3-026 audited: an
+            // implicit, untagged homogeneous-table map owner with a COMPLETE pair. Do not infer the
+            // semantics of tag framing, set policy, encoding preservation, or cross-face projections
+            // from that narrow owner; reject either half here. Rejected on tag presence rather than
+            // on `Wrapper` at large so range-bounded wrappers remain an explicit unexpanded surface.
+            // `@newtype` wrappers never reach here — their parse-walk rejection short-circuits
+            // `finalize` — so one misplacement still reports once.
+            if let RustStructType::Wrapper { wrapped, .. } = rust_struct.variant()
+                && (rust_struct.tag().is_some()
+                    || wrapped
+                        .encodings
+                        .iter()
+                        .any(|op| matches!(op, CBOREncodingOperation::Tagged(_))))
+            {
+                let shape = if config.set_nominal {
+                    "the tag-258 set idiom, which nominalizes into a set wrapper,"
+                } else {
+                    "a tag-head rule (`#6.n(…)`)"
+                };
+                for directive in ["@custom_serialize", "@custom_deserialize"] {
+                    let present = match directive {
+                        "@custom_serialize" => config.custom_serialize.is_some(),
+                        _ => config.custom_deserialize.is_some(),
+                    };
+                    if present {
+                        custom_codec_rejections.insert(format!(
+                            "{directive} on `{ident}`: {shape} is a tagged wrapper, while this \
+                             delivery supports and audits a complete pair only on the implicit \
+                             homogeneous-table map owner. Its custom-codec contract (tag framing, \
+                             encoding preservation, and cross-face behavior) is not defined here. \
+                             Declare `{ident}` \
+                             as a {EXTERN_MARKER} rule and hand-write the type in full, or give the \
+                             rule a body that resolves to a transparent alias and write the wire \
+                             framing in your own codec (`{ident} = <inner> ; @custom_serialize \
+                             <fn> @custom_deserialize <fn>`)."
+                        ));
+                    }
+                }
+            }
+            // BOTH halves on a record rule, and the complete pair's implicit whole-table map
+            // wrapper, are the accepted rule-position pairs (each gets thin generated impls
+            // delegating to the named functions). They are the only struct owners where a
+            // `@custom_encodings` declaration would be read into rule metadata and then have
+            // nowhere to go: a struct carries its encoding metadata INSIDE itself, so no
+            // codec-visible tuple crosses the boundary. Other wrapper forms remain rejected by the
+            // pair checks above; this fires once and only for an accepted owner that would otherwise
+            // drop the declaration silently. (A declaration with one half or none is the parse
+            // walk's `reject_custom_encodings_without_pair`, so it cannot double-report here.)
+            // Only parsing's complete homogeneous-table path creates an untagged, non-`@newtype`
+            // map wrapper. Explicit/newtype and tagged map wrappers are rejected elsewhere and must
+            // not be treated as this accepted owner merely because they wrap a map.
+            let is_complete_pair_map_wrapper = matches!(
+                rust_struct.variant(),
+                RustStructType::Wrapper {
+                    wrapped,
+                    ..
+                } if matches!(wrapped.conceptual_type, ConceptualRustType::Map(_, _))
+                    && rust_struct.tag().is_none()
+                    && config.newtype_getter.is_none()
+                    && !wrapped
+                        .encodings
+                        .iter()
+                        .any(|op| {
+                            matches!(
+                                op,
+                                CBOREncodingOperation::Tagged(_)
+                                    | CBOREncodingOperation::OptionallyTagged(_)
+                            )
+                        })
+            );
+            if config.custom_encodings.is_some()
+                && config.custom_serialize.is_some()
+                && config.custom_deserialize.is_some()
+                && (matches!(rust_struct.variant(), RustStructType::Record(_))
+                    || is_complete_pair_map_wrapper)
+            {
+                custom_codec_rejections.insert(format!(
+                    "@custom_encodings on `{ident}`: this rule mints a STRUCT, whose encoding \
+                     metadata lives inside the struct itself (its `encodings` member) — the custom \
+                     pair on a record rule delegates through generated thin impls, and \
+                     hands no encoding tuple across the call, so there is nothing for a declaration \
+                     to describe. Put the declaration where the pair takes encoding arguments: \
+                     beside a FIELD's pair, or on a transparent alias rule's pair \
+                     (`<rule> = <inner> ; @custom_serialize <fn> @custom_deserialize <fn> \
+                     @custom_encodings <kinds>`)."
+                ));
+            }
+            // The `@custom_wire_major` sibling of the check above, and for the same reason: the
+            // declared major is read only through the ALIAS channel (`AliasInfo::rule_metadata`),
+            // when the rule keys an open table's typed row or proves a variable middle array
+            // boundary. A struct-minting rule has no such channel, so the declaration would be read
+            // into the rule's metadata and dropped. (A declaration with one half of the pair or
+            // none is the parse walk's
+            // `reject_custom_encodings_without_pair`, so it cannot double-report here.)
+            if config.custom_wire_major.is_some()
+                && config.custom_serialize.is_some()
+                && config.custom_deserialize.is_some()
+            {
+                custom_codec_rejections.insert(format!(
+                    "@custom_wire_major on `{ident}`: this rule mints a STRUCT, and the declared \
+                     major is read only where a transparent ALIAS keys an OPEN TABLE's typed row or \
+                     proves a variable middle ARRAY boundary; a struct-minting rule has no such \
+                     alias entry. Put the declaration on the alias rule whose codec writes that \
+                     boundary item (`<wire> = <inner> ; @custom_serialize <fn> \
+                     @custom_deserialize <fn> @custom_wire_major <major>`)."
+                ));
+            }
+            if matches!(rust_struct.variant(), RustStructType::Record(_)) {
+                if config.custom_serialize.is_some() && config.custom_deserialize.is_none() {
+                    custom_codec_rejections.insert(format!(
+                        "@custom_serialize alone on `{ident}`: a record rule with only the serialize \
+                         half emits no `Serialize` impl for the type and never calls the named \
+                         function, so the generated crate does not compile — every site holding a \
+                         `{ident}` calls `.serialize(..)` on a type that has no impl. Move the pair \
+                         to the field (or to the type rule of the member) that needs the custom \
+                         format, or declare `{ident}` as a {EXTERN_MARKER} rule and hand-write the \
+                         type in full."
+                    ));
+                }
+                if config.custom_deserialize.is_some() && config.custom_serialize.is_none() {
+                    custom_codec_rejections.insert(format!(
+                        "@custom_deserialize alone on `{ident}`: a record rule with only the \
+                         deserialize half still emits the type's own generated `Deserialize` impl, \
+                         while every site holding a `{ident}` is rewritten to call the named function \
+                         — so `{ident}::from_cbor_bytes` and a field of type `{ident}` decode the \
+                         same bytes differently. The rule also projects OPAQUELY across the \
+                         extern-interface seam, so a consumer decodes it the generated way. Move the \
+                         pair to the field (or to the type rule of the member) that needs the custom \
+                         format, or declare `{ident}` as a {EXTERN_MARKER} rule and hand-write the \
+                         type in full."
+                    ));
+                }
+            }
+        }
+        // A single half on a TRANSPARENT ALIAS rule — the alias twin of the record rule's
+        // single-half rejection above, refused for that rejection's own stated reason: one type
+        // decodes the same bytes two ways. An alias's lone half is the more insidious shape, because
+        // unlike serialize-only on a record (no `Serialize` impl at all, so the crate does not
+        // compile) it COMPILES and routes — `generate_serialize`/`generate_deserialize` lift each
+        // half independently, so every embed site is rewritten in the declared direction while the
+        // opposite direction keeps the aliased type's generated codec. The alias then writes one wire
+        // format and reads another.
+        //
+        // Walked over the alias table rather than the struct loop above because the alias ENTRY is
+        // what "lowers to a transparent alias" means — the collection and table rules register
+        // through `AliasInfo::new_manual` (whose `rule_metadata` is `None`, so they are skipped here
+        // and rejected by their own kind arms), and the struct-minting kinds have no entry at all.
+        // Only a rule's OWN declaration reports: `strip_alias_for_registration` copies both halves
+        // wholesale, so an INHERITED single half can only descend from an origin that is itself
+        // reported here, and reporting each link would name rules nobody wrote the directive on.
+        let mut single_half_alias_rejections = BTreeSet::new();
+        for (alias_ident, info) in &self.type_aliases {
+            let AliasIdent::Rust(ident) = alias_ident else {
+                continue;
+            };
+            if info.wire_metadata_inherited_from.is_some() {
+                continue;
+            }
+            let Some(metadata) = info.rule_metadata.as_ref() else {
+                continue;
+            };
+            let (directive, half, rewritten, missing) =
+                match (&metadata.custom_serialize, &metadata.custom_deserialize) {
+                    (Some(_), None) => (
+                        "@custom_serialize",
+                        "serialize",
+                        "WRITES",
+                        "@custom_deserialize",
+                    ),
+                    (None, Some(_)) => (
+                        "@custom_deserialize",
+                        "deserialize",
+                        "READS",
+                        "@custom_serialize",
+                    ),
+                    _ => continue,
+                };
+            single_half_alias_rejections.insert(format!(
+                "{directive} alone on `{ident}`: a transparent alias rule with only the {half} \
+                 half rewrites every embed site that {rewritten} through the named function, while \
+                 the opposite direction keeps the aliased type's own generated codec — so `{ident}` \
+                 reads one wire format and writes another, at every position that reaches it. Write \
+                 both halves (`{ident} = <body> ; @custom_serialize <fn> @custom_deserialize \
+                 <fn>`), adding the missing {missing}, or drop the directive."
+            ));
+        }
+        for msg in single_half_alias_rejections {
+            self.record_rejection(msg);
+        }
+        for msg in custom_codec_rejections {
+            self.record_rejection(msg);
+        }
+        for ident in custom_json_alias_rejections {
+            self.record_custom_json_on_transparent_alias_rejection(&ident);
+        }
+    }
+
+    fn reject_custom_codecs_without_encoding_demand(&mut self, cli: &Cli) {
+        // A custom codec whose replaced type demands NO encoding variables, under
+        // `--preserve-encodings`, and with no `@custom_encodings` declaration to say what its own wire
+        // needs. The pair replaces the codec, so the CODEC owns the wire — but the signature and the
+        // sidecar slots are inferred from the REPLACED type, and a self-carrying leaf (an extern, a
+        // record, `bool`, `any`, a `null`-fixed) infers NOTHING. Every framing byte the custom wire
+        // writes is then unrecorded, and the round trip silently NORMALIZES it — invisible to a
+        // round-trip test (both directions agree), visible only as a re-encoded artifact whose bytes
+        // no longer hash the same. The declaration makes that state representable, so refusing the
+        // undeclared spelling makes the silent one unrepresentable.
+        //
+        // Asked of `generation::encoding_fields_decls` — the SAME function the emission sites use to
+        // build the argument list — rather than a twin predicate, so "empty demand" cannot come to
+        // mean two different things. `Blind` because a pair governs its whole subtree (a declaration
+        // beneath describes a codec this one's wire has swallowed). Gated on `--preserve-encodings`:
+        // without it no encoding variable exists anywhere and the directive family is inert (one
+        // spec, many flag sets). Skipped when rejections already exist — the demand walk reads
+        // registered structs, which a failed registration may have left absent.
+        if cli.preserve_encodings && !self.has_rejections() {
+            let mut zero_demand_rejections = BTreeSet::new();
+            for (ident, alias_info) in &self.type_aliases {
+                let Some(rmd) = alias_info.rule_metadata.as_ref() else {
+                    continue;
+                };
+                if rmd.custom_serialize.is_none()
+                    || rmd.custom_deserialize.is_none()
+                    || rmd.custom_encodings.is_some()
+                {
+                    continue;
+                }
+                // The codec-visible type is the alias's INNER type: the pair is lifted AT the alias
+                // node, so any encoding operation the rule itself owns (`x = bytes .cbor y`) has
+                // already been written by the enclosing generated code and is not the codec's to
+                // record. Same slice the emission site sees one recursion level down.
+                let mut codec_visible = alias_info.base_type.clone();
+                codec_visible.encodings.clear();
+                if crate::generation::custom_codec_demand_is_empty(self, &codec_visible, cli) {
+                    zero_demand_rejections.insert(custom_codec_zero_demand_rejection(
+                        &format!("rule `{ident}`"),
+                        matches!(
+                            codec_visible.conceptual_type.clone().resolve_aliases(),
+                            ConceptualRustType::Rust(_)
+                        ),
+                    ));
+                }
+            }
+            for (struct_ident, rust_struct) in &self.rust_structs {
+                let RustStructType::Record(record) = rust_struct.variant() else {
+                    continue;
+                };
+                for field in &record.fields {
+                    let rmd = &field.rule_metadata;
+                    if rmd.custom_serialize.is_none()
+                        || rmd.custom_deserialize.is_none()
+                        || rmd.custom_encodings.is_some()
+                    {
+                        continue;
+                    }
+                    // A FIELD-level pair fires at the top of the member's recursion, so its
+                    // codec-visible list is the member's WHOLE type — encoding operations included
+                    // (a `#6.9(uint)` field hands its tag width to the custom writer).
+                    if crate::generation::custom_codec_demand_is_empty(self, &field.rust_type, cli)
+                    {
+                        zero_demand_rejections.insert(custom_codec_zero_demand_rejection(
+                            &format!("field `{}` of `{struct_ident}`", field.name),
+                            matches!(
+                                field.rust_type.clone().resolve_aliases().conceptual_type,
+                                ConceptualRustType::Rust(_)
+                            ),
+                        ));
+                    }
+                }
+            }
+            for msg in zero_demand_rejections {
+                self.record_rejection(msg);
+            }
         }
     }
 
