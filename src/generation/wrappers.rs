@@ -366,47 +366,9 @@ pub(super) fn generate_wrapper_struct(
         .push_impl(s_impl)
         .push_impl(from_impl)
         .push_impl(from_inner_impl);
-    // Set-nominal ergonomics, for parity with what a transparent `OrderedSet`/`Vec` alias
-    // offered directly: `Deref`/`DerefMut` to the inner collection (`OrderedSet` mutation stays
-    // checked, so `DerefMut` cannot break uniqueness), borrowed + owned `IntoIterator`, and Vec
-    // conversions. The wrapper path already emits `From<inner>`/`From<Self> for inner` and `new()`.
-    // For a plain `Vec` inner (preserve, non-`[+]`) those already ARE the Vec conversions; the
-    // fallible-door inners (`NonEmptyVec`/`OrderedSet`/`NonEmptyOrderedSet`) add `From<Self> for
-    // Vec<T>` and a duplicate/emptiness-checking `TryFrom<Vec<T>>`.
-    if set_nominal {
-        let inner_ty = field_type.for_rust_member(types, false, cli);
-        let elem_ty = if let ConceptualRustType::Array(elem) = &field_type.conceptual_type {
-            elem.for_rust_member(types, false, cli)
-        } else {
-            unreachable!("a set nominal always wraps a homogeneous occurrence array")
-        };
-        let inner_carrier = SetNominalInner::of(field_type);
-        let inner_is_plain_vec = inner_carrier == SetNominalInner::Vec;
-        let owned_iter_body = if inner_is_plain_vec {
-            format!("{self_var}.into_iter()")
-        } else {
-            format!("Vec::<{elem_ty}>::from({self_var}).into_iter()")
-        };
-        let mut ergo = format!(
-            "impl core::ops::Deref for {type_name} {{\n    type Target = {inner_ty};\n\n    fn deref(&self) -> &Self::Target {{\n        &{self_var}\n    }}\n}}\n\nimpl core::ops::DerefMut for {type_name} {{\n    fn deref_mut(&mut self) -> &mut Self::Target {{\n        &mut {self_var}\n    }}\n}}\n\nimpl<'a> IntoIterator for &'a {type_name} {{\n    type Item = &'a {elem_ty};\n    type IntoIter = core::slice::Iter<'a, {elem_ty}>;\n\n    fn into_iter(self) -> Self::IntoIter {{\n        {self_var}.iter()\n    }}\n}}\n\nimpl IntoIterator for {type_name} {{\n    type Item = {elem_ty};\n    type IntoIter = alloc::vec::IntoIter<{elem_ty}>;\n\n    fn into_iter(self) -> Self::IntoIter {{\n        {owned_iter_body}\n    }}\n}}\n"
-        );
-        if !inner_is_plain_vec {
-            ergo.push_str(&format!(
-                "\nimpl From<{type_name}> for Vec<{elem_ty}> {{\n    fn from(wrapper: {type_name}) -> Self {{\n        Vec::from(wrapper.{inner_var})\n    }}\n}}\n\nimpl TryFrom<Vec<{elem_ty}>> for {type_name} {{\n    type Error = DeserializeError;\n\n    fn try_from(vec: Vec<{elem_ty}>) -> Result<Self, Self::Error> {{\n        Ok({type_name}::new(<{inner_ty}>::try_from(vec)?))\n    }}\n}}\n"
-            ));
-        }
-        // `try_opt_from` — the empty-means-absent constructor for an optional set field — is a NAMED
-        // door (not the blanket-conflicting `TryFrom`), so it is emitted inherently on the nominal,
-        // delegating to the inner uniqueness twin's runtime door and re-wrapping each accepted set via
-        // `new`. Only the `OrderedSet`/`NonEmptyOrderedSet` inners have this door (the `Vec`/`NonEmptyVec`
-        // preserve inners do not), so gate on the twin inner, not merely on `!inner_is_plain_vec`.
-        if inner_carrier == SetNominalInner::OrderedSet {
-            ergo.push_str(&format!(
-                "\nimpl {type_name} {{\n    /// Empty input is `Ok(None)` (the optional set field is absent); a non-empty input goes through\n    /// the inner uniqueness door wrapped in `Some`, so ONLY a duplicate surfaces as `Err`.\n    pub fn try_opt_from(vec: Vec<{elem_ty}>) -> Result<Option<Self>, DeserializeError> {{\n        Ok(<{inner_ty}>::try_opt_from(vec)?.map({type_name}::new))\n    }}\n}}\n"
-            ));
-        }
-        gen_scope.rust(types, type_name).raw(&ergo);
-    }
+    emit_set_nominal_ergonomics(
+        gen_scope, types, type_name, field_type, cli, &facts, inner_var, self_var,
+    );
     if !struct_config.custom_json {
         if cli.json_serde_derives {
             // The bytes-newtype deserializer emitted above calls `decode_canonical_hex`
@@ -1485,6 +1447,62 @@ fn emit_wrapper_codec_impls(
         ser_impl,
         deser_impl,
         from_impl,
+    }
+}
+
+/// Publish nominal-set ergonomics after the native constructor and conversion surfaces.
+#[allow(clippy::too_many_arguments)] // Native storage projection stays distinct from shared wrapper facts.
+fn emit_set_nominal_ergonomics(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    type_name: &RustIdent,
+    field_type: &RustType,
+    cli: &Cli,
+    facts: &WrapperFacts<'_>,
+    inner_var: &str,
+    self_var: &str,
+) {
+    let set_nominal = facts.set_nominal;
+    // Set-nominal ergonomics, for parity with what a transparent `OrderedSet`/`Vec` alias
+    // offered directly: `Deref`/`DerefMut` to the inner collection (`OrderedSet` mutation stays
+    // checked, so `DerefMut` cannot break uniqueness), borrowed + owned `IntoIterator`, and Vec
+    // conversions. The wrapper path already emits `From<inner>`/`From<Self> for inner` and `new()`.
+    // For a plain `Vec` inner (preserve, non-`[+]`) those already ARE the Vec conversions; the
+    // fallible-door inners (`NonEmptyVec`/`OrderedSet`/`NonEmptyOrderedSet`) add `From<Self> for
+    // Vec<T>` and a duplicate/emptiness-checking `TryFrom<Vec<T>>`.
+    if set_nominal {
+        let inner_ty = field_type.for_rust_member(types, false, cli);
+        let elem_ty = if let ConceptualRustType::Array(elem) = &field_type.conceptual_type {
+            elem.for_rust_member(types, false, cli)
+        } else {
+            unreachable!("a set nominal always wraps a homogeneous occurrence array")
+        };
+        let inner_carrier = SetNominalInner::of(field_type);
+        let inner_is_plain_vec = inner_carrier == SetNominalInner::Vec;
+        let owned_iter_body = if inner_is_plain_vec {
+            format!("{self_var}.into_iter()")
+        } else {
+            format!("Vec::<{elem_ty}>::from({self_var}).into_iter()")
+        };
+        let mut ergo = format!(
+            "impl core::ops::Deref for {type_name} {{\n    type Target = {inner_ty};\n\n    fn deref(&self) -> &Self::Target {{\n        &{self_var}\n    }}\n}}\n\nimpl core::ops::DerefMut for {type_name} {{\n    fn deref_mut(&mut self) -> &mut Self::Target {{\n        &mut {self_var}\n    }}\n}}\n\nimpl<'a> IntoIterator for &'a {type_name} {{\n    type Item = &'a {elem_ty};\n    type IntoIter = core::slice::Iter<'a, {elem_ty}>;\n\n    fn into_iter(self) -> Self::IntoIter {{\n        {self_var}.iter()\n    }}\n}}\n\nimpl IntoIterator for {type_name} {{\n    type Item = {elem_ty};\n    type IntoIter = alloc::vec::IntoIter<{elem_ty}>;\n\n    fn into_iter(self) -> Self::IntoIter {{\n        {owned_iter_body}\n    }}\n}}\n"
+        );
+        if !inner_is_plain_vec {
+            ergo.push_str(&format!(
+                "\nimpl From<{type_name}> for Vec<{elem_ty}> {{\n    fn from(wrapper: {type_name}) -> Self {{\n        Vec::from(wrapper.{inner_var})\n    }}\n}}\n\nimpl TryFrom<Vec<{elem_ty}>> for {type_name} {{\n    type Error = DeserializeError;\n\n    fn try_from(vec: Vec<{elem_ty}>) -> Result<Self, Self::Error> {{\n        Ok({type_name}::new(<{inner_ty}>::try_from(vec)?))\n    }}\n}}\n"
+            ));
+        }
+        // `try_opt_from` — the empty-means-absent constructor for an optional set field — is a NAMED
+        // door (not the blanket-conflicting `TryFrom`), so it is emitted inherently on the nominal,
+        // delegating to the inner uniqueness twin's runtime door and re-wrapping each accepted set via
+        // `new`. Only the `OrderedSet`/`NonEmptyOrderedSet` inners have this door (the `Vec`/`NonEmptyVec`
+        // preserve inners do not), so gate on the twin inner, not merely on `!inner_is_plain_vec`.
+        if inner_carrier == SetNominalInner::OrderedSet {
+            ergo.push_str(&format!(
+                "\nimpl {type_name} {{\n    /// Empty input is `Ok(None)` (the optional set field is absent); a non-empty input goes through\n    /// the inner uniqueness door wrapped in `Some`, so ONLY a duplicate surfaces as `Err`.\n    pub fn try_opt_from(vec: Vec<{elem_ty}>) -> Result<Option<Self>, DeserializeError> {{\n        Ok(<{inner_ty}>::try_opt_from(vec)?.map({type_name}::new))\n    }}\n}}\n"
+            ));
+        }
+        gen_scope.rust(types, type_name).raw(&ergo);
     }
 }
 
