@@ -250,7 +250,7 @@ pub struct GenerationScope {
     /// Parsed `--workspace-dep` set (extern-deps directory names marked co-generated workspace
     /// members). A wrapper whose element types are ALL owned by one of these deps DEFERS
     /// UNCONDITIONALLY (no index consult) and is recorded in `borrowed_wrappers`. Empty unless the
-    /// flag is passed; populated (and validated) in `generate()` under `--wasm` only.
+    /// flag is passed; populated and validated mode-independently by [`Self::initialize_generation`].
     workspace_deps: BTreeSet<String>,
     /// Collection wrappers deferred to a workspace dep this run (`--workspace-dep`), keyed by the
     /// structural wrapper ident and mapped to `(dep rust-crate name, canonical CDDL shape)`. The
@@ -479,35 +479,7 @@ impl GenerationScope {
     /// Generates, i.e. populates the state, based on `types`.
     /// this does not create any files, call export() after.
     pub fn generate(&mut self, types: &IntermediateTypes, cli: &Cli) -> Result<(), String> {
-        // `wasm_collection_reference_ident` is reached once per emitted wasm type door. The IR is
-        // finalized and immutable for this run, so take its deterministic sole-owner projection
-        // once rather than rebuilding it for every signature/alias reference.
-        self.wasm_collection_reference_sole_owners = types.table_shape_sole_owners();
-        // `--workspace-dep` and `--extern-wrapper-index` both LOAD AND VALIDATE mode-independently, so
-        // every documented startup malformation aborts generation whether or not `--wasm` is set; their
-        // DEFERRAL EFFECTS differ in scope. `--workspace-dep`'s primary sidecar
-        // (`rust/src/generated/borrowed_key_types.rs`) is a RUST-crate concern — map-key derives that
-        // the dep must carry or the consumer's rust crate fails to build — so its effect applies in
-        // either mode. `--extern-wrapper-index` reads each mapped dependency's committed
-        // collection-wrapper index (`generated/collections.rs`) so the wasm struct walk can DEFER any
-        // wrapper the dep already owns instead of re-minting it (a wasm duplicate-symbol link error
-        // otherwise); that dedup is purely wasm-side with no rust-crate effect, so the loaded index is
-        // retained only under `--wasm` and discarded in rust-only mode (the rust output is provably
-        // unaffected). But the VALIDATION must fire in every mode: a mapping naming a non-extern
-        // dependency (or an index file with a malformed line) is a hard error either way, mirroring
-        // `--extern-wasm-crate` — a typo that silently disabled deferral would reintroduce the link
-        // error. Both parse once, up front, so the data is available at every emitter's mint point.
-        self.workspace_deps = load_workspace_deps(types, cli)?;
-        // Which idents get no `Deserialize`, decided for the whole IR before anything is emitted.
-        // A verdict every face then CONSULTS (`deserialize_generated`) rather than accumulates:
-        // the emission walk's ident order is alphabetical and unrelated to reference order, so a
-        // container asking about a contained type mid-walk would otherwise get an order-dependent
-        // answer. See `seed_no_deserialize_verdicts`.
-        self.seed_no_deserialize_verdicts(types, cli);
-        let extern_wrapper_index = load_extern_wrapper_indices(types, cli)?;
-        if cli.wasm {
-            self.extern_wrapper_index = extern_wrapper_index;
-        }
+        self.initialize_generation(types, cli)?;
 
         self.emit_type_aliases(types, cli);
 
@@ -1485,6 +1457,43 @@ impl GenerationScope {
                 }
             }
         }
+    }
+
+    fn initialize_generation(
+        &mut self,
+        types: &IntermediateTypes,
+        cli: &Cli,
+    ) -> Result<(), String> {
+        // `wasm_collection_reference_ident` is reached once per emitted wasm type door. The IR is
+        // finalized and immutable for this run, so take its deterministic sole-owner projection
+        // once rather than rebuilding it for every signature/alias reference.
+        self.wasm_collection_reference_sole_owners = types.table_shape_sole_owners();
+        // `--workspace-dep` and `--extern-wrapper-index` both LOAD AND VALIDATE mode-independently, so
+        // every documented startup malformation aborts generation whether or not `--wasm` is set; their
+        // DEFERRAL EFFECTS differ in scope. `--workspace-dep`'s primary sidecar
+        // (`rust/src/generated/borrowed_key_types.rs`) is a RUST-crate concern — map-key derives that
+        // the dep must carry or the consumer's rust crate fails to build — so its effect applies in
+        // either mode. `--extern-wrapper-index` reads each mapped dependency's committed
+        // collection-wrapper index (`generated/collections.rs`) so the wasm struct walk can DEFER any
+        // wrapper the dep already owns instead of re-minting it (a wasm duplicate-symbol link error
+        // otherwise); that dedup is purely wasm-side with no rust-crate effect, so the loaded index is
+        // retained only under `--wasm` and discarded in rust-only mode (the rust output is provably
+        // unaffected). But the VALIDATION must fire in every mode: a mapping naming a non-extern
+        // dependency (or an index file with a malformed line) is a hard error either way, mirroring
+        // `--extern-wasm-crate` — a typo that silently disabled deferral would reintroduce the link
+        // error. Both parse once, up front, so the data is available at every emitter's mint point.
+        self.workspace_deps = load_workspace_deps(types, cli)?;
+        // Which idents get no `Deserialize`, decided for the whole IR before anything is emitted.
+        // A verdict every face then CONSULTS (`deserialize_generated`) rather than accumulates:
+        // the emission walk's ident order is alphabetical and unrelated to reference order, so a
+        // container asking about a contained type mid-walk would otherwise get an order-dependent
+        // answer. See `seed_no_deserialize_verdicts`.
+        self.seed_no_deserialize_verdicts(types, cli);
+        let extern_wrapper_index = load_extern_wrapper_indices(types, cli)?;
+        if cli.wasm {
+            self.extern_wrapper_index = extern_wrapper_index;
+        }
+        Ok(())
     }
 
     fn emit_rust_scope_imports(
