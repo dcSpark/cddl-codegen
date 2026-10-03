@@ -1690,6 +1690,81 @@ impl GenerationScope {
         deser_code
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn deser_optionally_tagged(
+        &mut self,
+        tag: &usize,
+        child: SerializingRustType<'_>,
+        types: &IntermediateTypes,
+        mut deser_code: DeserializationCode,
+        mut config: DeserializeConfig,
+        before_after: DeserializeBeforeAfter,
+        cli: &Cli,
+        deserializer_name: &str,
+    ) -> DeserializationCode {
+        // The tag is OPTIONAL on the wire, so it can't be fused into the child's value
+        // read the way a mandatory `Tagged` is. Peek the next major type: if it's a tag,
+        // consume+validate it (same mismatch error class as `Tagged`) and record the
+        // presence; otherwise record `Untagged`. Then deserialize the child normally.
+        // Mirrors CML's hand impl (chain/rust/src/utils.rs).
+        let var_name = config.var_name;
+        // level (tag_depth + 1) counted outside-in; the infix keeps the presence-var
+        // member name in lockstep with `encoding_fields_impl` (`tag` -> `tag2` deeper),
+        // and the local it binds stays unique across nested levels.
+        let tag_level = config.tag_depth + 1;
+        let tag_infix = tag_encoding_infix(tag_level);
+        if config.optional_field {
+            deser_code.content.line("read_len.read_elems(1)?;");
+            deser_code.read_len_used = true;
+        }
+        if cli.preserve_encodings {
+            let mut presence_match = Block::new(format!(
+                "let {var_name}_{tag_infix}_encoding = match {deserializer_name}.cbor_type()?"
+            ));
+            let mut tag_arm = Block::new("cbor_event::Type::Tag =>");
+            tag_arm.line(format!(
+                "let (tag, tag_enc) = {deserializer_name}.tag_sz()?;"
+            ));
+            let mut mismatch = Block::new(format!("if tag != {tag}"));
+            mismatch.line(format!(
+                "return Err(DeserializeFailure::TagMismatch {{ found: tag, expected: {tag} }}.into());"
+            ));
+            tag_arm.push_block(mismatch);
+            tag_arm.line("TagPresenceEncoding::Tagged(Some(tag_enc))");
+            tag_arm.after(",");
+            presence_match.push_block(tag_arm);
+            presence_match.line("_ => TagPresenceEncoding::Untagged,");
+            presence_match.after(";");
+            deser_code.content.push_block(presence_match);
+            // FIRST encoding expr, matching `encoding_fields_impl`'s field order (tag
+            // field, then the child's) — the child recursion appends its own after this.
+            config
+                .final_exprs
+                .push(format!("{var_name}_{tag_infix}_encoding"));
+        } else {
+            let mut if_tag = Block::new(format!(
+                "if {deserializer_name}.cbor_type()? == cbor_event::Type::Tag"
+            ));
+            if_tag.line(format!("let tag = {deserializer_name}.tag()?;"));
+            let mut mismatch = Block::new(format!("if tag != {tag}"));
+            mismatch.line(format!(
+                "return Err(DeserializeFailure::TagMismatch {{ found: tag, expected: {tag} }}.into());"
+            ));
+            if_tag.push_block(mismatch);
+            deser_code.content.push_block(if_tag);
+        }
+        self.generate_deserialize(
+            types,
+            child,
+            before_after,
+            config.optional_field(false).tag_depth(tag_level),
+            cli,
+        )
+        .add_to_code(&mut deser_code);
+        deser_code.throws = true;
+        deser_code
+    }
+
     /// Generates a DeserializationCode to serialize {serializing_rust_type} using the context in {before_after}
     /// This returned value must be in turn pushed into deserialization code to be used.
     #[must_use]
@@ -3035,66 +3110,16 @@ impl GenerationScope {
                     CBOREncodingOperation::OptionallyTagged(tag),
                     child,
                 ) => {
-                    // The tag is OPTIONAL on the wire, so it can't be fused into the child's value
-                    // read the way a mandatory `Tagged` is. Peek the next major type: if it's a tag,
-                    // consume+validate it (same mismatch error class as `Tagged`) and record the
-                    // presence; otherwise record `Untagged`. Then deserialize the child normally.
-                    // Mirrors CML's hand impl (chain/rust/src/utils.rs).
-                    let var_name = config.var_name;
-                    // level (tag_depth + 1) counted outside-in; the infix keeps the presence-var
-                    // member name in lockstep with `encoding_fields_impl` (`tag` -> `tag2` deeper),
-                    // and the local it binds stays unique across nested levels.
-                    let tag_level = config.tag_depth + 1;
-                    let tag_infix = tag_encoding_infix(tag_level);
-                    if config.optional_field {
-                        deser_code.content.line("read_len.read_elems(1)?;");
-                        deser_code.read_len_used = true;
-                    }
-                    if cli.preserve_encodings {
-                        let mut presence_match = Block::new(format!(
-                            "let {var_name}_{tag_infix}_encoding = match {deserializer_name}.cbor_type()?"
-                        ));
-                        let mut tag_arm = Block::new("cbor_event::Type::Tag =>");
-                        tag_arm.line(format!(
-                            "let (tag, tag_enc) = {deserializer_name}.tag_sz()?;"
-                        ));
-                        let mut mismatch = Block::new(format!("if tag != {tag}"));
-                        mismatch.line(format!(
-                            "return Err(DeserializeFailure::TagMismatch {{ found: tag, expected: {tag} }}.into());"
-                        ));
-                        tag_arm.push_block(mismatch);
-                        tag_arm.line("TagPresenceEncoding::Tagged(Some(tag_enc))");
-                        tag_arm.after(",");
-                        presence_match.push_block(tag_arm);
-                        presence_match.line("_ => TagPresenceEncoding::Untagged,");
-                        presence_match.after(";");
-                        deser_code.content.push_block(presence_match);
-                        // FIRST encoding expr, matching `encoding_fields_impl`'s field order (tag
-                        // field, then the child's) — the child recursion appends its own after this.
-                        config
-                            .final_exprs
-                            .push(format!("{var_name}_{tag_infix}_encoding"));
-                    } else {
-                        let mut if_tag = Block::new(format!(
-                            "if {deserializer_name}.cbor_type()? == cbor_event::Type::Tag"
-                        ));
-                        if_tag.line(format!("let tag = {deserializer_name}.tag()?;"));
-                        let mut mismatch = Block::new(format!("if tag != {tag}"));
-                        mismatch.line(format!(
-                            "return Err(DeserializeFailure::TagMismatch {{ found: tag, expected: {tag} }}.into());"
-                        ));
-                        if_tag.push_block(mismatch);
-                        deser_code.content.push_block(if_tag);
-                    }
-                    self.generate_deserialize(
-                        types,
+                    deser_code = self.deser_optionally_tagged(
+                        tag,
                         *child,
+                        types,
+                        deser_code,
+                        config,
                         before_after,
-                        config.optional_field(false).tag_depth(tag_level),
                         cli,
-                    )
-                    .add_to_code(&mut deser_code);
-                    deser_code.throws = true;
+                        deserializer_name,
+                    );
                 }
             }
         }
