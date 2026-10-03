@@ -274,7 +274,41 @@ impl<'a> PlainGroupInfo<'a> {
     }
 }
 
-#[derive(Debug)]
+/// Authored per-rule intent, kept separate from derived demand, emission and ownership facts.
+#[derive(Default)]
+struct RuleDirectiveTables {
+    // Explicit element tags mint one loose-list WASM wrapper per element; no transitive expansion.
+    used_as_elem: BTreeSet<RustIdent>,
+    // Authored extern/raw-bytes Copy declarations drive clone suppression and compile-time assertions.
+    // Extern-interface consumers inherit this declaration; it is not a derived Copy fact.
+    copy_externs: BTreeSet<RustIdent>,
+    // Local marker declarations name the sibling WASM path and exact classes available there.
+    // Store intent separately because extern/raw-bytes configs discard rule metadata.
+    // Unlisted classes mint locally; this borrowing choice is not projected to consumers.
+    extern_companions: BTreeMap<RustIdent, crate::comment_ast::ExternCompanions>,
+    // Authored schema-row suppression also supports finalize validation.
+    // Store markers independently of extern/raw-bytes default configs; consumers do not inherit them.
+    no_json_schema_export: BTreeSet<RustIdent>,
+    // Apply authored suppression at alias registration, including manually registered collections/set bindings.
+    // Internal alias resolution survives; extern-interface consumers inherit the suppressed declaration.
+    no_alias_rules: BTreeSet<RustIdent>,
+    // Rule-owned docs survive generic-definition configs and manual set-binding alias registration.
+    // Apply at construct creation without replacing its own construct doc; the latest authored value wins.
+    rule_docs: BTreeMap<RustIdent, String>,
+    // Rule-owned custom JSON intent survives generic-definition and plain-group metadata.
+    // Apply before struct ownership comparison; retain separate generic set-binding refusal policy.
+    custom_json_rules: BTreeSet<RustIdent>,
+    // Nonempty rule-position directive vectors retain producer-sorted static tags.
+    // Finalize checks whole-spec splicedness; the storage owner does not validate it.
+    plain_group_rule_directives: BTreeMap<RustIdent, Vec<&'static str>>,
+    // Authored generic extern opt-in selects a RawBytes flavor only for a resolved raw-bytes argument.
+    // Actual flavored emission remains a separate finalize-produced set.
+    raw_bytes_flavor: BTreeSet<RustIdent>,
+    // Validated extern-scope pins translate names only at import/WASM/component boundaries.
+    // Internal RustIdent identity stays derived; rules without pins retain derived spelling.
+    rust_name_pins: BTreeMap<RustIdent, String>,
+}
+
 pub struct IntermediateTypes<'a> {
     // Storing the cddl::Group is the easiest way to go here even after the parse/codegen split.
     // This is since in order to generate plain groups we must have a representation, which isn't
@@ -322,8 +356,8 @@ pub struct IntermediateTypes<'a> {
     // `ExternCheckKind::None`) key off THIS. Determinism: `BTreeSet`.
     generic_extern_bases: BTreeSet<RustIdent>,
     news_can_fail: BTreeSet<RustIdent>,
-    // Every ident finalize resolves as used-as-key, mapped to the UNION of comparison/hash trait
-    // demand on it (`@used_as_key` flavors + auto-detected internal map-key bundle). Presence in the
+    // Accumulated authored and derived used-as-key demand, mapped to the UNION of comparison/hash
+    // trait demand on each ident (`@used_as_key` flavors + auto-detected internal map-key bundle). Presence in the
     // map == used-as-key; `DemandSet` records WHICH derive family. Propagated as demand SETS (not one
     // bit) through the transitive `visit_types` walk in `finalize`. Determinism: `BTreeMap`.
     key_demand: BTreeMap<RustIdent, DemandSet>,
@@ -332,103 +366,17 @@ pub struct IntermediateTypes<'a> {
     // demand assertion (auto-detected internal keys are enforced by the generated containers' own
     // bounds). Recorded at `mark_key_demand` time so the roots survive the finalize union.
     key_demand_roots: BTreeMap<RustIdent, DemandSet>,
-    // Idents explicitly tagged `@used_as_elem`: the generator mints the loose-list wasm wrapper
-    // (`FooList = [* foo]` equivalent) for each, exactly as an inline `[* foo]` usage would. Unlike
-    // `used_as_key`, there is NO transitive expansion — the tag names the element directly, and the
-    // wrapper's identity is fully determined by that one element type.
-    used_as_elem: BTreeSet<RustIdent>,
     /// The rules `crate::recursion_boundary` asked to be emitted as `@newtype` wrapper structs
     /// rather than transparent `pub type` aliases, because they are the collection-backed members of
     /// an alias-expansion cycle (rustc E0391). Seeded before parsing by `api::with_types`'s second
     /// build pass; empty on every spec with no such cycle, so byte-identical output is untouched.
     /// Determinism: `BTreeSet`, and the set itself is a canonical property of the cycle.
     auto_newtype_rules: BTreeSet<RustIdent>,
-    // Idents of extern / raw-bytes rules tagged `@copy`: the externally-defined rust type derives
-    // `Copy`, so `ConceptualRustType::is_copy` treats a `Rust(ident)` reference to one as Copy and
-    // the generator drops the defensive boundary `.clone()`. The declaring crate emits a compile-time
-    // `Copy` assertion for each (see `export.rs`), and the tag rides the extern-interface seam like
-    // `@raw_bytes_flavor` so `--extern-import` consumers inherit it. See `RuleMetadata::copy`.
-    copy_externs: BTreeSet<RustIdent>,
-    // `@extern_companions` declarations, keyed by the LOCAL marker rule that carries one (either
-    // user-supplied flavor — extern or raw-bytes): the sibling
-    // wasm crate path plus the exact structural companion class names that already exist there. The
-    // wasm wrapper-deferral decision (`try_defer_wrapper`) consults this to REFERENCE those classes
-    // instead of minting duplicate `#[wasm_bindgen]` ones — keyed on IDENTS throughout, which is why
-    // the raw-bytes flavor needed nothing here. Deliberately NOT part of
-    // `RustStructConfig` for the same reason as `no_json_schema_export`: `RustStruct::new_extern` /
-    // `new_raw_bytes` build with `RustStructConfig::default()` and drop rule metadata, and a marker
-    // rule is this
-    // directive's ONLY customer. Deliberately does NOT ride the extern-interface seam (unlike
-    // `@copy`): the declaration is about where THIS crate's wasm face borrows from, which a consumer
-    // of this crate answers for itself. Determinism: `BTreeMap`.
-    extern_companions: BTreeMap<RustIdent, crate::comment_ast::ExternCompanions>,
-    // Idents of rules tagged `@no_json_schema_export`: the json-gen crate emits no
-    // schema-registration row for them (see the row loop in `generation/mod.rs`). Carried as a
-    // per-ident marker set rather than a `RustStructConfig` field because `RustStruct::new_extern` /
-    // `new_raw_bytes` build with `RustStructConfig::default()` — they drop rule metadata entirely, so
-    // a config field would be silently dead on extern rules, which are the directive's primary
-    // customer (an own-spec extern whose hand-written rust type has no `schemars::JsonSchema` impl).
-    // The marker set covers extern and ordinary rules through ONE mechanism. Deliberately does NOT
-    // ride the extern-interface seam (unlike `@copy`): a dep-owned type's row is already skipped by
-    // the non-export-scope rule, so a consumer has nothing to inherit. Determinism: `BTreeSet`.
-    // See `RuleMetadata::no_json_schema_export`.
-    no_json_schema_export: BTreeSet<RustIdent>,
-    // Idents of rules tagged `@no_alias`. The directive's carrier is `AliasInfo::gen_rust_alias` /
-    // `gen_wasm_alias`, which `AliasInfo::new_from_metadata` derives — but three rule kinds register
-    // their own transparent alias through `AliasInfo::new_manual` instead, whose `rule_metadata` is
-    // hardcoded `None`: a TABLE rule and an ARRAY typedef (registered from the `finalize` kind-walk,
-    // where only the `RustStruct` is in scope) and a named binding to a generic SET NOMINAL
-    // (registered from the generic-resolution arm, where only the resolved instance is in scope). On
-    // all three the directive was silently dropped — the rule kept emitting the `pub type` it asks
-    // to suppress. Recording the intent per-ident at the ONE parse seam that reads a rule's metadata,
-    // and applying it in `register_type_alias`, makes every registration path honor it including
-    // future ones, rather than adding a fourth place to remember. Rides the extern-interface seam:
-    // a dep that suppresses its `pub type` must say so, or the consumer imports a name the dep no
-    // longer materializes. Determinism: `BTreeSet`. See `RuleMetadata::no_alias`.
-    no_alias_rules: BTreeSet<RustIdent>,
-    // Rule-level `@doc` text, keyed by rule ident. The directive's ordinary carrier is
-    // `RustStructConfig::doc` (for a rule that mints a struct) or `AliasInfo::rule_metadata` (for a
-    // transparent alias), and two kinds reach NEITHER with their own metadata: a generic INSTANCE
-    // binding (`foo = base<uint>`) mints a struct whose config is the generic DEFINITION's, and a
-    // named binding to a generic SET NOMINAL registers its alias through `AliasInfo::new_manual`.
-    // Both emitted a documentable construct while silently discarding the doc. Recorded at the same
-    // parse seam as `no_alias_rules`, and applied where each construct is built. Determinism:
-    // `BTreeMap`. See `RuleMetadata::comment`.
-    rule_docs: BTreeMap<RustIdent, String>,
-    // Idents whose rule carries `@custom_json`, keyed by rule ident. The directive's ordinary carrier
-    // is `RustStructConfig::custom_json`, built from the rule's own metadata — and two struct-minting
-    // kinds reach it with metadata that is not theirs: a generic INSTANCE binding
-    // (`foo = base<uint>`) mints a struct whose config is the generic DEFINITION's, and a plain GROUP
-    // rule's struct is built from `PlainGroupInfo`'s metadata, read off `comments_after_group` (empty
-    // for the single-line spelling cddl actually binds to the last entry's trailing slot). Both
-    // suppressed nothing while accepting the directive. Recorded at the same parse seams as
-    // `no_alias_rules`/`rule_docs`, and applied in `register_rust_struct`. Determinism: `BTreeSet`.
-    // See `RuleMetadata::custom_json`.
-    custom_json_rules: BTreeSet<RustIdent>,
-    // Every rule-position directive written on a plain GROUP rule, keyed by rule ident. A group is
-    // only a type once some rule SPLICES it (`holder = [foo]`), and splicedness is a whole-spec
-    // property — unknown at the parse seam that reads the directives, known by `finalize`, which
-    // refuses the ones that landed on a group nothing splices. Determinism: `BTreeMap`, and the
-    // per-ident directive list is already sorted by `RuleMetadata::all_directives`.
-    plain_group_rule_directives: BTreeMap<RustIdent, Vec<&'static str>>,
-    // Base generic extern idents tagged `@raw_bytes_flavor`: an instance of one whose argument
-    // resolves to a `_CDDL_CODEGEN_RAW_BYTES_TYPE_` aliases the `<Base>RawBytes` wrapper flavor
-    // instead of the plain `<Base>`. Opt-in only — see `RuleMetadata::raw_bytes_flavor`.
-    raw_bytes_flavor: BTreeSet<RustIdent>,
     // Subset of `raw_bytes_flavor` for which an actual flavored instance was emitted during
     // `finalize` (a raw-bytes argument was supplied at least once). The extern re-export glue emits
     // `pub use crate::<Base>RawBytes;` only for these, so a tag with no raw-bytes instance never
     // forces the user to define an unused flavor type.
     raw_bytes_flavor_emitted: BTreeSet<RustIdent>,
-    // `@rust_name` pins: a derived `RustIdent` (of a rule in a non-exported extern-deps scope) ->
-    // the FINAL Rust type name the dependency's own codegen version spelled into its artifact. Every
-    // INTERNAL spelling keeps the consumer-derived ident (so the ~66 `RustIdent::new` sites and all
-    // references stay untouched); translation to the pin happens only at the crate boundary — the
-    // `use <dep>::<Pinned> as <Derived>;` import alias (`add_imports_from_scope_refs`) and the
-    // wasm→rust full-path sites (`rust_crate_struct_from_wasm`). Pin-less rules keep today's
-    // derivation (hand-stub compatibility). Populated at parse time from extern-scope `RuleMetadata`
-    // (`parsing::handle_rust_name_pin`). Determinism: `BTreeMap`.
-    rust_name_pins: BTreeMap<RustIdent, String>,
     // which scope an ident is declared in
     scopes: BTreeMap<RustIdent, ModuleScope>,
     // The ORIGINAL CDDL source name for each top-level rule's `RustIdent`. `RustIdent::new`
@@ -472,6 +420,68 @@ pub struct IntermediateTypes<'a> {
     // node distinct. `rejections` remains the ordered public result, so the ledger cannot affect
     // diagnostic order or emitted bytes beyond suppressing a repeated visit.
     diagnostic_node_claims: BTreeSet<(usize, &'static str)>,
+    // Authored rule intent; validation and derived facts remain on the store.
+    rule_directives: RuleDirectiveTables,
+}
+
+impl std::fmt::Debug for IntermediateTypes<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IntermediateTypes")
+            .field("plain_groups", &self.plain_groups)
+            .field("generic_param_scopes", &self.generic_param_scopes)
+            .field(
+                "generic_inline_choice_scopes",
+                &self.generic_inline_choice_scopes,
+            )
+            .field(
+                "generic_inline_choice_templates",
+                &self.generic_inline_choice_templates,
+            )
+            .field(
+                "generic_child_instance_templates",
+                &self.generic_child_instance_templates,
+            )
+            .field("type_aliases", &self.type_aliases)
+            .field("rust_structs", &self.rust_structs)
+            .field("prelude_to_emit", &self.prelude_to_emit)
+            .field("generic_defs", &self.generic_defs)
+            .field("generic_instances", &self.generic_instances)
+            .field(
+                "anonymous_collection_instances",
+                &self.anonymous_collection_instances,
+            )
+            .field("generic_extern_bases", &self.generic_extern_bases)
+            .field("news_can_fail", &self.news_can_fail)
+            .field("key_demand", &self.key_demand)
+            .field("key_demand_roots", &self.key_demand_roots)
+            .field("used_as_elem", &self.rule_directives.used_as_elem)
+            .field("auto_newtype_rules", &self.auto_newtype_rules)
+            .field("copy_externs", &self.rule_directives.copy_externs)
+            .field("extern_companions", &self.rule_directives.extern_companions)
+            .field(
+                "no_json_schema_export",
+                &self.rule_directives.no_json_schema_export,
+            )
+            .field("no_alias_rules", &self.rule_directives.no_alias_rules)
+            .field("rule_docs", &self.rule_directives.rule_docs)
+            .field("custom_json_rules", &self.rule_directives.custom_json_rules)
+            .field(
+                "plain_group_rule_directives",
+                &self.rule_directives.plain_group_rule_directives,
+            )
+            .field("raw_bytes_flavor", &self.rule_directives.raw_bytes_flavor)
+            .field("raw_bytes_flavor_emitted", &self.raw_bytes_flavor_emitted)
+            .field("rust_name_pins", &self.rule_directives.rust_name_pins)
+            .field("scopes", &self.scopes)
+            .field("rule_source_names", &self.rule_source_names)
+            .field("group_choice_arm_claims", &self.group_choice_arm_claims)
+            .field("nominal_mint_claims", &self.nominal_mint_claims)
+            .field("variant_mint_claims", &self.variant_mint_claims)
+            .field("rejections", &self.rejections)
+            .field("rejection_observations", &self.rejection_observations)
+            .field("diagnostic_node_claims", &self.diagnostic_node_claims)
+            .finish()
+    }
 }
 
 impl Default for IntermediateTypes<'_> {
@@ -601,18 +611,9 @@ impl<'a> IntermediateTypes<'a> {
             news_can_fail: BTreeSet::new(),
             key_demand: BTreeMap::new(),
             key_demand_roots: BTreeMap::new(),
-            used_as_elem: BTreeSet::new(),
+            rule_directives: RuleDirectiveTables::default(),
             auto_newtype_rules: BTreeSet::new(),
-            copy_externs: BTreeSet::new(),
-            extern_companions: BTreeMap::new(),
-            no_json_schema_export: BTreeSet::new(),
-            no_alias_rules: BTreeSet::new(),
-            rule_docs: BTreeMap::new(),
-            custom_json_rules: BTreeSet::new(),
-            plain_group_rule_directives: BTreeMap::new(),
-            raw_bytes_flavor: BTreeSet::new(),
             raw_bytes_flavor_emitted: BTreeSet::new(),
-            rust_name_pins: BTreeMap::new(),
             scopes: BTreeMap::new(),
             rule_source_names: BTreeMap::new(),
             group_choice_arm_claims: BTreeMap::new(),
@@ -3218,7 +3219,7 @@ impl<'a> IntermediateTypes<'a> {
         // builds its `AliasInfo` without the rule's metadata (`new_manual`: the table/array
         // kind-walk, a named binding to a generic set nominal) honors the directive too. Idempotent
         // for `new_from_metadata`, which already derived both flags from the same bit.
-        if self.no_alias_rules.contains(&alias) {
+        if self.rule_directives.no_alias_rules.contains(&alias) {
             info.suppress_declared_aliases();
         }
         if let ConceptualRustType::Alias(_ident, _ty) = &info.base_type.conceptual_type {
@@ -3553,7 +3554,12 @@ impl<'a> IntermediateTypes<'a> {
         // A generic INSTANCE's config is the generic DEFINITION's, so the binding rule's own `@doc`
         // has no route into the struct it mints. Applied here, at the one registration seam every
         // struct passes through, rather than at the generic-resolution arm alone.
-        if let Some(doc) = self.rule_docs.get(&rust_struct.ident).cloned() {
+        if let Some(doc) = self
+            .rule_directives
+            .rule_docs
+            .get(&rust_struct.ident)
+            .cloned()
+        {
             rust_struct.set_doc_if_absent(&doc);
         }
         // `@custom_json` reaches its config the same two ways it can miss it — a generic INSTANCE's
@@ -3561,7 +3567,11 @@ impl<'a> IntermediateTypes<'a> {
         // off a slot cddl leaves empty — so the per-ident record is applied at this same seam. Only
         // ever sets the flag: a config that already carries it got it from the rule that owns the
         // struct, and the record is that rule's own statement, so the two can only agree.
-        if self.custom_json_rules.contains(&rust_struct.ident) {
+        if self
+            .rule_directives
+            .custom_json_rules
+            .contains(&rust_struct.ident)
+        {
             rust_struct.set_custom_json();
         }
         // A `@newtype`- or TAG-forced wrapper over an INLINE COLLECTION (`#6.258([* a]) ; @newtype`,
@@ -5299,7 +5309,11 @@ impl<'a> IntermediateTypes<'a> {
                         // accepted no-op — so this shape carries its own message, naming the
                         // definition as the rule that owns the derives (probed: `@custom_json` on
                         // the generic set def drops the nominal's `Serialize`/`JsonSchema` impls).
-                        if self.custom_json_rules.contains(&instance_ident) {
+                        if self
+                            .rule_directives
+                            .custom_json_rules
+                            .contains(&instance_ident)
+                        {
                             let source = self
                                 .source_rule_name(&instance_ident)
                                 .unwrap_or(instance_ident.as_ref())
@@ -5652,6 +5666,7 @@ impl<'a> IntermediateTypes<'a> {
                 .to_owned()
         };
         let generic_def_elem = self
+            .rule_directives
             .used_as_elem
             .iter()
             .filter(|ident| self.generic_defs.contains_key(*ident))
@@ -5765,7 +5780,7 @@ impl<'a> IntermediateTypes<'a> {
             // exposable diagnostic) rather than silently no-op. Collected into a local set to
             // sidestep the borrow checker, like the float-key rejections above.
             let mut exposable_elem_rejections = BTreeSet::new();
-            for ident in &self.used_as_elem {
+            for ident in &self.rule_directives.used_as_elem {
                 // A generic DEFINITION is refused earlier in this fn (it names no concrete type),
                 // and the resolution below cannot survive one: its exposability walk asserts that a
                 // non-struct ident is a generic INSTANCE, which a definition is not. Skipping keeps
@@ -5826,6 +5841,7 @@ impl<'a> IntermediateTypes<'a> {
         // during the generic resolution above. Flag-independent (outside the `cli.wasm` block above):
         // the directive means the same thing under every flag set. Determinism: `BTreeSet` iteration.
         let struct_less_no_json_schema_export = self
+            .rule_directives
             .no_json_schema_export
             .iter()
             .filter(|ident| !self.rust_structs.contains_key(ident))
@@ -5862,6 +5878,7 @@ impl<'a> IntermediateTypes<'a> {
         // materializes no rust type, so there is no rust name to report, and every remedy below is
         // CDDL the author writes back into the spec.
         let unspliced_annotated_groups = self
+            .rule_directives
             .plain_group_rule_directives
             .iter()
             .filter(|(ident, _)| !self.rust_structs.contains_key(*ident))
@@ -7804,7 +7821,7 @@ impl<'a> IntermediateTypes<'a> {
     /// every correct use. A same-named rule in a dependency scope is a different crate's business.
     fn extern_companion_rule_name_collisions(&self) -> Vec<String> {
         let mut msgs = BTreeSet::new();
-        for (owner, companions) in &self.extern_companions {
+        for (owner, companions) in &self.rule_directives.extern_companions {
             for class in &companions.classes {
                 let ident = RustIdent::new(CDDLIdent::new(class.clone()));
                 if !self.is_toplevel_rule(&ident) || !self.scope(&ident).export() {
@@ -8066,19 +8083,22 @@ impl<'a> IntermediateTypes<'a> {
     /// in the dependency's own crate. See the `rust_name_pins` field doc. Validated in
     /// `parsing::handle_rust_name_pin` (extern-scope-only, reserved-ident-clean) before this call.
     pub fn mark_rust_name_pin(&mut self, derived: RustIdent, pinned: String) {
-        self.rust_name_pins.insert(derived, pinned);
+        self.rule_directives.rust_name_pins.insert(derived, pinned);
     }
 
     /// The full pin map (`derived RustIdent` -> `pinned dep name`), for the crate-boundary
     /// translation sites (`add_imports_from_scope_refs`).
     pub fn rust_name_pins(&self) -> &BTreeMap<RustIdent, String> {
-        &self.rust_name_pins
+        &self.rule_directives.rust_name_pins
     }
 
     /// The pinned dependency name for `derived`, if it carries a `@rust_name` pin. `None` = derive
     /// the name today's way (hand-stub compatibility).
     pub fn rust_name_pin(&self, derived: &RustIdent) -> Option<&str> {
-        self.rust_name_pins.get(derived).map(|s| s.as_str())
+        self.rule_directives
+            .rust_name_pins
+            .get(derived)
+            .map(|s| s.as_str())
     }
 
     /// The CDDL prelude name a synthesized `prelude_<name>` rule ident stands for (`PreludeBignint`
@@ -8231,7 +8251,7 @@ impl<'a> IntermediateTypes<'a> {
     /// The set of idents tagged `@used_as_elem`, in sorted (`BTreeSet`) order — the generator walks
     /// this to mint one loose-list wasm wrapper per marked element (see `mark_used_as_elem`).
     pub fn used_as_elem(&self) -> &BTreeSet<RustIdent> {
-        &self.used_as_elem
+        &self.rule_directives.used_as_elem
     }
 
     /// Whether `ident` is a SYNTHESIZED anonymous generic instance resolving to a transparent
@@ -8256,28 +8276,28 @@ impl<'a> IntermediateTypes<'a> {
     }
 
     pub fn mark_used_as_elem(&mut self, name: RustIdent) {
-        self.used_as_elem.insert(name);
+        self.rule_directives.used_as_elem.insert(name);
     }
 
     /// The set of base generic extern idents tagged `@raw_bytes_flavor` (see `mark_raw_bytes_flavor`).
     /// `GenericInstance::resolve` consults this to decide whether an instance carrying a raw-bytes
     /// argument aliases the `<Base>RawBytes` flavor instead of the plain base name.
     pub fn raw_bytes_flavor(&self) -> &BTreeSet<RustIdent> {
-        &self.raw_bytes_flavor
+        &self.rule_directives.raw_bytes_flavor
     }
 
     pub fn mark_raw_bytes_flavor(&mut self, name: RustIdent) {
-        self.raw_bytes_flavor.insert(name);
+        self.rule_directives.raw_bytes_flavor.insert(name);
     }
 
     /// Whether `ident` names an extern / raw-bytes rule declared `@copy`. `is_copy` ORs this into its
     /// `Rust(ident)` arm so the generator stops cloning a value whose rust type derives `Copy`.
     pub fn is_copy_extern(&self, ident: &RustIdent) -> bool {
-        self.copy_externs.contains(ident)
+        self.rule_directives.copy_externs.contains(ident)
     }
 
     pub fn mark_copy_extern(&mut self, name: RustIdent) {
-        self.copy_externs.insert(name);
+        self.rule_directives.copy_externs.insert(name);
     }
 
     pub fn mark_extern_companions(
@@ -8285,14 +8305,16 @@ impl<'a> IntermediateTypes<'a> {
         name: RustIdent,
         companions: crate::comment_ast::ExternCompanions,
     ) {
-        self.extern_companions.insert(name, companions);
+        self.rule_directives
+            .extern_companions
+            .insert(name, companions);
     }
 
     /// The whole `@extern_companions` registry, keyed by declaring marker rule. Empty unless some
     /// rule carries the directive, which is what keeps the deferral arm that reads it inert (and the
     /// output byte-identical) for every spec that does not.
     pub fn extern_companions(&self) -> &BTreeMap<RustIdent, crate::comment_ast::ExternCompanions> {
-        &self.extern_companions
+        &self.rule_directives.extern_companions
     }
 
     /// The `use`-path prefix under which `class` is declared to ALREADY exist, given that every named
@@ -8300,7 +8322,8 @@ impl<'a> IntermediateTypes<'a> {
     /// its declaration does not list `class` — an unlisted structural companion mints locally, which
     /// is the whole point of the class list being a filter rather than a blanket opt-out.
     pub fn extern_companion_path(&self, owner: &RustIdent, class: &str) -> Option<&str> {
-        self.extern_companions
+        self.rule_directives
+            .extern_companions
             .get(owner)
             .filter(|c| c.classes.contains(class))
             .map(|c| c.path_prefix.as_str())
@@ -8308,47 +8331,47 @@ impl<'a> IntermediateTypes<'a> {
 
     /// Whether the rule `ident` was declared `@no_json_schema_export` — the spec author's statement
     /// that this type is not part of the published JSON-schema surface. The json-gen row loop skips
-    /// it; nothing else consults this.
+    /// it, and finalize rejects the directive on rules without a registered struct.
     pub fn is_no_json_schema_export(&self, ident: &RustIdent) -> bool {
-        self.no_json_schema_export.contains(ident)
+        self.rule_directives.no_json_schema_export.contains(ident)
     }
 
     pub fn mark_no_json_schema_export(&mut self, name: RustIdent) {
-        self.no_json_schema_export.insert(name);
+        self.rule_directives.no_json_schema_export.insert(name);
     }
 
     /// Record that `name`'s rule carries `@no_alias`. Called from the parse seam that reads a rule's
     /// metadata, unconditionally — whether the rule ends up registering an alias at all is decided
     /// later, and by several different paths (see the `no_alias_rules` field comment).
     pub fn mark_no_alias_rule(&mut self, name: RustIdent) {
-        self.no_alias_rules.insert(name);
+        self.rule_directives.no_alias_rules.insert(name);
     }
 
     /// Whether `name`'s rule asked for its transparent `pub type` to be suppressed. Read by
     /// `register_type_alias` (which enforces it) and by the extern-interface projection (which must
     /// tell a consumer, since the suppressed name is one the dep no longer materializes).
     pub fn is_no_alias_rule(&self, name: &RustIdent) -> bool {
-        self.no_alias_rules.contains(name)
+        self.rule_directives.no_alias_rules.contains(name)
     }
 
     /// Record `name`'s rule-level `@doc` text. Called from the same parse seam as
     /// `mark_no_alias_rule`, unconditionally — which construct (if any) ends up carrying it is
     /// decided later (see the `rule_docs` field comment).
     pub fn mark_rule_doc(&mut self, name: RustIdent, doc: String) {
-        self.rule_docs.insert(name, doc);
+        self.rule_directives.rule_docs.insert(name, doc);
     }
 
     /// The rule-level `@doc` written on `name`'s rule, for the construct builders whose own config
     /// cannot carry it.
     pub fn rule_doc(&self, name: &RustIdent) -> Option<&str> {
-        self.rule_docs.get(name).map(String::as_str)
+        self.rule_directives.rule_docs.get(name).map(String::as_str)
     }
 
     /// Record that `name`'s rule carries `@custom_json`. Called from the same parse seams as
     /// `mark_no_alias_rule`/`mark_rule_doc`, unconditionally — which construct (if any) ends up
     /// carrying it is decided later (see the `custom_json_rules` field comment).
     pub fn mark_custom_json_rule(&mut self, name: RustIdent) {
-        self.custom_json_rules.insert(name);
+        self.rule_directives.custom_json_rules.insert(name);
     }
 
     /// Record the rule-position directives written on the plain GROUP rule `name`, for the
@@ -8360,7 +8383,9 @@ impl<'a> IntermediateTypes<'a> {
         directives: Vec<&'static str>,
     ) {
         if !directives.is_empty() {
-            self.plain_group_rule_directives.insert(name, directives);
+            self.rule_directives
+                .plain_group_rule_directives
+                .insert(name, directives);
         }
     }
 
