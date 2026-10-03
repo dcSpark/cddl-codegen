@@ -1381,6 +1381,12 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 // "a `kind` member is only projected for a choice" and
 // "a `kind` member is projected beside its `<name>-kind` enum" retain exact expect payloads.
 // No active panic allowance is added; main must qualify normalized production frame keys.
+// Component choice invariant guards now belong to component.rs::member_as_variant_body:
+// "an `as-` member is only projected for a choice",
+// "the projection named a variant of this choice", and
+// "an `as-` member always returns an option of its payload" retain exact expect/unreachable
+// payloads and control flow.
+// No active panic allowance is added; main must qualify normalized production frame keys.
 // Component setter index invariants now belong to component.rs::member_setter_body:
 // member.params[0] selects the sole projected setter parameter; args[0] selects the
 // materialized argument for that same one-parameter input in both storage branches.

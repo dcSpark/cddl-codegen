@@ -1774,52 +1774,15 @@ impl Emitter<'_, '_> {
                 rust_variant,
                 rust_field,
             } => {
-                let (variants, variant_rep, tag) = self
-                    .choice_variants(ident)
-                    .expect("an `as-` member is only projected for a choice");
-                let variant = variants
-                    .iter()
-                    .find(|v| v.name.to_string() == *rust_variant)
-                    .expect("the projection named a variant of this choice");
-                let rule_tag_encoding =
-                    enum_rule_tag_encoding_name(self.types, variants, variant_rep, tag, self.cli);
-                let arm = EnumVariantInRust::new(
-                    self.types,
-                    variant,
-                    variant_rep,
-                    tag,
-                    rule_tag_encoding.as_deref(),
-                    self.cli,
+                self.member_as_variant_body(
+                    &mut lines,
+                    member,
+                    ident,
+                    rust,
+                    alias,
+                    rust_variant,
+                    rust_field,
                 );
-                let Some(WitType::Option(payload)) = member.result.as_ref() else {
-                    unreachable!("an `as-` member always returns an option of its payload");
-                };
-                let conv = self.rust_to_wit(payload, rust_field, alias, true);
-                lines.push("let me = self.0.borrow();".to_owned());
-                // A fallible payload conversion puts the `?` inside the arm and the `Ok` outside the
-                // whole `match`, so both arms still produce the same `Option<…>` and only the
-                // function's return type changes.
-                lines.push(if member.fallible {
-                    "Ok(match &*me {".to_owned()
-                } else {
-                    "match &*me {".to_owned()
-                });
-                lines.push(format!(
-                    "    {rust}::{}{} => Some({}),",
-                    variant.name,
-                    arm.capture_field_ignore_encodings(rust_field),
-                    conv.unwrapped()
-                ));
-                // Emitted only when there IS another arm: a one-variant choice's `_` arm is
-                // unreachable, and rustc warns on it in generated code the user cannot edit.
-                if variants.len() > 1 {
-                    lines.push("    _ => None,".to_owned());
-                }
-                lines.push(if member.fallible {
-                    "})".to_owned()
-                } else {
-                    "}".to_owned()
-                });
             }
             // `new-<variant>`: a STATIC, so it returns the owned HANDLE rather than the rep type a
             // fallible constructor returns. Parameters go through `materialize`, so the re-entrancy
@@ -1846,6 +1809,65 @@ impl Emitter<'_, '_> {
         }
         lines
     }
+    #[allow(clippy::too_many_arguments)]
+    fn member_as_variant_body(
+        &self,
+        lines: &mut Vec<String>,
+        member: &WitMember,
+        ident: &RustIdent,
+        rust: &str,
+        alias: &str,
+        rust_variant: &str,
+        rust_field: &str,
+    ) {
+        let (variants, variant_rep, tag) = self
+            .choice_variants(ident)
+            .expect("an `as-` member is only projected for a choice");
+        let variant = variants
+            .iter()
+            .find(|v| v.name.to_string() == rust_variant)
+            .expect("the projection named a variant of this choice");
+        let rule_tag_encoding =
+            enum_rule_tag_encoding_name(self.types, variants, variant_rep, tag, self.cli);
+        let arm = EnumVariantInRust::new(
+            self.types,
+            variant,
+            variant_rep,
+            tag,
+            rule_tag_encoding.as_deref(),
+            self.cli,
+        );
+        let Some(WitType::Option(payload)) = member.result.as_ref() else {
+            unreachable!("an `as-` member always returns an option of its payload");
+        };
+        let conv = self.rust_to_wit(payload, rust_field, alias, true);
+        lines.push("let me = self.0.borrow();".to_owned());
+        // A fallible payload conversion puts the `?` inside the arm and the `Ok` outside the
+        // whole `match`, so both arms still produce the same `Option<…>` and only the
+        // function's return type changes.
+        lines.push(if member.fallible {
+            "Ok(match &*me {".to_owned()
+        } else {
+            "match &*me {".to_owned()
+        });
+        lines.push(format!(
+            "    {rust}::{}{} => Some({}),",
+            variant.name,
+            arm.capture_field_ignore_encodings(rust_field),
+            conv.unwrapped()
+        ));
+        // Emitted only when there IS another arm: a one-variant choice's `_` arm is
+        // unreachable, and rustc warns on it in generated code the user cannot edit.
+        if variants.len() > 1 {
+            lines.push("    _ => None,".to_owned());
+        }
+        lines.push(if member.fallible {
+            "})".to_owned()
+        } else {
+            "}".to_owned()
+        });
+    }
+
     fn member_variant_kind_body(
         &self,
         lines: &mut Vec<String>,
