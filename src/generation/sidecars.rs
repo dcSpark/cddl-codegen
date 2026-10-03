@@ -298,38 +298,53 @@ pub(super) struct BorrowedKeyRow {
     pub(super) demand: DemandSet,
 }
 
+/// The common banner remains file-anchored; each format keeps its distinct final legend.
+const BORROWED_KEY_BANNER_PREFIX: &str = "// This file records every map-key type this crate borrows from workspace deps.\n\
+     // It is machine-read by those deps' generation runs (--key-requests) so they derive the key\n\
+     // traits (Eq/Ord/PartialOrd, plus Hash under --preserve-encodings) on the borrowed type; the\n\
+     // compiled self-check below fails THIS crate's build if a dep drops such a derive.\n";
+
+fn borrowed_key_assert_fn(d: DemandSet) -> String {
+    format!(
+        "_assert_key_traits_{}",
+        key_flavor_token(d).replace(' ', "_")
+    )
+}
+
 pub(super) fn render_borrowed_key_types(rows: &[BorrowedKeyRow], cli: &Cli) -> String {
-    // A borrowed key whose demand carries a `hash`/`ord` FLAVOR (a consumer keyed the dep type
-    // through a `@used_as_key hash`/`ord` root) needs the flavored 3-column format + per-flavor
-    // self-check bound. When every borrowed key is `bare` (the universal pre-flavor case), the
-    // legacy 2-column form is emitted BYTE-IDENTICALLY — no banner/type/self-check churn.
+    // Any flavored demand selects the three-column format. Bare-only rows keep the legacy
+    // two-column table and omit the empty self-check, independently of the bound carrier.
     let any_flavored = rows.iter().any(|row| row.demand.hash || row.demand.ord);
-    if any_flavored {
-        let mut s = String::from(
-            "// This file records every map-key type this crate borrows from workspace deps.\n\
-         // It is machine-read by those deps' generation runs (--key-requests) so they derive the key\n\
-         // traits (Eq/Ord/PartialOrd, plus Hash under --preserve-encodings) on the borrowed type; the\n\
-         // compiled self-check below fails THIS crate's build if a dep drops such a derive.\n\
-         // Rows are (dep rust-crate name, cddl ident, demand flavor) of each borrowed map-key type.\n",
-        );
-        // One bound-carrier per distinct demand (the flavor decides the bound), then a
-        // per-row self-check call routed to its flavor's carrier.
+    let mut s = if any_flavored {
+        let mut s = String::from(BORROWED_KEY_BANNER_PREFIX);
+        s.push_str("// Rows are (dep rust-crate name, cddl ident, demand flavor) of each borrowed map-key type.\n");
         let mut demands: Vec<DemandSet> = rows.iter().map(|row| row.demand).collect();
         demands.sort();
         demands.dedup();
-        let assert_fn = |d: DemandSet| {
-            format!(
-                "_assert_key_traits_{}",
-                key_flavor_token(d).replace(' ', "_")
-            )
-        };
         for d in &demands {
             s.push_str(&format!(
                 "#[allow(dead_code)]\nfn {}<K: {}>() {{}}\n",
-                assert_fn(*d),
+                borrowed_key_assert_fn(*d),
                 key_bound(*d, cli)
             ));
         }
+        s
+    } else {
+        let bound = if cli.preserve_encodings {
+            "Eq + Ord + PartialOrd + core::hash::Hash"
+        } else {
+            "Eq + Ord + PartialOrd"
+        };
+        let mut s = String::from(BORROWED_KEY_BANNER_PREFIX);
+        s.push_str(
+            "// Rows are (dep rust-crate name, cddl ident) of each borrowed map-key type.\n",
+        );
+        s.push_str(&format!(
+            "#[allow(dead_code)]\nfn _assert_key_traits<K: {bound}>() {{}}\n"
+        ));
+        s
+    };
+    if any_flavored || !rows.is_empty() {
         s.push_str("#[allow(dead_code)]\nfn _borrowed_key_types_self_check() {\n");
         for BorrowedKeyRow {
             cddl_ident: ident,
@@ -339,69 +354,40 @@ pub(super) fn render_borrowed_key_types(rows: &[BorrowedKeyRow], cli: &Cli) -> S
         } in rows
         {
             let ty = RustIdent::new(CDDLIdent::new(ident.clone()));
-            s.push_str(&format!("    {}::<{scope_path}::{ty}>();\n", assert_fn(*d)));
-        }
-        s.push_str("}\n");
-        s.push_str(
-        "#[allow(dead_code)]\npub(crate) const BORROWED_KEY_TYPES: &[(&str, &str, &str)] = &[\n",
-    );
-        for BorrowedKeyRow {
-            dep,
-            cddl_ident: ident,
-            demand: d,
-            ..
-        } in rows
-        {
-            let flavor = key_flavor_token(*d);
-            s.push_str(&format!("    ({dep:?}, {ident:?}, {flavor:?}),\n"));
-        }
-        s.push_str("];\n");
-        s
-    } else {
-        let bound = if cli.preserve_encodings {
-            "Eq + Ord + PartialOrd + core::hash::Hash"
-        } else {
-            "Eq + Ord + PartialOrd"
-        };
-        let mut s = String::from(
-            "// This file records every map-key type this crate borrows from workspace deps.\n\
-         // It is machine-read by those deps' generation runs (--key-requests) so they derive the key\n\
-         // traits (Eq/Ord/PartialOrd, plus Hash under --preserve-encodings) on the borrowed type; the\n\
-         // compiled self-check below fails THIS crate's build if a dep drops such a derive.\n\
-         // Rows are (dep rust-crate name, cddl ident) of each borrowed map-key type.\n",
-        );
-        s.push_str(&format!(
-            "#[allow(dead_code)]\nfn _assert_key_traits<K: {bound}>() {{}}\n"
-        ));
-        if !rows.is_empty() {
-            s.push_str("#[allow(dead_code)]\nfn _borrowed_key_types_self_check() {\n");
-            for BorrowedKeyRow {
-                cddl_ident: ident,
-                scope_path,
-                ..
-            } in rows
-            {
-                let ty = RustIdent::new(CDDLIdent::new(ident.clone()));
+            if any_flavored {
+                s.push_str(&format!(
+                    "    {}::<{scope_path}::{ty}>();\n",
+                    borrowed_key_assert_fn(*d)
+                ));
+            } else {
                 s.push_str(&format!(
                     "    _assert_key_traits::<{scope_path}::{ty}>();\n"
                 ));
             }
-            s.push_str("}\n");
         }
-        s.push_str(
-            "#[allow(dead_code)]\npub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] = &[\n",
-        );
-        for BorrowedKeyRow {
-            dep,
-            cddl_ident: ident,
-            ..
-        } in rows
-        {
+        s.push_str("}\n");
+    }
+    s.push_str(if any_flavored {
+        "#[allow(dead_code)]\npub(crate) const BORROWED_KEY_TYPES: &[(&str, &str, &str)] = &[\n"
+    } else {
+        "#[allow(dead_code)]\npub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] = &[\n"
+    });
+    for BorrowedKeyRow {
+        dep,
+        cddl_ident: ident,
+        demand: d,
+        ..
+    } in rows
+    {
+        if any_flavored {
+            let flavor = key_flavor_token(*d);
+            s.push_str(&format!("    ({dep:?}, {ident:?}, {flavor:?}),\n"));
+        } else {
             s.push_str(&format!("    ({dep:?}, {ident:?}),\n"));
         }
-        s.push_str("];\n");
-        s
     }
+    s.push_str("];\n");
+    s
 }
 
 pub(super) fn render_json_gen_module(json_lines: &BlocksOrLines, cli: &Cli) -> String {
