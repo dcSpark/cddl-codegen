@@ -2046,7 +2046,14 @@ impl GenerationScope {
                     deser_code.content.push_block(deser_block);
                     deser_code.throws = true;
                 }
-                SerializingRustType::Root(ConceptualRustType::Array(ty), type_cfg) => {
+                SerializingRustType::Root(
+                    collection_type @ ConceptualRustType::Array(ty),
+                    type_cfg,
+                ) => {
+                    let collection = crate::intermediate::CollectionTypeView::new(
+                        collection_type,
+                        type_cfg.as_ref(),
+                    );
                     if config.optional_field {
                         deser_code.content.line("read_len.read_elems(1)?;");
                         deser_code.read_len_used = true;
@@ -2186,18 +2193,14 @@ impl GenerationScope {
                         .add_to(&mut deser_loop);
                     }
                     deser_code.content.push_block(deser_loop);
-                    let reject_dups =
-                        type_cfg.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Reject);
+                    let reject_dups = collection.is_reject_array();
                     if reject_dups {
                         // `@duplicates reject`: route the collected Vec through the SAME uniqueness
                         // twin `TryFrom` door the API uses, so a duplicate on the wire and a duplicate
                         // built through the API report the identical `DuplicateKey(index)` error and
                         // can never drift. The non-empty flavor's door additionally enforces the `[+]`
                         // min-1 bound (same composed door). Encoding vars stay keyed off the field.
-                        if let Some((min, max)) = type_cfg.occurrence_bounds()
-                            && (min, max) != (Some(1), None)
-                            && (min, max) != (None, None)
-                        {
+                        if let Some((min, max)) = collection.raw_bounded_window() {
                             let min = u64::try_from(min.unwrap_or(0)).expect(
                                 "array occurrence lower bound was validated during parsing",
                             );
@@ -2212,7 +2215,7 @@ impl GenerationScope {
                                 "let {arr_var_name} = BoundedOrderedSet::<_, {min}, {max}>::try_from({arr_var_name})?;"
                             ));
                         } else {
-                            let twin = if type_cfg.occurrence_bounds() == Some((Some(1), None)) {
+                            let twin = if collection.is_non_empty_array() {
                                 "NonEmptyOrderedSet"
                             } else {
                                 "OrderedSet"
@@ -2221,7 +2224,7 @@ impl GenerationScope {
                                 "let {arr_var_name} = {twin}::try_from({arr_var_name})?;"
                             ));
                         }
-                    } else if type_cfg.occurrence_bounds() == Some((Some(1), None)) {
+                    } else if collection.is_non_empty_array() {
                         // `[+ T]`: route the collected Vec through the SAME `TryFrom` door the API
                         // uses, so the wire side and API side report the identical RangeCheck error
                         // ("0 not at least 1") and can never drift. The encoding vars stay keyed off
@@ -2229,19 +2232,14 @@ impl GenerationScope {
                         deser_code.content.line(&format!(
                             "let {arr_var_name} = NonEmptyVec::try_from({arr_var_name})?;"
                         ));
-                    } else if let Some(Ok(len)) = crate::intermediate::exact_array_len_from_bounds(
-                        type_cfg.occurrence_bounds(),
-                    ) {
+                    } else if let Some(Ok(len)) = collection.exact_array_len() {
                         // Exact ordinary/preserve homogeneous arrays stage on the wire as a Vec
                         // and cross one static handover. Map the standard conversion error back
                         // to the generator's established RangeCheck rather than leaking it.
                         deser_code.content.line(&format!(
                             "let {arr_var_name}: [_; {len}] = {arr_var_name}.try_into().map_err(|elements: Vec<_>| DeserializeFailure::RangeCheck{{ found: elements.len() as i128, min: Some({len}), max: Some({len}) }})?;"
                         ));
-                    } else if let Some((min, max)) = type_cfg.occurrence_bounds()
-                        && (min, max) != (None, None)
-                        && (min, max) != (Some(1), None)
-                    {
+                    } else if let Some((min, max)) = collection.raw_bounded_window() {
                         let min = u64::try_from(min.unwrap_or(0))
                             .expect("array occurrence lower bound was validated during parsing");
                         let max = max
@@ -2293,9 +2291,13 @@ impl GenerationScope {
                     deser_code.throws = true;
                 }
                 SerializingRustType::Root(
-                    ConceptualRustType::Map(key_type, value_type),
+                    collection_type @ ConceptualRustType::Map(key_type, value_type),
                     type_cfg,
                 ) => {
+                    let collection = crate::intermediate::CollectionTypeView::new(
+                        collection_type,
+                        type_cfg.as_ref(),
+                    );
                     if config.optional_field {
                         deser_code.content.line("read_len.read_elems(1)?;");
                         deser_code.read_len_used = true;
@@ -2305,8 +2307,7 @@ impl GenerationScope {
                     // table, skip the wire-side dup-check, and carry a POSITIONAL encoding sidecar
                     // parallel to the entries (a `BTreeMap` keyed by key value cannot hold two
                     // same-key entries). Everything else in the loop is shared.
-                    let preserve_pair_map =
-                        type_cfg.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve);
+                    let preserve_pair_map = collection.is_preserve_map();
                     let table_var = format!("{}_table", config.var_name);
                     if preserve_pair_map {
                         deser_code
@@ -2439,25 +2440,14 @@ impl GenerationScope {
                             }
                         }
                         deser_code.content.push_block(deser_loop);
-                        if type_cfg.occurrence_bounds() == Some((Some(1), None)) {
+                        if collection.is_non_empty_map() {
                             // `{+ k => v}` preserve: the min-1 door composes non-emptiness with the
                             // vec-of-pairs, routed through the SAME `TryFrom` the API uses so the
                             // wire/API RangeCheck errors are identical.
                             deser_code.content.line(&format!(
                                 "let {table_var} = NonEmptyPairMap::try_from({table_var})?;"
                             ));
-                        } else if let Some((min, max)) = RustType::new(ConceptualRustType::Map(
-                            Box::new((**key_type).clone()),
-                            Box::new((**value_type).clone()),
-                        ))
-                        .with_occurrence_bounds(
-                            type_cfg.occurrence_bounds().unwrap_or((None, None)),
-                        )
-                        .with_duplicates_policy(Some(
-                            crate::comment_ast::DuplicatesPolicy::Preserve,
-                        ))
-                        .bounded_map_u64_bounds()
-                        {
+                        } else if let Some((min, max)) = collection.bounded_map_u64_bounds() {
                             let max = crate::intermediate::bound_const_arg(max);
                             deser_code.content.line(&format!(
                                 "let {table_var} = BoundedPairMap::<_, _, {min}, {max}>::try_from({table_var})?;"
@@ -2567,7 +2557,7 @@ impl GenerationScope {
                         }
                     }
                     deser_code.content.push_block(deser_loop);
-                    if type_cfg.occurrence_bounds() == Some((Some(1), None)) {
+                    if collection.is_non_empty_map() {
                         // `{+ k => v}`: route the collected map through the SAME `TryFrom` door the
                         // API uses, so the wire side and API side report the identical RangeCheck
                         // error ("0 not at least 1") and can never drift. The encoding vars stay
@@ -2575,9 +2565,7 @@ impl GenerationScope {
                         deser_code.content.line(&format!(
                             "let {table_var} = NonEmptyMap::try_from({table_var})?;"
                         ));
-                    } else if let Some((min, max)) = type_cfg.occurrence_bounds()
-                        && (min, max) != (None, None)
-                    {
+                    } else if let Some((min, max)) = collection.raw_bounded_window() {
                         let min = u64::try_from(min.unwrap_or(0))
                             .expect("table occurrence lower bound was validated during parsing");
                         let max = max

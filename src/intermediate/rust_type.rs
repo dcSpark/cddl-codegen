@@ -222,6 +222,10 @@ impl RustType {
         })
     }
 
+    pub(crate) fn collection_view(&self) -> CollectionTypeView<'_> {
+        CollectionTypeView::new(&self.conceptual_type, &self.config)
+    }
+
     /// The one semantic recognition of an exact homogeneous CDDL array occurrence. As with an
     /// exact byte `.size`, CDDL normalizes the zero lower endpoint away, so both `0*0` and `*0`
     /// arrive as `(None, Some(0))`. Unlike bytes this is an occurrence constraint, and unlike a
@@ -232,14 +236,7 @@ impl RustType {
     /// conceptual-array check at their own seam so an authored alias remains an alias at a member
     /// site.
     pub fn exact_homogeneous_array_len(&self) -> Option<Result<usize, i128>> {
-        if !matches!(
-            self.conceptual_type.resolve_alias_shallow(),
-            ConceptualRustType::Array(_)
-        ) || self.duplicates_reject()
-        {
-            return None;
-        }
-        exact_array_len_from_bounds(self.config.occurrence_bounds())
+        self.collection_view().exact_array_len()
     }
 
     /// The checked, parser-validated static-array length used by generated Rust spelling.
@@ -732,6 +729,102 @@ mod exact_byte_array_len_tests {
     }
 }
 
+#[cfg(test)]
+mod collection_view_tests {
+    use super::*;
+
+    fn collection(map: bool, bounds: IntWindow, duplicates: Option<DuplicatesPolicy>) -> RustType {
+        let elem = || Box::new(RustType::new(ConceptualRustType::Primitive(Primitive::U64)));
+        let mut ty = RustType::new(if map {
+            ConceptualRustType::Map(elem(), elem())
+        } else {
+            ConceptualRustType::Array(elem())
+        });
+        // Direct public configuration preserves malformed and authored endpoint identity.
+        ty.config.bounds = Some(TypeBounds::Occurrence(OccurrenceWindow::from_raw(bounds)));
+        ty.config.duplicates = duplicates;
+        ty
+    }
+
+    #[test]
+    fn raw_and_checked_windows_keep_distinct_invalid_state_policies() {
+        for bounds in [
+            (Some(-1), Some(3)),
+            (Some(4), Some(3)),
+            (None, Some(i128::from(u64::MAX) + 1)),
+        ] {
+            let ty = collection(true, bounds, Some(DuplicatesPolicy::Preserve));
+            assert_eq!(ty.collection_view().raw_bounded_window(), Some(bounds));
+            assert_eq!(ty.bounded_map_u64_bounds(), None);
+        }
+        for bounds in [(None, None), (Some(1), None)] {
+            let ty = collection(true, bounds, None);
+            assert_eq!(ty.collection_view().raw_bounded_window(), None);
+        }
+        for min in [0, 1] {
+            let bounds = (Some(min), Some(i128::from(u64::MAX)));
+            let ty = collection(true, bounds, None);
+            assert_eq!(ty.collection_view().raw_bounded_window(), Some(bounds));
+            assert_eq!(ty.bounded_map_u64_bounds(), Some((min as u64, u64::MAX)));
+        }
+    }
+
+    #[test]
+    fn aliases_keep_authored_shape_while_invariants_resolve_the_target() {
+        for map in [false, true] {
+            let mut ty = collection(map, (Some(1), None), None);
+            ty.conceptual_type = ConceptualRustType::Alias(
+                AliasIdent::Rust(RustIdent::new(CDDLIdent::new(
+                    "named_collection".to_owned(),
+                ))),
+                Box::new(ty.conceptual_type),
+            );
+            assert!(!ty.is_non_empty_array());
+            assert!(!ty.is_non_empty_map());
+            assert!(ty.is_type_enforced_non_empty());
+            assert_eq!(ty.collection_view().raw_bounded_window(), None);
+        }
+        let mut ty = collection(true, (Some(2), Some(3)), None);
+        ty.conceptual_type = ConceptualRustType::Alias(
+            AliasIdent::Rust(RustIdent::new(CDDLIdent::new("bounded_alias".to_owned()))),
+            Box::new(ty.conceptual_type),
+        );
+        assert!(!ty.is_bounded_map());
+        assert_eq!(ty.type_enforced_bounded_map_u64_bounds(), Some((2, 3)));
+    }
+
+    #[test]
+    fn exact_arrays_reject_sets_and_scalar_windows_keep_distinct_carriers() {
+        let bounds = (Some(2), Some(2));
+        let ordinary = collection(false, bounds, None);
+        assert_eq!(ordinary.exact_homogeneous_array_len(), Some(Ok(2)));
+        assert!(!ordinary.is_bounded_array());
+        let reject = collection(false, bounds, Some(DuplicatesPolicy::Reject));
+        assert_eq!(reject.exact_homogeneous_array_len(), None);
+        assert_eq!(reject.bounded_array_u64_bounds(), Some((2, 2)));
+        let map = collection(true, bounds, None);
+        assert_eq!(map.exact_homogeneous_array_len(), None);
+        assert_eq!(map.bounded_map_u64_bounds(), Some((2, 2)));
+        let scalar = RustType::new(ConceptualRustType::Primitive(Primitive::Bytes))
+            .with_value_bounds(bounds);
+        assert_eq!(scalar.collection_view().raw_bounded_window(), None);
+        assert_eq!(scalar.exact_homogeneous_array_len(), None);
+        assert_eq!(scalar.exact_byte_array_len(), Some(Ok(2)));
+        let huge = collection(
+            false,
+            (
+                Some(i128::from(i32::MAX) + 1),
+                Some(i128::from(i32::MAX) + 1),
+            ),
+            None,
+        );
+        assert_eq!(
+            huge.exact_homogeneous_array_len(),
+            Some(Err(i128::from(i32::MAX) + 1))
+        );
+    }
+}
+
 /// Escape a CDDL fixed text value for safe interpolation into an emitted Rust string literal.
 /// CDDL text literals may legally contain `"` or `\`; without escaping, those emit invalid Rust
 /// (rustfmt then fails on the generated source). Plain values are unchanged.
@@ -1129,6 +1222,104 @@ impl RustTypeSerializeConfig {
     /// Payload view for shared value/length check emitters, retaining role in storage.
     pub fn raw_bounds(&self) -> Option<IntWindow> {
         self.bounds.map(TypeBounds::raw)
+    }
+}
+
+/// Borrowed collection facts shared by member spelling and final decoder handovers.
+/// Raw shape queries retain authored aliases; invariant queries resolve aliases. Checked
+/// endpoints and raw candidates stay separate so each caller retains its invalid-window policy.
+#[derive(Clone, Copy)]
+pub(crate) struct CollectionTypeView<'a> {
+    conceptual: &'a ConceptualRustType,
+    config: &'a RustTypeSerializeConfig,
+}
+
+impl<'a> CollectionTypeView<'a> {
+    pub(crate) fn new(
+        conceptual: &'a ConceptualRustType,
+        config: &'a RustTypeSerializeConfig,
+    ) -> Self {
+        Self { conceptual, config }
+    }
+
+    fn raw_array(self) -> bool {
+        matches!(self.conceptual, ConceptualRustType::Array(_))
+    }
+
+    fn raw_map(self) -> bool {
+        matches!(self.conceptual, ConceptualRustType::Map(_, _))
+    }
+
+    fn resolved_array(self) -> bool {
+        matches!(
+            self.conceptual.resolve_alias_shallow(),
+            ConceptualRustType::Array(_)
+        )
+    }
+
+    fn resolved_map(self) -> bool {
+        matches!(
+            self.conceptual.resolve_alias_shallow(),
+            ConceptualRustType::Map(_, _)
+        )
+    }
+
+    pub(crate) fn is_reject_array(self) -> bool {
+        self.raw_array() && self.config.duplicates == Some(DuplicatesPolicy::Reject)
+    }
+
+    pub(crate) fn is_preserve_map(self) -> bool {
+        self.raw_map() && self.config.duplicates == Some(DuplicatesPolicy::Preserve)
+    }
+
+    pub(crate) fn is_non_empty_array(self) -> bool {
+        self.raw_array() && self.non_empty_window()
+    }
+
+    pub(crate) fn is_non_empty_map(self) -> bool {
+        self.raw_map() && self.non_empty_window()
+    }
+
+    fn non_empty_window(self) -> bool {
+        self.config
+            .occurrence_window()
+            .is_some_and(OccurrenceWindow::is_non_empty)
+    }
+
+    fn is_type_enforced_non_empty(self) -> bool {
+        (self.resolved_array() || self.resolved_map()) && self.non_empty_window()
+    }
+
+    /// This keeps raw endpoint provenance, including explicit MAX versus an open endpoint.
+    /// It deliberately does not validate endpoints or exclude exact arrays.
+    pub(crate) fn raw_bounded_window(self) -> Option<IntWindow> {
+        if !self.raw_array() && !self.raw_map() {
+            return None;
+        }
+        let window = self.config.occurrence_window()?;
+        (!window.is_loose() && !window.is_non_empty()).then_some(window.raw())
+    }
+
+    pub(crate) fn bounded_map_u64_bounds(self) -> Option<(u64, u64)> {
+        self.raw_map().then_some(())?;
+        occurrence_window_u64(self.raw_bounded_window()?)
+    }
+
+    fn type_enforced_bounded_map_u64_bounds(self) -> Option<(u64, u64)> {
+        self.resolved_map().then_some(())?;
+        type_enforced_bounded_window(self.config.occurrence_bounds()?, false)
+    }
+
+    fn type_enforced_bounded_array_u64_bounds(self, exact: bool) -> Option<(u64, u64)> {
+        self.resolved_array().then_some(())?;
+        type_enforced_bounded_window(self.config.occurrence_bounds()?, exact)
+    }
+
+    pub(crate) fn exact_array_len(self) -> Option<Result<usize, i128>> {
+        if !self.resolved_array() || self.config.duplicates == Some(DuplicatesPolicy::Reject) {
+            return None;
+        }
+        exact_array_len_from_bounds(self.config.occurrence_bounds())
     }
 }
 
@@ -1595,23 +1786,17 @@ impl RustType {
     /// named `[+ int]` rule carries this bounds shape but is an `Alias`, and its member type must
     /// stay the alias name (whose target is already `NonEmptyVec`), not re-inline the container.
     pub fn is_non_empty_array(&self) -> bool {
-        matches!(self.conceptual_type, ConceptualRustType::Array(_))
-            && self
-                .config
-                .occurrence_window()
-                .is_some_and(OccurrenceWindow::is_non_empty)
+        self.collection_view().is_non_empty_array()
     }
 
     /// A finite or non-zero-minimum homogeneous ARRAY occurrence whose window is represented by
     /// `BoundedVec` (or `BoundedOrderedSet` for reject sets), rather than a loose `Vec` plus checks
     /// at each construction site. `[+ T]` deliberately remains the older NonEmpty sibling.
     pub fn is_bounded_array(&self) -> bool {
-        matches!(self.conceptual_type, ConceptualRustType::Array(_))
+        let collection = self.collection_view();
+        collection.raw_array()
             && self.exact_homogeneous_array_len_checked().is_none()
-            && self
-                .config
-                .occurrence_window()
-                .is_some_and(|window| !window.is_loose() && !window.is_non_empty())
+            && collection.raw_bounded_window().is_some()
     }
 
     /// The const arguments used by `BoundedVec`. Occurrence endpoints are non-negative parse
@@ -1627,13 +1812,9 @@ impl RustType {
     /// Alias-aware counterpart used only for invariant decisions and minting. Naming retains the
     /// raw predicate above so a field referencing a named rule stays that rule's alias.
     pub fn type_enforced_bounded_array_u64_bounds(&self) -> Option<(u64, u64)> {
-        matches!(
-            self.conceptual_type.resolve_alias_shallow(),
-            ConceptualRustType::Array(_)
-        )
-        .then_some(())?;
-        type_enforced_bounded_window(
-            self.config.occurrence_bounds()?,
+        let collection = self.collection_view();
+        collection.resolved_array().then_some(())?;
+        collection.type_enforced_bounded_array_u64_bounds(
             self.exact_homogeneous_array_len_checked().is_some(),
         )
     }
@@ -1644,8 +1825,7 @@ impl RustType {
     /// REFERENCING a named reject rule is an `Alias` whose target already resolves to the twin, so its
     /// member type must stay the alias name rather than re-inline the container.
     pub fn is_reject_ordered_set(&self) -> bool {
-        matches!(self.conceptual_type, ConceptualRustType::Array(_))
-            && self.config.duplicates == Some(DuplicatesPolicy::Reject)
+        self.collection_view().is_reject_array()
     }
 
     /// The compound bounded-unique shape. This intentionally excludes loose `*` and the existing
@@ -1694,8 +1874,7 @@ impl RustType {
     /// conceptual type (not alias-resolved), the same convention as `is_reject_ordered_set`: a field
     /// REFERENCING a named preserve table is an `Alias` whose target already resolves to the twin.
     pub fn is_preserve_pair_map(&self) -> bool {
-        matches!(self.conceptual_type, ConceptualRustType::Map(_, _))
-            && self.config.duplicates == Some(DuplicatesPolicy::Preserve)
+        self.collection_view().is_preserve_map()
     }
 
     /// Whether this type, at ANY nesting level, contains the `@duplicates preserve` `PairMap` shape
@@ -1711,22 +1890,15 @@ impl RustType {
     /// conceptual type (not alias-resolved) so a field referencing a named `{+ …}` rule keeps the
     /// alias name (whose target is already `NonEmptyMap`) rather than re-inlining the container.
     pub fn is_non_empty_map(&self) -> bool {
-        matches!(self.conceptual_type, ConceptualRustType::Map(_, _))
-            && self
-                .config
-                .occurrence_window()
-                .is_some_and(OccurrenceWindow::is_non_empty)
+        self.collection_view().is_non_empty_map()
     }
 
     /// A finite, optional, exact-once, or lower-bounded table represented by a type-enforced bounded
     /// carrier. `@duplicates preserve` selects `BoundedPairMap`; unique-key tables select
     /// `BoundedMap`. `+` retains the compatibility NonEmpty* representations.
     pub fn is_bounded_map(&self) -> bool {
-        matches!(self.conceptual_type, ConceptualRustType::Map(_, _))
-            && self
-                .config
-                .occurrence_window()
-                .is_some_and(|window| !window.is_loose() && !window.is_non_empty())
+        let collection = self.collection_view();
+        collection.raw_map() && collection.raw_bounded_window().is_some()
     }
 
     pub fn is_bounded_pair_map(&self) -> bool {
@@ -1734,22 +1906,15 @@ impl RustType {
     }
 
     pub fn bounded_map_u64_bounds(&self) -> Option<(u64, u64)> {
-        if !self.is_bounded_map() {
-            return None;
-        }
-        self.config.occurrence_window()?.checked_u64()
+        self.collection_view().bounded_map_u64_bounds()
     }
 
     /// Alias-aware counterpart used for invariant decisions. Naming deliberately retains the raw
     /// predicate above, so a field referring to a named bounded table keeps its rule-derived name
     /// while the BoundedMap target remains the single occurrence-window enforcement door.
     pub fn type_enforced_bounded_map_u64_bounds(&self) -> Option<(u64, u64)> {
-        matches!(
-            self.conceptual_type.resolve_alias_shallow(),
-            ConceptualRustType::Map(_, _)
-        )
-        .then_some(())?;
-        type_enforced_bounded_window(self.config.occurrence_bounds()?, false)
+        self.collection_view()
+            .type_enforced_bounded_map_u64_bounds()
     }
 
     pub fn is_type_enforced_bounded_map(&self) -> bool {
@@ -1764,13 +1929,7 @@ impl RustType {
     /// target). Naming stays on the RAW `is_non_empty_*` so an aliased field keeps its rule-derived
     /// wrapper name rather than synthesizing a structural one.
     pub fn is_type_enforced_non_empty(&self) -> bool {
-        matches!(
-            self.conceptual_type.resolve_alias_shallow(),
-            ConceptualRustType::Array(_) | ConceptualRustType::Map(_, _)
-        ) && self
-            .config
-            .occurrence_window()
-            .is_some_and(OccurrenceWindow::is_non_empty)
+        self.collection_view().is_type_enforced_non_empty()
     }
 
     /// Like `is_type_enforced_non_empty`, but for every bounded ARRAY occurrence represented by a
@@ -2058,6 +2217,7 @@ impl RustType {
         if let Some(len) = self.exact_byte_array_len_checked() {
             return format!("[u8; {len}]");
         }
+        let collection = self.collection_view();
         match &self.conceptual_type {
             ConceptualRustType::Array(inner) => {
                 let element = inner.for_rust_member(types, from_wasm, cli);
@@ -2075,7 +2235,10 @@ impl RustType {
                 }
                 format!(
                     "{}<{element}>",
-                    match (self.is_reject_ordered_set(), self.is_non_empty_array()) {
+                    match (
+                        collection.is_reject_array(),
+                        collection.is_non_empty_array()
+                    ) {
                         // `@duplicates reject`: the uniqueness twin (order-preserving), non-empty flavor
                         // when the rule is also `[+]` (its door composes uniqueness + the min-1 check).
                         (true, true) => "NonEmptyOrderedSet",
@@ -2089,8 +2252,8 @@ impl RustType {
                 format!("Option<{}>", inner.for_rust_member(types, from_wasm, cli))
             }
             ConceptualRustType::Map(k, v)
-                if self.is_preserve_pair_map()
-                    || self.is_non_empty_map()
+                if collection.is_preserve_map()
+                    || collection.is_non_empty_map()
                     || self.is_bounded_map() =>
             {
                 if let Some((min, max)) = self.bounded_map_u64_bounds() {
@@ -2106,7 +2269,7 @@ impl RustType {
                         v.for_rust_member(types, from_wasm, cli)
                     );
                 }
-                let table = match (self.is_preserve_pair_map(), self.is_non_empty_map()) {
+                let table = match (collection.is_preserve_map(), collection.is_non_empty_map()) {
                     // `@duplicates preserve`: the vec-of-pairs twin (duplicate-permitting), non-empty
                     // flavor when the rule is also `{+}` (its door composes the min-1 check).
                     (true, true) => "NonEmptyPairMap",
