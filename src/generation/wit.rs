@@ -904,19 +904,7 @@ pub(crate) fn project(
     );
 
     let mut interfaces = assemble_interfaces(types, cli, &staged, &excluded, &imported);
-    // The per-interface `int` / `any-cbor` definitions are pushed once per USING type above, so
-    // deduplicate them (and give every interface a stable render order) here.
-    for iface in interfaces.values_mut() {
-        iface.types.sort_by(|a, b| a.name().cmp(b.name()));
-        // BOTH sides must be synthesized: a user type that happens to convert to `any-cbor` is a
-        // COLLISION for the detector to report, and collapsing it here would silently swallow the
-        // very thing the detector exists to catch.
-        iface
-            .types
-            .dedup_by(|a, b| synthesized_type(a) && synthesized_type(b) && a.name() == b.name());
-        iface.funcs.sort_by(|a, b| a.name.cmp(&b.name));
-        iface.funcs.dedup_by(|a, b| a.name == b.name);
-    }
+    normalize_interfaces(&mut interfaces);
 
     // Dependency-typed collection PARAMETERS move to an accumulator resource — the borrow hoisted
     // one level up, out of the repeated position wit-bindgen cannot lower (see [`WitAccumulator`]).
@@ -1126,6 +1114,22 @@ fn assemble_interfaces(
         }
     }
     interfaces
+}
+
+fn normalize_interfaces(interfaces: &mut BTreeMap<ModuleScope, WitInterface>) {
+    // The per-interface `int` / `any-cbor` definitions are pushed once per USING type above, so
+    // deduplicate them (and give every interface a stable render order) here.
+    for iface in interfaces.values_mut() {
+        iface.types.sort_by(|a, b| a.name().cmp(b.name()));
+        // BOTH sides must be synthesized: a user type that happens to convert to `any-cbor` is a
+        // COLLISION for the detector to report, and collapsing it here would silently swallow the
+        // very thing the detector exists to catch.
+        iface
+            .types
+            .dedup_by(|a, b| synthesized_type(a) && synthesized_type(b) && a.name() == b.name());
+        iface.funcs.sort_by(|a, b| a.name.cmp(&b.name));
+        iface.funcs.dedup_by(|a, b| a.name == b.name);
+    }
 }
 
 /// Mark every constructor, member and free function whose signature touches an imported type as

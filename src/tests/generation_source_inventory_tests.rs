@@ -303,6 +303,7 @@ const SOURCE_ROLES: &[SourceRole] = &[
         reason: "component WIT projection",
         members: &[
             "wit_escape",
+            "normalize_interfaces",
             "assemble_interfaces",
             "stage_exported_types",
             "project_record_field_rows",
