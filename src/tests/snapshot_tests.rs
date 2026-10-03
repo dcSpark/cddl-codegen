@@ -3206,6 +3206,7 @@ fn emitter_overload_lint_sees_its_anchors() {
     // whose helper used to drop the overload by building a fresh config.
     for (file, func) in [
         ("deserialize.rs", "generate_deserialize"),
+        ("deserialize.rs", "deser_any"),
         ("deserialize.rs", "make_deser_loop_break_check"),
         ("enums.rs", "make_enum_variant_return_if_deserialized"),
         ("serialize.rs", "generate_serialize"),

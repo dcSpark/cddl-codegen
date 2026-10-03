@@ -862,6 +862,31 @@ pub(super) fn make_deserialization_function(name: &str, cli: &Cli) -> codegen::F
     f
 }
 
+fn deser_any(
+    mut deser_code: DeserializationCode,
+    config: DeserializeConfig,
+    before_after: DeserializeBeforeAfter,
+    cli: &Cli,
+    deserializer_name: &str,
+) -> DeserializationCode {
+    if config.optional_field {
+        deser_code.content.line("read_len.read_elems(1)?;");
+        deser_code.read_len_used = true;
+        deser_code.throws = true;
+    }
+    let final_expr_value = format!(
+        "{}::any_cbor::AnyCbor::deserialize({deserializer_name})",
+        cli.common_import_rust()
+    );
+    deser_code.content.line(&final_result_expr_complete(
+        &before_after,
+        &mut deser_code.throws,
+        config.final_exprs,
+        &final_expr_value,
+    ));
+    deser_code
+}
+
 // joins all config.final_expr together (possibly) with the actual value into a tuple type (if multiple)
 // or otherwise the value just goes through on its own
 fn final_expr(encoding_exprs: Vec<String>, actual_value: Option<String>) -> String {
@@ -1592,21 +1617,8 @@ impl GenerationScope {
                 // owner-encoding threading. The type is named through the common-import glue so
                 // `--export-static-crate` / `--common-import-override` resolve it (no `use` needed).
                 SerializingRustType::Root(ConceptualRustType::Any, _cfg) => {
-                    if config.optional_field {
-                        deser_code.content.line("read_len.read_elems(1)?;");
-                        deser_code.read_len_used = true;
-                        deser_code.throws = true;
-                    }
-                    let final_expr_value = format!(
-                        "{}::any_cbor::AnyCbor::deserialize({deserializer_name})",
-                        cli.common_import_rust()
-                    );
-                    deser_code.content.line(&final_result_expr_complete(
-                        &before_after,
-                        &mut deser_code.throws,
-                        config.final_exprs,
-                        &final_expr_value,
-                    ));
+                    deser_code =
+                        deser_any(deser_code, config, before_after, cli, deserializer_name);
                 }
                 SerializingRustType::Root(ConceptualRustType::Rust(ident), type_cfg) => {
                     // check for type-level @custom_deserialize
