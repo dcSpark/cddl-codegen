@@ -1661,8 +1661,7 @@ fn project_record(
     project_record_dynamic_constructor_rows(record, ctx, &mut params, &mut ctor_fallible)?;
     order_record_constructor_params(record, &mut params);
     project_record_dynamic_getter_rows(record, ctx, &mut members)?;
-    members.extend(bytes_members(deserializable, ctx.cli));
-    members.extend(json_members(ctx.cli));
+    project_record_codec_doors(deserializable, ctx.cli, &mut members);
     Ok(WitResource {
         name: name.to_owned(),
         ident: ident.clone(),
@@ -1952,6 +1951,11 @@ fn project_record_dynamic_getter_rows(
         });
     }
     Ok(())
+}
+
+fn project_record_codec_doors(deserializable: bool, cli: &Cli, members: &mut Vec<WitMember>) {
+    members.extend(bytes_members(deserializable, cli));
+    members.extend(json_members(cli));
 }
 
 /// A `@newtype` wrapper → a `resource` with a constructor and the inner-value getter. The getter's
