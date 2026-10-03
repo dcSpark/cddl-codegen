@@ -1908,7 +1908,8 @@ impl GenerationScope {
             // the registry's local-class map). Because these are `pub use` lines compiled as part of
             // THIS crate, the index cannot drift: a line naming a removed wrapper fails this crate's
             // own build. A downstream crate points `--extern-wrapper-index <dep>=<this file>` at it
-            // to skip re-minting the same wrappers (a wasm duplicate-symbol link error otherwise).
+            // to skip re-minting wrappers whose exported class names collide during WASM linking
+            // or binding generation.
             // Emitted even when zero wrappers were minted (header comment only). The paths mirror
             // exactly how `merge_scopes_to_strings` lays the wasm generated tree out: ROOT_SCOPE
             // wrappers live in `generated/mod.rs` (`crate::generated::<Name>`); an exported
@@ -1920,7 +1921,7 @@ impl GenerationScope {
                  // shapes, including their NonEmpty variants). Compiled as part of this crate, so a\n\
                  // line naming a removed wrapper fails this crate's own build — the index cannot\n\
                  // drift. Downstream crates point `--extern-wrapper-index <dep>=<this file>` here to\n\
-                 // avoid re-minting these wrappers (a wasm duplicate-symbol link error otherwise).\n",
+                 // avoid re-minting these wrappers (duplicate exported class names fail linking or binding generation).\n",
             );
             for (ident, definition) in self.wasm_collection_wrapper_registry.local_classes() {
                 let scope = &definition.scope;

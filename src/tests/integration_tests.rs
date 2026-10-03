@@ -20397,12 +20397,11 @@ fn render_wrapper_shape_matches_shape_grammar() {
 
 /// R3b–e of the extern-wrapper-dedup feature: a consumer whose spec uses list/map shapes over a
 /// dependency's extern types DEFERS to the dep's committed `--extern-wrapper-index` instead of
-/// re-minting wrappers the dep already owns (a wasm duplicate-symbol link error otherwise). This is
-/// a bespoke harness (not `run_test`) because it must (1) capture the CLI's stderr to pin the
-/// "candidate not in the dep index" warning, (2) run the honest link gate — `cargo build --target
-/// wasm32-unknown-unknown` — which is where duplicate `#[wasm_bindgen]` classes actually fail, and
-/// (3) assert the pre-fix RED (deferral OFF ⇒ the same link fails with `duplicate symbol`) so the
-/// gate provably distinguishes the two states.
+/// re-minting wrappers the dep already owns.
+/// This bespoke harness captures the CLI's stderr to pin the "candidate not in the dep index" warning,
+/// builds the umbrella for wasm32-unknown-unknown, and checks its exported classes with wasm-bindgen.
+/// Deferral must retain the public classes; disabling it must reject a named duplicate class during
+/// linking or binding generation, depending on the wasm-bindgen version.
 ///
 /// The dep stand-in is a DEDICATED wasm-clean pair `index-dep-crate` (plain rust, no wasm-bindgen —
 /// so its wasm crate is wasm32-linkable) / `index-dep-crate-wasm` (the wasm wrappers + a
@@ -21201,7 +21200,8 @@ fn preserve_map_defer_hint_is_paste_able() {
 /// `#[wasm_bindgen] FooList` collide in one cdylib); the sidecar is a frozen cross-crate contract a
 /// dep will later machine-read (`--wrapper-requests`, Phase 3). Bespoke harness (not `run_test`) for
 /// the same three reasons as `extern_wrapper_index_defers_to_dep`: capture stderr (shadowing
-/// warning), run the honest wasm32 link gate, and pin the flag-off RED (duplicate symbol).
+/// warning), build the wasm32 umbrella and check its bindings, and reject a named duplicate class
+/// with the flag disabled during linking or binding generation.
 ///
 /// Reuses the `index-dep-crate{,-wasm}` dep pair, whose wasm crate hand-provides every borrowed
 /// class (IdxFooList / MapU64ToIdxFoo / NonEmptyIdxFooList / ArrIdxFooList / MapU64ToText — that is
@@ -25227,7 +25227,7 @@ fn wr_assert_no_traps(root: &std::path::Path, ctx: &str) {
 /// its regen lifecycle IN SEQUENCE over DELIBERATELY-REUSED on-disk state, so the edit-preservation
 /// overlay runs against prior output (its real production mode). A thin hand-written umbrella cdylib
 /// (`tests/workspace-regen/umbrella`) links the dep wasm crate AND both consumer wasm crates into one
-/// artifact — the only way two-consumer duplicate symbols become observable at link.
+/// artifact whose link and binding-generation checks expose duplicated public class names.
 ///
 /// The dep (`dep_inputs`) owns `foo`/`bar` and produces NO wrapper structurally, so every borrowed
 /// wrapper is dep-hosted. Consumer A (`alpha`) and B (`beta`) share FooList/MapU64ToFoo/NonEmptyFooList
@@ -33760,9 +33760,10 @@ fn trace_restores_the_full_ir_dump() {
 
 /// `@extern_companions`: a LOCALLY-declared marker rule declares that a structural wasm companion
 /// class of its type ALREADY EXISTS in a sibling wasm crate, so the generator references it instead
-/// of minting a second `#[wasm_bindgen]` class of the same name. The acceptance is at the LINK,
-/// where the duplication actually fails: both wasm crates into one `wasm32-unknown-unknown` cdylib,
-/// GREEN with the directive and RED (`duplicate symbol __wbg_idxfoolist_free`) without it.
+/// of minting a second `#[wasm_bindgen]` class of the same name.
+/// Both wasm crates build into one wasm32-unknown-unknown cdylib, then wasm-bindgen checks its bindings.
+/// The directive must retain the public classes; disabling it must reject a named duplicate class
+/// during linking or binding generation, depending on the wasm-bindgen version.
 ///
 /// BOTH honoring markers ride the one fixture, differing in nothing but the marker word:
 /// `idx_foo = _CDDL_CODEGEN_EXTERN_TYPE_` and `idx_hash = _CDDL_CODEGEN_RAW_BYTES_TYPE_`, each used

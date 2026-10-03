@@ -10,5 +10,5 @@ expression: content
 // shapes, including their NonEmpty variants). Compiled as part of this crate, so a
 // line naming a removed wrapper fails this crate's own build — the index cannot
 // drift. Downstream crates point `--extern-wrapper-index <dep>=<this file>` here to
-// avoid re-minting these wrappers (a wasm duplicate-symbol link error otherwise).
+// avoid re-minting these wrappers (duplicate exported class names fail linking or binding generation).
 pub use crate::generated::NonEmptyU64List;
