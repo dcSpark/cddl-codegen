@@ -2195,6 +2195,87 @@ impl GenerationScope {
         deser_code
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn deser_alias(
+        &mut self,
+        ident: &AliasIdent,
+        ty: &ConceptualRustType,
+        cfg: Cow<'_, RustTypeSerializeConfig>,
+        types: &IntermediateTypes,
+        mut deser_code: DeserializationCode,
+        config: DeserializeConfig,
+        before_after: DeserializeBeforeAfter,
+        cli: &Cli,
+    ) -> DeserializationCode {
+        let alias_info = types.type_aliases().get(ident).unwrap();
+        let config_for_alias = if let Some(custom_deserialize) = alias_info
+            .rule_metadata
+            .as_ref()
+            .and_then(|rmd| rmd.custom_deserialize.clone())
+        {
+            // The rule's `@custom_encodings` rides with the pair it is written beside —
+            // see the serialize twin for the two-channel split.
+            config
+                .custom_deserialize(custom_deserialize)
+                .custom_encodings(
+                    alias_info
+                        .rule_metadata
+                        .as_ref()
+                        .and_then(|rmd| rmd.custom_encodings.clone()),
+                )
+        } else {
+            config
+        };
+        // The member's DECLARED spelling, for the call targets below (a field
+        // `sc: StakeCredential` is filled by `StakeCredential::deserialize`, not by the
+        // alias's structural target). Same lift-from-the-alias shape as the
+        // `custom_deserialize` above: the alias influences how its target is emitted.
+        // `AliasIdent::Reserved` is excluded because a prelude name is not a rust ident.
+        //
+        // The lift is gated on WHO OWNS the encoding operations this descent crossed,
+        // which is readable HERE and nowhere else. A `RustType`'s operations wrap its
+        // conceptual type (`SerializingRustType::from`), so this arm is reached only
+        // AFTER every one of them is consumed — and the two ownerships need opposite
+        // answers at that same point:
+        //
+        //   * The alias RULE owns them (`cred_bytes = bytes .cbor credential`, whose
+        //     `base_type` carries the `CBORBytes`). Then the ident names the WRAPPED
+        //     form, so it does not denote this position at all: `CredBytes` IS the
+        //     bytes-wrapped thing, and `CredBytes::deserialize(inner_de)` compiles (the
+        //     alias is transparent) while claiming to read a bytes-wrapped value where
+        //     the payload is read. Do not lift.
+        //   * The MEMBER's own type expression owns them (`f: #6.9(stake_credential)`,
+        //     an alias with a bare `base_type` plus a tag pushed on at the reference).
+        //     Then the ident denotes exactly the value being read here, and the field is
+        //     typed `StakeCredential` — so lifting is what makes the call target agree
+        //     with the field rather than what breaks it.
+        //
+        // Testing "did this descent cross an operation" instead cannot tell those apart
+        // and gets the second one wrong. A member-expression tag over a rule-owned
+        // `.cbor` (`#6.9(cred_bytes)`) crosses both and must still seal — which it does,
+        // on the RULE's account, because the test reads only the rule.
+        let config_for_alias = match ident {
+            AliasIdent::Rust(rust_ident) if alias_info.base_type.encodings.is_empty() => {
+                config_for_alias.declare_spelling(rust_ident.to_string())
+            }
+            AliasIdent::Rust(_) | AliasIdent::Reserved(_) => config_for_alias,
+        };
+        // keep the OUTER config: an Alias's inner is a bare ConceptualRustType (no
+        // config of its own — see `as_alias`), so recursing with `(&**ty).into()`
+        // would default the config and drop e.g. the occurrence-count bounds a named
+        // array alias carries (its length check would silently vanish here while the
+        // constructor check, emitted from the field's RustType, kept working)
+        self.generate_deserialize(
+            types,
+            SerializingRustType::Root(ty, cfg),
+            before_after,
+            config_for_alias,
+            cli,
+        )
+        .add_to_code(&mut deser_code);
+        deser_code
+    }
+
     /// Generates a DeserializationCode to serialize {serializing_rust_type} using the context in {before_after}
     /// This returned value must be in turn pushed into deserialization code to be used.
     #[must_use]
@@ -3055,74 +3136,16 @@ impl GenerationScope {
                     deser_code.throws = true;
                 }
                 SerializingRustType::Root(ConceptualRustType::Alias(ident, ty), cfg) => {
-                    let alias_info = types.type_aliases().get(ident).unwrap();
-                    let config_for_alias = if let Some(custom_deserialize) = alias_info
-                        .rule_metadata
-                        .as_ref()
-                        .and_then(|rmd| rmd.custom_deserialize.clone())
-                    {
-                        // The rule's `@custom_encodings` rides with the pair it is written beside —
-                        // see the serialize twin for the two-channel split.
-                        config
-                            .custom_deserialize(custom_deserialize)
-                            .custom_encodings(
-                                alias_info
-                                    .rule_metadata
-                                    .as_ref()
-                                    .and_then(|rmd| rmd.custom_encodings.clone()),
-                            )
-                    } else {
-                        config
-                    };
-                    // The member's DECLARED spelling, for the call targets below (a field
-                    // `sc: StakeCredential` is filled by `StakeCredential::deserialize`, not by the
-                    // alias's structural target). Same lift-from-the-alias shape as the
-                    // `custom_deserialize` above: the alias influences how its target is emitted.
-                    // `AliasIdent::Reserved` is excluded because a prelude name is not a rust ident.
-                    //
-                    // The lift is gated on WHO OWNS the encoding operations this descent crossed,
-                    // which is readable HERE and nowhere else. A `RustType`'s operations wrap its
-                    // conceptual type (`SerializingRustType::from`), so this arm is reached only
-                    // AFTER every one of them is consumed — and the two ownerships need opposite
-                    // answers at that same point:
-                    //
-                    //   * The alias RULE owns them (`cred_bytes = bytes .cbor credential`, whose
-                    //     `base_type` carries the `CBORBytes`). Then the ident names the WRAPPED
-                    //     form, so it does not denote this position at all: `CredBytes` IS the
-                    //     bytes-wrapped thing, and `CredBytes::deserialize(inner_de)` compiles (the
-                    //     alias is transparent) while claiming to read a bytes-wrapped value where
-                    //     the payload is read. Do not lift.
-                    //   * The MEMBER's own type expression owns them (`f: #6.9(stake_credential)`,
-                    //     an alias with a bare `base_type` plus a tag pushed on at the reference).
-                    //     Then the ident denotes exactly the value being read here, and the field is
-                    //     typed `StakeCredential` — so lifting is what makes the call target agree
-                    //     with the field rather than what breaks it.
-                    //
-                    // Testing "did this descent cross an operation" instead cannot tell those apart
-                    // and gets the second one wrong. A member-expression tag over a rule-owned
-                    // `.cbor` (`#6.9(cred_bytes)`) crosses both and must still seal — which it does,
-                    // on the RULE's account, because the test reads only the rule.
-                    let config_for_alias = match ident {
-                        AliasIdent::Rust(rust_ident)
-                            if alias_info.base_type.encodings.is_empty() =>
-                        {
-                            config_for_alias.declare_spelling(rust_ident.to_string())
-                        }
-                        AliasIdent::Rust(_) | AliasIdent::Reserved(_) => config_for_alias,
-                    };
-                    // keep the OUTER config: an Alias's inner is a bare ConceptualRustType (no
-                    // config of its own — see `as_alias`), so recursing with `(&**ty).into()`
-                    // would default the config and drop e.g. the occurrence-count bounds a named
-                    // array alias carries (its length check would silently vanish here while the
-                    // constructor check, emitted from the field's RustType, kept working)
-                    self.generate_deserialize(
+                    deser_code = self.deser_alias(
+                        ident,
+                        ty,
+                        cfg,
                         types,
-                        SerializingRustType::Root(ty, cfg),
+                        deser_code,
+                        config,
                         before_after,
-                        config_for_alias,
                         cli,
-                    )
-                    .add_to_code(&mut deser_code);
+                    );
                 }
                 SerializingRustType::EncodingOperation(CBOREncodingOperation::CBORBytes, child) => {
                     deser_code = self.deser_cbor_bytes(
