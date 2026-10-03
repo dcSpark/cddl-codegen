@@ -2692,6 +2692,332 @@ impl GenerationScope {
         deser_code
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn deser_map(
+        &mut self,
+        collection_type: &ConceptualRustType,
+        key_type: &RustType,
+        value_type: &RustType,
+        type_cfg: Cow<'_, RustTypeSerializeConfig>,
+        types: &IntermediateTypes,
+        mut deser_code: DeserializationCode,
+        mut config: DeserializeConfig,
+        before_after: DeserializeBeforeAfter,
+        cli: &Cli,
+        deserializer_name: &str,
+    ) -> DeserializationCode {
+        let collection =
+            crate::intermediate::CollectionTypeView::new(collection_type, type_cfg.as_ref());
+        if config.optional_field {
+            deser_code.content.line("read_len.read_elems(1)?;");
+            deser_code.read_len_used = true;
+        }
+        // `@duplicates preserve` (the pair-map twin): collect into a `Vec<(K, V)>`
+        // (the only shape that can hold duplicate keys) rather than the loose keyed
+        // table, skip the wire-side dup-check, and carry a POSITIONAL encoding sidecar
+        // parallel to the entries (a `BTreeMap` keyed by key value cannot hold two
+        // same-key entries). Everything else in the loop is shared.
+        let preserve_pair_map = collection.is_preserve_map();
+        let table_var = format!("{}_table", config.var_name);
+        if preserve_pair_map {
+            deser_code
+                .content
+                .line(&format!("let mut {table_var} = Vec::new();"));
+        } else {
+            deser_code.content.line(&format!(
+                "let mut {} = {}::new();",
+                table_var,
+                table_type(cli)
+            ));
+        }
+        let key_var_name = format!("{}_key", config.var_name);
+        let value_var_name = format!("{}_value", config.var_name);
+        let key_encs = if cli.preserve_encodings {
+            encoding_fields(types, &key_var_name, key_type, false, cli)
+        } else {
+            vec![]
+        };
+        let value_encs = if cli.preserve_encodings {
+            encoding_fields(types, &value_var_name, value_type, false, cli)
+        } else {
+            vec![]
+        };
+        let len_var = format!("{}_len", config.var_name);
+        if cli.preserve_encodings {
+            deser_code
+                .content
+                .line(&format!("let {len_var} = {deserializer_name}.map_sz()?;"))
+                .line(&format!(
+                    "let {}_encoding = {}.into();",
+                    config.var_name, len_var
+                ));
+            let encodings_ctor = if preserve_pair_map {
+                "Vec::new()"
+            } else {
+                "BTreeMap::new()"
+            };
+            if !key_encs.is_empty() {
+                deser_code.content.line(&format!(
+                    "let mut {}_key_encodings = {encodings_ctor};",
+                    config.var_name
+                ));
+            }
+            if !value_encs.is_empty() {
+                deser_code.content.line(&format!(
+                    "let mut {}_value_encodings = {encodings_ctor};",
+                    config.var_name
+                ));
+            }
+        } else {
+            deser_code
+                .content
+                .line(&format!("let {len_var} = {deserializer_name}.map()?;"));
+        }
+        let mut deser_loop = make_deser_loop(&len_var, &format!("({table_var}.len() as u64)"), cli);
+        deser_loop.push_block(make_deser_loop_break_check(
+            &len_var,
+            deserializer_name,
+            cli,
+        ));
+        let mut key_config = DeserializeConfig::new(&key_var_name);
+        key_config.deserializer_name_overload = config.deserializer_name_overload;
+        let mut value_config = DeserializeConfig::new(&value_var_name);
+        value_config.deserializer_name_overload = config.deserializer_name_overload;
+        let (key_var_names_str, value_var_names_str) = if cli.preserve_encodings {
+            (
+                encoding_var_names_str(types, &key_var_name, key_type, cli),
+                encoding_var_names_str(types, &value_var_name, value_type, cli),
+            )
+        } else {
+            (key_var_name.clone(), value_var_name.clone())
+        };
+        self.generate_deserialize(
+            types,
+            key_type.into(),
+            DeserializeBeforeAfter::new(&format!("let {key_var_names_str} = "), ";", false),
+            key_config,
+            cli,
+        )
+        .add_to(&mut deser_loop);
+        self.generate_deserialize(
+            types,
+            value_type.into(),
+            DeserializeBeforeAfter::new(&format!("let {value_var_names_str} = "), ";", false),
+            value_config,
+            cli,
+        )
+        .add_to(&mut deser_loop);
+        if preserve_pair_map {
+            // `@duplicates preserve`: append EVERY entry (duplicate keys included) —
+            // no dup-check, no `DuplicateKey` (that is the reject-mode path only). The
+            // key value is moved into the pair here; the positional encoding pushes
+            // below re-derive their tuples from the already-bound encoding vars, so
+            // they never touch the moved key value (unlike the loose table, which keys
+            // its encoding maps by the key VALUE and so must clone it).
+            deser_loop.line(format!(
+                "{table_var}.push(({key_var_name}, {value_var_name}));"
+            ));
+            if cli.preserve_encodings {
+                if !key_encs.is_empty() {
+                    deser_loop.line(format!(
+                        "{}_key_encodings.push({});",
+                        config.var_name,
+                        tuple_str(key_encs.iter().map(|enc| enc.field_name.clone()).collect())
+                    ));
+                }
+                if !value_encs.is_empty() {
+                    deser_loop.line(format!(
+                        "{}_value_encodings.push({});",
+                        config.var_name,
+                        tuple_str(
+                            value_encs
+                                .iter()
+                                .map(|enc| enc.field_name.clone())
+                                .collect()
+                        )
+                    ));
+                }
+            }
+            deser_code.content.push_block(deser_loop);
+            if collection.is_non_empty_map() {
+                // `{+ k => v}` preserve: the min-1 door composes non-emptiness with the
+                // vec-of-pairs, routed through the SAME `TryFrom` the API uses so the
+                // wire/API RangeCheck errors are identical.
+                deser_code.content.line(&format!(
+                    "let {table_var} = NonEmptyPairMap::try_from({table_var})?;"
+                ));
+            } else if let Some((min, max)) = collection.bounded_map_u64_bounds() {
+                let max = crate::intermediate::bound_const_arg(max);
+                deser_code.content.line(&format!(
+                    "let {table_var} = BoundedPairMap::<_, _, {min}, {max}>::try_from({table_var})?;"
+                ));
+            } else {
+                // `{* k => v}` preserve: any vec of pairs is valid (infallible `From`).
+                deser_code
+                    .content
+                    .line(&format!("let {table_var} = PairMap::from({table_var});"));
+            }
+            if cli.preserve_encodings {
+                config
+                    .final_exprs
+                    .push(format!("{}_encoding", config.var_name));
+                if !key_encs.is_empty() {
+                    config
+                        .final_exprs
+                        .push(format!("{}_key_encodings", config.var_name));
+                }
+                if !value_encs.is_empty() {
+                    config
+                        .final_exprs
+                        .push(format!("{}_value_encodings", config.var_name));
+                }
+            }
+            deser_code.content.line(&format!(
+                "{}{}{}",
+                before_after.before_str(false),
+                final_expr(config.final_exprs, Some(table_var)),
+                before_after.after_str(false)
+            ));
+            deser_code.throws = true;
+            return deser_code;
+        }
+        let mut dup_check = Block::new(format!(
+            "if {}.insert({}{}, {}).is_some()",
+            table_var,
+            key_var_name,
+            if key_type.conceptual_type.is_copy(types) {
+                ""
+            } else {
+                ".clone()"
+            },
+            value_var_name
+        ));
+        let dup_key_error_key = match &key_type.conceptual_type {
+            ConceptualRustType::Primitive(Primitive::U8)
+            | ConceptualRustType::Primitive(Primitive::U16)
+            | ConceptualRustType::Primitive(Primitive::U32) => {
+                format!("Key::Uint({key_var_name}.into())")
+            }
+            ConceptualRustType::Primitive(Primitive::U64) => {
+                format!("Key::Uint({key_var_name})")
+            }
+            ConceptualRustType::Primitive(Primitive::Str) => {
+                format!("Key::Str({key_var_name})")
+            }
+            // TODO: make a generic one then store serialized CBOR?
+            _ => "Key::Str(String::from(\"some complicated/unsupported type\"))".to_owned(),
+        };
+        dup_check.line(format!(
+            "return Err(DeserializeFailure::DuplicateKey({dup_key_error_key}).into());"
+        ));
+        deser_loop.push_block(dup_check);
+        if cli.preserve_encodings {
+            if !key_encs.is_empty() {
+                deser_loop.line(format!(
+                    "{}_key_encodings.insert({}{}, {});",
+                    config.var_name,
+                    key_var_name,
+                    // The inserted expr is the key VALUE, so gate the clone on the
+                    // key value's copy-ness (matching the adjacent dup-check block),
+                    // NOT its encoding var's — a composite (e.g. array) key value is
+                    // a non-Copy Vec even though its length-encoding var is Copy, so
+                    // moving it here then reusing it below is a preserve-only E0382.
+                    if key_type.conceptual_type.is_copy(types) {
+                        ""
+                    } else {
+                        ".clone()"
+                    },
+                    tuple_str(key_encs.iter().map(|enc| enc.field_name.clone()).collect())
+                ));
+            }
+            if !value_encs.is_empty() {
+                deser_loop.line(format!(
+                    "{}_value_encodings.insert({}{}, {});",
+                    config.var_name,
+                    key_var_name,
+                    // Same as the key-encoding insert: the map is keyed by the key
+                    // VALUE, so gate its clone on the value's copy-ness, not the
+                    // encoding var's.
+                    if key_type.conceptual_type.is_copy(types) {
+                        ""
+                    } else {
+                        ".clone()"
+                    },
+                    tuple_str(
+                        value_encs
+                            .iter()
+                            .map(|enc| enc.field_name.clone())
+                            .collect()
+                    )
+                ));
+            }
+        }
+        deser_code.content.push_block(deser_loop);
+        if collection.is_non_empty_map() {
+            // `{+ k => v}`: route the collected map through the SAME `TryFrom` door the
+            // API uses, so the wire side and API side report the identical RangeCheck
+            // error ("0 not at least 1") and can never drift. The encoding vars stay
+            // keyed off the field (untouched below) — only the value var is rebound.
+            deser_code.content.line(&format!(
+                "let {table_var} = NonEmptyMap::try_from({table_var})?;"
+            ));
+        } else if let Some((min, max)) = collection.raw_bounded_window() {
+            let min = u64::try_from(min.unwrap_or(0))
+                .expect("table occurrence lower bound was validated during parsing");
+            let max = max
+                .map(|max| {
+                    u64::try_from(max)
+                        .expect("table occurrence upper bound was validated during parsing")
+                })
+                .unwrap_or(u64::MAX);
+            let max = crate::intermediate::bound_const_arg(max);
+            deser_code.content.line(&format!(
+                "let {table_var} = BoundedMap::<_, _, {min}, {max}>::try_from({table_var})?;"
+            ));
+        } else if let Some(bounds) = &type_cfg.occurrence_bounds() {
+            // we use cargo fmt after so it's okay if we just use .line() here
+            deser_code.content.line(&bounds_check_if_block(
+                bounds,
+                &format!("{table_var}.len()"),
+                true,
+                true,
+                None,
+                // `.len()` is usize — the widening cast is real
+                false,
+            ));
+        }
+        if cli.preserve_encodings {
+            config
+                .final_exprs
+                .push(format!("{}_encoding", config.var_name));
+            if !key_encs.is_empty() {
+                config
+                    .final_exprs
+                    .push(format!("{}_key_encodings", config.var_name));
+            }
+            if !value_encs.is_empty() {
+                config
+                    .final_exprs
+                    .push(format!("{}_value_encodings", config.var_name));
+            }
+            deser_code.content.line(&format!(
+                "{}{}{}",
+                before_after.before_str(false),
+                final_expr(config.final_exprs, Some(table_var)),
+                before_after.after_str(false)
+            ));
+        } else {
+            deser_code.content.line(&format!(
+                "{}{}{}",
+                before_after.before_str(false),
+                table_var,
+                before_after.after_str(false)
+            ));
+        }
+        deser_code.throws = true;
+        deser_code
+    }
+
     /// Generates a DeserializationCode to serialize {serializing_rust_type} using the context in {before_after}
     /// This returned value must be in turn pushed into deserialization code to be used.
     #[must_use]
@@ -2700,7 +3026,7 @@ impl GenerationScope {
         types: &IntermediateTypes,
         serializing_rust_type: SerializingRustType,
         before_after: DeserializeBeforeAfter,
-        mut config: DeserializeConfig,
+        config: DeserializeConfig,
         cli: &Cli,
     ) -> DeserializationCode {
         if !cli.preserve_encodings {
@@ -2825,332 +3151,18 @@ impl GenerationScope {
                     collection_type @ ConceptualRustType::Map(key_type, value_type),
                     type_cfg,
                 ) => {
-                    let collection = crate::intermediate::CollectionTypeView::new(
+                    deser_code = self.deser_map(
                         collection_type,
-                        type_cfg.as_ref(),
-                    );
-                    if config.optional_field {
-                        deser_code.content.line("read_len.read_elems(1)?;");
-                        deser_code.read_len_used = true;
-                    }
-                    // `@duplicates preserve` (the pair-map twin): collect into a `Vec<(K, V)>`
-                    // (the only shape that can hold duplicate keys) rather than the loose keyed
-                    // table, skip the wire-side dup-check, and carry a POSITIONAL encoding sidecar
-                    // parallel to the entries (a `BTreeMap` keyed by key value cannot hold two
-                    // same-key entries). Everything else in the loop is shared.
-                    let preserve_pair_map = collection.is_preserve_map();
-                    let table_var = format!("{}_table", config.var_name);
-                    if preserve_pair_map {
-                        deser_code
-                            .content
-                            .line(&format!("let mut {table_var} = Vec::new();"));
-                    } else {
-                        deser_code.content.line(&format!(
-                            "let mut {} = {}::new();",
-                            table_var,
-                            table_type(cli)
-                        ));
-                    }
-                    let key_var_name = format!("{}_key", config.var_name);
-                    let value_var_name = format!("{}_value", config.var_name);
-                    let key_encs = if cli.preserve_encodings {
-                        encoding_fields(types, &key_var_name, key_type, false, cli)
-                    } else {
-                        vec![]
-                    };
-                    let value_encs = if cli.preserve_encodings {
-                        encoding_fields(types, &value_var_name, value_type, false, cli)
-                    } else {
-                        vec![]
-                    };
-                    let len_var = format!("{}_len", config.var_name);
-                    if cli.preserve_encodings {
-                        deser_code
-                            .content
-                            .line(&format!("let {len_var} = {deserializer_name}.map_sz()?;"))
-                            .line(&format!(
-                                "let {}_encoding = {}.into();",
-                                config.var_name, len_var
-                            ));
-                        let encodings_ctor = if preserve_pair_map {
-                            "Vec::new()"
-                        } else {
-                            "BTreeMap::new()"
-                        };
-                        if !key_encs.is_empty() {
-                            deser_code.content.line(&format!(
-                                "let mut {}_key_encodings = {encodings_ctor};",
-                                config.var_name
-                            ));
-                        }
-                        if !value_encs.is_empty() {
-                            deser_code.content.line(&format!(
-                                "let mut {}_value_encodings = {encodings_ctor};",
-                                config.var_name
-                            ));
-                        }
-                    } else {
-                        deser_code
-                            .content
-                            .line(&format!("let {len_var} = {deserializer_name}.map()?;"));
-                    }
-                    let mut deser_loop =
-                        make_deser_loop(&len_var, &format!("({table_var}.len() as u64)"), cli);
-                    deser_loop.push_block(make_deser_loop_break_check(
-                        &len_var,
+                        key_type,
+                        value_type,
+                        type_cfg,
+                        types,
+                        deser_code,
+                        config,
+                        before_after,
+                        cli,
                         deserializer_name,
-                        cli,
-                    ));
-                    let mut key_config = DeserializeConfig::new(&key_var_name);
-                    key_config.deserializer_name_overload = config.deserializer_name_overload;
-                    let mut value_config = DeserializeConfig::new(&value_var_name);
-                    value_config.deserializer_name_overload = config.deserializer_name_overload;
-                    let (key_var_names_str, value_var_names_str) = if cli.preserve_encodings {
-                        (
-                            encoding_var_names_str(types, &key_var_name, key_type, cli),
-                            encoding_var_names_str(types, &value_var_name, value_type, cli),
-                        )
-                    } else {
-                        (key_var_name.clone(), value_var_name.clone())
-                    };
-                    self.generate_deserialize(
-                        types,
-                        (&**key_type).into(),
-                        DeserializeBeforeAfter::new(
-                            &format!("let {key_var_names_str} = "),
-                            ";",
-                            false,
-                        ),
-                        key_config,
-                        cli,
-                    )
-                    .add_to(&mut deser_loop);
-                    self.generate_deserialize(
-                        types,
-                        (&**value_type).into(),
-                        DeserializeBeforeAfter::new(
-                            &format!("let {value_var_names_str} = "),
-                            ";",
-                            false,
-                        ),
-                        value_config,
-                        cli,
-                    )
-                    .add_to(&mut deser_loop);
-                    if preserve_pair_map {
-                        // `@duplicates preserve`: append EVERY entry (duplicate keys included) —
-                        // no dup-check, no `DuplicateKey` (that is the reject-mode path only). The
-                        // key value is moved into the pair here; the positional encoding pushes
-                        // below re-derive their tuples from the already-bound encoding vars, so
-                        // they never touch the moved key value (unlike the loose table, which keys
-                        // its encoding maps by the key VALUE and so must clone it).
-                        deser_loop.line(format!(
-                            "{table_var}.push(({key_var_name}, {value_var_name}));"
-                        ));
-                        if cli.preserve_encodings {
-                            if !key_encs.is_empty() {
-                                deser_loop.line(format!(
-                                    "{}_key_encodings.push({});",
-                                    config.var_name,
-                                    tuple_str(
-                                        key_encs.iter().map(|enc| enc.field_name.clone()).collect()
-                                    )
-                                ));
-                            }
-                            if !value_encs.is_empty() {
-                                deser_loop.line(format!(
-                                    "{}_value_encodings.push({});",
-                                    config.var_name,
-                                    tuple_str(
-                                        value_encs
-                                            .iter()
-                                            .map(|enc| enc.field_name.clone())
-                                            .collect()
-                                    )
-                                ));
-                            }
-                        }
-                        deser_code.content.push_block(deser_loop);
-                        if collection.is_non_empty_map() {
-                            // `{+ k => v}` preserve: the min-1 door composes non-emptiness with the
-                            // vec-of-pairs, routed through the SAME `TryFrom` the API uses so the
-                            // wire/API RangeCheck errors are identical.
-                            deser_code.content.line(&format!(
-                                "let {table_var} = NonEmptyPairMap::try_from({table_var})?;"
-                            ));
-                        } else if let Some((min, max)) = collection.bounded_map_u64_bounds() {
-                            let max = crate::intermediate::bound_const_arg(max);
-                            deser_code.content.line(&format!(
-                                "let {table_var} = BoundedPairMap::<_, _, {min}, {max}>::try_from({table_var})?;"
-                            ));
-                        } else {
-                            // `{* k => v}` preserve: any vec of pairs is valid (infallible `From`).
-                            deser_code
-                                .content
-                                .line(&format!("let {table_var} = PairMap::from({table_var});"));
-                        }
-                        if cli.preserve_encodings {
-                            config
-                                .final_exprs
-                                .push(format!("{}_encoding", config.var_name));
-                            if !key_encs.is_empty() {
-                                config
-                                    .final_exprs
-                                    .push(format!("{}_key_encodings", config.var_name));
-                            }
-                            if !value_encs.is_empty() {
-                                config
-                                    .final_exprs
-                                    .push(format!("{}_value_encodings", config.var_name));
-                            }
-                        }
-                        deser_code.content.line(&format!(
-                            "{}{}{}",
-                            before_after.before_str(false),
-                            final_expr(config.final_exprs, Some(table_var)),
-                            before_after.after_str(false)
-                        ));
-                        deser_code.throws = true;
-                        return deser_code;
-                    }
-                    let mut dup_check = Block::new(format!(
-                        "if {}.insert({}{}, {}).is_some()",
-                        table_var,
-                        key_var_name,
-                        if key_type.conceptual_type.is_copy(types) {
-                            ""
-                        } else {
-                            ".clone()"
-                        },
-                        value_var_name
-                    ));
-                    let dup_key_error_key = match &key_type.conceptual_type {
-                        ConceptualRustType::Primitive(Primitive::U8)
-                        | ConceptualRustType::Primitive(Primitive::U16)
-                        | ConceptualRustType::Primitive(Primitive::U32) => {
-                            format!("Key::Uint({key_var_name}.into())")
-                        }
-                        ConceptualRustType::Primitive(Primitive::U64) => {
-                            format!("Key::Uint({key_var_name})")
-                        }
-                        ConceptualRustType::Primitive(Primitive::Str) => {
-                            format!("Key::Str({key_var_name})")
-                        }
-                        // TODO: make a generic one then store serialized CBOR?
-                        _ => "Key::Str(String::from(\"some complicated/unsupported type\"))"
-                            .to_owned(),
-                    };
-                    dup_check.line(format!(
-                        "return Err(DeserializeFailure::DuplicateKey({dup_key_error_key}).into());"
-                    ));
-                    deser_loop.push_block(dup_check);
-                    if cli.preserve_encodings {
-                        if !key_encs.is_empty() {
-                            deser_loop.line(format!(
-                                "{}_key_encodings.insert({}{}, {});",
-                                config.var_name,
-                                key_var_name,
-                                // The inserted expr is the key VALUE, so gate the clone on the
-                                // key value's copy-ness (matching the adjacent dup-check block),
-                                // NOT its encoding var's — a composite (e.g. array) key value is
-                                // a non-Copy Vec even though its length-encoding var is Copy, so
-                                // moving it here then reusing it below is a preserve-only E0382.
-                                if key_type.conceptual_type.is_copy(types) {
-                                    ""
-                                } else {
-                                    ".clone()"
-                                },
-                                tuple_str(
-                                    key_encs.iter().map(|enc| enc.field_name.clone()).collect()
-                                )
-                            ));
-                        }
-                        if !value_encs.is_empty() {
-                            deser_loop.line(format!(
-                                "{}_value_encodings.insert({}{}, {});",
-                                config.var_name,
-                                key_var_name,
-                                // Same as the key-encoding insert: the map is keyed by the key
-                                // VALUE, so gate its clone on the value's copy-ness, not the
-                                // encoding var's.
-                                if key_type.conceptual_type.is_copy(types) {
-                                    ""
-                                } else {
-                                    ".clone()"
-                                },
-                                tuple_str(
-                                    value_encs
-                                        .iter()
-                                        .map(|enc| enc.field_name.clone())
-                                        .collect()
-                                )
-                            ));
-                        }
-                    }
-                    deser_code.content.push_block(deser_loop);
-                    if collection.is_non_empty_map() {
-                        // `{+ k => v}`: route the collected map through the SAME `TryFrom` door the
-                        // API uses, so the wire side and API side report the identical RangeCheck
-                        // error ("0 not at least 1") and can never drift. The encoding vars stay
-                        // keyed off the field (untouched below) — only the value var is rebound.
-                        deser_code.content.line(&format!(
-                            "let {table_var} = NonEmptyMap::try_from({table_var})?;"
-                        ));
-                    } else if let Some((min, max)) = collection.raw_bounded_window() {
-                        let min = u64::try_from(min.unwrap_or(0))
-                            .expect("table occurrence lower bound was validated during parsing");
-                        let max = max
-                            .map(|max| {
-                                u64::try_from(max).expect(
-                                    "table occurrence upper bound was validated during parsing",
-                                )
-                            })
-                            .unwrap_or(u64::MAX);
-                        let max = crate::intermediate::bound_const_arg(max);
-                        deser_code.content.line(&format!(
-                            "let {table_var} = BoundedMap::<_, _, {min}, {max}>::try_from({table_var})?;"
-                        ));
-                    } else if let Some(bounds) = &type_cfg.occurrence_bounds() {
-                        // we use cargo fmt after so it's okay if we just use .line() here
-                        deser_code.content.line(&bounds_check_if_block(
-                            bounds,
-                            &format!("{table_var}.len()"),
-                            true,
-                            true,
-                            None,
-                            // `.len()` is usize — the widening cast is real
-                            false,
-                        ));
-                    }
-                    if cli.preserve_encodings {
-                        config
-                            .final_exprs
-                            .push(format!("{}_encoding", config.var_name));
-                        if !key_encs.is_empty() {
-                            config
-                                .final_exprs
-                                .push(format!("{}_key_encodings", config.var_name));
-                        }
-                        if !value_encs.is_empty() {
-                            config
-                                .final_exprs
-                                .push(format!("{}_value_encodings", config.var_name));
-                        }
-                        deser_code.content.line(&format!(
-                            "{}{}{}",
-                            before_after.before_str(false),
-                            final_expr(config.final_exprs, Some(table_var)),
-                            before_after.after_str(false)
-                        ));
-                    } else {
-                        deser_code.content.line(&format!(
-                            "{}{}{}",
-                            before_after.before_str(false),
-                            table_var,
-                            before_after.after_str(false)
-                        ));
-                    }
-                    deser_code.throws = true;
+                    );
                 }
                 SerializingRustType::Root(ConceptualRustType::Alias(ident, ty), cfg) => {
                     deser_code = self.deser_alias(
