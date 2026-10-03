@@ -259,6 +259,7 @@ const SOURCE_ROLES: &[SourceRole] = &[
         wasm: false,
         reason: "serialization bodies and overload config",
         members: &[
+            "ser_optional",
             "ser_alias",
             "ser_rust_ident",
             "ser_cbor_bytes",

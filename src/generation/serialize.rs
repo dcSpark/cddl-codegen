@@ -1331,6 +1331,50 @@ fn ser_alias(
     )
 }
 
+fn ser_optional(
+    ty: &RustType,
+    types: &IntermediateTypes,
+    body: &mut dyn CodeBlock,
+    config: SerializeConfig,
+    cli: &Cli,
+    expr_ref: &str,
+    serializer_use: &str,
+) {
+    let mut opt_block = Block::new(format!("match {expr_ref}"));
+    // TODO: do this in one line without a block if possible somehow.
+    //       see other comment in generate_enum()
+    let mut some_block = Block::new("Some(x) =>");
+    // The inner serialize must terminate the same way the whole Optional does. When
+    // the Optional is the tail expression (`is_end`), each arm RETURNS the
+    // serializer. When it is one statement among others (a struct field), the arms
+    // must be *statements* ending in `?;`: an inner whose body is inlined (a
+    // collection loop) emits an owning `Ok(serializer)` tail under `is_end=true`,
+    // which moves `serializer` and then conflicts with the caller's trailing
+    // `Ok(serializer)` (E0382). Mirroring `config.is_end` keeps both cases valid.
+    let opt_config = config
+        .clone()
+        .expr("x")
+        .expr_is_ref(true)
+        .end(config.is_end);
+    generate_serialize(types, ty.into(), &mut some_block, opt_config, cli);
+    some_block.after(",");
+    opt_block.push_block(some_block);
+    if config.is_end {
+        opt_block.line(format!(
+            "None => {serializer_use}.write_special(cbor_event::Special::Null),"
+        ));
+    } else {
+        let mut none_block = Block::new("None =>");
+        none_block.line(format!(
+            "{serializer_use}.write_special(cbor_event::Special::Null)?;"
+        ));
+        none_block.after(",");
+        opt_block.push_block(none_block);
+        opt_block.after(";");
+    }
+    body.push_block(opt_block);
+}
+
 /// Write code for serializing {serializing_rust_type} directly into {body}
 pub(super) fn generate_serialize(
     types: &IntermediateTypes,
@@ -1793,39 +1837,7 @@ pub(super) fn generate_serialize(
                 end_len(body, &serializer_pass, &encoding_var, config.is_end, cli);
             }
             SerializingRustType::Root(ConceptualRustType::Optional(ty), _cfg) => {
-                let mut opt_block = Block::new(format!("match {expr_ref}"));
-                // TODO: do this in one line without a block if possible somehow.
-                //       see other comment in generate_enum()
-                let mut some_block = Block::new("Some(x) =>");
-                // The inner serialize must terminate the same way the whole Optional does. When
-                // the Optional is the tail expression (`is_end`), each arm RETURNS the
-                // serializer. When it is one statement among others (a struct field), the arms
-                // must be *statements* ending in `?;`: an inner whose body is inlined (a
-                // collection loop) emits an owning `Ok(serializer)` tail under `is_end=true`,
-                // which moves `serializer` and then conflicts with the caller's trailing
-                // `Ok(serializer)` (E0382). Mirroring `config.is_end` keeps both cases valid.
-                let opt_config = config
-                    .clone()
-                    .expr("x")
-                    .expr_is_ref(true)
-                    .end(config.is_end);
-                generate_serialize(types, (&**ty).into(), &mut some_block, opt_config, cli);
-                some_block.after(",");
-                opt_block.push_block(some_block);
-                if config.is_end {
-                    opt_block.line(format!(
-                        "None => {serializer_use}.write_special(cbor_event::Special::Null),"
-                    ));
-                } else {
-                    let mut none_block = Block::new("None =>");
-                    none_block.line(format!(
-                        "{serializer_use}.write_special(cbor_event::Special::Null)?;"
-                    ));
-                    none_block.after(",");
-                    opt_block.push_block(none_block);
-                    opt_block.after(";");
-                }
-                body.push_block(opt_block);
+                ser_optional(ty, types, body, config, cli, &expr_ref, serializer_use);
             }
             SerializingRustType::Root(ConceptualRustType::Alias(ident, ty), cfg) => {
                 ser_alias(ident, ty, cfg, types, body, config, cli);
