@@ -1658,118 +1658,7 @@ fn project_record(
     let mut members = Vec::new();
     let mut ctor_fallible = false;
     project_record_field_rows(record, ctx, &mut params, &mut members, &mut ctor_fallible)?;
-    // The NonEmpty open table's construction door (`t = { + K_t => V_t, * K_r => V_r }`): the rust
-    // `new` takes the first typed entry, so the WIT constructor projects exactly those two params.
-    // WIT has no min-1 expression for a resource, so the bound lives ONLY in the rust door the
-    // constructor calls — the same place the wasm face leaves it.
-    if let Some(typed) = record
-        .typed_row()
-        .filter(|_| record.is_non_empty_open_table())
-    {
-        let first_key =
-            record.fresh_open_table_non_empty_param_ident("first_key", std::iter::empty());
-        let first_value = record.fresh_open_table_non_empty_param_ident(
-            "first_value",
-            std::iter::once(first_key.clone()),
-        );
-        for (rust_name, ty) in [(first_key, typed.domain()), (first_value, typed.range())] {
-            let validates = wit_param_validates(ty, ctx.types);
-            params.push(WitParam {
-                name: convert_to_kebab_case(&rust_name),
-                rust_name,
-                ty: map_rust_type(ty, ctx)?,
-                validates,
-                rust_type: Some(ty.clone()),
-            });
-            ctor_fallible |= validates;
-        }
-    }
-    // Every other restricted dynamic MAP row enters the native record constructor as its COMPLETE
-    // checked carrier. WIT deliberately despecializes that carrier to `list<tuple<K, V>>`; the
-    // guest conversion below re-enters `NonEmptyMap`/`BoundedMap` (or the pair-map twins) before it
-    // calls `new`. The one typed `+` case above keeps its shipped first-entry ABI instead.
-    for rest in record.captured_dynamic_rows().filter(|row| {
-        !row.is_array_tail()
-            && (row.is_restricted()
-                || (record.has_forbidden_fields() && record.has_protected_rest_keys(ctx.types)))
-            && !(record.is_typed_row(row) && record.is_non_empty_open_table())
-    }) {
-        let ty = WitType::List(Box::new(WitType::Tuple(vec![
-            map_rust_type(rest.domain(), ctx)?,
-            map_rust_type(rest.range(), ctx)?,
-        ])));
-        let carrier = rest.container_type();
-        let validates = wit_param_validates(&carrier, ctx.types);
-        params.push(WitParam {
-            name: convert_to_kebab_case(&rest.field_name),
-            rust_name: rest.field_name.clone(),
-            ty,
-            validates,
-            rust_type: Some(carrier),
-        });
-        ctor_fallible |= validates || record.has_protected_rest_keys(ctx.types);
-    }
-    let multi_array_segments =
-        record.rep == Representation::Array && !record.array_segments.is_empty();
-    // Multiple occurrence segments use complete list parameters on the component boundary. WIT
-    // despecializes each carrier to `list<T>`; the guest re-enters NonEmptyVec/BoundedVec's checked
-    // conversion when the native carrier requires one.
-    if multi_array_segments {
-        for rest in record
-            .captured_dynamic_rows()
-            .filter(|row| row.is_array_tail())
-        {
-            let carrier = rest.container_type();
-            let validates = wit_param_validates(&carrier, ctx.types);
-            params.push(WitParam {
-                name: convert_to_kebab_case(&rest.field_name),
-                rust_name: rest.field_name.clone(),
-                ty: WitType::List(Box::new(map_rust_type(rest.element(), ctx)?)),
-                validates,
-                rust_type: Some(carrier),
-            });
-            ctor_fallible |= validates;
-        }
-    }
-    // The one-or-more open-array tail's Rust `new` takes its first element rather than an
-    // empty-capable list. WIT projects that same element door; the list getter remains a list and
-    // the resource's restricted Rust representation owns the invariant.
-    for rest in record
-        .captured_dynamic_rows()
-        .filter(|row| !multi_array_segments && row.is_non_empty_array_tail())
-    {
-        let rust_name = super::records::first_array_tail_element_param_ident(record, rest);
-        let element = rest.element();
-        let validates = wit_param_validates(element, ctx.types);
-        params.push(WitParam {
-            name: convert_to_kebab_case(&rust_name),
-            rust_name,
-            ty: map_rust_type(element, ctx)?,
-            validates,
-            rust_type: Some(element.clone()),
-        });
-        ctor_fallible |= validates;
-    }
-    // A bounded open-array tail is a complete checked native carrier. WIT has no const-generic
-    // window, so it despecializes to `list<T>` and the guest glue re-enters BoundedVec::try_from
-    // before native construction, exactly as bounded map-row parameters do.
-    for rest in record.captured_dynamic_rows().filter(|row| {
-        !multi_array_segments
-            && row.is_array_tail()
-            && row.is_restricted()
-            && !row.is_non_empty_array_tail()
-    }) {
-        let carrier = rest.container_type();
-        let validates = wit_param_validates(&carrier, ctx.types);
-        params.push(WitParam {
-            name: convert_to_kebab_case(&rest.field_name),
-            rust_name: rest.field_name.clone(),
-            ty: WitType::List(Box::new(map_rust_type(rest.element(), ctx)?)),
-            validates,
-            rust_type: Some(carrier),
-        });
-        ctor_fallible |= validates;
-    }
+    project_record_dynamic_constructor_rows(record, ctx, &mut params, &mut ctor_fallible)?;
     // The native multi-occurrence constructor is positional in authored array order. This projection
     // otherwise appends every dynamic row after fixed fields, which type-checks only when adjacent
     // members happen to share a type and silently feeds the wrong values across the component ABI.
@@ -1927,6 +1816,127 @@ fn project_record_field_rows(
             });
             *ctor_fallible |= validates;
         }
+    }
+    Ok(())
+}
+
+fn project_record_dynamic_constructor_rows(
+    record: &RustRecord,
+    ctx: &mut TypeCtx,
+    params: &mut Vec<WitParam>,
+    ctor_fallible: &mut bool,
+) -> ProjectResult<()> {
+    // The NonEmpty open table's construction door (`t = { + K_t => V_t, * K_r => V_r }`): the rust
+    // `new` takes the first typed entry, so the WIT constructor projects exactly those two params.
+    // WIT has no min-1 expression for a resource, so the bound lives ONLY in the rust door the
+    // constructor calls — the same place the wasm face leaves it.
+    if let Some(typed) = record
+        .typed_row()
+        .filter(|_| record.is_non_empty_open_table())
+    {
+        let first_key =
+            record.fresh_open_table_non_empty_param_ident("first_key", std::iter::empty());
+        let first_value = record.fresh_open_table_non_empty_param_ident(
+            "first_value",
+            std::iter::once(first_key.clone()),
+        );
+        for (rust_name, ty) in [(first_key, typed.domain()), (first_value, typed.range())] {
+            let validates = wit_param_validates(ty, ctx.types);
+            params.push(WitParam {
+                name: convert_to_kebab_case(&rust_name),
+                rust_name,
+                ty: map_rust_type(ty, ctx)?,
+                validates,
+                rust_type: Some(ty.clone()),
+            });
+            *ctor_fallible |= validates;
+        }
+    }
+    // Every other restricted dynamic MAP row enters the native record constructor as its COMPLETE
+    // checked carrier. WIT deliberately despecializes that carrier to `list<tuple<K, V>>`; the
+    // guest conversion below re-enters `NonEmptyMap`/`BoundedMap` (or the pair-map twins) before it
+    // calls `new`. The one typed `+` case above keeps its shipped first-entry ABI instead.
+    for rest in record.captured_dynamic_rows().filter(|row| {
+        !row.is_array_tail()
+            && (row.is_restricted()
+                || (record.has_forbidden_fields() && record.has_protected_rest_keys(ctx.types)))
+            && !(record.is_typed_row(row) && record.is_non_empty_open_table())
+    }) {
+        let ty = WitType::List(Box::new(WitType::Tuple(vec![
+            map_rust_type(rest.domain(), ctx)?,
+            map_rust_type(rest.range(), ctx)?,
+        ])));
+        let carrier = rest.container_type();
+        let validates = wit_param_validates(&carrier, ctx.types);
+        params.push(WitParam {
+            name: convert_to_kebab_case(&rest.field_name),
+            rust_name: rest.field_name.clone(),
+            ty,
+            validates,
+            rust_type: Some(carrier),
+        });
+        *ctor_fallible |= validates || record.has_protected_rest_keys(ctx.types);
+    }
+    let multi_array_segments =
+        record.rep == Representation::Array && !record.array_segments.is_empty();
+    // Multiple occurrence segments use complete list parameters on the component boundary. WIT
+    // despecializes each carrier to `list<T>`; the guest re-enters NonEmptyVec/BoundedVec's checked
+    // conversion when the native carrier requires one.
+    if multi_array_segments {
+        for rest in record
+            .captured_dynamic_rows()
+            .filter(|row| row.is_array_tail())
+        {
+            let carrier = rest.container_type();
+            let validates = wit_param_validates(&carrier, ctx.types);
+            params.push(WitParam {
+                name: convert_to_kebab_case(&rest.field_name),
+                rust_name: rest.field_name.clone(),
+                ty: WitType::List(Box::new(map_rust_type(rest.element(), ctx)?)),
+                validates,
+                rust_type: Some(carrier),
+            });
+            *ctor_fallible |= validates;
+        }
+    }
+    // The one-or-more open-array tail's Rust `new` takes its first element rather than an
+    // empty-capable list. WIT projects that same element door; the list getter remains a list and
+    // the resource's restricted Rust representation owns the invariant.
+    for rest in record
+        .captured_dynamic_rows()
+        .filter(|row| !multi_array_segments && row.is_non_empty_array_tail())
+    {
+        let rust_name = super::records::first_array_tail_element_param_ident(record, rest);
+        let element = rest.element();
+        let validates = wit_param_validates(element, ctx.types);
+        params.push(WitParam {
+            name: convert_to_kebab_case(&rust_name),
+            rust_name,
+            ty: map_rust_type(element, ctx)?,
+            validates,
+            rust_type: Some(element.clone()),
+        });
+        *ctor_fallible |= validates;
+    }
+    // A bounded open-array tail is a complete checked native carrier. WIT has no const-generic
+    // window, so it despecializes to `list<T>` and the guest glue re-enters BoundedVec::try_from
+    // before native construction, exactly as bounded map-row parameters do.
+    for rest in record.captured_dynamic_rows().filter(|row| {
+        !multi_array_segments
+            && row.is_array_tail()
+            && row.is_restricted()
+            && !row.is_non_empty_array_tail()
+    }) {
+        let carrier = rest.container_type();
+        let validates = wit_param_validates(&carrier, ctx.types);
+        params.push(WitParam {
+            name: convert_to_kebab_case(&rest.field_name),
+            rust_name: rest.field_name.clone(),
+            ty: WitType::List(Box::new(map_rust_type(rest.element(), ctx)?)),
+            validates,
+            rust_type: Some(carrier),
+        });
+        *ctor_fallible |= validates;
     }
     Ok(())
 }
