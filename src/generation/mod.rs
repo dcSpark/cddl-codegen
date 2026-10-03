@@ -509,144 +509,7 @@ impl GenerationScope {
             self.extern_wrapper_index = extern_wrapper_index;
         }
 
-        // Type aliases
-        for (alias_ident, alias_info) in types.type_aliases() {
-            // only generate user-defined ones
-            if let AliasIdent::Rust(ident) = alias_ident {
-                // also make sure not to generate it if we instead generated a binary wrapper type
-                if alias_info.emits_rust_alias()
-                    && !(cli.no_synthesized_rust_collection_aliases
-                        && alias_info.synthesized_collection)
-                {
-                    let mut type_alias = TypeAlias::new(
-                        ident,
-                        alias_info.base_type.for_rust_member(types, false, cli),
-                    );
-                    type_alias.vis("pub");
-                    // `.doc()` replaces rather than appends, so every doc line is collected here
-                    // and attached in ONE call: the user's rule-level `@doc` first, then the
-                    // mechanical bound notes (which document generator behavior the user can't
-                    // know to write). The user doc has two sources: plain alias rules carry it in
-                    // `rule_metadata`, while authored collection rules (`foo_list = [* foo]`)
-                    // register their alias via `new_manual` (metadata `None`) but carry the rule's
-                    // `@doc` on their RustStruct config.
-                    let doc_lines = rust_alias_doc_lines(types, ident, alias_info, cli);
-                    if !doc_lines.is_empty() {
-                        type_alias.doc(doc_lines.join("\n"));
-                    }
-                    self.rust(types, ident).push_type_alias(type_alias);
-                }
-                if alias_info.emits_wasm_alias() {
-                    // WASM crate
-                    if let ConceptualRustType::Fixed(constant) =
-                        &alias_info.base_type.conceptual_type
-                    {
-                        // wasm-bindgen doesn't support const or static vars so we must do a function
-                        let (ty, val) = match constant {
-                            FixedValue::Null | FixedValue::Undefined => unreachable!(
-                                "a Rust-ident alias with a bare Fixed base is rejected by register_type_alias \
-                                 (record_bare_fixed_rule_rejection) before generation"
-                            ),
-                            FixedValue::Bool(b) => ("bool", b.to_string()),
-                            FixedValue::Nint(i) => ("i32", i.to_string()),
-                            FixedValue::Uint(u) => ("u32", u.to_string()),
-                            // float_literal, not Display: a whole-valued f64 would render as an
-                            // integer literal in the f64-returning wasm constant fn (E0308).
-                            FixedValue::Float(f) => ("f64", float_fixed_literal(*f)),
-                            FixedValue::Text(s) => {
-                                ("String", format!("\"{}\".to_owned()", escape_rust_str(s)))
-                            }
-                            FixedValue::Bytes(bytes) => {
-                                ("Vec<u8>", FixedValue::bytes_rust_expr(bytes))
-                            }
-                        };
-                        self.wasm(types, ident)
-                            .new_fn(convert_to_snake_case(ident.as_ref()))
-                            .attr("wasm_bindgen")
-                            .vis("pub")
-                            .ret(ty)
-                            .line(val);
-                    } else {
-                        // A passthrough alias to a named collection (`ptm = mp`) is a transparent
-                        // `pub type` in rust but a wrapper struct in wasm; point the wasm alias at that
-                        // wrapper rather than `for_wasm_member`'s inline-only `MapU64To…` name (the
-                        // wrapper-vs-transparent decision lives in `resolved_wasm_alias_target`, shared
-                        // with `scope_references`' type-alias walk so the emitted target and its
-                        // cross-module import cannot drift). Maps are never directly exposable, so this
-                        // covers `passthrumap` while leaving `passthru` (exposable arrays) on the
-                        // transparent `for_wasm_member` path.
-                        // Build a RustType for the exact spelling the alias line uses. In the
-                        // stripped-named branch that is the resolved wrapper target, NOT the
-                        // transparent base shape; registering the latter would check a different
-                        // name than `pub type {ident} = {wasm_target}` actually writes.
-                        let alias_target = match alias_info.resolved_wasm_alias_target(types) {
-                            Some(target) => RustType::new(ConceptualRustType::Rust(target.clone())),
-                            None => alias_info.base_type.clone(),
-                        };
-                        let wasm_target = self.wasm_member_type(
-                            types,
-                            &alias_target,
-                            ident,
-                            "wasm pub type alias target",
-                        );
-                        // A wasm `pub type` alias is a real Rust-source provider for an authored
-                        // collection alias or a structural sole-owner alias, but is not a
-                        // wasm-bindgen class and therefore must not enter `collections.rs`.
-                        // Register its definition at the same emission seam as the alias line.
-                        // `wasm_member_type` above registered the exact target reference.
-                        self.record_wasm_collection_alias_definition(
-                            types,
-                            ident,
-                            &alias_target,
-                            types.scope(ident).clone(),
-                        );
-                        // A rule-name alias BINDING a set nominal (`required_signers =
-                        // nonempty_set<...>` → `pub type RequiredSigners = NonemptySetEd25519KeyHash;`)
-                        // gets NO wasm-bindgen class of its own — wasm-bindgen exports no type aliases,
-                        // so the rule name would vanish from the generated `.d.ts`. Inject a
-                        // `typescript_custom_section` re-exporting the rule name as a TS type alias to
-                        // the nominal class, so TS callers keep compiling through the rename. (JS call
-                        // sites still re-key to the nominal class name — wasm-bindgen cannot alias a
-                        // class as a *value*; the collapse notice + migration docs spell that out.)
-                        // Scoped to set nominals: the collapse the CML set-nominalization regen hit.
-                        let ts_alias_section = if let ConceptualRustType::Rust(bound_ident) =
-                            &alias_info.base_type.conceptual_type
-                        {
-                            types
-                                .rust_struct(bound_ident)
-                                .filter(|rs| rs.config().set_nominal)
-                                .map(|_| {
-                                    let const_name =
-                                        convert_to_snake_case(ident.as_ref()).to_uppercase();
-                                    format!(
-                                        "#[wasm_bindgen(typescript_custom_section)]\nconst TS_ALIAS_{const_name}: &'static str = \"export type {ident} = {wasm_target};\";"
-                                    )
-                                })
-                        } else {
-                            None
-                        };
-                        let wasm_scope = self.wasm(types, ident);
-                        wasm_scope
-                            .push_type_alias(TypeAlias::new(ident, wasm_target).vis("pub").clone());
-                        if let Some(section) = ts_alias_section {
-                            wasm_scope.raw(&section);
-                        }
-                    }
-                    // A type-alias BASE can carry an inline `[+ T]` / `{+ k => v}` shape that only
-                    // this alias reaches — e.g. `x = bytes .cbor [+ uint]` classifies as a plain
-                    // alias (not a `RustStructType::Array`), so the rust_structs minting walk below
-                    // never visits it, while the wasm alias line above names the restricted wrapper
-                    // (`pub type X = NonEmptyU64List;`). Mint the wrappers the base needs here; the
-                    // dedup-to-named and `already_generated` guards inside apply as everywhere else,
-                    // so a base whose shape a named rule owns dedups instead of double-minting.
-                    // (Found by the recombination wasm sweep: rc1205's `NonEmptyU64List` was
-                    // referenced but never emitted — E0425 with generation exit 0.)
-                    if cli.wasm {
-                        self.ensure_non_empty_wrappers(types, &alias_info.base_type, cli);
-                    }
-                }
-            }
-        }
+        self.emit_type_aliases(types, cli);
 
         self.emit_structs_and_alias_wrappers(types, cli);
 
@@ -1477,6 +1340,147 @@ impl GenerationScope {
                             &mut |ty| mint_walk.mint(self, types, ty, MapFlavor::Default, cli),
                             &mut existing_aliases,
                         );
+                    }
+                }
+            }
+        }
+    }
+
+    fn emit_type_aliases(&mut self, types: &IntermediateTypes, cli: &Cli) {
+        // Type aliases
+        for (alias_ident, alias_info) in types.type_aliases() {
+            // only generate user-defined ones
+            if let AliasIdent::Rust(ident) = alias_ident {
+                // also make sure not to generate it if we instead generated a binary wrapper type
+                if alias_info.emits_rust_alias()
+                    && !(cli.no_synthesized_rust_collection_aliases
+                        && alias_info.synthesized_collection)
+                {
+                    let mut type_alias = TypeAlias::new(
+                        ident,
+                        alias_info.base_type.for_rust_member(types, false, cli),
+                    );
+                    type_alias.vis("pub");
+                    // `.doc()` replaces rather than appends, so every doc line is collected here
+                    // and attached in ONE call: the user's rule-level `@doc` first, then the
+                    // mechanical bound notes (which document generator behavior the user can't
+                    // know to write). The user doc has two sources: plain alias rules carry it in
+                    // `rule_metadata`, while authored collection rules (`foo_list = [* foo]`)
+                    // register their alias via `new_manual` (metadata `None`) but carry the rule's
+                    // `@doc` on their RustStruct config.
+                    let doc_lines = rust_alias_doc_lines(types, ident, alias_info, cli);
+                    if !doc_lines.is_empty() {
+                        type_alias.doc(doc_lines.join("\n"));
+                    }
+                    self.rust(types, ident).push_type_alias(type_alias);
+                }
+                if alias_info.emits_wasm_alias() {
+                    // WASM crate
+                    if let ConceptualRustType::Fixed(constant) =
+                        &alias_info.base_type.conceptual_type
+                    {
+                        // wasm-bindgen doesn't support const or static vars so we must do a function
+                        let (ty, val) = match constant {
+                            FixedValue::Null | FixedValue::Undefined => unreachable!(
+                                "a Rust-ident alias with a bare Fixed base is rejected by register_type_alias \
+                                 (record_bare_fixed_rule_rejection) before generation"
+                            ),
+                            FixedValue::Bool(b) => ("bool", b.to_string()),
+                            FixedValue::Nint(i) => ("i32", i.to_string()),
+                            FixedValue::Uint(u) => ("u32", u.to_string()),
+                            // float_literal, not Display: a whole-valued f64 would render as an
+                            // integer literal in the f64-returning wasm constant fn (E0308).
+                            FixedValue::Float(f) => ("f64", float_fixed_literal(*f)),
+                            FixedValue::Text(s) => {
+                                ("String", format!("\"{}\".to_owned()", escape_rust_str(s)))
+                            }
+                            FixedValue::Bytes(bytes) => {
+                                ("Vec<u8>", FixedValue::bytes_rust_expr(bytes))
+                            }
+                        };
+                        self.wasm(types, ident)
+                            .new_fn(convert_to_snake_case(ident.as_ref()))
+                            .attr("wasm_bindgen")
+                            .vis("pub")
+                            .ret(ty)
+                            .line(val);
+                    } else {
+                        // A passthrough alias to a named collection (`ptm = mp`) is a transparent
+                        // `pub type` in rust but a wrapper struct in wasm; point the wasm alias at that
+                        // wrapper rather than `for_wasm_member`'s inline-only `MapU64To…` name (the
+                        // wrapper-vs-transparent decision lives in `resolved_wasm_alias_target`, shared
+                        // with `scope_references`' type-alias walk so the emitted target and its
+                        // cross-module import cannot drift). Maps are never directly exposable, so this
+                        // covers `passthrumap` while leaving `passthru` (exposable arrays) on the
+                        // transparent `for_wasm_member` path.
+                        // Build a RustType for the exact spelling the alias line uses. In the
+                        // stripped-named branch that is the resolved wrapper target, NOT the
+                        // transparent base shape; registering the latter would check a different
+                        // name than `pub type {ident} = {wasm_target}` actually writes.
+                        let alias_target = match alias_info.resolved_wasm_alias_target(types) {
+                            Some(target) => RustType::new(ConceptualRustType::Rust(target.clone())),
+                            None => alias_info.base_type.clone(),
+                        };
+                        let wasm_target = self.wasm_member_type(
+                            types,
+                            &alias_target,
+                            ident,
+                            "wasm pub type alias target",
+                        );
+                        // A wasm `pub type` alias is a real Rust-source provider for an authored
+                        // collection alias or a structural sole-owner alias, but is not a
+                        // wasm-bindgen class and therefore must not enter `collections.rs`.
+                        // Register its definition at the same emission seam as the alias line.
+                        // `wasm_member_type` above registered the exact target reference.
+                        self.record_wasm_collection_alias_definition(
+                            types,
+                            ident,
+                            &alias_target,
+                            types.scope(ident).clone(),
+                        );
+                        // A rule-name alias BINDING a set nominal (`required_signers =
+                        // nonempty_set<...>` → `pub type RequiredSigners = NonemptySetEd25519KeyHash;`)
+                        // gets NO wasm-bindgen class of its own — wasm-bindgen exports no type aliases,
+                        // so the rule name would vanish from the generated `.d.ts`. Inject a
+                        // `typescript_custom_section` re-exporting the rule name as a TS type alias to
+                        // the nominal class, so TS callers keep compiling through the rename. (JS call
+                        // sites still re-key to the nominal class name — wasm-bindgen cannot alias a
+                        // class as a *value*; the collapse notice + migration docs spell that out.)
+                        // Scoped to set nominals: the collapse the CML set-nominalization regen hit.
+                        let ts_alias_section = if let ConceptualRustType::Rust(bound_ident) =
+                            &alias_info.base_type.conceptual_type
+                        {
+                            types
+                                .rust_struct(bound_ident)
+                                .filter(|rs| rs.config().set_nominal)
+                                .map(|_| {
+                                    let const_name =
+                                        convert_to_snake_case(ident.as_ref()).to_uppercase();
+                                    format!(
+                                        "#[wasm_bindgen(typescript_custom_section)]\nconst TS_ALIAS_{const_name}: &'static str = \"export type {ident} = {wasm_target};\";"
+                                    )
+                                })
+                        } else {
+                            None
+                        };
+                        let wasm_scope = self.wasm(types, ident);
+                        wasm_scope
+                            .push_type_alias(TypeAlias::new(ident, wasm_target).vis("pub").clone());
+                        if let Some(section) = ts_alias_section {
+                            wasm_scope.raw(&section);
+                        }
+                    }
+                    // A type-alias BASE can carry an inline `[+ T]` / `{+ k => v}` shape that only
+                    // this alias reaches — e.g. `x = bytes .cbor [+ uint]` classifies as a plain
+                    // alias (not a `RustStructType::Array`), so the rust_structs minting walk below
+                    // never visits it, while the wasm alias line above names the restricted wrapper
+                    // (`pub type X = NonEmptyU64List;`). Mint the wrappers the base needs here; the
+                    // dedup-to-named and `already_generated` guards inside apply as everywhere else,
+                    // so a base whose shape a named rule owns dedups instead of double-minting.
+                    // (Found by the recombination wasm sweep: rc1205's `NonEmptyU64List` was
+                    // referenced but never emitted — E0425 with generation exit 0.)
+                    if cli.wasm {
+                        self.ensure_non_empty_wrappers(types, &alias_info.base_type, cli);
                     }
                 }
             }

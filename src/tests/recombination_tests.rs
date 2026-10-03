@@ -1307,6 +1307,9 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 // The rust-ident/struct-ident invariant assert now lives in mod.rs's
 // `emit_structs_and_alias_wrappers`; its exact assertion and combined mint-walk locals
 // are preserved. It has no active known-panic key; no observed panic is waived.
+// The bare Null/Undefined fixed-alias invariant unreachable now lives in mod.rs's
+// `emit_type_aliases`; its pinned register_type_alias rejection message is unchanged.
+// No active known-panic key is waived; fresh frame classification remains main-owned.
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired when the two anonymous-composite families and the group-choice-arm inline group
     // became graceful rejections) Three classes lived here, and they split by the composite's
