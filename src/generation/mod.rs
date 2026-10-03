@@ -1202,135 +1202,7 @@ impl GenerationScope {
             }
         }
 
-        // imports / module declarations
-        // this is done at the end so we already know all information about output code
-
-        // rust. The codegen provenance header is stamped once per emitted FILE (see
-        // `generated_files` / `export`), not per scope — a scope-level raw would hoist above the
-        // module-linking raws that `merge_scopes_to_strings` prepends into a merged root file.
-        //
-        // These lints are module-scoped rather than detected per-site because their triggers are
-        // intrinsic to the emitted shape, and the fix each lint suggests would distort the generated
-        // public API: CDDL `/` choices become enums whose variant sizes are wildly asymmetric (a bare
-        // newtype next to a large record), and boxing the big variant to satisfy `large_enum_variant`
-        // would change the type's public shape; every fallible generated API returns
-        // `Result<_, DeserializeError>`, a static error type sitting near `result_large_err`'s size
-        // threshold that boxing likewise can't fix without altering signatures. Scoping to the
-        // generated module (not the crate) keeps all three lints live for hand-written code in
-        // consuming crates, matching the `too_many_arguments` precedent.
-        self.rust_lib().raw(
-            "#![allow(clippy::too_many_arguments, clippy::large_enum_variant, clippy::result_large_err)]\n",
-        );
-
-        // declare modules (root lib specific)
-        let runtime_usage = self.runtime_usage(types);
-        if cli.export_static_files() {
-            self.rust_lib().raw("pub mod error;");
-            if cli.preserve_encodings {
-                self.rust_lib().raw("pub mod ordered_hash_map;");
-            }
-            // only crates that actually use `[+ T]` pull in the NonEmptyVec runtime — keeps every
-            // non-`+` crate's output byte-identical. `--wrapper-requests`: a dep hosting a requested
-            // NonEmpty wrapper needs the runtime module even when its own spec has no `[+ …]`.
-            if runtime_usage.non_empty_vec {
-                self.rust_lib().raw("pub mod non_empty;");
-            }
-            if runtime_usage.bounded_vec {
-                self.rust_lib().raw("pub mod bounded;");
-            }
-            if runtime_usage.bounded_map {
-                self.rust_lib().raw("pub mod bounded_map;");
-            }
-            // only crates that actually use `{+ k => v}` pull in the NonEmptyMap runtime
-            if runtime_usage.non_empty_map {
-                self.rust_lib().raw("pub mod non_empty_map;");
-            }
-            // only crates that actually use `@duplicates reject` sets pull in the OrderedSet runtime
-            if runtime_usage.ordered_set {
-                self.rust_lib().raw("pub mod ordered_set;");
-            }
-            // only crates that actually use `@duplicates preserve` tables pull in the PairMap runtime
-            if runtime_usage.pair_map {
-                self.rust_lib().raw("pub mod pair_map;");
-            }
-            // only crates that actually use CDDL `any` pull in the AnyCbor runtime — keeps every
-            // non-`any` crate's output byte-identical (usage-gating). Present in BOTH modes (the
-            // non-preserve variant is a distinct fragment), so gated on usage alone, not preserve.
-            if types.uses_any_cbor() {
-                self.rust_lib().raw("pub mod any_cbor;");
-            }
-            if (cli.json_serde_derives || cli.json_schema_export) && types.uses_static_exact_array()
-            {
-                self.rust_lib().raw("pub mod static_array;");
-            }
-            // only crates with an open struct-map rest row pull in the flatten JSON helpers, and only
-            // under a json flag — keeps every other crate's output byte-identical. Either flag: the
-            // module carries the serde flatten mechanics under --json-serde-derives and the rest-row
-            // schema helper under --json-schema-export, each its own fragment (see
-            // `composed_runtime_static_files`), so a schema-only crate gets the helper without the
-            // serde-dependent half.
-            if (cli.json_serde_derives || cli.json_schema_export) && types.uses_open_struct_rest() {
-                self.rust_lib().raw("pub mod open_struct_rest_json;");
-            }
-            // only crates with an optional-AND-nullable member pull in the double-`Option` serde
-            // adapter — keeps every other crate's output byte-identical. Serde-only (unlike the
-            // module above): `--json-schema-export` adds no annotation for the shape, because the
-            // schema the derive already produces for it is the honest one.
-            if cli.json_serde_derives && types.uses_double_option() {
-                self.rust_lib().raw("pub mod double_option;");
-            }
-            // the honest `serde_json::Value`/`Number` serializer walk. Flag-gated, never spec-gated
-            // (like `json_schema_gen` below, unlike the runtimes above): it is a published API for
-            // hand-written `Serialize` impls on extern / `@custom_json` types, which need it whether
-            // or not the spec uses `any`. The `any_cbor` runtime also routes its natural JSON walk
-            // through it.
-            if cli.json_serde_derives {
-                self.rust_lib().raw("pub mod json_value_ser;");
-            }
-            // the json-gen crate's row registrar + reference-closure check, which THIS crate never
-            // calls — it hosts them so every json-gen crate pointed at this runtime shares one copy.
-            // Flag-gated, never spec-gated (unlike the runtimes above): a json-gen crate that imports
-            // them exists exactly when `--json-schema-export` is on, whatever the spec holds.
-            if cli.json_schema_export {
-                self.rust_lib().raw("pub mod json_schema_gen;");
-            }
-        }
-        if cli.preserve_encodings {
-            self.rust_lib().raw("extern crate derivative;");
-        }
-        // declare common modules in each module (struct files). serialization / cbor_encodings are
-        // each declared only where the corresponding .rs is actually emitted (mirror the conditions
-        // in generated_files / merge_scopes_to_strings): declaring a `pub mod` with no backing file
-        // is E0583, uncompilable.
-        //   - serialization.rs: the root always materializes one (the static prelude is prepended
-        //     unconditionally — merge_scopes_to_strings always writes the root file), and a non-root
-        //     scope only when it has generated serialize impls (`serialize_scopes`). An alias/enum-only
-        //     non-root module (scalar/collection/table alias, or a c-style enum whose serialization is
-        //     emitted elsewhere) produces no serialization.rs, so an unconditional decl was E0583.
-        //   - cbor_encodings.rs: a scope with no encoding structs (e.g. a root of only c-style enums)
-        //     emits no such file, so the decl is conditioned on `cbor_encodings_scopes` the same way.
-        //
-        // The root's entry is MATERIALIZED first rather than assumed present: a spec whose rules are
-        // ALL `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_` markers registers no
-        // generated struct, so nothing has created a root `rust_scopes` entry by the time this loop
-        // runs — the extern re-export glue below is what creates it. The loop then declared nothing
-        // while `merge_scopes_to_strings` still wrote `generated/serialization.rs` AND
-        // `extern_interface_check.rs` still named `crate::generated::serialization::RawBytesEncoding`,
-        // so the crate failed its own build with E0433 and no user-supplied definition could fix it.
-        // `or_default()` on an entry the ordinary path already created is a no-op, so every other
-        // crate's emitted byte order is unchanged.
-        self.rust_scopes.entry((*ROOT_SCOPE).clone()).or_default();
-        for (scope, content) in self.rust_scopes.iter_mut() {
-            if *scope == *ROOT_SCOPE || self.serialize_scopes.contains_key(scope) {
-                content.raw("pub mod serialization;");
-            }
-            if cli.preserve_encodings
-                && scope.export()
-                && self.cbor_encodings_scopes.contains_key(scope)
-            {
-                content.raw("pub mod cbor_encodings;");
-            }
-        }
+        let runtime_usage = self.emit_rust_runtime_declarations(types, cli);
 
         self.emit_rust_extern_reexports(types);
 
@@ -1462,6 +1334,143 @@ impl GenerationScope {
                     .insert(format!("{base}RawBytes"));
             }
         }
+    }
+
+    fn emit_rust_runtime_declarations(
+        &mut self,
+        types: &IntermediateTypes,
+        cli: &Cli,
+    ) -> RuntimeUsage {
+        // imports / module declarations
+        // this is done at the end so we already know all information about output code
+
+        // rust. The codegen provenance header is stamped once per emitted FILE (see
+        // `generated_files` / `export`), not per scope — a scope-level raw would hoist above the
+        // module-linking raws that `merge_scopes_to_strings` prepends into a merged root file.
+        //
+        // These lints are module-scoped rather than detected per-site because their triggers are
+        // intrinsic to the emitted shape, and the fix each lint suggests would distort the generated
+        // public API: CDDL `/` choices become enums whose variant sizes are wildly asymmetric (a bare
+        // newtype next to a large record), and boxing the big variant to satisfy `large_enum_variant`
+        // would change the type's public shape; every fallible generated API returns
+        // `Result<_, DeserializeError>`, a static error type sitting near `result_large_err`'s size
+        // threshold that boxing likewise can't fix without altering signatures. Scoping to the
+        // generated module (not the crate) keeps all three lints live for hand-written code in
+        // consuming crates, matching the `too_many_arguments` precedent.
+        self.rust_lib().raw(
+            "#![allow(clippy::too_many_arguments, clippy::large_enum_variant, clippy::result_large_err)]\n",
+        );
+
+        // declare modules (root lib specific)
+        let runtime_usage = self.runtime_usage(types);
+        if cli.export_static_files() {
+            self.rust_lib().raw("pub mod error;");
+            if cli.preserve_encodings {
+                self.rust_lib().raw("pub mod ordered_hash_map;");
+            }
+            // only crates that actually use `[+ T]` pull in the NonEmptyVec runtime — keeps every
+            // non-`+` crate's output byte-identical. `--wrapper-requests`: a dep hosting a requested
+            // NonEmpty wrapper needs the runtime module even when its own spec has no `[+ …]`.
+            if runtime_usage.non_empty_vec {
+                self.rust_lib().raw("pub mod non_empty;");
+            }
+            if runtime_usage.bounded_vec {
+                self.rust_lib().raw("pub mod bounded;");
+            }
+            if runtime_usage.bounded_map {
+                self.rust_lib().raw("pub mod bounded_map;");
+            }
+            // only crates that actually use `{+ k => v}` pull in the NonEmptyMap runtime
+            if runtime_usage.non_empty_map {
+                self.rust_lib().raw("pub mod non_empty_map;");
+            }
+            // only crates that actually use `@duplicates reject` sets pull in the OrderedSet runtime
+            if runtime_usage.ordered_set {
+                self.rust_lib().raw("pub mod ordered_set;");
+            }
+            // only crates that actually use `@duplicates preserve` tables pull in the PairMap runtime
+            if runtime_usage.pair_map {
+                self.rust_lib().raw("pub mod pair_map;");
+            }
+            // only crates that actually use CDDL `any` pull in the AnyCbor runtime — keeps every
+            // non-`any` crate's output byte-identical (usage-gating). Present in BOTH modes (the
+            // non-preserve variant is a distinct fragment), so gated on usage alone, not preserve.
+            if types.uses_any_cbor() {
+                self.rust_lib().raw("pub mod any_cbor;");
+            }
+            if (cli.json_serde_derives || cli.json_schema_export) && types.uses_static_exact_array()
+            {
+                self.rust_lib().raw("pub mod static_array;");
+            }
+            // only crates with an open struct-map rest row pull in the flatten JSON helpers, and only
+            // under a json flag — keeps every other crate's output byte-identical. Either flag: the
+            // module carries the serde flatten mechanics under --json-serde-derives and the rest-row
+            // schema helper under --json-schema-export, each its own fragment (see
+            // `composed_runtime_static_files`), so a schema-only crate gets the helper without the
+            // serde-dependent half.
+            if (cli.json_serde_derives || cli.json_schema_export) && types.uses_open_struct_rest() {
+                self.rust_lib().raw("pub mod open_struct_rest_json;");
+            }
+            // only crates with an optional-AND-nullable member pull in the double-`Option` serde
+            // adapter — keeps every other crate's output byte-identical. Serde-only (unlike the
+            // module above): `--json-schema-export` adds no annotation for the shape, because the
+            // schema the derive already produces for it is the honest one.
+            if cli.json_serde_derives && types.uses_double_option() {
+                self.rust_lib().raw("pub mod double_option;");
+            }
+            // the honest `serde_json::Value`/`Number` serializer walk. Flag-gated, never spec-gated
+            // (like `json_schema_gen` below, unlike the runtimes above): it is a published API for
+            // hand-written `Serialize` impls on extern / `@custom_json` types, which need it whether
+            // or not the spec uses `any`. The `any_cbor` runtime also routes its natural JSON walk
+            // through it.
+            if cli.json_serde_derives {
+                self.rust_lib().raw("pub mod json_value_ser;");
+            }
+            // the json-gen crate's row registrar + reference-closure check, which THIS crate never
+            // calls — it hosts them so every json-gen crate pointed at this runtime shares one copy.
+            // Flag-gated, never spec-gated (unlike the runtimes above): a json-gen crate that imports
+            // them exists exactly when `--json-schema-export` is on, whatever the spec holds.
+            if cli.json_schema_export {
+                self.rust_lib().raw("pub mod json_schema_gen;");
+            }
+        }
+        if cli.preserve_encodings {
+            self.rust_lib().raw("extern crate derivative;");
+        }
+        // declare common modules in each module (struct files). serialization / cbor_encodings are
+        // each declared only where the corresponding .rs is actually emitted (mirror the conditions
+        // in generated_files / merge_scopes_to_strings): declaring a `pub mod` with no backing file
+        // is E0583, uncompilable.
+        //   - serialization.rs: the root always materializes one (the static prelude is prepended
+        //     unconditionally — merge_scopes_to_strings always writes the root file), and a non-root
+        //     scope only when it has generated serialize impls (`serialize_scopes`). An alias/enum-only
+        //     non-root module (scalar/collection/table alias, or a c-style enum whose serialization is
+        //     emitted elsewhere) produces no serialization.rs, so an unconditional decl was E0583.
+        //   - cbor_encodings.rs: a scope with no encoding structs (e.g. a root of only c-style enums)
+        //     emits no such file, so the decl is conditioned on `cbor_encodings_scopes` the same way.
+        //
+        // The root's entry is MATERIALIZED first rather than assumed present: a spec whose rules are
+        // ALL `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_` markers registers no
+        // generated struct, so nothing has created a root `rust_scopes` entry by the time this loop
+        // runs — the extern re-export glue below is what creates it. The loop then declared nothing
+        // while `merge_scopes_to_strings` still wrote `generated/serialization.rs` AND
+        // `extern_interface_check.rs` still named `crate::generated::serialization::RawBytesEncoding`,
+        // so the crate failed its own build with E0433 and no user-supplied definition could fix it.
+        // `or_default()` on an entry the ordinary path already created is a no-op, so every other
+        // crate's emitted byte order is unchanged.
+        self.rust_scopes.entry((*ROOT_SCOPE).clone()).or_default();
+        for (scope, content) in self.rust_scopes.iter_mut() {
+            if *scope == *ROOT_SCOPE || self.serialize_scopes.contains_key(scope) {
+                content.raw("pub mod serialization;");
+            }
+            if cli.preserve_encodings
+                && scope.export()
+                && self.cbor_encodings_scopes.contains_key(scope)
+            {
+                content.raw("pub mod cbor_encodings;");
+            }
+        }
+        runtime_usage
     }
 
     fn emit_rust_scope_imports(
