@@ -949,6 +949,574 @@ fn deser_fixed(
     deser_code
 }
 
+#[allow(clippy::too_many_arguments)]
+fn deser_primitive(
+    p: &Primitive,
+    type_cfg: Cow<'_, RustTypeSerializeConfig>,
+    mut deser_code: DeserializationCode,
+    config: DeserializeConfig,
+    before_after: DeserializeBeforeAfter,
+    cli: &Cli,
+    deserializer_name: &str,
+) -> DeserializationCode {
+    if config.optional_field {
+        deser_code.content.line("read_len.read_elems(1)?;");
+        deser_code.read_len_used = true;
+        deser_code.throws = true;
+    }
+    let error_convert = if before_after.expects_result {
+        CONVERT_ERR_TO_OURS
+    } else {
+        ""
+    };
+    // Exact byte strings have a static native carrier but CBOR always hands the
+    // decoder a Vec.  Make that one checked handover here, rather than first
+    // emitting the ordinary `.len()` guard and then converting.  This is shared
+    // by every member/element/choice decode route and preserves byte-string
+    // framing (including the `_sz` metadata read).
+    if matches!(p, Primitive::Bytes)
+        && let Some(len) = crate::intermediate::exact_array_len_from_bounds(type_cfg.value_bounds())
+            .map(|result| {
+                result.expect("exact byte array length must be validated before generation")
+            })
+    {
+        let range_error = format!(
+            "DeserializeFailure::RangeCheck{{ found: bytes.len() as i128, min: Some({len}), max: Some({len}) }}.into()"
+        );
+        if cli.preserve_encodings {
+            let mut final_exprs = config.final_exprs;
+            final_exprs.push("StringEncoding::from(enc)".to_owned());
+            let output = final_expr(final_exprs, Some("bytes".to_owned()));
+            deser_code.content.line(&format!(
+                "{}Ok::<_, DeserializeError>({}.bytes_sz()?).and_then(|(bytes, enc)| bytes.try_into().map_err(|bytes: Vec<u8>| {}).map(|bytes: [u8; {len}]| {})){}",
+                before_after.before_str(true),
+                deserializer_name,
+                range_error,
+                output,
+                before_after.after_str(true)
+            ));
+        } else {
+            let output = final_expr(config.final_exprs, Some("bytes".to_owned()));
+            deser_code.content.line(&format!(
+                "{}Ok::<_, DeserializeError>({}.bytes()?).and_then(|bytes| bytes.try_into().map_err(|bytes: Vec<u8>| {})).map(|bytes: [u8; {len}]| {}){}",
+                before_after.before_str(true),
+                deserializer_name,
+                range_error,
+                output,
+                before_after.after_str(true)
+            ));
+        }
+        deser_code.throws = true;
+        return deser_code;
+    }
+    // `width`: the optional (wmin, wmax) window for a width guard on the value
+    // read — Some only for the narrowing-cast unsigned primitives (u8/u16/u32),
+    // None for every width-safe caller (bytes/text/u64/n64).
+    let mut deser_primitive = |mut final_exprs: Vec<String>,
+                               func: &str,
+                               x: &str,
+                               x_expr: &str,
+                               width: Option<(i128, i128)>| {
+        // The nint reader (`negative_integer_sz`) yields the value as `i128`
+        // already, so its RangeCheck `found` needs no widening cast (the unsigned
+        // `func`s read a `u64`, which does).
+        let found_i128 = func == "negative_integer";
+        if cli.preserve_encodings {
+            let enc_expr = match func {
+                "text" | "bytes" => "StringEncoding::from(enc)",
+                _ => "Some(enc)",
+            };
+            final_exprs.push(enc_expr.to_owned());
+            let width_fn = width
+                .map(|(wmin, wmax)| {
+                    width_reject(
+                        &format!("x > {wmax}"),
+                        wmin,
+                        wmax,
+                        "(x, enc)",
+                        "(x, enc)",
+                        !error_convert.is_empty(),
+                        found_i128,
+                    )
+                })
+                .unwrap_or_default();
+            let enc_map_fn = match &type_cfg.value_bounds() {
+                // Convert the error to DeserializeError so the `.and_then`
+                // closure's `Err(DeserializeFailure::…into())` sees a consistent
+                // E — but ONLY when no earlier stage of this chain already did.
+                // The site's `error_convert` and any `width_fn` both leave the
+                // error type as DeserializeError, so re-converting is a redundant
+                // identity `From<T> for T`. Same `converted`-flag rule as
+                // `width_reject`.
+                Some(bounds) => format!(
+                    "{}.and_then(|({}, enc)| {} else {{ Ok({}) }})",
+                    if error_convert.is_empty() && width_fn.is_empty() {
+                        CONVERT_ERR_TO_OURS
+                    } else {
+                        ""
+                    },
+                    x,
+                    bounds_check_if_block(
+                        bounds,
+                        &bounds_check_expr(*p, x),
+                        false,
+                        primitive_non_negative(*p),
+                        None,
+                        found_i128,
+                    ),
+                    final_expr(final_exprs, Some(x_expr.to_owned())),
+                ),
+                None => format!(
+                    ".map(|({}, enc)| {})",
+                    x,
+                    final_expr(final_exprs, Some(x_expr.to_owned()))
+                ),
+            };
+            deser_code.content.line(&format!(
+                "{}{}.{}_sz(){}{}{}{}",
+                before_after.before_str(true),
+                deserializer_name,
+                func,
+                error_convert,
+                width_fn,
+                enc_map_fn,
+                before_after.after_str(true)
+            ));
+        } else {
+            let bounds_fn = non_preserve_bounds_fn(*p, x, &type_cfg.value_bounds());
+            let width_fn = width
+                .map(|(wmin, wmax)| {
+                    width_reject(
+                        &format!("x > {wmax}"),
+                        wmin,
+                        wmax,
+                        "x",
+                        "x",
+                        !bounds_fn.is_empty(),
+                        found_i128,
+                    )
+                })
+                .unwrap_or_default();
+            let cast = match p {
+                Primitive::U64 | Primitive::Str | Primitive::Bytes => Cow::Borrowed(""),
+                _ => Cow::Owned(format!(" as {p}")),
+            };
+            deser_code.content.line(&format!(
+                "{}{}.{}(){}{}?{}{}",
+                before_after.before_str(false),
+                deserializer_name,
+                func,
+                bounds_fn,
+                width_fn,
+                cast,
+                before_after.after_str(false)
+            ));
+            deser_code.throws = true;
+        }
+    };
+    match p {
+        Primitive::Bytes => deser_primitive(config.final_exprs, "bytes", "bytes", "bytes", None),
+        Primitive::U8 | Primitive::U16 | Primitive::U32 => {
+            // The u64 read is wider than the target: width-guard the cast unless
+            // an authored upper bound already caps it.
+            let (wmin, wmax) = prim_window(*p);
+            let width = (!upper_caps(&type_cfg.value_bounds(), wmax)).then_some((wmin, wmax));
+            deser_primitive(
+                config.final_exprs,
+                "unsigned_integer",
+                "x",
+                &format!("x as {}", p),
+                width,
+            )
+        }
+        Primitive::U64 => deser_primitive(config.final_exprs, "unsigned_integer", "x", "x", None),
+        Primitive::I8 | Primitive::I16 | Primitive::I32 | Primitive::I64 => {
+            // A signed int splits across two CBOR major types (uint arm / nint arm),
+            // so we classify the value window per arm: a bound may be vacuous here
+            // (drop it), constraining (keep it), or exclude the arm's whole sign
+            // domain (reject unconditionally). The uint arm reads a `u64` and so can
+            // never compare against a negative bound — hence the classification
+            // rather than a raw full-window check.
+            let uint_arm = classify_sign_arm(&type_cfg.value_bounds(), SignArm::Uint);
+            let nint_arm = classify_sign_arm(&type_cfg.value_bounds(), SignArm::Nint);
+            // Width guards for the per-arm narrowing casts: the uint arm reads a
+            // u64 (can exceed the type max — 2^63 would wrap i64 negative) and the
+            // nint readers return i64/i128 (can fall below the type min). Skipped
+            // when the arm's classified check already caps that side.
+            let (wmin, wmax) = prim_window(*p);
+            let uint_width = uint_arm_needs_width(&uint_arm, wmax);
+            let nint_width = nint_arm_needs_width(&nint_arm, wmin);
+            let mut type_check = Block::new(format!(
+                "{}match {}.cbor_type()?",
+                before_after.before_str(false),
+                deserializer_name
+            ));
+            if cli.preserve_encodings {
+                // Fold the accumulated outer-wrapper encoding exprs (e.g. a Tagged
+                // wrapper's `Some(tag_enc)`, a CBORBytes wrapper's StringEncoding)
+                // into the value tuple — as every other primitive path does via
+                // `final_expr`. Both arms MUST emit the same tuple shape. With an
+                // empty `config.final_exprs` this is the byte-identical
+                // `(x as {p}, Some(enc))`; with wrapper exprs it grows to the
+                // 3-tuple the member-level destructure expects (else a preserve-only
+                // E0308).
+                let mut arm_final_exprs = config.final_exprs.clone();
+                arm_final_exprs.push("Some(enc)".to_owned());
+                let arm_tuple = final_expr(arm_final_exprs, Some(format!("x as {p}")));
+                // `found_i128`: the uint arm reads a `u64` (real widening cast) while
+                // the nint arm reads `negative_integer_sz()` (already `i128` — no cast).
+                let bounds_fn = |arm: &SignArmBounds, found_i128: bool| {
+                    match sign_arm_if_block(arm, "x", false, found_i128) {
+                        // always convert error to have consistent E for the and_then
+                        Some(if_block) => Cow::Owned(format!(
+                            "{}.and_then(|(x, enc)| {} else {{ Ok((x, enc)) }})",
+                            CONVERT_ERR_TO_OURS, if_block,
+                        )),
+                        None => Cow::Borrowed(""),
+                    }
+                };
+                let uint_bounds_fn = bounds_fn(&uint_arm, false);
+                let mut pos = Block::new("cbor_event::Type::UnsignedInteger =>");
+                pos.line(format!(
+                    "let (x, enc) = {}.unsigned_integer_sz(){}{}?;",
+                    deserializer_name,
+                    uint_bounds_fn,
+                    if uint_width {
+                        width_reject(
+                            &format!("x > {wmax}"),
+                            wmin,
+                            wmax,
+                            "(x, enc)",
+                            "(x, enc)",
+                            !uint_bounds_fn.is_empty(),
+                            false,
+                        )
+                    } else {
+                        String::new()
+                    }
+                ))
+                .line(&arm_tuple)
+                .after(",");
+                type_check.push_block(pos);
+                // let this cover both the negative int case + error case
+                let nint_bounds_fn = bounds_fn(&nint_arm, true);
+                let mut neg = Block::new("_ =>");
+                neg.line(format!(
+                    "let (x, enc) = {}.negative_integer_sz(){}{}?;",
+                    deserializer_name,
+                    nint_bounds_fn,
+                    if nint_width {
+                        width_reject(
+                            &format!("x < {wmin}"),
+                            wmin,
+                            wmax,
+                            "(x, enc)",
+                            "(x, enc)",
+                            !nint_bounds_fn.is_empty(),
+                            true,
+                        )
+                    } else {
+                        String::new()
+                    }
+                ))
+                .line(&arm_tuple)
+                .after(",");
+                type_check.push_block(neg);
+            } else {
+                // Both arms here read a narrower-than-i128 value (the uint arm a
+                // `u64`, the I8/I16/I32 nint arm an `i64` from `negative_integer()`),
+                // so the widening `as i128` cast is real — never `found_i128`.
+                let non_preserve_arm_fn = |arm: &SignArmBounds, x: &str| {
+                    match sign_arm_if_block(arm, x, false, false) {
+                        // always convert error to have consistent E for the and_then
+                        Some(if_block) => Cow::Owned(format!(
+                            "{}.and_then(|{}| {} else {{ Ok({}) }})",
+                            CONVERT_ERR_TO_OURS, x, if_block, x,
+                        )),
+                        None => Cow::Borrowed(""),
+                    }
+                };
+                let uint_arm_fn = non_preserve_arm_fn(&uint_arm, "x");
+                type_check.line(format!(
+                    "cbor_event::Type::UnsignedInteger => {}.unsigned_integer(){}{}? as {},",
+                    deserializer_name,
+                    uint_arm_fn,
+                    if uint_width {
+                        width_reject(
+                            &format!("x > {wmax}"),
+                            wmin,
+                            wmax,
+                            "x",
+                            "x",
+                            !uint_arm_fn.is_empty(),
+                            false,
+                        )
+                    } else {
+                        String::new()
+                    },
+                    p
+                ));
+                // negative_integer() reads into i64 and errors on nints below
+                // i64::MIN (upstream's documented pattern is retrying via _sz);
+                // the _sz reader yields i128 across the full nint range, so we use
+                // it directly. It yields the real signed value, so the nint arm
+                // checks the full window directly (no sign partition needed).
+                if *p == Primitive::I64 {
+                    let bounds_fn = match &type_cfg.value_bounds() {
+                        Some(bounds) => Cow::Owned(format!(
+                            "{}.and_then(|(x, _enc)| {} else {{ Ok((x, _enc)) }})",
+                            CONVERT_ERR_TO_OURS,
+                            bounds_check_if_block(
+                                bounds,
+                                &bounds_check_expr(*p, "x"),
+                                false,
+                                primitive_non_negative(*p),
+                                None,
+                                // `negative_integer_sz()` yields the value as i128
+                                true,
+                            ),
+                        )),
+                        None => Cow::Borrowed(""),
+                    };
+                    type_check.line(format!(
+                        "_ => {}.negative_integer_sz(){}{}.map(|(x, _enc)| x)? as {},",
+                        deserializer_name,
+                        bounds_fn,
+                        if nint_width {
+                            width_reject(
+                                &format!("x < {wmin}"),
+                                wmin,
+                                wmax,
+                                "(x, _enc)",
+                                "(x, _enc)",
+                                !bounds_fn.is_empty(),
+                                true,
+                            )
+                        } else {
+                            String::new()
+                        },
+                        p
+                    ));
+                } else {
+                    let nint_arm_fn = non_preserve_arm_fn(&nint_arm, "x");
+                    type_check.line(format!(
+                        "_ => {}.negative_integer(){}{}? as {},",
+                        deserializer_name,
+                        nint_arm_fn,
+                        if nint_width {
+                            width_reject(
+                                &format!("x < {wmin}"),
+                                wmin,
+                                wmax,
+                                "x",
+                                "x",
+                                !nint_arm_fn.is_empty(),
+                                // I8/I16/I32 read `negative_integer()` -> i64: real cast
+                                false,
+                            )
+                        } else {
+                            String::new()
+                        },
+                        p
+                    ));
+                }
+            }
+            type_check.after(before_after.after_str(false));
+            deser_code.content.push_block(type_check);
+            deser_code.throws = true;
+        }
+        Primitive::N64 => {
+            if cli.preserve_encodings {
+                deser_primitive(
+                    config.final_exprs,
+                    "negative_integer",
+                    "x",
+                    // width-safe: the nint domain (-2^64..-1) maps onto the u64
+                    // magnitude exactly, so no guard is needed
+                    "(x + 1).unsigned_abs() as u64",
+                    None,
+                )
+            } else {
+                // negative_integer() reads into i64 and errors on the bottom half
+                // of the nint range (below i64::MIN); the _sz reader yields i128
+                // across the full range, so we use it directly
+                let bounds_fn = match &type_cfg.value_bounds() {
+                    // Convert the read's error to DeserializeError so the `.and_then`
+                    // closure's `Err(DeserializeFailure::…into())` sees a consistent E
+                    // — but ONLY when the site's `error_convert` did not already (it is
+                    // empty under `--annotate-fields=false`, where nothing else on this
+                    // chain converts, so the bare `.and_then` would otherwise infer the
+                    // reader's native `cbor_event::Error` and fail E0277). Same
+                    // convert-at-most-once rule as the I64 nint arm and the bounds fns;
+                    // guarded by `deserialize_converts_error_at_most_once`.
+                    Some(bounds) => Cow::Owned(format!(
+                        "{}.and_then(|(x, _enc)| {} else {{ Ok((x + 1).unsigned_abs() as u64) }})",
+                        if error_convert.is_empty() {
+                            CONVERT_ERR_TO_OURS
+                        } else {
+                            ""
+                        },
+                        bounds_check_if_block(
+                            bounds,
+                            &bounds_check_expr(*p, "x"),
+                            false,
+                            primitive_non_negative(*p),
+                            None,
+                            // `negative_integer_sz()` yields the value as i128
+                            true,
+                        ),
+                    )),
+                    None => Cow::Borrowed(".map(|(x, _enc)| (x + 1).unsigned_abs() as u64)"),
+                };
+                deser_code.content.line(&format!(
+                    "{}{}.negative_integer_sz(){}{}{}",
+                    before_after.before_str(true),
+                    deserializer_name,
+                    error_convert,
+                    bounds_fn,
+                    before_after.after_str(true)
+                ));
+            }
+        }
+        Primitive::Str => deser_primitive(config.final_exprs, "text", "s", "s", None),
+        Primitive::Bool => {
+            // no encoding differences for bool. Use `bool::deserialize` (like the
+            // float arms below) rather than `raw.bool().map_err(Into::into)`: the
+            // latter's intermediate error type is unconstrained in element/push
+            // position (`arr.push(<expr>?)`), so with multiple `From<_> for
+            // DeserializeError` impls it fails inference (E0282/E0283) — e.g.
+            // `[* bool]` emitted non-compiling code.
+            deser_code.content.line(&final_result_expr_complete(
+                &before_after,
+                &mut deser_code.throws,
+                config.final_exprs,
+                &format!("bool::deserialize({deserializer_name})"),
+            ));
+        }
+        Primitive::Float
+        | Primitive::F16
+        | Primitive::F32
+        | Primitive::F64
+        | Primitive::F16To32
+        | Primitive::F32To64 => {
+            // NaN-safe window enforced inline via `and_then` (the value is compared
+            // as f64 so the authored decimal literal is exact). Integer `bounds`
+            // never attach to a float (parsing routes those to float_bounds/reject);
+            // assert it so a routing regression fails loudly instead of silently
+            // skipping enforcement.
+            assert!(
+                type_cfg.bounds.is_none(),
+                "integer bounds on an {p} — parsing must route float constraints to float_bounds"
+            );
+            let is_f32 = p.float_carrier_is_f32();
+            let (min_head, max_head) = p.float_class_window().unwrap();
+            let (min_head, max_head) = (
+                crate::intermediate::float_head_name(min_head),
+                crate::intermediate::float_head_name(max_head),
+            );
+            // Width-unconstrained `float` is EVERY float value, so the plain read IS
+            // the whole check — no membership test to emit. Every other class reads
+            // at any head and then tests the decoded VALUE against the window its
+            // CDDL name spans, erroring on a value its own class excludes rather
+            // than accepting one.
+            let unconstrained = *p == Primitive::Float;
+            if cli.preserve_encodings {
+                // The head WIDTH is the float encoding variable, so the preserve read
+                // is `float_sz()` -> `(f64, Sz)` — the same `(value, enc)` tuple shape
+                // every other `_sz` reader yields, so the tail below is `deser_primitive`'s
+                // preserve half with the float window in place of the integer one.
+                //
+                // An f32 member narrows AFTER the read (the CBOR float domain is f64),
+                // and the bounds window is checked on the NARROWED value so a bounded
+                // `float32` accepts/rejects identically in both profiles — the
+                // non-preserve arm below reads through the same helper for the same
+                // reason.
+                let mut final_exprs = config.final_exprs.clone();
+                final_exprs.push("Some(enc)".to_owned());
+                let value_expr = if is_f32 { "narrow_f32(x)" } else { "x" };
+                // The membership-checked read already yields OUR error type (the
+                // check itself is a `DeserializeFailure`), so neither conversion
+                // applies to it — only the bare `float_sz()` read needs converting.
+                let read_expr = if unconstrained {
+                    format!("{deserializer_name}.float_sz(){error_convert}")
+                } else {
+                    format!(
+                        "read_float_sz_width({deserializer_name}, cbor_event::Sz::{min_head}, cbor_event::Sz::{max_head})"
+                    )
+                };
+                let tail = match &type_cfg.float_bounds {
+                    // Convert the read's error to DeserializeError so the `.and_then`
+                    // closure's `Err(DeserializeFailure::…into())` sees a consistent
+                    // E — but ONLY when the site's `error_convert` did not already
+                    // (the convert-at-most-once rule `deserialize_converts_error_at_most_once`
+                    // guards, shared with `deser_primitive`'s bounds arm).
+                    Some(window) => format!(
+                        "{}.and_then(|(x, enc)| {{ let x = {value_expr}; {} else {{ Ok({}) }} }})",
+                        if error_convert.is_empty() && unconstrained {
+                            CONVERT_ERR_TO_OURS
+                        } else {
+                            ""
+                        },
+                        bounds_check_if_block_float(window, is_f32, "x", false, None),
+                        final_expr(final_exprs, Some("x".to_owned())),
+                    ),
+                    None => format!(
+                        ".map(|(x, enc)| {})",
+                        final_expr(final_exprs, Some(value_expr.to_owned()))
+                    ),
+                };
+                deser_code.content.line(&format!(
+                    "{}{}{}{}",
+                    before_after.before_str(true),
+                    read_expr,
+                    tail,
+                    before_after.after_str(true)
+                ));
+            } else {
+                // Width-unconstrained `float` IS cbor_event's `f64` blanket impl:
+                // that impl accepts any float head and decoding into `f64` is total
+                // (every CBOR float value is binary64-representable), which is
+                // exactly the vacuous class. So the read is the whole of it and
+                // nothing is emitted around it.
+                //
+                // No other class may use a blanket impl. cbor_event's `f32` impl
+                // asks "is this value binary32-representable" — the NESTED reading
+                // of the CDDL names, under which `1.5` is a `float32`. Our classes
+                // partition instead (`1.5` is a `float16` and not a `float32`), so
+                // all five constrained classes read through the runtime's
+                // membership-checked reader; the `f32`-carried ones narrow after the
+                // check, exactly (never an `as` cast).
+                let read_expr = if unconstrained {
+                    format!("{p}::deserialize({deserializer_name})")
+                } else {
+                    let read = format!(
+                        "read_float_width({deserializer_name}, cbor_event::Sz::{min_head}, cbor_event::Sz::{max_head})"
+                    );
+                    if is_f32 {
+                        format!("{read}.map(narrow_f32)")
+                    } else {
+                        read
+                    }
+                };
+                let result_expr = match &type_cfg.float_bounds {
+                    Some(window) => format!(
+                        "{read_expr}.and_then(|x| {} else {{ Ok(x) }})",
+                        bounds_check_if_block_float(window, is_f32, "x", false, None)
+                    ),
+                    None => read_expr,
+                };
+                deser_code.content.line(&final_result_expr_complete(
+                    &before_after,
+                    &mut deser_code.throws,
+                    config.final_exprs,
+                    &result_expr,
+                ));
+            }
+        }
+    };
+    deser_code
+}
+
 // joins all config.final_expr together (possibly) with the actual value into a tuple type (if multiple)
 // or otherwise the value just goes through on its own
 fn final_expr(encoding_exprs: Vec<String>, actual_value: Option<String>) -> String {
@@ -1057,568 +1625,15 @@ impl GenerationScope {
                         deser_fixed(f, deser_code, config, before_after, cli, deserializer_name);
                 }
                 SerializingRustType::Root(ConceptualRustType::Primitive(p), type_cfg) => {
-                    if config.optional_field {
-                        deser_code.content.line("read_len.read_elems(1)?;");
-                        deser_code.read_len_used = true;
-                        deser_code.throws = true;
-                    }
-                    let error_convert = if before_after.expects_result {
-                        CONVERT_ERR_TO_OURS
-                    } else {
-                        ""
-                    };
-                    // Exact byte strings have a static native carrier but CBOR always hands the
-                    // decoder a Vec.  Make that one checked handover here, rather than first
-                    // emitting the ordinary `.len()` guard and then converting.  This is shared
-                    // by every member/element/choice decode route and preserves byte-string
-                    // framing (including the `_sz` metadata read).
-                    if matches!(p, Primitive::Bytes)
-                        && let Some(len) = crate::intermediate::exact_array_len_from_bounds(
-                            type_cfg.value_bounds(),
-                        )
-                        .map(|result| {
-                            result.expect(
-                                "exact byte array length must be validated before generation",
-                            )
-                        })
-                    {
-                        let range_error = format!(
-                            "DeserializeFailure::RangeCheck{{ found: bytes.len() as i128, min: Some({len}), max: Some({len}) }}.into()"
-                        );
-                        if cli.preserve_encodings {
-                            let mut final_exprs = config.final_exprs;
-                            final_exprs.push("StringEncoding::from(enc)".to_owned());
-                            let output = final_expr(final_exprs, Some("bytes".to_owned()));
-                            deser_code.content.line(&format!(
-                                "{}Ok::<_, DeserializeError>({}.bytes_sz()?).and_then(|(bytes, enc)| bytes.try_into().map_err(|bytes: Vec<u8>| {}).map(|bytes: [u8; {len}]| {})){}",
-                                before_after.before_str(true),
-                                deserializer_name,
-                                range_error,
-                                output,
-                                before_after.after_str(true)
-                            ));
-                        } else {
-                            let output = final_expr(config.final_exprs, Some("bytes".to_owned()));
-                            deser_code.content.line(&format!(
-                                "{}Ok::<_, DeserializeError>({}.bytes()?).and_then(|bytes| bytes.try_into().map_err(|bytes: Vec<u8>| {})).map(|bytes: [u8; {len}]| {}){}",
-                                before_after.before_str(true),
-                                deserializer_name,
-                                range_error,
-                                output,
-                                before_after.after_str(true)
-                            ));
-                        }
-                        deser_code.throws = true;
-                        return deser_code;
-                    }
-                    // `width`: the optional (wmin, wmax) window for a width guard on the value
-                    // read — Some only for the narrowing-cast unsigned primitives (u8/u16/u32),
-                    // None for every width-safe caller (bytes/text/u64/n64).
-                    let mut deser_primitive =
-                        |mut final_exprs: Vec<String>,
-                         func: &str,
-                         x: &str,
-                         x_expr: &str,
-                         width: Option<(i128, i128)>| {
-                            // The nint reader (`negative_integer_sz`) yields the value as `i128`
-                            // already, so its RangeCheck `found` needs no widening cast (the unsigned
-                            // `func`s read a `u64`, which does).
-                            let found_i128 = func == "negative_integer";
-                            if cli.preserve_encodings {
-                                let enc_expr = match func {
-                                    "text" | "bytes" => "StringEncoding::from(enc)",
-                                    _ => "Some(enc)",
-                                };
-                                final_exprs.push(enc_expr.to_owned());
-                                let width_fn = width
-                                    .map(|(wmin, wmax)| {
-                                        width_reject(
-                                            &format!("x > {wmax}"),
-                                            wmin,
-                                            wmax,
-                                            "(x, enc)",
-                                            "(x, enc)",
-                                            !error_convert.is_empty(),
-                                            found_i128,
-                                        )
-                                    })
-                                    .unwrap_or_default();
-                                let enc_map_fn = match &type_cfg.value_bounds() {
-                                    // Convert the error to DeserializeError so the `.and_then`
-                                    // closure's `Err(DeserializeFailure::…into())` sees a consistent
-                                    // E — but ONLY when no earlier stage of this chain already did.
-                                    // The site's `error_convert` and any `width_fn` both leave the
-                                    // error type as DeserializeError, so re-converting is a redundant
-                                    // identity `From<T> for T`. Same `converted`-flag rule as
-                                    // `width_reject`.
-                                    Some(bounds) => format!(
-                                        "{}.and_then(|({}, enc)| {} else {{ Ok({}) }})",
-                                        if error_convert.is_empty() && width_fn.is_empty() {
-                                            CONVERT_ERR_TO_OURS
-                                        } else {
-                                            ""
-                                        },
-                                        x,
-                                        bounds_check_if_block(
-                                            bounds,
-                                            &bounds_check_expr(*p, x),
-                                            false,
-                                            primitive_non_negative(*p),
-                                            None,
-                                            found_i128,
-                                        ),
-                                        final_expr(final_exprs, Some(x_expr.to_owned())),
-                                    ),
-                                    None => format!(
-                                        ".map(|({}, enc)| {})",
-                                        x,
-                                        final_expr(final_exprs, Some(x_expr.to_owned()))
-                                    ),
-                                };
-                                deser_code.content.line(&format!(
-                                    "{}{}.{}_sz(){}{}{}{}",
-                                    before_after.before_str(true),
-                                    deserializer_name,
-                                    func,
-                                    error_convert,
-                                    width_fn,
-                                    enc_map_fn,
-                                    before_after.after_str(true)
-                                ));
-                            } else {
-                                let bounds_fn =
-                                    non_preserve_bounds_fn(*p, x, &type_cfg.value_bounds());
-                                let width_fn = width
-                                    .map(|(wmin, wmax)| {
-                                        width_reject(
-                                            &format!("x > {wmax}"),
-                                            wmin,
-                                            wmax,
-                                            "x",
-                                            "x",
-                                            !bounds_fn.is_empty(),
-                                            found_i128,
-                                        )
-                                    })
-                                    .unwrap_or_default();
-                                let cast = match p {
-                                    Primitive::U64 | Primitive::Str | Primitive::Bytes => {
-                                        Cow::Borrowed("")
-                                    }
-                                    _ => Cow::Owned(format!(" as {p}")),
-                                };
-                                deser_code.content.line(&format!(
-                                    "{}{}.{}(){}{}?{}{}",
-                                    before_after.before_str(false),
-                                    deserializer_name,
-                                    func,
-                                    bounds_fn,
-                                    width_fn,
-                                    cast,
-                                    before_after.after_str(false)
-                                ));
-                                deser_code.throws = true;
-                            }
-                        };
-                    match p {
-                        Primitive::Bytes => {
-                            deser_primitive(config.final_exprs, "bytes", "bytes", "bytes", None)
-                        }
-                        Primitive::U8 | Primitive::U16 | Primitive::U32 => {
-                            // The u64 read is wider than the target: width-guard the cast unless
-                            // an authored upper bound already caps it.
-                            let (wmin, wmax) = prim_window(*p);
-                            let width = (!upper_caps(&type_cfg.value_bounds(), wmax))
-                                .then_some((wmin, wmax));
-                            deser_primitive(
-                                config.final_exprs,
-                                "unsigned_integer",
-                                "x",
-                                &format!("x as {}", p),
-                                width,
-                            )
-                        }
-                        Primitive::U64 => {
-                            deser_primitive(config.final_exprs, "unsigned_integer", "x", "x", None)
-                        }
-                        Primitive::I8 | Primitive::I16 | Primitive::I32 | Primitive::I64 => {
-                            // A signed int splits across two CBOR major types (uint arm / nint arm),
-                            // so we classify the value window per arm: a bound may be vacuous here
-                            // (drop it), constraining (keep it), or exclude the arm's whole sign
-                            // domain (reject unconditionally). The uint arm reads a `u64` and so can
-                            // never compare against a negative bound — hence the classification
-                            // rather than a raw full-window check.
-                            let uint_arm =
-                                classify_sign_arm(&type_cfg.value_bounds(), SignArm::Uint);
-                            let nint_arm =
-                                classify_sign_arm(&type_cfg.value_bounds(), SignArm::Nint);
-                            // Width guards for the per-arm narrowing casts: the uint arm reads a
-                            // u64 (can exceed the type max — 2^63 would wrap i64 negative) and the
-                            // nint readers return i64/i128 (can fall below the type min). Skipped
-                            // when the arm's classified check already caps that side.
-                            let (wmin, wmax) = prim_window(*p);
-                            let uint_width = uint_arm_needs_width(&uint_arm, wmax);
-                            let nint_width = nint_arm_needs_width(&nint_arm, wmin);
-                            let mut type_check = Block::new(format!(
-                                "{}match {}.cbor_type()?",
-                                before_after.before_str(false),
-                                deserializer_name
-                            ));
-                            if cli.preserve_encodings {
-                                // Fold the accumulated outer-wrapper encoding exprs (e.g. a Tagged
-                                // wrapper's `Some(tag_enc)`, a CBORBytes wrapper's StringEncoding)
-                                // into the value tuple — as every other primitive path does via
-                                // `final_expr`. Both arms MUST emit the same tuple shape. With an
-                                // empty `config.final_exprs` this is the byte-identical
-                                // `(x as {p}, Some(enc))`; with wrapper exprs it grows to the
-                                // 3-tuple the member-level destructure expects (else a preserve-only
-                                // E0308).
-                                let mut arm_final_exprs = config.final_exprs.clone();
-                                arm_final_exprs.push("Some(enc)".to_owned());
-                                let arm_tuple =
-                                    final_expr(arm_final_exprs, Some(format!("x as {p}")));
-                                // `found_i128`: the uint arm reads a `u64` (real widening cast) while
-                                // the nint arm reads `negative_integer_sz()` (already `i128` — no cast).
-                                let bounds_fn = |arm: &SignArmBounds, found_i128: bool| {
-                                    match sign_arm_if_block(arm, "x", false, found_i128) {
-                                        // always convert error to have consistent E for the and_then
-                                        Some(if_block) => Cow::Owned(format!(
-                                            "{}.and_then(|(x, enc)| {} else {{ Ok((x, enc)) }})",
-                                            CONVERT_ERR_TO_OURS, if_block,
-                                        )),
-                                        None => Cow::Borrowed(""),
-                                    }
-                                };
-                                let uint_bounds_fn = bounds_fn(&uint_arm, false);
-                                let mut pos = Block::new("cbor_event::Type::UnsignedInteger =>");
-                                pos.line(format!(
-                                    "let (x, enc) = {}.unsigned_integer_sz(){}{}?;",
-                                    deserializer_name,
-                                    uint_bounds_fn,
-                                    if uint_width {
-                                        width_reject(
-                                            &format!("x > {wmax}"),
-                                            wmin,
-                                            wmax,
-                                            "(x, enc)",
-                                            "(x, enc)",
-                                            !uint_bounds_fn.is_empty(),
-                                            false,
-                                        )
-                                    } else {
-                                        String::new()
-                                    }
-                                ))
-                                .line(&arm_tuple)
-                                .after(",");
-                                type_check.push_block(pos);
-                                // let this cover both the negative int case + error case
-                                let nint_bounds_fn = bounds_fn(&nint_arm, true);
-                                let mut neg = Block::new("_ =>");
-                                neg.line(format!(
-                                    "let (x, enc) = {}.negative_integer_sz(){}{}?;",
-                                    deserializer_name,
-                                    nint_bounds_fn,
-                                    if nint_width {
-                                        width_reject(
-                                            &format!("x < {wmin}"),
-                                            wmin,
-                                            wmax,
-                                            "(x, enc)",
-                                            "(x, enc)",
-                                            !nint_bounds_fn.is_empty(),
-                                            true,
-                                        )
-                                    } else {
-                                        String::new()
-                                    }
-                                ))
-                                .line(&arm_tuple)
-                                .after(",");
-                                type_check.push_block(neg);
-                            } else {
-                                // Both arms here read a narrower-than-i128 value (the uint arm a
-                                // `u64`, the I8/I16/I32 nint arm an `i64` from `negative_integer()`),
-                                // so the widening `as i128` cast is real — never `found_i128`.
-                                let non_preserve_arm_fn = |arm: &SignArmBounds, x: &str| {
-                                    match sign_arm_if_block(arm, x, false, false) {
-                                        // always convert error to have consistent E for the and_then
-                                        Some(if_block) => Cow::Owned(format!(
-                                            "{}.and_then(|{}| {} else {{ Ok({}) }})",
-                                            CONVERT_ERR_TO_OURS, x, if_block, x,
-                                        )),
-                                        None => Cow::Borrowed(""),
-                                    }
-                                };
-                                let uint_arm_fn = non_preserve_arm_fn(&uint_arm, "x");
-                                type_check
-                                .line(format!(
-                                    "cbor_event::Type::UnsignedInteger => {}.unsigned_integer(){}{}? as {},",
-                                    deserializer_name,
-                                    uint_arm_fn,
-                                    if uint_width {
-                                        width_reject(&format!("x > {wmax}"), wmin, wmax, "x", "x", !uint_arm_fn.is_empty(), false)
-                                    } else {
-                                        String::new()
-                                    },
-                                    p));
-                                // negative_integer() reads into i64 and errors on nints below
-                                // i64::MIN (upstream's documented pattern is retrying via _sz);
-                                // the _sz reader yields i128 across the full nint range, so we use
-                                // it directly. It yields the real signed value, so the nint arm
-                                // checks the full window directly (no sign partition needed).
-                                if *p == Primitive::I64 {
-                                    let bounds_fn = match &type_cfg.value_bounds() {
-                                        Some(bounds) => Cow::Owned(format!(
-                                            "{}.and_then(|(x, _enc)| {} else {{ Ok((x, _enc)) }})",
-                                            CONVERT_ERR_TO_OURS,
-                                            bounds_check_if_block(
-                                                bounds,
-                                                &bounds_check_expr(*p, "x"),
-                                                false,
-                                                primitive_non_negative(*p),
-                                                None,
-                                                // `negative_integer_sz()` yields the value as i128
-                                                true,
-                                            ),
-                                        )),
-                                        None => Cow::Borrowed(""),
-                                    };
-                                    type_check.line(format!(
-                                    "_ => {}.negative_integer_sz(){}{}.map(|(x, _enc)| x)? as {},",
-                                    deserializer_name, bounds_fn,
-                                    if nint_width {
-                                        width_reject(&format!("x < {wmin}"), wmin, wmax, "(x, _enc)", "(x, _enc)", !bounds_fn.is_empty(), true)
-                                    } else {
-                                        String::new()
-                                    },
-                                    p
-                                ));
-                                } else {
-                                    let nint_arm_fn = non_preserve_arm_fn(&nint_arm, "x");
-                                    type_check.line(format!(
-                                        "_ => {}.negative_integer(){}{}? as {},",
-                                        deserializer_name,
-                                        nint_arm_fn,
-                                        if nint_width {
-                                            width_reject(
-                                                &format!("x < {wmin}"),
-                                                wmin,
-                                                wmax,
-                                                "x",
-                                                "x",
-                                                !nint_arm_fn.is_empty(),
-                                                // I8/I16/I32 read `negative_integer()` -> i64: real cast
-                                                false,
-                                            )
-                                        } else {
-                                            String::new()
-                                        },
-                                        p
-                                    ));
-                                }
-                            }
-                            type_check.after(before_after.after_str(false));
-                            deser_code.content.push_block(type_check);
-                            deser_code.throws = true;
-                        }
-                        Primitive::N64 => {
-                            if cli.preserve_encodings {
-                                deser_primitive(
-                                    config.final_exprs,
-                                    "negative_integer",
-                                    "x",
-                                    // width-safe: the nint domain (-2^64..-1) maps onto the u64
-                                    // magnitude exactly, so no guard is needed
-                                    "(x + 1).unsigned_abs() as u64",
-                                    None,
-                                )
-                            } else {
-                                // negative_integer() reads into i64 and errors on the bottom half
-                                // of the nint range (below i64::MIN); the _sz reader yields i128
-                                // across the full range, so we use it directly
-                                let bounds_fn = match &type_cfg.value_bounds() {
-                                    // Convert the read's error to DeserializeError so the `.and_then`
-                                    // closure's `Err(DeserializeFailure::…into())` sees a consistent E
-                                    // — but ONLY when the site's `error_convert` did not already (it is
-                                    // empty under `--annotate-fields=false`, where nothing else on this
-                                    // chain converts, so the bare `.and_then` would otherwise infer the
-                                    // reader's native `cbor_event::Error` and fail E0277). Same
-                                    // convert-at-most-once rule as the I64 nint arm and the bounds fns;
-                                    // guarded by `deserialize_converts_error_at_most_once`.
-                                    Some(bounds) => Cow::Owned(format!(
-                                        "{}.and_then(|(x, _enc)| {} else {{ Ok((x + 1).unsigned_abs() as u64) }})",
-                                        if error_convert.is_empty() {
-                                            CONVERT_ERR_TO_OURS
-                                        } else {
-                                            ""
-                                        },
-                                        bounds_check_if_block(
-                                            bounds,
-                                            &bounds_check_expr(*p, "x"),
-                                            false,
-                                            primitive_non_negative(*p),
-                                            None,
-                                            // `negative_integer_sz()` yields the value as i128
-                                            true,
-                                        ),
-                                    )),
-                                    None => Cow::Borrowed(
-                                        ".map(|(x, _enc)| (x + 1).unsigned_abs() as u64)",
-                                    ),
-                                };
-                                deser_code.content.line(&format!(
-                                    "{}{}.negative_integer_sz(){}{}{}",
-                                    before_after.before_str(true),
-                                    deserializer_name,
-                                    error_convert,
-                                    bounds_fn,
-                                    before_after.after_str(true)
-                                ));
-                            }
-                        }
-                        Primitive::Str => {
-                            deser_primitive(config.final_exprs, "text", "s", "s", None)
-                        }
-                        Primitive::Bool => {
-                            // no encoding differences for bool. Use `bool::deserialize` (like the
-                            // float arms below) rather than `raw.bool().map_err(Into::into)`: the
-                            // latter's intermediate error type is unconstrained in element/push
-                            // position (`arr.push(<expr>?)`), so with multiple `From<_> for
-                            // DeserializeError` impls it fails inference (E0282/E0283) — e.g.
-                            // `[* bool]` emitted non-compiling code.
-                            deser_code.content.line(&final_result_expr_complete(
-                                &before_after,
-                                &mut deser_code.throws,
-                                config.final_exprs,
-                                &format!("bool::deserialize({deserializer_name})"),
-                            ));
-                        }
-                        Primitive::Float
-                        | Primitive::F16
-                        | Primitive::F32
-                        | Primitive::F64
-                        | Primitive::F16To32
-                        | Primitive::F32To64 => {
-                            // NaN-safe window enforced inline via `and_then` (the value is compared
-                            // as f64 so the authored decimal literal is exact). Integer `bounds`
-                            // never attach to a float (parsing routes those to float_bounds/reject);
-                            // assert it so a routing regression fails loudly instead of silently
-                            // skipping enforcement.
-                            assert!(
-                                type_cfg.bounds.is_none(),
-                                "integer bounds on an {p} — parsing must route float constraints to float_bounds"
-                            );
-                            let is_f32 = p.float_carrier_is_f32();
-                            let (min_head, max_head) = p.float_class_window().unwrap();
-                            let (min_head, max_head) = (
-                                crate::intermediate::float_head_name(min_head),
-                                crate::intermediate::float_head_name(max_head),
-                            );
-                            // Width-unconstrained `float` is EVERY float value, so the plain read IS
-                            // the whole check — no membership test to emit. Every other class reads
-                            // at any head and then tests the decoded VALUE against the window its
-                            // CDDL name spans, erroring on a value its own class excludes rather
-                            // than accepting one.
-                            let unconstrained = *p == Primitive::Float;
-                            if cli.preserve_encodings {
-                                // The head WIDTH is the float encoding variable, so the preserve read
-                                // is `float_sz()` -> `(f64, Sz)` — the same `(value, enc)` tuple shape
-                                // every other `_sz` reader yields, so the tail below is `deser_primitive`'s
-                                // preserve half with the float window in place of the integer one.
-                                //
-                                // An f32 member narrows AFTER the read (the CBOR float domain is f64),
-                                // and the bounds window is checked on the NARROWED value so a bounded
-                                // `float32` accepts/rejects identically in both profiles — the
-                                // non-preserve arm below reads through the same helper for the same
-                                // reason.
-                                let mut final_exprs = config.final_exprs.clone();
-                                final_exprs.push("Some(enc)".to_owned());
-                                let value_expr = if is_f32 { "narrow_f32(x)" } else { "x" };
-                                // The membership-checked read already yields OUR error type (the
-                                // check itself is a `DeserializeFailure`), so neither conversion
-                                // applies to it — only the bare `float_sz()` read needs converting.
-                                let read_expr = if unconstrained {
-                                    format!("{deserializer_name}.float_sz(){error_convert}")
-                                } else {
-                                    format!(
-                                        "read_float_sz_width({deserializer_name}, cbor_event::Sz::{min_head}, cbor_event::Sz::{max_head})"
-                                    )
-                                };
-                                let tail = match &type_cfg.float_bounds {
-                                    // Convert the read's error to DeserializeError so the `.and_then`
-                                    // closure's `Err(DeserializeFailure::…into())` sees a consistent
-                                    // E — but ONLY when the site's `error_convert` did not already
-                                    // (the convert-at-most-once rule `deserialize_converts_error_at_most_once`
-                                    // guards, shared with `deser_primitive`'s bounds arm).
-                                    Some(window) => format!(
-                                        "{}.and_then(|(x, enc)| {{ let x = {value_expr}; {} else {{ Ok({}) }} }})",
-                                        if error_convert.is_empty() && unconstrained {
-                                            CONVERT_ERR_TO_OURS
-                                        } else {
-                                            ""
-                                        },
-                                        bounds_check_if_block_float(
-                                            window, is_f32, "x", false, None
-                                        ),
-                                        final_expr(final_exprs, Some("x".to_owned())),
-                                    ),
-                                    None => format!(
-                                        ".map(|(x, enc)| {})",
-                                        final_expr(final_exprs, Some(value_expr.to_owned()))
-                                    ),
-                                };
-                                deser_code.content.line(&format!(
-                                    "{}{}{}{}",
-                                    before_after.before_str(true),
-                                    read_expr,
-                                    tail,
-                                    before_after.after_str(true)
-                                ));
-                            } else {
-                                // Width-unconstrained `float` IS cbor_event's `f64` blanket impl:
-                                // that impl accepts any float head and decoding into `f64` is total
-                                // (every CBOR float value is binary64-representable), which is
-                                // exactly the vacuous class. So the read is the whole of it and
-                                // nothing is emitted around it.
-                                //
-                                // No other class may use a blanket impl. cbor_event's `f32` impl
-                                // asks "is this value binary32-representable" — the NESTED reading
-                                // of the CDDL names, under which `1.5` is a `float32`. Our classes
-                                // partition instead (`1.5` is a `float16` and not a `float32`), so
-                                // all five constrained classes read through the runtime's
-                                // membership-checked reader; the `f32`-carried ones narrow after the
-                                // check, exactly (never an `as` cast).
-                                let read_expr = if unconstrained {
-                                    format!("{p}::deserialize({deserializer_name})")
-                                } else {
-                                    let read = format!(
-                                        "read_float_width({deserializer_name}, cbor_event::Sz::{min_head}, cbor_event::Sz::{max_head})"
-                                    );
-                                    if is_f32 {
-                                        format!("{read}.map(narrow_f32)")
-                                    } else {
-                                        read
-                                    }
-                                };
-                                let result_expr = match &type_cfg.float_bounds {
-                                    Some(window) => format!(
-                                        "{read_expr}.and_then(|x| {} else {{ Ok(x) }})",
-                                        bounds_check_if_block_float(
-                                            window, is_f32, "x", false, None
-                                        )
-                                    ),
-                                    None => read_expr,
-                                };
-                                deser_code.content.line(&final_result_expr_complete(
-                                    &before_after,
-                                    &mut deser_code.throws,
-                                    config.final_exprs,
-                                    &result_expr,
-                                ));
-                            }
-                        }
-                    };
+                    deser_code = deser_primitive(
+                        p,
+                        type_cfg,
+                        deser_code,
+                        config,
+                        before_after,
+                        cli,
+                        deserializer_name,
+                    );
                 }
                 // `any` deserializes via `AnyCbor::deserialize` (self-delimiting; leaves the cursor at
                 // the item's end). Same composition as a plain Rust struct's `.deserialize()`, minus
