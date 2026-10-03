@@ -643,6 +643,7 @@ fn identifier_hazard_crates_compile() {
 /// builders, including any future body fragments owned by that subsystem.
 /// `export.rs` and `component.rs` remain absent: their emitted bodies are the json-schema generator
 /// and wit-bindgen guest glue, neither of which puts a user field beside a fixed local.
+/// `json_annotations.rs` owns serde/schemars attributes and recursive descriptor fragments.
 pub(crate) const EMITTER_SOURCES: &[&str] = &[
     "deserialize.rs",
     "serialize.rs",
@@ -652,6 +653,7 @@ pub(crate) const EMITTER_SOURCES: &[&str] = &[
     "wrappers.rs",
     "wasm_wrapper_registry.rs",
     "json_schema_claims.rs",
+    "json_annotations.rs",
     "encoding_fields.rs",
 ];
 
