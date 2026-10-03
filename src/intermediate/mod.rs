@@ -3864,219 +3864,8 @@ impl<'a> IntermediateTypes<'a> {
         if self.has_rejections() {
             return Err(self.rejections_error());
         }
-        // Resolve concrete generic instances in deterministic waves. A definition-owned child
-        // application can register a new ordinary instance while its parent resolves, so a
-        // one-shot snapshot would leave that child dangling. `BTreeSet` gives source-order-free
-        // work selection and `completed` makes repeated compatible children a no-op.
-        let mut pending_generics = self
-            .generic_instances
-            .keys()
-            .cloned()
-            .collect::<BTreeSet<_>>();
-        let mut completed_generics = BTreeSet::new();
-        // Dedup guard for generic SET-NOMINAL instantiations: every spelling of `set<key_hash>`
-        // resolves to the same `canonical_ident` (`SetKeyHash`), which must mint exactly ONE nominal
-        // wrapper struct. A named binding whose own ident differs (`named_set` → `NamedSet`) then
-        // aliases transparently to it.
-        let mut minted_set_nominals: BTreeSet<RustIdent> = BTreeSet::new();
-        while let Some(instance_ident) = pending_generics.pop_first() {
-            if !completed_generics.insert(instance_ident.clone()) {
-                continue;
-            }
-            let resolved_instance = self
-                .generic_instances
-                .get(&instance_ident)
-                .expect("queued generic instance must remain registered")
-                .resolve(self, cli)?;
-            match resolved_instance {
-                GenericResolved::Resolved {
-                    mut resolved,
-                    inline_type_choices,
-                    child_instances,
-                } => {
-                    // Resolve child templates from their private dependency graph before deriving
-                    // an identity. A nested `outer<inner<p>>` first resolves `inner<uint>`, then
-                    // uses that ordinary concrete ident in `outer<…>`'s canonical fragment.
-                    let mut child_replacements = BTreeMap::new();
-                    let mut pending_children = child_instances;
-                    while !pending_children.is_empty() {
-                        let pending_placeholders = pending_children
-                            .iter()
-                            .map(|child| child.placeholder.clone())
-                            .collect::<BTreeSet<_>>();
-                        let ready = pending_children.iter().position(|child| {
-                            !child.generic_args.iter().any(|arg| {
-                                let mut dependencies = Vec::new();
-                                Self::collect_generic_placeholders_in_type(
-                                    arg,
-                                    &pending_placeholders,
-                                    &mut dependencies,
-                                );
-                                !dependencies.is_empty()
-                            })
-                        });
-                        let Some(ready) = ready else {
-                            return Err("generic child-instance templates contain a cyclic placeholder dependency".into());
-                        };
-                        let mut child = pending_children.remove(ready);
-                        for arg in &mut child.generic_args {
-                            GenericInstance::rewrite_deferred_placeholders_in_type(
-                                arg,
-                                &child_replacements,
-                            );
-                        }
-                        let canonical_ident =
-                            RustIdent::new(crate::parsing::generic_instance_canonical_cddl_ident(
-                                &CDDLIdent::new(child.generic_ident.to_string()),
-                                &child.generic_args,
-                            ));
-                        let registered_child =
-                            self.register_generic_instance(GenericInstance::new(
-                                canonical_ident.clone(),
-                                child.generic_ident,
-                                child.generic_args,
-                                true,
-                                canonical_ident.clone(),
-                            ));
-                        if registered_child && !completed_generics.contains(&canonical_ident) {
-                            pending_generics.insert(canonical_ident.clone());
-                        }
-                        child_replacements.insert(child.placeholder, canonical_ident);
-                    }
-                    // Register each concrete anonymous choice before the generic root that refers
-                    // to it.  This is the ordinary anonymous-choice ownership order, delayed only
-                    // until the exact lexical bindings have concrete arguments.  The shared chooser
-                    // preserves compatible reuse and deterministic incompatible siblings across
-                    // distinct generic instances as well as within one definition.
-                    let mut replacements = BTreeMap::new();
-                    let mut pending = inline_type_choices;
-                    while !pending.is_empty() {
-                        let pending_placeholders = pending
-                            .iter()
-                            .map(|choice| choice.placeholder.clone())
-                            .collect::<BTreeSet<_>>();
-                        let ready = pending.iter().position(|choice| {
-                            let mut dependencies = Vec::new();
-                            Self::collect_generic_placeholders(
-                                &choice.resolved,
-                                &pending_placeholders,
-                                &mut dependencies,
-                            );
-                            dependencies.is_empty()
-                        });
-                        let Some(ready) = ready else {
-                            return Err(
-                                "generic inline type-choice templates contain a cyclic placeholder dependency"
-                                    .into(),
-                            );
-                        };
-                        let mut inline_choice = pending.remove(ready);
-                        GenericInstance::rewrite_inline_choice_placeholders(
-                            &mut inline_choice.resolved,
-                            &child_replacements,
-                        );
-                        // A parent template may name a child template. Materialize children first,
-                        // then rewrite the parent before choosing its normal anonymous-owner name.
-                        GenericInstance::rewrite_inline_choice_placeholders(
-                            &mut inline_choice.resolved,
-                            &replacements,
-                        );
-                        inline_choice.resolved.ident =
-                            GenericInstance::anonymous_type_choice_base_ident(
-                                &inline_choice.resolved,
-                            );
-                        let base_ident = inline_choice.resolved.ident().clone();
-                        let concrete_ident =
-                            self.anonymous_type_choice_ident(&base_ident, &inline_choice.resolved);
-                        inline_choice.resolved.ident = concrete_ident.clone();
-                        self.register_rust_struct(parent_visitor, inline_choice.resolved, cli);
-                        replacements.insert(inline_choice.placeholder, concrete_ident);
-                    }
-                    GenericInstance::rewrite_inline_choice_placeholders(
-                        &mut resolved,
-                        &child_replacements,
-                    );
-                    GenericInstance::rewrite_inline_choice_placeholders(
-                        &mut resolved,
-                        &replacements,
-                    );
-                    self.register_rust_struct(parent_visitor, resolved, cli);
-                }
-                GenericResolved::SetNominal {
-                    instance_ident,
-                    canonical_ident,
-                    resolved,
-                } => {
-                    if minted_set_nominals.insert(canonical_ident.clone()) {
-                        self.register_rust_struct(parent_visitor, resolved, cli);
-                    }
-                    // A named binding (`named_set = set<key_hash>`) becomes a transparent alias TO the
-                    // instantiation nominal: `pub type NamedSet = SetKeyHash;` (rust AND wasm — wasm
-                    // keeps ONE class + this passthrough alias). An anonymous instance's ident already
-                    // IS the canonical, so it needs no alias.
-                    if instance_ident != canonical_ident {
-                        // `@custom_json` on the BINDING has nothing to act on: the binding emits
-                        // `pub type NamedSet = SetKeyHash;` and every derive it would suppress
-                        // belongs to the nominal, whose config comes from the generic DEFINITION.
-                        // The transparent-alias family's usual `@newtype` remedy does not apply —
-                        // a set nominal already IS a wrapper and `@newtype` on the binding is an
-                        // accepted no-op — so this shape carries its own message, naming the
-                        // definition as the rule that owns the derives (probed: `@custom_json` on
-                        // the generic set def drops the nominal's `Serialize`/`JsonSchema` impls).
-                        if self
-                            .rule_directives
-                            .custom_json_rules
-                            .contains(&instance_ident)
-                        {
-                            let source = self
-                                .source_rule_name(&instance_ident)
-                                .unwrap_or(instance_ident.as_ref())
-                                .to_owned();
-                            self.record_rejection(format!(
-                                "@custom_json on `{source}`: this rule binds a generic set nominal, \
-                                 so it emits a transparent `pub type {instance_ident} = \
-                                 {canonical_ident};` and mints no type of its own — the \
-                                 serde/schemars derives it would suppress are on `{canonical_ident}`, \
-                                 whose config comes from the generic DEFINITION. Put `@custom_json` \
-                                 on the definition instead (`<def><T> = #6.258([* T]) / [* T] ; \
-                                 @custom_json`), and hand-write the impls for the nominal."
-                            ));
-                        }
-                        self.register_type_alias(
-                            instance_ident,
-                            AliasInfo::rust_and_wasm(
-                                ConceptualRustType::Rust(canonical_ident).into(),
-                            ),
-                        );
-                    }
-                }
-                GenericResolved::Extern {
-                    instance_ident,
-                    real_ident,
-                    flavored_base,
-                } => {
-                    // `@raw_bytes_flavor` selected the `<Base>RawBytes` wrapper for this instance;
-                    // record the base so the extern re-export glue emits `pub use crate::<Base>RawBytes;`
-                    // (in addition to the plain `pub use crate::<Base>;` the base extern carries).
-                    if let Some(base) = flavored_base {
-                        self.mark_raw_bytes_flavor_emitted(base);
-                    }
-                    // must be generic extern - register it so other lookups don't fail
-                    self.register_rust_struct(
-                        parent_visitor,
-                        RustStruct::new_extern(instance_ident.clone()),
-                        cli,
-                    );
-                    // we do direct rust alias replacing (gen_rust_alias=false) since no problems with generics in rust
-                    // but wasm_bindgen can't work with it directly we assume the user will supply the correct mappings
-                    self.register_type_alias(
-                        instance_ident,
-                        AliasInfo::rust_only(ConceptualRustType::Rust(real_ident).into()),
-                    );
-                }
-            }
-        }
-        // The `Resolved` arm above registered each generic COLLECTION instance's transparent alias
+        self.resolve_generic_instances(parent_visitor, cli)?;
+        // Generic resolution registered each generic COLLECTION instance's transparent alias
         // (`xs_int = xs<uint>` → `pub type XsInt = Vec<u64>;`) only just now — AFTER every use-site
         // field was built at parse time. Re-resolve those fields so the generic path converges on
         // the SAME structural collection field type the non-generic path already has (see the method
@@ -5037,6 +4826,226 @@ impl<'a> IntermediateTypes<'a> {
         // finalize would silently swallow anything recorded here.
         if self.has_rejections() {
             return Err(self.rejections_error());
+        }
+        Ok(())
+    }
+
+    fn resolve_generic_instances(
+        &mut self,
+        parent_visitor: &ParentVisitor,
+        cli: &Cli,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // Resolve concrete generic instances in deterministic waves. A definition-owned child
+        // application can register a new ordinary instance while its parent resolves, so a
+        // one-shot snapshot would leave that child dangling. `BTreeSet` gives source-order-free
+        // work selection and `completed` makes repeated compatible children a no-op.
+        let mut pending_generics = self
+            .generic_instances
+            .keys()
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        let mut completed_generics = BTreeSet::new();
+        // Dedup guard for generic SET-NOMINAL instantiations: every spelling of `set<key_hash>`
+        // resolves to the same `canonical_ident` (`SetKeyHash`), which must mint exactly ONE nominal
+        // wrapper struct. A named binding whose own ident differs (`named_set` → `NamedSet`) then
+        // aliases transparently to it.
+        let mut minted_set_nominals: BTreeSet<RustIdent> = BTreeSet::new();
+        while let Some(instance_ident) = pending_generics.pop_first() {
+            if !completed_generics.insert(instance_ident.clone()) {
+                continue;
+            }
+            let resolved_instance = self
+                .generic_instances
+                .get(&instance_ident)
+                .expect("queued generic instance must remain registered")
+                .resolve(self, cli)?;
+            match resolved_instance {
+                GenericResolved::Resolved {
+                    mut resolved,
+                    inline_type_choices,
+                    child_instances,
+                } => {
+                    // Resolve child templates from their private dependency graph before deriving
+                    // an identity. A nested `outer<inner<p>>` first resolves `inner<uint>`, then
+                    // uses that ordinary concrete ident in `outer<…>`'s canonical fragment.
+                    let mut child_replacements = BTreeMap::new();
+                    let mut pending_children = child_instances;
+                    while !pending_children.is_empty() {
+                        let pending_placeholders = pending_children
+                            .iter()
+                            .map(|child| child.placeholder.clone())
+                            .collect::<BTreeSet<_>>();
+                        let ready = pending_children.iter().position(|child| {
+                            !child.generic_args.iter().any(|arg| {
+                                let mut dependencies = Vec::new();
+                                Self::collect_generic_placeholders_in_type(
+                                    arg,
+                                    &pending_placeholders,
+                                    &mut dependencies,
+                                );
+                                !dependencies.is_empty()
+                            })
+                        });
+                        let Some(ready) = ready else {
+                            return Err("generic child-instance templates contain a cyclic placeholder dependency".into());
+                        };
+                        let mut child = pending_children.remove(ready);
+                        for arg in &mut child.generic_args {
+                            GenericInstance::rewrite_deferred_placeholders_in_type(
+                                arg,
+                                &child_replacements,
+                            );
+                        }
+                        let canonical_ident =
+                            RustIdent::new(crate::parsing::generic_instance_canonical_cddl_ident(
+                                &CDDLIdent::new(child.generic_ident.to_string()),
+                                &child.generic_args,
+                            ));
+                        let registered_child =
+                            self.register_generic_instance(GenericInstance::new(
+                                canonical_ident.clone(),
+                                child.generic_ident,
+                                child.generic_args,
+                                true,
+                                canonical_ident.clone(),
+                            ));
+                        if registered_child && !completed_generics.contains(&canonical_ident) {
+                            pending_generics.insert(canonical_ident.clone());
+                        }
+                        child_replacements.insert(child.placeholder, canonical_ident);
+                    }
+                    // Register each concrete anonymous choice before the generic root that refers
+                    // to it.  This is the ordinary anonymous-choice ownership order, delayed only
+                    // until the exact lexical bindings have concrete arguments.  The shared chooser
+                    // preserves compatible reuse and deterministic incompatible siblings across
+                    // distinct generic instances as well as within one definition.
+                    let mut replacements = BTreeMap::new();
+                    let mut pending = inline_type_choices;
+                    while !pending.is_empty() {
+                        let pending_placeholders = pending
+                            .iter()
+                            .map(|choice| choice.placeholder.clone())
+                            .collect::<BTreeSet<_>>();
+                        let ready = pending.iter().position(|choice| {
+                            let mut dependencies = Vec::new();
+                            Self::collect_generic_placeholders(
+                                &choice.resolved,
+                                &pending_placeholders,
+                                &mut dependencies,
+                            );
+                            dependencies.is_empty()
+                        });
+                        let Some(ready) = ready else {
+                            return Err(
+                                "generic inline type-choice templates contain a cyclic placeholder dependency"
+                                    .into(),
+                            );
+                        };
+                        let mut inline_choice = pending.remove(ready);
+                        GenericInstance::rewrite_inline_choice_placeholders(
+                            &mut inline_choice.resolved,
+                            &child_replacements,
+                        );
+                        // A parent template may name a child template. Materialize children first,
+                        // then rewrite the parent before choosing its normal anonymous-owner name.
+                        GenericInstance::rewrite_inline_choice_placeholders(
+                            &mut inline_choice.resolved,
+                            &replacements,
+                        );
+                        inline_choice.resolved.ident =
+                            GenericInstance::anonymous_type_choice_base_ident(
+                                &inline_choice.resolved,
+                            );
+                        let base_ident = inline_choice.resolved.ident().clone();
+                        let concrete_ident =
+                            self.anonymous_type_choice_ident(&base_ident, &inline_choice.resolved);
+                        inline_choice.resolved.ident = concrete_ident.clone();
+                        self.register_rust_struct(parent_visitor, inline_choice.resolved, cli);
+                        replacements.insert(inline_choice.placeholder, concrete_ident);
+                    }
+                    GenericInstance::rewrite_inline_choice_placeholders(
+                        &mut resolved,
+                        &child_replacements,
+                    );
+                    GenericInstance::rewrite_inline_choice_placeholders(
+                        &mut resolved,
+                        &replacements,
+                    );
+                    self.register_rust_struct(parent_visitor, resolved, cli);
+                }
+                GenericResolved::SetNominal {
+                    instance_ident,
+                    canonical_ident,
+                    resolved,
+                } => {
+                    if minted_set_nominals.insert(canonical_ident.clone()) {
+                        self.register_rust_struct(parent_visitor, resolved, cli);
+                    }
+                    // A named binding (`named_set = set<key_hash>`) becomes a transparent alias TO the
+                    // instantiation nominal: `pub type NamedSet = SetKeyHash;` (rust AND wasm — wasm
+                    // keeps ONE class + this passthrough alias). An anonymous instance's ident already
+                    // IS the canonical, so it needs no alias.
+                    if instance_ident != canonical_ident {
+                        // `@custom_json` on the BINDING has nothing to act on: the binding emits
+                        // `pub type NamedSet = SetKeyHash;` and every derive it would suppress
+                        // belongs to the nominal, whose config comes from the generic DEFINITION.
+                        // The transparent-alias family's usual `@newtype` remedy does not apply —
+                        // a set nominal already IS a wrapper and `@newtype` on the binding is an
+                        // accepted no-op — so this shape carries its own message, naming the
+                        // definition as the rule that owns the derives (probed: `@custom_json` on
+                        // the generic set def drops the nominal's `Serialize`/`JsonSchema` impls).
+                        if self
+                            .rule_directives
+                            .custom_json_rules
+                            .contains(&instance_ident)
+                        {
+                            let source = self
+                                .source_rule_name(&instance_ident)
+                                .unwrap_or(instance_ident.as_ref())
+                                .to_owned();
+                            self.record_rejection(format!(
+                                "@custom_json on `{source}`: this rule binds a generic set nominal, \
+                                 so it emits a transparent `pub type {instance_ident} = \
+                                 {canonical_ident};` and mints no type of its own — the \
+                                 serde/schemars derives it would suppress are on `{canonical_ident}`, \
+                                 whose config comes from the generic DEFINITION. Put `@custom_json` \
+                                 on the definition instead (`<def><T> = #6.258([* T]) / [* T] ; \
+                                 @custom_json`), and hand-write the impls for the nominal."
+                            ));
+                        }
+                        self.register_type_alias(
+                            instance_ident,
+                            AliasInfo::rust_and_wasm(
+                                ConceptualRustType::Rust(canonical_ident).into(),
+                            ),
+                        );
+                    }
+                }
+                GenericResolved::Extern {
+                    instance_ident,
+                    real_ident,
+                    flavored_base,
+                } => {
+                    // `@raw_bytes_flavor` selected the `<Base>RawBytes` wrapper for this instance;
+                    // record the base so the extern re-export glue emits `pub use crate::<Base>RawBytes;`
+                    // (in addition to the plain `pub use crate::<Base>;` the base extern carries).
+                    if let Some(base) = flavored_base {
+                        self.mark_raw_bytes_flavor_emitted(base);
+                    }
+                    // must be generic extern - register it so other lookups don't fail
+                    self.register_rust_struct(
+                        parent_visitor,
+                        RustStruct::new_extern(instance_ident.clone()),
+                        cli,
+                    );
+                    // we do direct rust alias replacing (gen_rust_alias=false) since no problems with generics in rust
+                    // but wasm_bindgen can't work with it directly we assume the user will supply the correct mappings
+                    self.register_type_alias(
+                        instance_ident,
+                        AliasInfo::rust_only(ConceptualRustType::Rust(real_ident).into()),
+                    );
+                }
+            }
         }
         Ok(())
     }
