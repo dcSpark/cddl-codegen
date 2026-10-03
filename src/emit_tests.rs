@@ -418,7 +418,7 @@ pub(crate) fn render_rust_for_direct_storage(
     stored_type: &RustType,
     paths: TypePaths,
 ) -> String {
-    let stored = match stored_type.resolve_alias_shallow() {
+    let stored = match stored_type.conceptual_type.resolve_alias_shallow() {
         ConceptualRustType::Array(element) if matches!(mv, MintValue::Array { .. }) => {
             render_rust_array(mv, &|value| {
                 render_rust_for_direct_storage(types, value, element, paths)
@@ -1296,7 +1296,7 @@ pub(crate) fn multi_array_occurrence_ctor_arg_slots(
         .iter()
         .filter(|field| {
             !field.optional
-                && !field.rust_type.is_fixed_value()
+                && !field.rust_type.conceptual_type.is_fixed_value()
                 && field.rust_type.config.default.is_none()
         })
         .map(|field| (field.source_index, field.rust_type.clone()))
@@ -1331,7 +1331,9 @@ pub(crate) fn record_ctor_arg_types(
         .fields
         .iter()
         .filter(|f| {
-            !f.optional && !f.rust_type.is_fixed_value() && f.rust_type.config.default.is_none()
+            !f.optional
+                && !f.rust_type.conceptual_type.is_fixed_value()
+                && f.rust_type.config.default.is_none()
         })
         .map(|f| f.rust_type.clone())
         .collect();
@@ -1443,7 +1445,7 @@ fn rest_entry_key_has_fixed_image(types: &IntermediateTypes, domain: &RustType, 
     if type_uses_custom_ser(types, domain, &mut BTreeSet::new()) {
         return false;
     }
-    match domain.resolve_alias_shallow() {
+    match domain.conceptual_type.resolve_alias_shallow() {
         ConceptualRustType::Primitive(p) => matches!(
             p,
             Primitive::U8
@@ -1496,7 +1498,7 @@ fn rest_entry_key_candidates(
     if type_uses_custom_ser(types, domain, &mut BTreeSet::new()) {
         return vec![(initial, None)];
     }
-    match (domain.resolve_alias_shallow(), &initial) {
+    match (domain.conceptual_type.resolve_alias_shallow(), &initial) {
         (ConceptualRustType::Primitive(p), MintValue::Int { value: start }) => {
             let key = MapKey::Int(*p);
             (0..=limit)
@@ -1859,7 +1861,9 @@ fn record_ctor_mints(
         .fields
         .iter()
         .filter(|f| {
-            !f.optional && !f.rust_type.is_fixed_value() && f.rust_type.config.default.is_none()
+            !f.optional
+                && !f.rust_type.conceptual_type.is_fixed_value()
+                && f.rust_type.config.default.is_none()
         })
         .collect();
     let mut valid_args: Vec<MintValue> = Vec::new();
@@ -1967,7 +1971,7 @@ fn record_ctor_mints(
             .iter()
             .filter(|field| {
                 !field.optional
-                    && !field.rust_type.is_fixed_value()
+                    && !field.rust_type.conceptual_type.is_fixed_value()
                     && field.rust_type.config.default.is_none()
             })
             .map(|field| {
@@ -2034,7 +2038,7 @@ fn optional_present_cases(
         // An optional fixed value (any kind, including float) is stored as a `bool` presence field,
         // not `Option<T>`: the present case just flips it true so the round-trip exercises writing
         // (and verifying) the constant on the wire.
-        if f.rust_type.is_fixed_value() {
+        if f.rust_type.conceptual_type.is_fixed_value() {
             cases.push((
                 format!("{{ let mut v = {base}; v.{} = true; v }}", f.name),
                 format!("optional `{}` present", f.name),
@@ -2075,7 +2079,8 @@ fn nullable_present_case(
     base: &str,
 ) -> Option<(String, String)> {
     for f in record.fields.iter().filter(|f| !f.optional) {
-        if let ConceptualRustType::Optional(inner) = f.rust_type.resolve_alias_shallow()
+        if let ConceptualRustType::Optional(inner) =
+            f.rust_type.conceptual_type.resolve_alias_shallow()
             && let Some(x) = valid_value(types, inner)
         {
             return Some((
@@ -2217,8 +2222,11 @@ fn map_row_entry_mint(
         return None;
     }
     let protected = record.has_protected_rest_keys(types) && !rest.is_array_tail();
-    let json_any_key =
-        rt.json_schema && matches!(domain.resolve_alias_shallow(), ConceptualRustType::Any);
+    let json_any_key = rt.json_schema
+        && matches!(
+            domain.conceptual_type.resolve_alias_shallow(),
+            ConceptualRustType::Any
+        );
     let key = if protected || json_any_key {
         let initial = valid_value(types, domain);
         if protected && matches!(&initial, Some(MintValue::Int { .. })) {
@@ -2429,7 +2437,7 @@ fn render_bounded_array_try_from(
     else {
         return None;
     };
-    let render_elem = |value: &MintValue| match array_type.resolve_alias_shallow() {
+    let render_elem = |value: &MintValue| match array_type.conceptual_type.resolve_alias_shallow() {
         ConceptualRustType::Array(element) => {
             render_rust_for_direct_storage(types, value, element, TypePaths::Bare)
         }
@@ -2673,7 +2681,9 @@ fn record_deser_reject(
         .fields
         .iter()
         .filter(|f| {
-            !f.optional && !f.rust_type.is_fixed_value() && f.rust_type.config.default.is_none()
+            !f.optional
+                && !f.rust_type.conceptual_type.is_fixed_value()
+                && f.rust_type.config.default.is_none()
         })
         .collect();
 
@@ -2927,7 +2937,7 @@ fn wrapper_construct_reject(
     // so a "below min" case below 0 is dropped by `materialize`). `measure_kind` deliberately excludes
     // N64 (the standalone nint field/target direction is genuinely inverted), so handle it here.
     let (eff_bounds, is_len) = if matches!(
-        wrapped.resolve_alias_shallow(),
+        wrapped.conceptual_type.resolve_alias_shallow(),
         ConceptualRustType::Primitive(Primitive::N64)
     ) {
         (nint_bounds_to_u64(min_max), true)
@@ -2999,7 +3009,7 @@ pub(crate) enum MeasureKind {
 /// How `ty`'s bound is measured, or `None` if it isn't a cheaply-testable bounded shape
 /// (`nint`/bool/float values are excluded — see module docs).
 pub(crate) fn measure_kind(ty: &RustType) -> Option<MeasureKind> {
-    match ty.resolve_alias_shallow() {
+    match ty.conceptual_type.resolve_alias_shallow() {
         ConceptualRustType::Primitive(p) => match p {
             Primitive::Str | Primitive::Bytes => Some(MeasureKind::Len),
             Primitive::U8
@@ -3163,7 +3173,7 @@ fn valid_float_in_window_of_class(
 
 /// The float class a type names, or `None` when it is not a float.
 fn float_class_of(ty: &RustType) -> Option<Primitive> {
-    match ty.resolve_alias_shallow() {
+    match ty.conceptual_type.resolve_alias_shallow() {
         ConceptualRustType::Primitive(p) if p.is_float() => Some(*p),
         _ => None,
     }
@@ -3242,7 +3252,7 @@ fn float_bound_cases(
 /// Whether a float primitive is f32 (its window value is stored as f64 but compared/minted as f32).
 fn float_is_f32(ty: &RustType) -> bool {
     matches!(
-        ty.resolve_alias_shallow(),
+        ty.conceptual_type.resolve_alias_shallow(),
         ConceptualRustType::Primitive(p) if p.float_carrier_is_f32()
     )
 }
@@ -3254,7 +3264,7 @@ fn float_is_f32(ty: &RustType) -> bool {
 /// compile. Non-nint wrappers check the raw measure directly.
 fn wrapper_measure(wrapped: &RustType, mm: IntWindow) -> i128 {
     if matches!(
-        wrapped.resolve_alias_shallow(),
+        wrapped.conceptual_type.resolve_alias_shallow(),
         ConceptualRustType::Primitive(Primitive::N64)
     ) {
         valid_measure(nint_bounds_to_u64(mm))
@@ -3341,7 +3351,7 @@ pub(crate) fn valid_value(types: &IntermediateTypes, ty: &RustType) -> Option<Mi
 }
 
 fn valid_value_at(types: &IntermediateTypes, ty: &RustType, depth: u8) -> Option<MintValue> {
-    match ty.resolve_alias_shallow() {
+    match ty.conceptual_type.resolve_alias_shallow() {
         ConceptualRustType::Optional(_) => Some(MintValue::None),
         // nint can't be an OOB *target* (stored/wire direction is inverted), but a valid baseline
         // value is mintable: new()'s check uses the nint-transformed bounds, so the transformed
@@ -3480,7 +3490,7 @@ pub(crate) fn mint_struct(
                 .iter()
                 .filter(|f| {
                     !f.optional
-                        && !f.rust_type.is_fixed_value()
+                        && !f.rust_type.conceptual_type.is_fixed_value()
                         && f.rust_type.config.default.is_none()
                 })
                 .collect();
@@ -3663,7 +3673,7 @@ fn mint_choice(
 /// (`BTreeMap`, or the preserve-encodings `OrderedHashMap`, both `Default`), inferred from the
 /// constructor-argument position; `vec![]` is the clearer form for arrays.
 fn empty_collection(ty: &RustType) -> Option<MintValue> {
-    match ty.resolve_alias_shallow() {
+    match ty.conceptual_type.resolve_alias_shallow() {
         ConceptualRustType::Array(_) => Some(MintValue::Array {
             elem: None,
             count: 0,
@@ -3731,7 +3741,7 @@ fn bounded_unique_array_elems(
     if let Some(first) = valid_value_at(types, elem, depth + 1) {
         candidates.push(first);
     }
-    match elem.resolve_alias_shallow() {
+    match elem.conceptual_type.resolve_alias_shallow() {
         ConceptualRustType::Array(inner) => {
             let len = valid_measure(bounds);
             let repeats_distinct_members =
@@ -3763,7 +3773,7 @@ fn bounded_unique_array_elems(
         }
         _ => {
             let is_nint = matches!(
-                elem.resolve_alias_shallow(),
+                elem.conceptual_type.resolve_alias_shallow(),
                 ConceptualRustType::Primitive(Primitive::N64)
             );
             let search_bounds = if is_nint {
@@ -3814,7 +3824,7 @@ fn materialize_at(
     measure: i128,
     depth: u8,
 ) -> Option<MintValue> {
-    match ty.resolve_alias_shallow() {
+    match ty.conceptual_type.resolve_alias_shallow() {
         ConceptualRustType::Primitive(p) => match p {
             Primitive::U8
             | Primitive::U16
@@ -3885,7 +3895,7 @@ fn materialize_at(
             })
         }
         ConceptualRustType::Map(k, v) => {
-            let key = match k.resolve_alias_shallow() {
+            let key = match k.conceptual_type.resolve_alias_shallow() {
                 ConceptualRustType::Primitive(
                     p @ (Primitive::U8
                     | Primitive::U16
@@ -4021,11 +4031,11 @@ pub(crate) fn variant_arg_fields<'a>(
                     record
                         .fields
                         .iter()
-                        .filter(|f| !f.optional && !f.rust_type.is_fixed_value())
+                        .filter(|f| !f.optional && !f.rust_type.conceptual_type.is_fixed_value())
                         .map(|f| (&f.rust_type, f.name.clone()))
                         .collect(),
                 )
-            } else if ty.is_fixed_value() {
+            } else if ty.conceptual_type.is_fixed_value() {
                 Some(vec![])
             } else {
                 // single value passed straight in
@@ -4041,7 +4051,7 @@ pub(crate) fn variant_arg_fields<'a>(
                 record
                     .fields
                     .iter()
-                    .filter(|f| !f.rust_type.is_fixed_value())
+                    .filter(|f| !f.rust_type.conceptual_type.is_fixed_value())
                     .map(|f| (&f.rust_type, f.name.clone()))
                     .collect(),
             )

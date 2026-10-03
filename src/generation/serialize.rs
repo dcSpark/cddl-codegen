@@ -325,11 +325,13 @@ impl EncodingVarIsCopy for ConceptualRustType {
             Self::Rust(ident) => match types.rust_struct(ident).unwrap().variant() {
                 RustStructType::CStyleEnum { variants } => {
                     variants.iter().all(|ev| match &ev.data {
-                        EnumVariantData::RustType(ty) => ty.encoding_var_is_copy(types),
+                        EnumVariantData::RustType(ty) => {
+                            ty.conceptual_type.encoding_var_is_copy(types)
+                        }
                         EnumVariantData::Inlined(record) => record
                             .fields
                             .iter()
-                            .all(|f| f.rust_type.encoding_var_is_copy(types)),
+                            .all(|f| f.rust_type.conceptual_type.encoding_var_is_copy(types)),
                     })
                 }
                 RustStructType::RawBytesType => false,

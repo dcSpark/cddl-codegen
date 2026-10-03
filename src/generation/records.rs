@@ -270,7 +270,7 @@ pub(super) fn generate_array_struct_serialization(
         previous_source_index = Some(field.source_index);
         let field_expr = format!("{}{}", opt_self, field.name);
         if field.optional {
-            if field.rust_type.is_fixed_value() {
+            if field.rust_type.conceptual_type.is_fixed_value() {
                 // Optional fixed value (any kind, including float): the `bool` presence field guards
                 // writing the constant. generate_serialize ignores the data expr for a Fixed type
                 // (it writes the literal — for float `write_special(Special::Float(<lit>))`), but
@@ -936,7 +936,7 @@ pub(super) fn generate_array_struct_deserialization(
             } else {
                 (Cow::from(format!("let {var_names_str} = ")), Cow::from(";"))
             }
-        } else if field.rust_type.is_fixed_value() {
+        } else if field.rust_type.conceptual_type.is_fixed_value() {
             // don't set anything, only verify data
             if cli.annotate_fields {
                 (Cow::from(""), Cow::from("?;"))
@@ -1011,7 +1011,7 @@ pub(super) fn generate_array_struct_deserialization(
                     format!("if vec![{types_str}].contains(&raw.cbor_type()?)")
                 }
             };
-            if field.rust_type.is_fixed_value() {
+            if field.rust_type.conceptual_type.is_fixed_value() {
                 // === OPTIONAL FIXED value (any kind, including float) -> `bool` presence field ===
                 // Peek the CBOR type; when it matches, verify the constant exactly as the
                 // mandatory path does (FixedValueMismatch on the wrong value) and record `true`;
@@ -1333,7 +1333,7 @@ pub(super) fn generate_array_struct_deserialization(
         // A non-fixed field (its value) and an optional fixed field of any kind (its `bool`
         // presence) both contribute a struct field to the constructor; a mandatory fixed value
         // (zero information) does not — i.e. only `fixed && !optional` is skipped.
-        if !field.rust_type.is_fixed_value() || field.optional {
+        if !field.rust_type.conceptual_type.is_fixed_value() || field.optional {
             deser_ctor_fields.push((field.name.clone(), field.name.clone()));
         }
     }
@@ -2931,7 +2931,7 @@ fn append_rest_capture(
             )
             .add_to(block);
     }
-    let key_is_copy = rest.domain().is_copy(types);
+    let key_is_copy = rest.domain().conceptual_type.is_copy(types);
     let key_for_sidecar = if key_is_copy {
         "rest_key".to_owned()
     } else {
@@ -3082,7 +3082,7 @@ fn byte_vec_literal(bytes: &[u8]) -> String {
 fn rest_merge_present_condition(field: &RustField) -> Option<String> {
     if !field.optional {
         None
-    } else if field.rust_type.is_fixed_value() {
+    } else if field.rust_type.conceptual_type.is_fixed_value() {
         Some(format!("self.{}", field.name))
     } else if let Some(default_value) = &field.rust_type.config.default {
         Some(format!(
@@ -3172,7 +3172,7 @@ fn build_map_field_deser_arm(
         _ => unimplemented!(),
     };
     if cli.preserve_encodings {
-        let mut dup_check = if field.rust_type.is_fixed_value() {
+        let mut dup_check = if field.rust_type.conceptual_type.is_fixed_value() {
             Block::new(format!("if {}_present", field.name))
         } else {
             Block::new(format!("if {}.is_some()", field.name))
@@ -3254,7 +3254,7 @@ fn build_map_field_deser_arm(
         // We might be able to write a nice way around this in the annotate_fields=false, preserve_encodings=true case
         // but I don't think anyone (or many) would care about this as it's incredibly niche
         // (annotate_fields=false would be for minimizing code size but then preserve_encodings=true generates way more code)
-        if field.rust_type.is_fixed_value() {
+        if field.rust_type.conceptual_type.is_fixed_value() {
             deser_block_code
                 .content
                 .line(&format!("{}_present = true;", field.name));
@@ -3276,7 +3276,7 @@ fn build_map_field_deser_arm(
                 enc_field.field_name, enc_field.field_name
             ));
         }
-    } else if field.rust_type.is_fixed_value() {
+    } else if field.rust_type.conceptual_type.is_fixed_value() {
         let mut dup_check = Block::new(format!("if {}_present", field.name));
         dup_check.line(format!(
             "return Err(DeserializeFailure::DuplicateKey({key_in_rust}).into());"
@@ -3392,7 +3392,7 @@ pub(super) fn codegen_struct(
             record.rep == Representation::Array && !record.array_segments.is_empty();
         for field in &record.fields {
             // Fixed values don't need constructors or getters or fields in the rust code
-            if !field.rust_type.is_fixed_value() {
+            if !field.rust_type.conceptual_type.is_fixed_value() {
                 if field.optional {
                     // setter
                     let mut setter = codegen::Function::new(format!("set_{}", field.name));
@@ -3468,7 +3468,7 @@ pub(super) fn codegen_struct(
                         let flattened = format!(
                             "self.0.{}{}.flatten()",
                             field.name,
-                            if field.rust_type.is_copy(types) {
+                            if field.rust_type.conceptual_type.is_copy(types) {
                                 ""
                             } else {
                                 ".clone()"
@@ -3533,7 +3533,7 @@ pub(super) fn codegen_struct(
                         let collides = record
                             .fields
                             .iter()
-                            .filter(|f| !f.rust_type.is_fixed_value())
+                            .filter(|f| !f.rust_type.conceptual_type.is_fixed_value())
                             .any(|f| f.name == has_name);
                         if collides {
                             crate::warn!(
@@ -3592,7 +3592,7 @@ pub(super) fn codegen_struct(
                         ));
                     wrapper.s_impl.push_fn(getter);
                 }
-            } else if field.optional && field.rust_type.is_fixed_value() {
+            } else if field.optional && field.rust_type.conceptual_type.is_fixed_value() {
                 // Optional fixed value: the native struct stores presence as a `bool`. Expose that
                 // bit across the wasm boundary — getter returns it, setter sets it. (Mandatory
                 // fixed values carry no information and get no accessor, same as the rust side.)
@@ -4072,7 +4072,7 @@ pub(super) fn codegen_struct(
                 .iter()
                 .filter(|field| {
                     !field.optional
-                        && !field.rust_type.is_fixed_value()
+                        && !field.rust_type.conceptual_type.is_fixed_value()
                         && field.rust_type.config.default.is_none()
                 })
                 .map(|field| {
@@ -4180,7 +4180,7 @@ pub(super) fn codegen_struct(
         // emission walk by `seed_no_deserialize_verdicts`, which is where the reason text lives)
         //
         // Fixed values only exist in (de)serialization code (outside of preserve-encodings=true)
-        if !field.rust_type.is_fixed_value() {
+        if !field.rust_type.conceptual_type.is_fixed_value() {
             let mut codegen_field = if let Some(default_value) = &field.rust_type.config.default {
                 // new
                 native_new_block.line(format!(
@@ -4298,7 +4298,7 @@ pub(super) fn codegen_struct(
                 }
             }
             native_struct.push_field(codegen_field);
-        } else if field.optional && field.rust_type.is_fixed_value() {
+        } else if field.optional && field.rust_type.conceptual_type.is_fixed_value() {
             // An OPTIONAL fixed value carries exactly one bit — present or absent — so it needs a
             // struct field to store it (a MANDATORY fixed value carries zero information and gets
             // none). A `bool` (not `Option<()>`) crosses the wasm and serde/schemars boundaries
@@ -4628,7 +4628,7 @@ pub(super) fn codegen_struct(
             .iter()
             .filter(|field| {
                 !field.optional
-                    && !field.rust_type.is_fixed_value()
+                    && !field.rust_type.conceptual_type.is_fixed_value()
                     && field.rust_type.config.default.is_none()
             })
             .map(|field| {
@@ -4688,7 +4688,7 @@ pub(super) fn codegen_struct(
         }
         for field in &record.fields {
             if !field.optional
-                && !field.rust_type.is_fixed_value()
+                && !field.rust_type.conceptual_type.is_fixed_value()
                 && let Some(line) = value_bounds_check_line(&field.rust_type, &field.name, true)
             {
                 native_new.line(&line);
@@ -4712,7 +4712,7 @@ pub(super) fn codegen_struct(
             // A length window reads `element.len()`, auto-derefing the `&` the loop binds; a scalar
             // window compares the copied value `*element`. `*element.len()` would parse as
             // `*(element.len())`, a deref of `usize` (E0614).
-            let element_expr = match element.resolve_alias_shallow() {
+            let element_expr = match element.conceptual_type.resolve_alias_shallow() {
                 ConceptualRustType::Primitive(Primitive::Bytes | Primitive::Str)
                 | ConceptualRustType::Array(_)
                 | ConceptualRustType::Map(_, _) => "element",
@@ -5157,7 +5157,7 @@ pub(super) fn codegen_struct(
                             key_enc.field_name, key_enc.default_expr
                         ));
                     }
-                    if field.rust_type.is_fixed_value() {
+                    if field.rust_type.conceptual_type.is_fixed_value() {
                         deser_code
                             .content
                             .line(&format!("let mut {}_present = false;", field.name));
@@ -5408,7 +5408,7 @@ pub(super) fn codegen_struct(
                         //} else {
                         //}
                         let mut field_ser_block = if field.optional
-                            && field.rust_type.is_fixed_value()
+                            && field.rust_type.conceptual_type.is_fixed_value()
                         {
                             // optional fixed value: the `bool` presence field guards the write
                             Block::new(format!("{} => if self.{}", field_index, field.name))
@@ -5467,18 +5467,20 @@ pub(super) fn codegen_struct(
                 } else {
                     for (_field_index, field, content) in ser_content.into_iter() {
                         if field.optional {
-                            let optional_ser_field_check = if field.rust_type.is_fixed_value() {
-                                // optional fixed value: the `bool` presence field guards the write
-                                format!("if self.{}", field.name)
-                            } else if let Some(default_value) = &field.rust_type.config.default {
-                                format!(
-                                    "if self.{} != {}",
-                                    field.name,
-                                    default_value.to_primitive_str_compare()
-                                )
-                            } else {
-                                format!("if let Some(field) = &self.{}", field.name)
-                            };
+                            let optional_ser_field_check =
+                                if field.rust_type.conceptual_type.is_fixed_value() {
+                                    // optional fixed value: the `bool` presence field guards the write
+                                    format!("if self.{}", field.name)
+                                } else if let Some(default_value) = &field.rust_type.config.default
+                                {
+                                    format!(
+                                        "if self.{} != {}",
+                                        field.name,
+                                        default_value.to_primitive_str_compare()
+                                    )
+                                } else {
+                                    format!("if let Some(field) = &self.{}", field.name)
+                                };
                             let mut optional_ser_field = Block::new(optional_ser_field_check);
                             optional_ser_field.push_all(content);
                             ser_func.push_block(optional_ser_field);
@@ -5994,7 +5996,7 @@ pub(super) fn codegen_struct(
                             None => unreachable!(),
                             _ => unimplemented!(),
                         };
-                        if field.rust_type.is_fixed_value() {
+                        if field.rust_type.conceptual_type.is_fixed_value() {
                             let mut mandatory_field_check =
                                 Block::new(format!("if !{}_present", field.name));
                             mandatory_field_check.line(format!(
@@ -6046,9 +6048,9 @@ pub(super) fn codegen_struct(
                             }
                         }
                     }
-                    if !field.rust_type.is_fixed_value() {
+                    if !field.rust_type.conceptual_type.is_fixed_value() {
                         ctor_block.line(format!("{},", field.name));
-                    } else if field.optional && field.rust_type.is_fixed_value() {
+                    } else if field.optional && field.rust_type.conceptual_type.is_fixed_value() {
                         // optional fixed value -> the struct's `bool` presence field is the
                         // `{field}_present` flag (true iff the key was seen during the map loop)
                         ctor_block.line(format!("{}: {}_present,", field.name, field.name));

@@ -219,7 +219,7 @@ impl EnumVariant {
             record
                 .fields
                 .iter()
-                .filter(|f| !f.optional && !f.rust_type.is_fixed_value())
+                .filter(|f| !f.optional && !f.rust_type.conceptual_type.is_fixed_value())
                 .collect(),
         )
     }
@@ -262,7 +262,7 @@ impl EnumVariant {
                         && record
                             .fields
                             .iter()
-                            .filter(|field| !field.rust_type.is_fixed_value())
+                            .filter(|field| !field.rust_type.conceptual_type.is_fixed_value())
                             .count()
                             <= 1;
                 }
@@ -922,9 +922,11 @@ impl RustStruct {
                     }
                     EnumVariantData::Inlined(record) => {
                         record.fields.iter().for_each(|field| {
-                            field
-                                .rust_type
-                                .visit_types_excluding(types, f, already_visited)
+                            field.rust_type.conceptual_type.visit_types_excluding(
+                                types,
+                                f,
+                                already_visited,
+                            )
                         });
                         record.forbidden_fields.iter().for_each(|field| {
                             field.rust_type.conceptual_type.visit_types_excluding(
@@ -1411,7 +1413,7 @@ impl RustRecord {
     pub fn json_reserved_member_names(&self) -> Vec<String> {
         self.fields
             .iter()
-            .filter(|f| !f.rust_type.is_fixed_value() || f.optional)
+            .filter(|f| !f.rust_type.conceptual_type.is_fixed_value() || f.optional)
             .map(|f| f.name.to_string())
             .chain(self.forbidden_fields.iter().map(|f| f.name.clone()))
             .collect()
@@ -1569,7 +1571,7 @@ impl RustRecord {
         let occupied = self
             .fields
             .iter()
-            .filter(|field| !field.optional && !field.rust_type.is_fixed_value())
+            .filter(|field| !field.optional && !field.rust_type.conceptual_type.is_fixed_value())
             .map(|field| field.name.clone())
             .chain(
                 self.captured_dynamic_rows()
@@ -1592,7 +1594,7 @@ impl RustRecord {
         let occupied = self
             .fields
             .iter()
-            .filter(|field| !field.optional && !field.rust_type.is_fixed_value())
+            .filter(|field| !field.optional && !field.rust_type.conceptual_type.is_fixed_value())
             .map(|field| field.name.clone())
             .chain(
                 self.captured_dynamic_rows()
@@ -1692,7 +1694,7 @@ impl RustRecord {
                 let mut conditional_field_expr = String::new();
                 for field in &self.fields {
                     if field.optional {
-                        if field.rust_type.is_fixed_value() {
+                        if field.rust_type.conceptual_type.is_fixed_value() {
                             // Optional fixed value (any kind, including float): modeled by a `bool`
                             // presence field (present => exactly one encoded item — an array element
                             // or a map key/value — absent => none). This replaces the former
@@ -2374,7 +2376,13 @@ impl GenericInstance {
             if !combined_name.is_empty() {
                 combined_name.push_str("Or");
             }
-            combined_name.push_str(&variant.rust_type().for_variant().to_string());
+            combined_name.push_str(
+                &variant
+                    .rust_type()
+                    .conceptual_type
+                    .for_variant()
+                    .to_string(),
+            );
         }
         RustIdent::new(CDDLIdent::new(&combined_name))
     }
@@ -2430,7 +2438,7 @@ impl GenericInstance {
                         && rewrite_type(ty, replacements)
                         && variant.derived_name
                     {
-                        variant.name = ty.for_variant();
+                        variant.name = ty.conceptual_type.for_variant();
                     }
                 }
             }

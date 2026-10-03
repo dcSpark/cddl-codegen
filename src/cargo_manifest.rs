@@ -1017,7 +1017,7 @@ pub fn needs_hex(types: &IntermediateTypes, export_raw_bytes_encoding_trait: boo
                 RustStructType::Wrapper { wrapped, .. } => {
                     !rust_struct.config().custom_json
                         && matches!(
-                            wrapped.resolve_alias_shallow(),
+                            wrapped.conceptual_type.resolve_alias_shallow(),
                             ConceptualRustType::Primitive(Primitive::Bytes)
                         )
                 }

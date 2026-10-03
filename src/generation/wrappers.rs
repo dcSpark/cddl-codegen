@@ -34,7 +34,7 @@ fn emit_checked_scalar_json_schema_bounds(
     float_min_max: Option<crate::intermediate::FloatWindow>,
 ) {
     if let Some((min, max)) = effective_min_max {
-        match field_type.resolve_alias_shallow() {
+        match field_type.conceptual_type.resolve_alias_shallow() {
             ConceptualRustType::Primitive(Primitive::Str) => {
                 if let Some(min) = min {
                     let min_bytes =
@@ -489,14 +489,17 @@ pub(super) fn generate_wrapper_struct(
     let mut serde_deser_impl = codegen::Impl::new(type_name);
     let mut json_schema_impl = codegen::Impl::new(type_name);
     let json_hex_bytes = matches!(
-        field_type.resolve_alias_shallow(),
+        field_type.conceptual_type.resolve_alias_shallow(),
         ConceptualRustType::Primitive(Primitive::Bytes)
     );
     // A newtype wrapping an `any` (e.g. `t = #6.11(any)` → `Tagged(AnyCbor)`)
     // renders its JSON NATURALLY, not through `AnyCbor`'s tagged codec. The wrapper's manual serde /
     // schemars route through the `any_cbor` runtime module's natural adapter (the CBOR-only tag is
     // absent from JSON, so the natural walk of the inner value is the whole JSON surface).
-    let json_natural_any = matches!(field_type.resolve_alias_shallow(), ConceptualRustType::Any);
+    let json_natural_any = matches!(
+        field_type.conceptual_type.resolve_alias_shallow(),
+        ConceptualRustType::Any
+    );
     let any_cbor_mod = format!("{}::any_cbor", cli.common_import_rust());
     // Newtypes own manual JSON impls rather than field annotations. Reuse the same recursive
     // descriptor as records and newtype enum arms so an authored wrapper cannot hide a sequence
@@ -609,7 +612,7 @@ pub(super) fn generate_wrapper_struct(
                 serde_deser_fn
                     .line(format!("let inner = <{json_schema_type} as serde::de::Deserialize>::deserialize(deserializer)?;"));
                 if types.can_new_fail(type_name) {
-                    let unexpected = match field_type.resolve_alias_shallow() {
+                    let unexpected = match field_type.conceptual_type.resolve_alias_shallow() {
                         ConceptualRustType::Alias(_, _) => unreachable!(),
                         ConceptualRustType::Array(_) => "Seq",
                         ConceptualRustType::Fixed(fixed) => match fixed {
@@ -841,15 +844,18 @@ pub(super) fn generate_wrapper_struct(
         None
     };
     // TODO: is there a way to know if the encoding object is also copyable?
-    if field_type.is_copy(types) && !cli.preserve_encodings {
+    if field_type.conceptual_type.is_copy(types) && !cli.preserve_encodings {
         s.derive("Copy");
     }
     if emit_getter {
         let mut get = codegen::Function::new(getter_name);
         get.vis("pub").arg_ref_self();
-        if field_type.is_copy(types) {
-            get.ret(field_type.for_rust_member(types, false, cli))
-                .line(field_type.clone_if_not_copy(types, self_var));
+        if field_type.conceptual_type.is_copy(types) {
+            get.ret(field_type.for_rust_member(types, false, cli)).line(
+                field_type
+                    .conceptual_type
+                    .clone_if_not_copy(types, self_var),
+            );
         } else {
             get.ret(format!(
                 "&{}",
@@ -881,7 +887,7 @@ pub(super) fn generate_wrapper_struct(
         let mut serialize_config = SerializeConfig::new(&serialized_inner, "inner")
             .end(true)
             .encoding_var_in_option_struct("self.encodings");
-        if checked_scalar && !field_type.is_copy(types) {
+        if checked_scalar && !field_type.conceptual_type.is_copy(types) {
             // String/byte getters already return a reference. Tell the shared serializer so it
             // neither adds a second borrow nor treats `.len()` as if it belonged under a deref.
             serialize_config = serialize_config.expr_is_ref(true);

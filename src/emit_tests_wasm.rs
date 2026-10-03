@@ -246,7 +246,13 @@ fn wasm_value(
             MintValue::None => Some("None".to_owned()),
             other => Some(format!(
                 "Some({})",
-                wasm_value(types, other, inner.resolve_alias_shallow(), scoped, cli)?
+                wasm_value(
+                    types,
+                    other,
+                    inner.conceptual_type.resolve_alias_shallow(),
+                    scoped,
+                    cli
+                )?
             )),
         },
         ConceptualRustType::Array(_) => {
@@ -387,7 +393,7 @@ fn record_wasm_ctor_args<'a>(
     let mut wasm = Vec::new();
     for field in record.fields.iter().filter(|field| {
         !field.optional
-            && !field.rust_type.is_fixed_value()
+            && !field.rust_type.conceptual_type.is_fixed_value()
             && field.rust_type.config.default.is_none()
     }) {
         let (_, value) = native.next()?;
@@ -477,7 +483,7 @@ fn wasm_arg(
     scoped: &ScopeMap,
     cli: &Cli,
 ) -> Option<String> {
-    let resolved = field_ty.resolve_alias_shallow();
+    let resolved = field_ty.conceptual_type.resolve_alias_shallow();
     // A wrapper collection crosses the wasm boundary as `&Wrapper` (a `FooList`/`FooMap`, a named
     // list/map like `nums = [* uint]` -> `&Nums`, or a restricted `&NonEmpty<Elem>List`), so it's
     // built through the wrapper's `new`/`add` (list) or `new`/`insert` (map) API — see
@@ -803,7 +809,7 @@ fn wasm_choice_roundtrip(
             let primitive_payload = matches!(
                 &variant.data,
                 EnumVariantData::RustType(vty)
-                    if matches!(vty.resolve_alias_shallow(), ConceptualRustType::Primitive(_))
+                    if matches!(vty.conceptual_type.resolve_alias_shallow(), ConceptualRustType::Primitive(_))
             );
             // A nullable payload (`opt = uint / null` used as an arm) exposes a *lossy* getter:
             // wasm_bindgen can't return `Option<Option<T>>`, so `as_<var>()` returns `None` both
@@ -816,7 +822,7 @@ fn wasm_choice_roundtrip(
             let nullable_payload = matches!(
                 &variant.data,
                 EnumVariantData::RustType(vty)
-                    if matches!(vty.resolve_alias_shallow(), ConceptualRustType::Optional(_))
+                    if matches!(vty.conceptual_type.resolve_alias_shallow(), ConceptualRustType::Optional(_))
             );
             if nullable_payload {
                 // no self-readback: the getter is lossy for this arm (see above).
@@ -1104,7 +1110,9 @@ fn record_ctor_fields(record: &RustRecord) -> Vec<&RustField> {
         .fields
         .iter()
         .filter(|f| {
-            !f.optional && !f.rust_type.is_fixed_value() && f.rust_type.config.default.is_none()
+            !f.optional
+                && !f.rust_type.conceptual_type.is_fixed_value()
+                && f.rust_type.config.default.is_none()
         })
         .collect()
 }
@@ -1114,7 +1122,7 @@ fn record_ctor_fields(record: &RustRecord) -> Vec<&RustField> {
 /// primitive getter returns the value; a c-style enum getter returns the re-exported enum by value
 /// (a `CEnum` mint value is only ever produced for a c-style enum, so it's a sound signal).
 fn scalar_readback(ty: &RustType, mv: &MintValue) -> Option<String> {
-    match (ty.resolve_alias_shallow(), mv) {
+    match (ty.conceptual_type.resolve_alias_shallow(), mv) {
         (ConceptualRustType::Primitive(_), _) => Some(emit_tests::render_rust(mv)),
         (_, MintValue::CEnum { .. }) => Some(emit_tests::render_rust(mv)),
         _ => None,
@@ -1126,7 +1134,10 @@ fn scalar_readback(ty: &RustType, mv: &MintValue) -> Option<String> {
 fn bounded_scalar(ty: &RustType) -> bool {
     ty.config.bounds.is_some()
         && measure_kind(ty).is_some()
-        && matches!(ty.resolve_alias_shallow(), ConceptualRustType::Primitive(_))
+        && matches!(
+            ty.conceptual_type.resolve_alias_shallow(),
+            ConceptualRustType::Primitive(_)
+        )
 }
 
 /// Does this variant carry no payload (fixed value → no `as_<variant>()` getter)?

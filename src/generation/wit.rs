@@ -1659,7 +1659,7 @@ fn project_record(
     let mut ctor_fallible = false;
     for field in &record.fields {
         let field_name = convert_to_kebab_case(&field.name);
-        if field.rust_type.is_fixed_value() {
+        if field.rust_type.conceptual_type.is_fixed_value() {
             // A mandatory fixed value carries no information and gets no accessor (the rust and wasm
             // faces agree). An OPTIONAL one stores its presence as a `bool`, which is real state.
             if field.optional {
@@ -2136,10 +2136,10 @@ fn choice_variant_shape(
                     }
                     params
                 }
-                None if ty.is_fixed_value() => Vec::new(),
+                None if ty.conceptual_type.is_fixed_value() => Vec::new(),
                 None => vec![field_param(&variant.name_as_var(), ty, ctx)?],
             };
-            let reads = if ty.is_fixed_value() {
+            let reads = if ty.conceptual_type.is_fixed_value() {
                 Vec::new()
             } else {
                 vec![ChoiceVariantRead {
@@ -2157,10 +2157,10 @@ fn choice_variant_shape(
             // values materialize as bool presence fields; all other values keep their embedded
             // optionality. Walking source order keeps WIT and Rust constructor arguments aligned.
             for field in &record.fields {
-                if field.rust_type.is_fixed_value() && !field.optional {
+                if field.rust_type.conceptual_type.is_fixed_value() && !field.optional {
                     continue;
                 }
-                if field.optional && field.rust_type.is_fixed_value() {
+                if field.optional && field.rust_type.conceptual_type.is_fixed_value() {
                     params.push(WitParam {
                         name: convert_to_kebab_case(&field.name),
                         rust_name: field.name.clone(),
@@ -2214,7 +2214,7 @@ fn variant_ctor_can_fail(
         EnumVariantData::RustType(ty) => {
             match rep.and_then(|_| variant.group_ctor_record_fields(types, ident)) {
                 Some(fields) => fields.iter().any(|f| f.rust_type.has_value_bounds()),
-                None => !ty.is_fixed_value() && ty.has_value_bounds(),
+                None => !ty.conceptual_type.is_fixed_value() && ty.has_value_bounds(),
             }
         }
         EnumVariantData::Inlined(record) => record

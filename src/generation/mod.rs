@@ -4634,7 +4634,12 @@ fn encoding_var_names_str_for_field(
     // still asks the resolved type. The encoding list below deliberately does NOT resolve: a
     // declaration rides on the alias node `resolve_aliases()` deletes, and the `Alias` arm is a pure
     // pass-through for every undeclared type, so the two are identical wherever nothing declares.
-    let mut var_names = if rust_type.clone().resolve_aliases().is_fixed_value() {
+    let mut var_names = if rust_type
+        .clone()
+        .resolve_aliases()
+        .conceptual_type
+        .is_fixed_value()
+    {
         vec![]
     } else {
         vec![field_name.to_owned()]

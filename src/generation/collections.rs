@@ -463,7 +463,9 @@ impl GenerationScope {
             // Element types whose wasm boundary doesn't reduce to (needs_into, is_copy) - e.g.
             // Optional - fall through to the inline path below.
             if let Some(list_macro) = &cli.wasm_list_macro
-                && let Some(needs_into) = element_type.wasm_list_macro_needs_into(types)
+                && let Some(needs_into) = element_type
+                    .conceptual_type
+                    .wasm_list_macro_needs_into(types)
             {
                 let macro_name = list_macro.split("::").last().unwrap();
                 let args = [
@@ -476,7 +478,7 @@ impl GenerationScope {
                     ),
                     array_type_ident.to_string(),
                     needs_into.to_string(),
-                    element_type.is_copy(types).to_string(),
+                    element_type.conceptual_type.is_copy(types).to_string(),
                 ];
                 // Emit the invocation as a sort-participating item keyed under the wrapper type it
                 // defines, so it lands where the equivalent inline struct would (not hoisted to the
@@ -2036,7 +2038,7 @@ pub(super) fn push_table_accessors(
     // get
     let get_ret_modifier = if value_type.exact_byte_array_len_checked().is_some() {
         ".map(|bytes| bytes.to_vec())"
-    } else if value_type.is_copy(types) {
+    } else if value_type.conceptual_type.is_copy(types) {
         ""
     } else if value_nullable {
         // stored value is `Option<InnerRust>`; convert the inner across the boundary (when it is
@@ -2074,11 +2076,11 @@ pub(super) fn push_table_accessors(
     // branch, generate_non_empty_map_type used this closure — but produced the same bytes; the closure
     // is the single spelling here.
     let copied_or = |modifier: &str| {
-        if value_type.is_wasm_copy(types) {
+        if value_type.conceptual_type.is_wasm_copy(types) {
             // wasm face IS the rust type (primitive / c-style enum): copy out of the `&V` with no
             // `.into()`.
             ".copied()".to_owned()
-        } else if value_type.is_copy(types) {
+        } else if value_type.conceptual_type.is_copy(types) {
             // A `@copy` extern value: rust-Copy but wasm-wrapped — deref-copy the `&V` (no clone,
             // clippy::clone_on_copy) then `.into()` to the wasm wrapper.
             ".map(|v| (*v).into())".to_owned()
@@ -2152,7 +2154,7 @@ pub(super) fn push_table_accessors(
     keys.arg_ref_self()
         .ret(gen_scope.wasm_return_type(types, &keys_type, owner, "table keys return"))
         .vis("pub");
-    let key_clone = if key_type.is_copy(types) {
+    let key_clone = if key_type.conceptual_type.is_copy(types) {
         ".keys().copied()"
     } else {
         ".keys().cloned()"

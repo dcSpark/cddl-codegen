@@ -5277,7 +5277,7 @@ pub fn create_variants_from_type_choices(
             RuleMetadata {
                 name: Some(name), ..
             } => convert_to_camel_case(name),
-            _ => rust_type.for_variant().to_string(),
+            _ => rust_type.conceptual_type.for_variant().to_string(),
         };
         if let Some(dup_ordinal) = dup_of {
             let arm_ordinal = arm_idx + 1;
@@ -7438,7 +7438,13 @@ fn rust_type(
                 combined_name.push_str("Or");
             }
             // due to undercase primitive names, we need to convert here
-            combined_name.push_str(&variant.rust_type().for_variant().to_string());
+            combined_name.push_str(
+                &variant
+                    .rust_type()
+                    .conceptual_type
+                    .for_variant()
+                    .to_string(),
+            );
         }
         let base_ident = RustIdent::new(CDDLIdent::new(&combined_name));
         // Same carrier names do not prove the same enum: a value window, encoding operation, or
@@ -8516,7 +8522,7 @@ fn reject_wasm_open_map_insert_collisions(
         if let Some(field) = fields.iter().find(|field| {
             field.name == method
                 // Mandatory fixed values have no wasm getter, hence no inherent-method clash.
-                && (field.optional || !field.rust_type.is_fixed_value())
+                && (field.optional || !field.rust_type.conceptual_type.is_fixed_value())
         }) {
             types.record_rejection(format!(
                 "rule `{source_name}`: captured map row `{}` generates wasm method `{method}()`, \
@@ -8861,7 +8867,7 @@ fn recognize_array_rest_segments(
             return (vec![], candidates);
         }
         let element = group_entry_to_type(types, parent_visitor, entry, cli);
-        if element.is_fixed_value() {
+        if element.conceptual_type.is_fixed_value() {
             types.record_rejection(format!(
                 "rule `{src}`: an array occurrence segment cannot be a fixed value — use a typed element."
             ));
@@ -9680,7 +9686,7 @@ fn recognize_array_rest_tail(
     let element_type = group_entry_to_type(types, parent_visitor, candidate_ge, cli);
     // A fixed-value tail element (`* 5` / `* null` / `* true`) has no Rust representation (a
     // `Vec<FixedValue>` is not a type). Reject BEFORE the homogeneous-array fixed-value panic class.
-    if element_type.is_fixed_value() {
+    if element_type.conceptual_type.is_fixed_value() {
         types.record_rejection(format!(
             "rule `{src}`: an open-array rest tail cannot be a fixed value (`* 5`, `* null`, \
              `* true`) — there is no Rust representation for a captured tail of fixed values. Use a \
@@ -10234,7 +10240,7 @@ pub fn parse_group(
                             Some(field_name) => (field_name, false),
                             // A BARE member has no key to name the variant after, so the shared
                             // fixed-value minter supplies its legacy spelling or canonical fallback.
-                            None => (ty.for_variant().to_string(), false),
+                            None => (ty.conceptual_type.for_variant().to_string(), false),
                         },
                     };
                     let variant_ident = VariantIdent::new_custom(settle_arm_variant_name(
@@ -10271,7 +10277,7 @@ pub fn parse_group(
                                         // unreachable while `is_basic` is the guard, which only
                                         // says true for a `Rust` ident — kept total rather than
                                         // asserted, since the message is the whole point here.
-                                        _ => ty.for_variant().to_string(),
+                                        _ => ty.conceptual_type.for_variant().to_string(),
                                     };
                                 record_plain_group_map_member_rejection(
                                     types,
@@ -10516,7 +10522,7 @@ fn reject_wasm_group_choice_getter_collisions(
     for variant in variants {
         let variant_name = variant.name_as_var();
         match &variant.data {
-            EnumVariantData::RustType(ty) if !ty.is_fixed_value() => {
+            EnumVariantData::RustType(ty) if !ty.conceptual_type.is_fixed_value() => {
                 claim(
                     format!("as_{variant_name}"),
                     format!("arm `{}`", variant.name),
@@ -10526,12 +10532,14 @@ fn reject_wasm_group_choice_getter_collisions(
                 let fields = record
                     .fields
                     .iter()
-                    .filter(|field| !field.rust_type.is_fixed_value() || field.optional)
+                    .filter(|field| {
+                        !field.rust_type.conceptual_type.is_fixed_value() || field.optional
+                    })
                     .collect::<Vec<_>>();
                 if let Some(field) = fields
                     .iter()
                     .copied()
-                    .find(|field| !field.rust_type.is_fixed_value())
+                    .find(|field| !field.rust_type.conceptual_type.is_fixed_value())
                     .or_else(|| (fields.len() == 1).then(|| fields[0]))
                 {
                     claim(

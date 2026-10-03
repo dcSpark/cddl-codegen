@@ -25,7 +25,7 @@ pub(super) fn bounds_check_expr(p: Primitive, e: &str) -> String {
 
 // pub(crate): emit_tests mirrors ctor fallibility as `needs_bounds_check_if_inlined && this is Some`
 pub(crate) fn bounds_check_expr_rust_type(ty: &RustType, e: &str) -> Option<String> {
-    match ty.resolve_alias_shallow() {
+    match ty.conceptual_type.resolve_alias_shallow() {
         ConceptualRustType::Primitive(p) => Some(bounds_check_expr(*p, e)),
         ConceptualRustType::Array(_) |
         ConceptualRustType::Map(_, _) => Some(format!("{e}.len()")),
@@ -80,7 +80,7 @@ pub(super) fn bounds_check_expr_non_negative(ty: &RustType) -> bool {
     if !ty.encodings.is_empty() {
         return false;
     }
-    match ty.resolve_alias_shallow() {
+    match ty.conceptual_type.resolve_alias_shallow() {
         ConceptualRustType::Primitive(p) => primitive_non_negative(*p),
         ConceptualRustType::Array(_) | ConceptualRustType::Map(_, _) => true,
         _ => false,
@@ -230,7 +230,7 @@ fn value_window_is_type_enforced(ty: &RustType) -> bool {
 /// take the swapped pair.
 fn effective_int_bounds(ty: &RustType, bounds: &IntWindow) -> IntWindow {
     if matches!(
-        ty.resolve_alias_shallow(),
+        ty.conceptual_type.resolve_alias_shallow(),
         ConceptualRustType::Primitive(Primitive::N64)
     ) {
         nint_bounds_to_u64(bounds)
@@ -313,7 +313,7 @@ pub(super) fn value_bounds_check_line(ty: &RustType, e: &str, return_err: bool) 
     }
     if let Some(window) = &ty.config.float_bounds {
         let cast_f64 = matches!(
-            ty.resolve_alias_shallow(),
+            ty.conceptual_type.resolve_alias_shallow(),
             ConceptualRustType::Primitive(p) if p.float_carrier_is_f32()
         );
         return Some(bounds_check_if_block_float(
@@ -388,7 +388,7 @@ fn externally_wrapped_bounds_check_line(
     }
     if let Some(window) = &ty.config.float_bounds {
         let cast_f64 = matches!(
-            ty.resolve_alias_shallow(),
+            ty.conceptual_type.resolve_alias_shallow(),
             ConceptualRustType::Primitive(p) if p.float_carrier_is_f32()
         );
         return Some(format!(

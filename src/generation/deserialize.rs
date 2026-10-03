@@ -1956,7 +1956,10 @@ impl GenerationScope {
                         )
                         .add_to(&mut some_block);
                     } else {
-                        let (map_some_before, map_some_after) = if ty.is_fixed_value() {
+                        let (map_some_before, map_some_after) = if ty
+                            .conceptual_type
+                            .is_fixed_value()
+                        {
                             // case 1: no actual return, only encoding values for tags/fixed values, no need to wrap in Some()
                             ("", "".to_owned())
                         } else {
@@ -2002,7 +2005,7 @@ impl GenerationScope {
                     check_null.line("return Err(DeserializeFailure::ExpectedNull.into());");
                     none_block.push_block(check_null);
                     if cli.preserve_encodings {
-                        let mut none_elems = if ty.is_fixed_value() {
+                        let mut none_elems = if ty.conceptual_type.is_fixed_value() {
                             vec![]
                         } else {
                             vec!["None".to_owned()]
@@ -2493,7 +2496,7 @@ impl GenerationScope {
                         "if {}.insert({}{}, {}).is_some()",
                         table_var,
                         key_var_name,
-                        if key_type.is_copy(types) {
+                        if key_type.conceptual_type.is_copy(types) {
                             ""
                         } else {
                             ".clone()"
@@ -2531,7 +2534,7 @@ impl GenerationScope {
                                 // NOT its encoding var's — a composite (e.g. array) key value is
                                 // a non-Copy Vec even though its length-encoding var is Copy, so
                                 // moving it here then reusing it below is a preserve-only E0382.
-                                if key_type.is_copy(types) {
+                                if key_type.conceptual_type.is_copy(types) {
                                     ""
                                 } else {
                                     ".clone()"
@@ -2549,7 +2552,7 @@ impl GenerationScope {
                                 // Same as the key-encoding insert: the map is keyed by the key
                                 // VALUE, so gate its clone on the value's copy-ness, not the
                                 // encoding var's.
-                                if key_type.is_copy(types) {
+                                if key_type.conceptual_type.is_copy(types) {
                                     ""
                                 } else {
                                     ".clone()"

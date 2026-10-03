@@ -59,7 +59,7 @@ impl GenerationScope {
                 // type, i.e. every bounded Wrapper) would wrongly make this wasm ctor fallible over
                 // an infallible rust ctor.
                 let can_fail = variant.rust_type().has_value_bounds();
-                if !variant.rust_type().is_fixed_value() {
+                if !variant.rust_type().conceptual_type.is_fixed_value() {
                     new_func.arg(
                         &variant_arg,
                         self.wasm_param_type(
@@ -70,7 +70,7 @@ impl GenerationScope {
                         ),
                     );
                 }
-                let ctor = if variant.rust_type().is_fixed_value() {
+                let ctor = if variant.rust_type().conceptual_type.is_fixed_value() {
                     format!("{native}::new_{variant_arg}()")
                 } else {
                     // Never `try_into` at the wasm boundary: the rust ctor takes an already-built
@@ -155,7 +155,7 @@ pub(super) fn codegen_group_choices(
                         .iter()
                         // A mandatory fixed value is fieldless, but an optional fixed value
                         // materializes as its bool presence field and must cross every enum face.
-                        .filter(|f| !f.rust_type.is_fixed_value() || f.optional)
+                        .filter(|f| !f.rust_type.conceptual_type.is_fixed_value() || f.optional)
                         .collect(),
                 ),
             };
@@ -182,7 +182,9 @@ pub(super) fn codegen_group_choices(
                                 // fixed value its usual special bool field. Spell that presence bit
                                 // directly here; every other optional inlined field remains an
                                 // `Option<T>` through the normal embedded-type path.
-                                if field.optional && field.rust_type.is_fixed_value() {
+                                if field.optional
+                                    && field.rust_type.conceptual_type.is_fixed_value()
+                                {
                                     new_func.arg(&field.name, "bool");
                                     ctor.push_str(&field.name);
                                 } else {
@@ -210,7 +212,7 @@ pub(super) fn codegen_group_choices(
                 }
                 None => {
                     // just directly pass in the variant's type
-                    if variant.rust_type().is_fixed_value() {
+                    if variant.rust_type().conceptual_type.is_fixed_value() {
                         new_func
                             .ret("Self")
                             .line(format!("Self({native}::new_{variant_arg}())"));
@@ -323,9 +325,11 @@ fn add_wasm_enum_getters(
                 // unfortunately wasm_bindgen doesn't support nested options so we must flatten
                 // this is a bit ambiguous but it's better than nothing
                 let supported = if let ConceptualRustType::Optional(inner) =
-                    ty.resolve_alias_shallow()
+                    ty.conceptual_type.resolve_alias_shallow()
                 {
-                    if let ConceptualRustType::Optional(_) = inner.resolve_alias_shallow() {
+                    if let ConceptualRustType::Optional(_) =
+                        inner.conceptual_type.resolve_alias_shallow()
+                    {
                         // An enum variant whose payload resolves to Option<Option<T>> (a
                         // nullable-of-nullable, e.g. `text / ((uint / null) / null)`, or via an alias
                         // chain to a nullable) is UNREACHABLE at this getter arm: the wasm enum
@@ -379,7 +383,7 @@ fn add_wasm_enum_getters(
             };
         match &variant.data {
             EnumVariantData::RustType(ty) => {
-                if !ty.is_fixed_value() {
+                if !ty.conceptual_type.is_fixed_value() {
                     let field_name = enum_gen_info.names[0].clone();
                     add_variant_function(
                         format!("as_{}", variant.name_as_var()),
@@ -393,7 +397,9 @@ fn add_wasm_enum_getters(
                 let materialized_fields = record
                     .fields
                     .iter()
-                    .filter(|field| !field.rust_type.is_fixed_value() || field.optional)
+                    .filter(|field| {
+                        !field.rust_type.conceptual_type.is_fixed_value() || field.optional
+                    })
                     .collect::<Vec<_>>();
                 // The long-standing getter keeps the one non-fixed payload's read API. A sole
                 // optional-fixed field has no non-fixed counterpart, so that bit itself owns the
@@ -401,15 +407,15 @@ fn add_wasm_enum_getters(
                 if let Some(field) = materialized_fields
                     .iter()
                     .copied()
-                    .find(|field| !field.rust_type.is_fixed_value())
+                    .find(|field| !field.rust_type.conceptual_type.is_fixed_value())
                     .or_else(|| (materialized_fields.len() == 1).then(|| materialized_fields[0]))
                 {
                     let embedded = field.to_embedded_rust_type();
                     add_variant_function(
                         format!("as_{}", variant.name_as_var()),
-                        (!field.rust_type.is_fixed_value()).then_some(&embedded),
+                        (!field.rust_type.conceptual_type.is_fixed_value()).then_some(&embedded),
                         &field.name,
-                        field.optional && field.rust_type.is_fixed_value(),
+                        field.optional && field.rust_type.conceptual_type.is_fixed_value(),
                     );
                 }
                 if materialized_fields.len() > 1 {
@@ -417,9 +423,10 @@ fn add_wasm_enum_getters(
                         let embedded = field.to_embedded_rust_type();
                         add_variant_function(
                             format!("as_{}_{}", variant.name_as_var(), field.name),
-                            (!field.rust_type.is_fixed_value()).then_some(&embedded),
+                            (!field.rust_type.conceptual_type.is_fixed_value())
+                                .then_some(&embedded),
                             &field.name,
-                            field.optional && field.rust_type.is_fixed_value(),
+                            field.optional && field.rust_type.conceptual_type.is_fixed_value(),
                         );
                     }
                 }
@@ -553,7 +560,7 @@ impl EnumVariantInRust {
                 {
                     enc_fields.push(key_encoding_field(&name, key));
                 }
-                let (mut enum_types, mut names) = if ty.is_fixed_value() {
+                let (mut enum_types, mut names) = if ty.conceptual_type.is_fixed_value() {
                     (vec![], vec![])
                 } else {
                     (vec![ty.for_rust_member(types, false, cli)], vec![name])
@@ -611,15 +618,17 @@ impl EnumVariantInRust {
                 for field in record.fields.iter() {
                     // Mandatory fixed values have no data, while optional fixed values store bool
                     // presence. Keep this aligned with records.rs' deserialize constructor list.
-                    if !field.rust_type.is_fixed_value() || field.optional {
+                    if !field.rust_type.conceptual_type.is_fixed_value() || field.optional {
                         names.push(field.name.clone());
-                        enum_types.push(if field.optional && field.rust_type.is_fixed_value() {
-                            "bool".to_owned()
-                        } else {
-                            field
-                                .to_embedded_rust_type()
-                                .for_rust_member(types, false, cli)
-                        });
+                        enum_types.push(
+                            if field.optional && field.rust_type.conceptual_type.is_fixed_value() {
+                                "bool".to_owned()
+                            } else {
+                                field
+                                    .to_embedded_rust_type()
+                                    .for_rust_member(types, false, cli)
+                            },
+                        );
                     }
                 }
                 for enc_field in &enc_fields {
@@ -1108,7 +1117,7 @@ fn make_keyed_map_variant_deser_code(
         } else {
             (Cow::from(format!("let {var_names_str} = ")), ";")
         }
-    } else if ty.is_fixed_value() {
+    } else if ty.conceptual_type.is_fixed_value() {
         (Cow::from(""), "")
     } else {
         (Cow::from(format!("let {var_names_str} = ")), ";")
@@ -1403,7 +1412,7 @@ fn generate_enum(
                         (vec![ctor], can_fail)
                     }
                     None => {
-                        if ty.is_fixed_value() {
+                        if ty.conceptual_type.is_fixed_value() {
                             (vec![], false)
                         } else {
                             // just directly pass in the variant's type
@@ -1424,13 +1433,16 @@ fn generate_enum(
                     .iter()
                     // Optional fixed values are represented by a bool presence field, unlike the
                     // fieldless mandatory fixed-value arm.
-                    .filter(|field| !field.rust_type.is_fixed_value() || field.optional)
+                    .filter(|field| {
+                        !field.rust_type.conceptual_type.is_fixed_value() || field.optional
+                    })
                     .map(|field| {
-                        let field_type = if field.optional && field.rust_type.is_fixed_value() {
-                            "bool".to_owned()
-                        } else {
-                            field.to_embedded_rust_type().for_rust_move(types, cli)
-                        };
+                        let field_type =
+                            if field.optional && field.rust_type.conceptual_type.is_fixed_value() {
+                                "bool".to_owned()
+                            } else {
+                                field.to_embedded_rust_type().for_rust_move(types, cli)
+                            };
                         new_func.arg(&field.name, field_type);
                         field.name.clone()
                     })
@@ -1689,7 +1701,9 @@ fn generate_enum(
                         let (before, after) = if cli.preserve_encodings && var_names_str.is_empty()
                         {
                             (Cow::from(""), ";")
-                        } else if cli.preserve_encodings || !variant.rust_type().is_fixed_value() {
+                        } else if cli.preserve_encodings
+                            || !variant.rust_type().conceptual_type.is_fixed_value()
+                        {
                             (Cow::from(format!("let {var_names_str} = ")), ";")
                         } else {
                             (Cow::from(""), "")

@@ -206,7 +206,7 @@ impl RustType {
     /// truncated here.
     pub fn exact_byte_array_len(&self) -> Option<Result<usize, i128>> {
         if !matches!(
-            self.resolve_alias_shallow(),
+            self.conceptual_type.resolve_alias_shallow(),
             ConceptualRustType::Primitive(Primitive::Bytes)
         ) {
             return None;
@@ -510,7 +510,7 @@ impl RustType {
             }
         }
 
-        let mut out = self.for_variant().to_string();
+        let mut out = self.conceptual_type.for_variant().to_string();
         append_config_identity(self, "", &mut out);
         out
     }
@@ -1180,14 +1180,6 @@ impl GenericParamBinding {
             )
             .expect("generic parameter binding must be nonzero"),
         )
-    }
-}
-
-impl std::ops::Deref for RustType {
-    type Target = ConceptualRustType;
-
-    fn deref(&self) -> &Self::Target {
-        &self.conceptual_type
     }
 }
 
@@ -1870,7 +1862,7 @@ impl RustType {
 
     pub fn needs_bounds_check_if_inlined(&self, types: &IntermediateTypes) -> bool {
         self.has_value_bounds()
-            || match self.resolve_alias_shallow() {
+            || match self.conceptual_type.resolve_alias_shallow() {
                 ConceptualRustType::Rust(ident) => types.can_new_fail(ident),
                 _ => false,
             }
@@ -2055,7 +2047,7 @@ impl RustType {
     }
 
     // --- Bounds-aware type-naming/boundary wrappers (RustType level) -------------------------------
-    // `RustType` Derefs to `ConceptualRustType`, but `config.bounds` lives on `RustType`, so the
+    // `config.bounds` lives on `RustType`, so the
     // conceptual `*_ct` methods below can't see the `[+ T]` shape. These inherent methods consult
     // `config.bounds` and pick `NonEmptyVec`/`NonEmpty*List` for that one shape, recursing at the
     // RustType level so nested `[+ [+ int]]` bounds are each honored; everything else delegates to
@@ -2344,7 +2336,7 @@ impl RustType {
             | ConceptualRustType::Fixed(_)
             | ConceptualRustType::Primitive(_)
             | ConceptualRustType::Rust(_)
-            | ConceptualRustType::Any => self.for_variant().to_string(),
+            | ConceptualRustType::Any => self.conceptual_type.for_variant().to_string(),
         }
     }
 

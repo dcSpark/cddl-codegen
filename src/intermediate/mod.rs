@@ -5436,7 +5436,8 @@ impl<'a> IntermediateTypes<'a> {
             bare: DemandSet,
         ) {
             if let ConceptualRustType::Map(k, _v) = ty {
-                k.visit_types(types, &mut |ty| mark_key_demand(ty, key_demand, bare));
+                k.conceptual_type
+                    .visit_types(types, &mut |ty| mark_key_demand(ty, key_demand, bare));
             }
         }
         // A map key that is (or recursively contains) a float compiles to a `BTreeMap<f64, _>` (or
@@ -5513,7 +5514,9 @@ impl<'a> IntermediateTypes<'a> {
             if let RustStructType::Array { element_type, .. } = rust_struct.variant()
                 && rust_struct.config().duplicates_reject()
             {
-                element_type.visit_types(self, &mut |ty| mark_key_demand(ty, &mut key_demand, ord));
+                element_type
+                    .conceptual_type
+                    .visit_types(self, &mut |ty| mark_key_demand(ty, &mut key_demand, ord));
                 if key_contains_float(&element_type.conceptual_type, self) {
                     float_key_rejections.insert(float_set_elem_msg(&rule_ident));
                 }
@@ -5528,7 +5531,9 @@ impl<'a> IntermediateTypes<'a> {
                 && !rust_struct.config().set_nominal
                 && let ConceptualRustType::Array(element_type) = &wrapped.conceptual_type
             {
-                element_type.visit_types(self, &mut |ty| mark_key_demand(ty, &mut key_demand, ord));
+                element_type
+                    .conceptual_type
+                    .visit_types(self, &mut |ty| mark_key_demand(ty, &mut key_demand, ord));
                 if key_contains_float(&element_type.conceptual_type, self) {
                     float_key_rejections.insert(float_set_elem_msg(&rule_ident));
                 }
@@ -5543,7 +5548,7 @@ impl<'a> IntermediateTypes<'a> {
                 && rust_struct.config().set_nominal
                 && let ConceptualRustType::Array(element_type) = &wrapped.conceptual_type
             {
-                element_type.visit_types(self, &mut |ty| {
+                element_type.conceptual_type.visit_types(self, &mut |ty| {
                     mark_key_demand(ty, &mut key_demand, full_set_demand)
                 });
                 // The wrapper's always-on `Ord`/`Hash` derives (and, under reject, the uniqueness
@@ -5583,7 +5588,7 @@ impl<'a> IntermediateTypes<'a> {
                 } else {
                     bare
                 };
-                rest.domain().visit_types(self, &mut |ty| {
+                rest.domain().conceptual_type.visit_types(self, &mut |ty| {
                     mark_key_demand(ty, &mut key_demand, key_flavor)
                 });
                 // Walked directly (not as a `Map` node), so the float check is this branch's own —
@@ -5604,7 +5609,7 @@ impl<'a> IntermediateTypes<'a> {
                 } else {
                     bare
                 };
-                domain.visit_types(self, &mut |ty| {
+                domain.conceptual_type.visit_types(self, &mut |ty| {
                     mark_key_demand(ty, &mut key_demand, key_flavor)
                 });
                 // A top-level table rule's key is its `domain`, walked directly (not as a Map node),
@@ -8007,7 +8012,7 @@ impl<'a> IntermediateTypes<'a> {
             return false;
         }
         matches!(
-            wrapped.resolve_alias_shallow(),
+            wrapped.conceptual_type.resolve_alias_shallow(),
             ConceptualRustType::Primitive(
                 Primitive::Bytes
                     | Primitive::Str
