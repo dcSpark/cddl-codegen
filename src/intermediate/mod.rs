@@ -3967,100 +3967,90 @@ impl<'a> IntermediateTypes<'a> {
                     // an identity. A nested `outer<inner<p>>` first resolves `inner<uint>`, then
                     // uses that ordinary concrete ident in `outer<…>`'s canonical fragment.
                     let mut child_replacements = BTreeMap::new();
-                    let mut pending_children = child_instances;
-                    while !pending_children.is_empty() {
-                        let pending_placeholders = pending_children
-                            .iter()
-                            .map(|child| child.placeholder.clone())
-                            .collect::<BTreeSet<_>>();
-                        let ready = pending_children.iter().position(|child| {
+                    drain_in_dependency_order(
+                        child_instances,
+                        |child| child.placeholder.clone(),
+                        |child, pending_placeholders| {
                             !child.generic_args.iter().any(|arg| {
                                 let mut dependencies = Vec::new();
                                 Self::collect_generic_placeholders_in_type(
                                     arg,
-                                    &pending_placeholders,
+                                    pending_placeholders,
                                     &mut dependencies,
                                 );
                                 !dependencies.is_empty()
                             })
-                        });
-                        let Some(ready) = ready else {
-                            return Err("generic child-instance templates contain a cyclic placeholder dependency".into());
-                        };
-                        let mut child = pending_children.remove(ready);
-                        for arg in &mut child.generic_args {
-                            GenericInstance::rewrite_deferred_placeholders_in_type(
-                                arg,
-                                &child_replacements,
+                        },
+                        |mut child| {
+                            for arg in &mut child.generic_args {
+                                GenericInstance::rewrite_deferred_placeholders_in_type(
+                                    arg,
+                                    &child_replacements,
+                                );
+                            }
+                            let canonical_ident = RustIdent::new(
+                                crate::parsing::generic_instance_canonical_cddl_ident(
+                                    &CDDLIdent::new(child.generic_ident.to_string()),
+                                    &child.generic_args,
+                                ),
                             );
-                        }
-                        let canonical_ident =
-                            RustIdent::new(crate::parsing::generic_instance_canonical_cddl_ident(
-                                &CDDLIdent::new(child.generic_ident.to_string()),
-                                &child.generic_args,
-                            ));
-                        let registered_child =
-                            self.register_generic_instance(GenericInstance::new(
-                                canonical_ident.clone(),
-                                child.generic_ident,
-                                child.generic_args,
-                                true,
-                                canonical_ident.clone(),
-                            ));
-                        if registered_child && !completed_generics.contains(&canonical_ident) {
-                            pending_generics.insert(canonical_ident.clone());
-                        }
-                        child_replacements.insert(child.placeholder, canonical_ident);
-                    }
+                            let registered_child =
+                                self.register_generic_instance(GenericInstance::new(
+                                    canonical_ident.clone(),
+                                    child.generic_ident,
+                                    child.generic_args,
+                                    true,
+                                    canonical_ident.clone(),
+                                ));
+                            if registered_child && !completed_generics.contains(&canonical_ident) {
+                                pending_generics.insert(canonical_ident.clone());
+                            }
+                            child_replacements.insert(child.placeholder, canonical_ident);
+                        },
+                        "generic child-instance templates contain a cyclic placeholder dependency",
+                    )?;
                     // Register each concrete anonymous choice before the generic root that refers
                     // to it.  This is the ordinary anonymous-choice ownership order, delayed only
                     // until the exact lexical bindings have concrete arguments.  The shared chooser
                     // preserves compatible reuse and deterministic incompatible siblings across
                     // distinct generic instances as well as within one definition.
                     let mut replacements = BTreeMap::new();
-                    let mut pending = inline_type_choices;
-                    while !pending.is_empty() {
-                        let pending_placeholders = pending
-                            .iter()
-                            .map(|choice| choice.placeholder.clone())
-                            .collect::<BTreeSet<_>>();
-                        let ready = pending.iter().position(|choice| {
+                    drain_in_dependency_order(
+                        inline_type_choices,
+                        |choice| choice.placeholder.clone(),
+                        |choice, pending_placeholders| {
                             let mut dependencies = Vec::new();
                             Self::collect_generic_placeholders(
                                 &choice.resolved,
-                                &pending_placeholders,
+                                pending_placeholders,
                                 &mut dependencies,
                             );
                             dependencies.is_empty()
-                        });
-                        let Some(ready) = ready else {
-                            return Err(
-                                "generic inline type-choice templates contain a cyclic placeholder dependency"
-                                    .into(),
+                        },
+                        |mut inline_choice| {
+                            GenericInstance::rewrite_inline_choice_placeholders(
+                                &mut inline_choice.resolved,
+                                &child_replacements,
                             );
-                        };
-                        let mut inline_choice = pending.remove(ready);
-                        GenericInstance::rewrite_inline_choice_placeholders(
-                            &mut inline_choice.resolved,
-                            &child_replacements,
-                        );
-                        // A parent template may name a child template. Materialize children first,
-                        // then rewrite the parent before choosing its normal anonymous-owner name.
-                        GenericInstance::rewrite_inline_choice_placeholders(
-                            &mut inline_choice.resolved,
-                            &replacements,
-                        );
-                        inline_choice.resolved.ident =
-                            GenericInstance::anonymous_type_choice_base_ident(
-                                &inline_choice.resolved,
+                            // A parent template may name a child template. Materialize children first,
+                            // then rewrite the parent before choosing its normal anonymous-owner name.
+                            GenericInstance::rewrite_inline_choice_placeholders(
+                                &mut inline_choice.resolved,
+                                &replacements,
                             );
-                        let base_ident = inline_choice.resolved.ident().clone();
-                        let concrete_ident =
-                            self.anonymous_type_choice_ident(&base_ident, &inline_choice.resolved);
-                        inline_choice.resolved.ident = concrete_ident.clone();
-                        self.register_rust_struct(parent_visitor, inline_choice.resolved, cli);
-                        replacements.insert(inline_choice.placeholder, concrete_ident);
-                    }
+                            inline_choice.resolved.ident =
+                                GenericInstance::anonymous_type_choice_base_ident(
+                                    &inline_choice.resolved,
+                                );
+                            let base_ident = inline_choice.resolved.ident().clone();
+                            let concrete_ident = self
+                                .anonymous_type_choice_ident(&base_ident, &inline_choice.resolved);
+                            inline_choice.resolved.ident = concrete_ident.clone();
+                            self.register_rust_struct(parent_visitor, inline_choice.resolved, cli);
+                            replacements.insert(inline_choice.placeholder, concrete_ident);
+                        },
+                        "generic inline type-choice templates contain a cyclic placeholder dependency",
+                    )?;
                     GenericInstance::rewrite_inline_choice_placeholders(
                         &mut resolved,
                         &child_replacements,
@@ -7225,6 +7215,28 @@ impl<'a> IntermediateTypes<'a> {
     }
 }
 
+/// Drain template dependencies in authored Vec order, retaining the first ready item at each step.
+/// Rebuild the pending placeholder set after each application so dependencies become ready in place.
+fn drain_in_dependency_order<T>(
+    mut pending: Vec<T>,
+    placeholder: impl Fn(&T) -> RustIdent,
+    ready: impl Fn(&T, &BTreeSet<RustIdent>) -> bool,
+    mut apply: impl FnMut(T),
+    cycle_message: &'static str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    while !pending.is_empty() {
+        let pending_placeholders = pending.iter().map(&placeholder).collect::<BTreeSet<_>>();
+        let ready = pending
+            .iter()
+            .position(|item| ready(item, &pending_placeholders));
+        let Some(ready) = ready else {
+            return Err(cycle_message.into());
+        };
+        apply(pending.remove(ready));
+    }
+    Ok(())
+}
+
 /// The shape-derived ident an inline `#6.258([* Elem])` set occurrence nominalizes into (Phase 2.4):
 /// `Set<Elem-variant>`, with a `NonEmpty` infix for the `[+]` bound. The prefix `Set` is the registry
 /// entry for tag 258; the element spelling reuses `for_variant()` — the SAME element-spelling scheme
@@ -7511,6 +7523,107 @@ fn custom_codec_zero_demand_rejection(position: &str, replaced_is_named_type: bo
 mod registration_tests {
     use super::*;
     use clap::Parser;
+
+    #[derive(Clone)]
+    struct DependencyItem {
+        name: &'static str,
+        dependencies: Vec<&'static str>,
+    }
+
+    fn drain_items(
+        items: Vec<DependencyItem>,
+        cycle: &'static str,
+    ) -> (Vec<&'static str>, Result<(), Box<dyn std::error::Error>>) {
+        let mut order = Vec::new();
+        let result = drain_in_dependency_order(
+            items,
+            |item| RustIdent::new(CDDLIdent::new(item.name)),
+            |item, pending| {
+                !item
+                    .dependencies
+                    .iter()
+                    .any(|dep| pending.contains(&RustIdent::new(CDDLIdent::new(*dep))))
+            },
+            |item| order.push(item.name),
+            cycle,
+        );
+        (order, result)
+    }
+
+    #[test]
+    fn dependency_drain_keeps_nonlexical_ready_order() {
+        let (order, result) = drain_items(
+            ["zeta", "alpha", "middle"]
+                .into_iter()
+                .map(|name| DependencyItem {
+                    name,
+                    dependencies: Vec::new(),
+                })
+                .collect(),
+            "unexpected ready-item cycle",
+        );
+        result.unwrap();
+        assert_eq!(order, ["zeta", "alpha", "middle"]);
+    }
+
+    #[test]
+    fn dependency_drain_reconsiders_earlier_blocked_items_before_ready_ties() {
+        let (order, result) = drain_items(
+            vec![
+                DependencyItem {
+                    name: "root",
+                    dependencies: vec!["middle"],
+                },
+                DependencyItem {
+                    name: "zeta",
+                    dependencies: Vec::new(),
+                },
+                DependencyItem {
+                    name: "middle",
+                    dependencies: vec!["leaf"],
+                },
+                DependencyItem {
+                    name: "leaf",
+                    dependencies: Vec::new(),
+                },
+                DependencyItem {
+                    name: "alpha",
+                    dependencies: Vec::new(),
+                },
+            ],
+            "unexpected dependency-chain cycle",
+        );
+        result.unwrap();
+        assert_eq!(order, ["zeta", "leaf", "middle", "root", "alpha"]);
+    }
+
+    #[test]
+    fn dependency_drain_preserves_both_template_cycle_messages() {
+        for cycle in [
+            "generic child-instance templates contain a cyclic placeholder dependency",
+            "generic inline type-choice templates contain a cyclic placeholder dependency",
+        ] {
+            let (order, result) = drain_items(
+                vec![
+                    DependencyItem {
+                        name: "ready",
+                        dependencies: Vec::new(),
+                    },
+                    DependencyItem {
+                        name: "a",
+                        dependencies: vec!["b"],
+                    },
+                    DependencyItem {
+                        name: "b",
+                        dependencies: vec!["a"],
+                    },
+                ],
+                cycle,
+            );
+            assert_eq!(order, ["ready"]);
+            assert_eq!(result.unwrap_err().to_string(), cycle);
+        }
+    }
 
     fn cli() -> Cli {
         Cli::parse_from([
