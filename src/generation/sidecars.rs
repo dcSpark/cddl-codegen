@@ -17,12 +17,9 @@ pub(super) fn render_collections_index(
     for (ident, definition) in classes {
         let scope = &definition.scope;
         let path = if *scope == *ROOT_SCOPE {
-            format!("crate::generated::{ident}")
+            generated_item_path(None, ident)
         } else if scope.export() {
-            format!(
-                "crate::generated::{}::{ident}",
-                scope.components().join("::")
-            )
+            generated_item_path(Some(scope.components()), ident)
         } else {
             // Non-exported (extern-dep) scopes are never written to a file by
             // `merge_scopes_to_strings`, so a wrapper there is not part of THIS crate's
@@ -100,12 +97,9 @@ pub(super) fn render_key_demand_assertions(
     for (ident, demand) in assertion_roots {
         let scope = types.scope(ident);
         let path = if *scope == *ROOT_SCOPE {
-            format!("crate::generated::{ident}")
+            generated_item_path(None, ident)
         } else {
-            format!(
-                "crate::generated::{}::{ident}",
-                scope.components().join("::")
-            )
+            generated_item_path(Some(scope.components()), ident)
         };
         // No per-fn comment: the fn name `_demand_<rule>` already names the tagged rule and
         // the banner explains the pattern. A comment here would strand into a
@@ -143,13 +137,6 @@ pub(super) fn render_extern_interface_check(
         format!("{common}::serialization::Serialize")
     } else {
         "cbor_event::se::Serialize".to_owned()
-    };
-    let path_of = |components: &[String], ident: &RustIdent| -> String {
-        if components.is_empty() {
-            format!("crate::generated::{ident}")
-        } else {
-            format!("crate::generated::{}::{ident}", components.join("::"))
-        }
     };
     // Whole-value `Serialize`/`Deserialize` cover both the opaque `Serialize` rows AND the
     // transparent group-body `EmbeddedGroup` rows: a group-choice arm that splices a plain
@@ -241,14 +228,28 @@ pub(super) fn render_extern_interface_check(
         if matches!(entry.kind, ExternCheckKind::Use) {
             file.push_str(&format!(
                 "#[allow(unused_imports)]\nuse {} as _;\n",
-                path_of(&entry.components, &entry.ident),
+                generated_item_path(
+                    if entry.components.is_empty() {
+                        None
+                    } else {
+                        Some(entry.components.as_slice())
+                    },
+                    &entry.ident,
+                ),
             ));
         }
     }
     // Opaque / raw-bytes rows: bound-carrier instantiations inside a never-called fn.
     file.push_str("#[allow(dead_code)]\nfn _extern_interface_self_check() {\n");
     for entry in entries {
-        let path = path_of(&entry.components, &entry.ident);
+        let path = generated_item_path(
+            if entry.components.is_empty() {
+                None
+            } else {
+                Some(entry.components.as_slice())
+            },
+            &entry.ident,
+        );
         match entry.kind {
             ExternCheckKind::Serialize => {
                 file.push_str(&format!("    _assert_serialize::<{path}>();\n"));
@@ -621,4 +622,13 @@ pub(super) fn collect_borrowed_key_rows(
     rows.sort();
     rows.dedup();
     rows
+}
+
+/// Paths inside this crate's generated module; the caller owns its original root predicate.
+/// A nested empty scope remains nested, while foreign dependency paths stay separate.
+fn generated_item_path(components: Option<&[String]>, ident: &RustIdent) -> String {
+    match components {
+        None => format!("crate::generated::{ident}"),
+        Some(components) => format!("crate::generated::{}::{ident}", components.join("::")),
+    }
 }

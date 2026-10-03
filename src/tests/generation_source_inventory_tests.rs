@@ -262,6 +262,7 @@ const SOURCE_ROLES: &[SourceRole] = &[
         wasm: false,
         reason: "pure sidecar and schema crate rendering; no record field locals or WASM signatures",
         members: &[
+            "generated_item_path",
             "collect_borrowed_key_rows",
             "render_json_gen_main",
             "render_json_gen_module",
