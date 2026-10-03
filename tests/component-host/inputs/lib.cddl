@@ -26,6 +26,8 @@
 ;               re-imposed at the CONSUMING constructor and setter: `record`'s fallible ctor and the
 ;               fallible `set-aliases`.
 ;   attrs     — a table: `list<tuple<string, u64>>`, never a `map<K, V>`.
+;   interleaved_segments — compatible-type constructor slots interleaved with two dynamic array
+;               segments, whose distinct values must retain identity and order at every getter.
 ;   record    — mandatory + optional fields (construction / accessor read-back / byte round-trip),
 ;               `delta: int` for the `variant int` bridge and its -(n+1) bias, `meta: any` for the
 ;               any-cbor edges, `? extra: any` for the same edges through a SETTER, and
@@ -84,3 +86,43 @@ record = {
   ? note: text,
   ? nested: text / null,
 }
+
+; All five constructor arguments are list<string> on the component face and Vec<String> natively.
+; Required nested arrays separate two flat text segments on the wire, so decoding has major-disjoint
+; boundaries while a constructor slot swap still compiles.
+; The host test uses distinct sentinels for every slot and reads both segment getters independently.
+interleaved_segments = [
+  head: [* tstr]
+  , * tstr ; @name left
+  , middle: [* tstr]
+  , * tstr ; @name right
+  , tail: [* tstr]
+]
+
+; Optional fixed presence carries bool state, while a defaulted optional uint is stored plain.
+; These two doors are distinct WitMemberOp cases, not the inlined choice's AsVariant bool payload.
+presence = { ? flag: 0 }
+defaults = { ? count: uint .default 7 }
+
+
+; Protected map storage: the fixed and forbidden text keys overlap the bare-text rest domain.
+; Complete-row construction validates keys; the component rest getter must use the native accessor.
+protected_rest = { required: uint, 0*0 forbidden: uint, * tstr => uint }
+
+; WrapperGet uses the authored getter name rather than assuming get.
+renamed_bytes = bytes ; @newtype read_payload
+
+; The first new-checked delegates a loose byte Vec to its fallible native constructor.
+native_choice =
+  bytes .size 4 ; @name checked
+  / tstr ; @name fallback
+
+; The second new-checked revalidates a NonEmptyVec at the boundary before an infallible native ctor.
+boundary_choice =
+  names ; @name checked
+  / bytes ; @name fallback
+
+; AsVariant crosses a resource payload as an owned snapshot, not the primitive-payload path.
+resource_choice =
+  node ; @name held
+  / bytes ; @name fallback

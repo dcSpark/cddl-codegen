@@ -331,6 +331,58 @@ fn inlined_group_choice_fields_cross_the_component_boundary() -> Result<()> {
     Ok(())
 }
 
+// --- class 2c: source-ordered, same-type array-segment constructor arguments --------------------
+
+/// Every argument has the same binding type. Appending dynamic arguments after ordinary fields or
+/// swapping the two segments therefore still compiles; distinct getter values make that drift fail.
+#[test]
+fn interleaved_same_type_array_segments_retain_identity_and_order() -> Result<()> {
+    let mut h = load()?;
+    let (store, api) = h.split();
+    let segments = api.interleaved_segments();
+    // Positional host calls cannot notice a constructor whose parameter names and guest
+    // forwarding order drift together. Pin the declared binding contract beside the runtime reads.
+    let wit = include_str!("../../component/wit/world.wit");
+    let resource = wit
+        .split("  resource interleaved-segments {")
+        .nth(1)
+        .expect("the interleaved-segments resource must be projected")
+        .split("  }")
+        .next()
+        .unwrap();
+    assert!(resource.contains(
+        "constructor(head: list<string>, left: list<string>, middle: list<string>, right: list<string>, tail: list<string>);"
+    ));
+    let head = vec!["h".to_owned()];
+    let left = vec!["a".to_owned(), "b".to_owned()];
+    let middle = vec!["m".to_owned()];
+    let right = vec!["x".to_owned(), "y".to_owned(), "z".to_owned()];
+    let tail = vec!["t".to_owned()];
+
+    let constructed =
+        segments.call_constructor(&mut *store, &head, &left, &middle, &right, &tail)?;
+    // Independently authored CBOR: [["h"], "a", "b", ["m"], "x", "y", "z", ["t"]].
+    // A segment is flat in the owner array; the three required list fields keep their array heads.
+    let wire = vec![
+        0x88, 0x81, 0x61, b'h', 0x61, b'a', 0x61, b'b', 0x81, 0x61, b'm', 0x61, b'x', 0x61, b'y',
+        0x61, b'z', 0x81, 0x61, b't',
+    ];
+    assert_eq!(segments.call_to_cbor_bytes(&mut *store, constructed)?, wire);
+    let decoded = segments
+        .call_from_cbor_bytes(&mut *store, &wire)?
+        .expect("the independently authored interleaved segments must decode");
+
+    for handle in [constructed, decoded] {
+        assert_eq!(segments.call_head(&mut *store, handle)?, head);
+        assert_eq!(segments.call_left(&mut *store, handle)?, left);
+        assert_eq!(segments.call_middle(&mut *store, handle)?, middle);
+        assert_eq!(segments.call_right(&mut *store, handle)?, right);
+        assert_eq!(segments.call_tail(&mut *store, handle)?, tail);
+        assert_eq!(segments.call_to_cbor_bytes(&mut *store, handle)?, wire);
+    }
+    Ok(())
+}
+
 // --- class 3: fallible doors return Err, never trap, and leave the instance usable ----------------
 
 #[test]
@@ -711,5 +763,246 @@ fn any_cbor_takes_exactly_one_item_and_rejects_the_rest_without_trapping() -> Re
         api.call_cbor_kind(&mut *store, &vec![0x01])?.unwrap(),
         api::AnyCborKind::Uint
     );
+    Ok(())
+}
+
+// --- dedicated fixed-presence and defaulted-plain-storage doors --------------------------------
+
+#[test]
+fn optional_fixed_presence_can_be_set_and_cleared() -> Result<()> {
+    let mut h = load()?;
+    let (store, api) = h.split();
+    let presence = api.presence();
+    let handle = presence.call_constructor(&mut *store)?;
+    assert!(!presence.call_flag(&mut *store, handle)?);
+    assert_eq!(presence.call_to_cbor_bytes(&mut *store, handle)?, vec![0xa0]);
+
+    presence.call_set_flag(&mut *store, handle, true)?;
+    assert!(presence.call_flag(&mut *store, handle)?);
+    assert_eq!(
+        presence.call_to_cbor_bytes(&mut *store, handle)?,
+        vec![0xa1, 0x64, b'f', b'l', b'a', b'g', 0x00]
+    );
+    let decoded = presence
+        .call_from_cbor_bytes(&mut *store, &[0xa1, 0x64, b'f', b'l', b'a', b'g', 0x00])?
+        .expect("the fixed-presence item must decode");
+    assert!(presence.call_flag(&mut *store, decoded)?);
+
+    presence.call_set_flag(&mut *store, handle, false)?;
+    assert!(!presence.call_flag(&mut *store, handle)?);
+    assert_eq!(presence.call_to_cbor_bytes(&mut *store, handle)?, vec![0xa0]);
+    assert!(presence.call_flag(&mut *store, decoded)?);
+    Ok(())
+}
+
+#[test]
+fn defaulted_optional_setter_writes_plain_storage() -> Result<()> {
+    let mut h = load()?;
+    let (store, api) = h.split();
+    let defaults = api.defaults();
+    let handle = defaults.call_constructor(&mut *store)?;
+    assert_eq!(defaults.call_count(&mut *store, handle)?, 7);
+    defaults.call_set_count(&mut *store, handle, 9)?;
+    assert_eq!(defaults.call_count(&mut *store, handle)?, 9);
+    defaults.call_set_count(&mut *store, handle, 11)?;
+    assert_eq!(defaults.call_count(&mut *store, handle)?, 11);
+    let fresh = defaults.call_constructor(&mut *store)?;
+    assert_eq!(defaults.call_count(&mut *store, fresh)?, 7);
+    Ok(())
+}
+
+
+// --- supplemental payload routes of the shared WitMemberOp operations ----------------------------
+
+#[test]
+fn protected_rest_accessor_keeps_allowed_entries_and_rejects_fixed_keys() -> Result<()> {
+    let mut h = load()?;
+    let (store, api) = h.split();
+    let protected = api.protected_rest();
+    let entries = vec![("allowed".to_owned(), 9)];
+    let retained = protected
+        .call_constructor(&mut *store, 7, &entries)?
+        .expect("an allowed complete rest row must construct");
+    assert_eq!(protected.call_required(&mut *store, retained)?, 7);
+    assert_eq!(protected.call_rest(&mut *store, retained)?, entries);
+
+    // Independently authored CBOR: {"required":7, "allowed":9}.
+    let wire = [
+        0xa2, 0x68, b'r', b'e', b'q', b'u', b'i', b'r', b'e', b'd', 0x07,
+        0x67, b'a', b'l', b'l', b'o', b'w', b'e', b'd', 0x09,
+    ];
+    let decoded = protected
+        .call_from_cbor_bytes(&mut *store, &wire)?
+        .expect("the allowed independently authored map must decode");
+    assert_eq!(protected.call_rest(&mut *store, decoded)?, entries);
+
+    for bad_key in ["required", "forbidden"] {
+        let bad = vec![(bad_key.to_owned(), 11)];
+        let error = protected
+            .call_constructor(&mut *store, 7, &bad)?
+            .expect_err("fixed and forbidden keys must return inner errors, never traps");
+        assert!(!error.is_empty());
+        assert_eq!(protected.call_required(&mut *store, retained)?, 7);
+        assert_eq!(protected.call_rest(&mut *store, retained)?, entries);
+        let after = protected
+            .call_constructor(&mut *store, 7, &entries)?
+            .expect("an allowed construction must succeed after every rejection");
+        assert_eq!(protected.call_rest(&mut *store, after)?, entries);
+    }
+    Ok(())
+}
+
+#[test]
+fn renamed_wrapper_getter_keeps_its_authored_name_and_payload() -> Result<()> {
+    let mut h = load()?;
+    let (store, api) = h.split();
+    let wrapper = api.renamed_bytes();
+    let payload = vec![0x00, 0x18, 0x2a, 0xff];
+    let value = wrapper.call_constructor(&mut *store, &payload)?;
+    assert_eq!(wrapper.call_read_payload(&mut *store, value)?, payload);
+    assert_eq!(
+        wrapper.call_to_cbor_bytes(&mut *store, value)?,
+        vec![0x44, 0x00, 0x18, 0x2a, 0xff]
+    );
+    let decoded = wrapper
+        .call_from_cbor_bytes(&mut *store, &[0x44, 0x00, 0x18, 0x2a, 0xff])?
+        .expect("the independently authored byte string must decode");
+    assert_eq!(wrapper.call_read_payload(&mut *store, decoded)?, payload);
+    Ok(())
+}
+
+#[test]
+fn native_fallible_new_variant_returns_errors_then_remains_usable() -> Result<()> {
+    let mut h = load()?;
+    let (store, api) = h.split();
+    let choice = api.native_choice();
+    let payload = vec![0x00, 0x18, 0x2a, 0xff];
+    let retained = choice
+        .call_new_checked(&mut *store, &payload)?
+        .expect("the four-byte native variant constructor must succeed");
+    assert_eq!(choice.call_kind(&mut *store, retained)?, api::NativeChoiceKind::Checked);
+    assert_eq!(choice.call_as_checked(&mut *store, retained)?, Some(payload.clone()));
+    assert_eq!(choice.call_as_fallback(&mut *store, retained)?, None);
+    for bad in [vec![1, 2, 3], vec![1, 2, 3, 4, 5]] {
+        let error = choice
+            .call_new_checked(&mut *store, &bad)?
+            .expect_err("native constructor failure must be an inner Err, never a trap");
+        assert!(!error.is_empty());
+        assert_eq!(choice.call_as_checked(&mut *store, retained)?, Some(payload.clone()));
+        let after = choice
+            .call_new_checked(&mut *store, &payload)?
+            .expect("valid native construction must succeed after every rejection");
+        assert_eq!(choice.call_as_checked(&mut *store, after)?, Some(payload.clone()));
+    }
+    let other = choice.call_new_fallback(&mut *store, "fallback")?;
+    assert_eq!(choice.call_kind(&mut *store, other)?, api::NativeChoiceKind::Fallback);
+    assert_eq!(choice.call_as_checked(&mut *store, other)?, None);
+    assert_eq!(choice.call_as_fallback(&mut *store, other)?, Some("fallback".to_owned()));
+    Ok(())
+}
+
+#[test]
+fn boundary_fallible_new_variant_reimposes_nonempty_before_native_construction() -> Result<()> {
+    let mut h = load()?;
+    let (store, api) = h.split();
+    let choice = api.boundary_choice();
+    let payload = vec!["left".to_owned(), "right".to_owned()];
+    let retained = choice
+        .call_new_checked(&mut *store, &payload)?
+        .expect("the nonempty boundary variant must succeed");
+    assert_eq!(choice.call_kind(&mut *store, retained)?, api::BoundaryChoiceKind::Checked);
+    assert_eq!(choice.call_as_checked(&mut *store, retained)?, Some(payload.clone()));
+    let error = choice
+        .call_new_checked(&mut *store, &[])?
+        .expect_err("empty despecialized list must be an inner Err, never a trap");
+    assert!(!error.is_empty());
+    assert_eq!(choice.call_as_checked(&mut *store, retained)?, Some(payload.clone()));
+    let after = choice
+        .call_new_checked(&mut *store, &["after".to_owned()])?
+        .expect("valid boundary construction must succeed after rejection");
+    assert_eq!(choice.call_as_checked(&mut *store, after)?, Some(vec!["after".to_owned()]));
+    let other = choice.call_new_fallback(&mut *store, &[0x2a])?;
+    assert_eq!(choice.call_kind(&mut *store, other)?, api::BoundaryChoiceKind::Fallback);
+    assert_eq!(choice.call_as_checked(&mut *store, other)?, None);
+    Ok(())
+}
+
+#[test]
+fn resource_as_variant_returns_independent_owned_snapshots() -> Result<()> {
+    let mut h = load()?;
+    let (store, api) = h.split();
+    let choice = api.resource_choice();
+    let node = api.node();
+    let source = node.call_constructor(&mut *store, "held")?;
+    let held = choice.call_new_held(&mut *store, source)?;
+    let source_kid = node.call_constructor(&mut *store, "source-kid")?;
+    node.call_set_children(&mut *store, source, &[source_kid])?;
+    let read = choice
+        .call_as_held(&mut *store, held)?
+        .expect("the held arm must return an owned node");
+    assert_eq!(node.call_label(&mut *store, read)?, "held");
+    assert_eq!(node.call_children(&mut *store, read)?, None);
+    let read_kid = node.call_constructor(&mut *store, "read-kid")?;
+    node.call_set_children(&mut *store, read, &[read_kid])?;
+    let read_children = node
+        .call_children(&mut *store, read)?
+        .expect("the returned snapshot mutation must have stored its child");
+    assert_eq!(read_children.len(), 1);
+    assert_eq!(node.call_label(&mut *store, read_children[0])?, "read-kid");
+    let again = choice
+        .call_as_held(&mut *store, held)?
+        .expect("the held resource must remain readable");
+    assert_eq!(node.call_children(&mut *store, again)?, None);
+    let source_children = node.call_children(&mut *store, source)?.expect("source was mutated");
+    assert_eq!(node.call_label(&mut *store, source_children[0])?, "source-kid");
+    assert_eq!(choice.call_kind(&mut *store, held)?, api::ResourceChoiceKind::Held);
+    let other = choice.call_new_fallback(&mut *store, &[0x2a])?;
+    assert_eq!(choice.call_kind(&mut *store, other)?, api::ResourceChoiceKind::Fallback);
+    assert_eq!(choice.call_as_held(&mut *store, other)?, None);
+    Ok(())
+}
+
+#[test]
+fn group_choice_kind_reports_each_inlined_arm_after_decode() -> Result<()> {
+    let mut h = load()?;
+    let (store, api) = h.split();
+    let thing = api.thing();
+    let first = thing.call_new_thing0(&mut *store, true, "group", false)?;
+    assert_eq!(thing.call_kind(&mut *store, first)?, api::ThingKind::Thing0);
+    let first_wire = thing.call_to_cbor_bytes(&mut *store, first)?;
+    let decoded = thing.call_from_cbor_bytes(&mut *store, &first_wire)?.expect("first group arm decodes");
+    assert_eq!(thing.call_kind(&mut *store, decoded)?, api::ThingKind::Thing0);
+    let other = thing.call_new_y(&mut *store, &[0x2a])?;
+    assert_eq!(thing.call_kind(&mut *store, other)?, api::ThingKind::Y);
+    let other_wire = thing.call_to_cbor_bytes(&mut *store, other)?;
+    let decoded = thing.call_from_cbor_bytes(&mut *store, &other_wire)?.expect("second group arm decodes");
+    assert_eq!(thing.call_kind(&mut *store, decoded)?, api::ThingKind::Y);
+    Ok(())
+}
+
+#[test]
+fn direct_from_cbor_rejects_malformed_and_trailing_input_without_trapping() -> Result<()> {
+    let mut h = load()?;
+    let (store, api) = h.split();
+    let hash = api.hash();
+    let payload: Vec<u8> = (0u8..32).collect();
+    let mut valid = vec![0x58, 0x20];
+    valid.extend_from_slice(&payload);
+    let retained = hash
+        .call_from_cbor_bytes(&mut *store, &valid)?
+        .expect("the independently authored32-byte hash must decode");
+    let mut trailing = valid.clone();
+    trailing.push(0x00);
+    for bad in [vec![], vec![0x58, 0x20, 0x00], vec![0xff], trailing] {
+        let error = hash
+            .call_from_cbor_bytes(&mut *store, &bad)?
+            .expect_err("malformed or trailing wire must return inner Err, never a trap");
+        assert!(!error.is_empty());
+        assert_eq!(hash.call_get(&mut *store, retained)?, payload);
+        let after = hash
+            .call_from_cbor_bytes(&mut *store, &valid)?
+            .expect("a valid decode must succeed after every rejection");
+        assert_eq!(hash.call_get(&mut *store, after)?, payload);
+    }
     Ok(())
 }

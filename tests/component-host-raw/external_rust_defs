@@ -1,0 +1,18 @@
+/// `raw = _CDDL_CODEGEN_RAW_BYTES_TYPE_`. Contract: `RawBytesEncoding` and NOTHING else — nothing
+/// requires `Serialize` of it, which is why the component face gives it the raw seam and no cbor
+/// seam at all. This type's silence about `Serialize` is what makes that a real check rather than a
+/// coincidence.
+#[derive(Clone, Debug)]
+pub struct Raw([u8; 4]);
+
+impl crate::generated::serialization::RawBytesEncoding for Raw {
+    fn to_raw_bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    fn from_raw_bytes(bytes: &[u8]) -> Result<Self, crate::generated::error::DeserializeError> {
+        bytes.try_into().map(Raw).map_err(|e| {
+            crate::generated::error::DeserializeFailure::InvalidStructure(Box::new(e)).into()
+        })
+    }
+}

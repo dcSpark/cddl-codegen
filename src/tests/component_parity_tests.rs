@@ -136,6 +136,7 @@ const PARITY_CASES: &[(&str, &str, &[&str])] = &[
     // gate cannot ask — whether a rust member exists that the boundary never offered, which a
     // harness driving the boundary would simply never think to call.
     ("component-host", "tests/component-host/inputs", &[]),
+    ("component-host-raw", "tests/component-host-raw/inputs", &[]),
     (
         "component-host-preserve",
         "tests/component-host/inputs",
@@ -261,8 +262,8 @@ const COMPONENT_PARITY_EXEMPT: &[(&str, &str, &str)] = &[
         "`Int` projects to the WIT `variant int { uint(u64), nint(u64) }` — a VALUE type with no \
          member namespace; a caller constructs the arm directly",
     ),
-    // The host fixture's static-only preserve/canonical/JSON rows carry the same `delta: int`
-    // value-type asymmetry as its executable default row.
+    // The host fixture's preserve/canonical/JSON rows carry the same `delta: int`
+    // value-type asymmetry; canonical and JSON also have dedicated runtime targets.
     (
         "component-host-preserve",
         "Int::new_uint",
@@ -419,6 +420,26 @@ const COMPONENT_PARITY_EXEMPT: &[(&str, &str, &str)] = &[
     (
         "component-bounds-canonical",
         "DynamicOpenStructRestAny::insert_rest",
+        "native protected-rest invariant door; the component face exposes checked construction plus a detached rest snapshot",
+    ),
+    (
+        "component-host",
+        "ProtectedRest::insert_rest",
+        "native protected-rest invariant door; the component face exposes checked construction plus a detached rest snapshot",
+    ),
+    (
+        "component-host-preserve",
+        "ProtectedRest::insert_rest",
+        "native protected-rest invariant door; the component face exposes checked construction plus a detached rest snapshot",
+    ),
+    (
+        "component-host-canonical",
+        "ProtectedRest::insert_rest",
+        "native protected-rest invariant door; the component face exposes checked construction plus a detached rest snapshot",
+    ),
+    (
+        "component-host-json",
+        "ProtectedRest::insert_rest",
         "native protected-rest invariant door; the component face exposes checked construction plus a detached rest snapshot",
     ),
     (

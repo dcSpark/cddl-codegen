@@ -1,0 +1,3 @@
+; The settled four-byte RawBytesEncoding bridge, executed by its own wasmtime host.
+; Directory input: component fixture owners apply; tests/<dir>/input.cddl parity does not.
+raw = _CDDL_CODEGEN_RAW_BYTES_TYPE_

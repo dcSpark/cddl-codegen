@@ -1,0 +1,18 @@
+[package]
+name = "component-raw-host"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wasmtime = "47"
+wasmtime-wasi = "47"
+cddl-lib = { path = "../rust" }
+
+[features]
+default = []
+raw = []
+
+[[test]]
+name = "raw"
+path = "tests/raw.rs"
+required-features = ["raw"]

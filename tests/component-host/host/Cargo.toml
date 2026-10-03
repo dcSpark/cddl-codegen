@@ -18,3 +18,27 @@ wasmtime-wasi = "47"
 # copied bytes stay run-independent — an absolute scratch path would make every gate-cache key
 # unique to its run.
 cddl-lib = { path = "../rust" }
+serde_json = { version = "1", optional = true }
+
+# Each selected host target matches one explicit generator profile.
+# required-features plus --test make a missing profile feature fail instead of running zero tests.
+[features]
+default = ["behavior"]
+behavior = []
+canonical = []
+json = ["dep:serde_json"]
+
+[[test]]
+name = "behavior"
+path = "tests/behavior.rs"
+required-features = ["behavior"]
+
+[[test]]
+name = "canonical"
+path = "tests/canonical.rs"
+required-features = ["canonical"]
+
+[[test]]
+name = "json"
+path = "tests/json.rs"
+required-features = ["json"]

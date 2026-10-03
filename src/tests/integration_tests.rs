@@ -4331,13 +4331,10 @@ fn synthesized_name_interaction_sweep() {
 /// user to run `cargo run -- --input=example/test.cddl --output=export` (and the release-binary
 /// variant) as their very first command, so `example/test.cddl` must always generate a crate that
 /// actually compiles — a silent break here is the worst kind of docs rot (it greets every newcomer).
-/// This runs that command VERBATIM (no extra flags, so the test can't drift from what the doc
-/// promises — wasm is emitted by default, so the wasm crate is gated too), generating into
-/// `example/export` just like the doc, then `cargo check`s BOTH the generated rust crate and the
-/// generated wasm crate. One shared `CARGO_TARGET_DIR` (the `feature_corpus_compiles`
-/// pattern) so the deps build once. Hand-rolled rather than `run_test` on purpose: `run_test`
-/// requires a `tests.rs` round-trip fixture, and `example/` deliberately ships only the spec (its
-/// round-trip coverage is `--emit-tests`' job) — so this gate is generate + check, nothing appended.
+/// Keep the documented default flags, with explicit absolute input/static paths and a fresh scratch
+/// output so prior example exports and preservation overlays cannot contaminate a first-run check.
+/// Both generated crates are checked: WASM is enabled by default. One shared `CARGO_TARGET_DIR`
+/// lets dependencies build once. This is generate + check without appended round-trip fixtures.
 #[test]
 fn getting_started_example() {
     let input = std::path::Path::new("example/test.cddl");
@@ -4345,7 +4342,7 @@ fn getting_started_example() {
         input.exists(),
         "{input:?} is the spec docs/docs/getting_started.mdx runs verbatim — it must exist"
     );
-    let out = std::path::Path::new("example/export");
+    let checkout = std::env::current_dir().unwrap();
 
     // Scratch target dir so cbor_event & wasm-bindgen build once for both crate checks below.
     let root = std::env::temp_dir().join(format!(
@@ -4354,11 +4351,16 @@ fn getting_started_example() {
     ));
     let _ = std::fs::remove_dir_all(&root);
     let target_dir = root.join("target");
+    let out = root.join("export");
 
-    // The documented command, verbatim.
+    // Preserve the documented defaults while isolating generation from prior output.
     let gen_out = codegen_cmd()
-        .arg(format!("--input={}", input.to_str().unwrap()))
-        .arg(format!("--output={}", out.to_str().unwrap()))
+        .arg(format!("--input={}", checkout.join(input).display()))
+        .arg(format!("--output={}", out.display()))
+        .arg(format!(
+            "--static-dir={}",
+            checkout.join("static").display()
+        ))
         .output()
         .unwrap();
     assert!(
@@ -34867,4 +34869,107 @@ fn wrapper_request_diagnostics_keep_real_policy_named_leaves() {
         );
     }
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A typedef-only schema export retains its composition entry point and writes empty definitions.
+/// The module and schema assertions pin zero own rows and zero dependency calls.
+#[test]
+fn json_schema_typedef_only_without_dependencies_writes_empty_definitions() {
+    let dir = std::env::temp_dir().join(format!(
+        "cddl_codegen_json_schema_typedef_only_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("specs")).unwrap();
+    let input = dir.join("specs/input.cddl");
+    std::fs::write(
+        &input,
+        "loose_list = [* tstr]
+loose_table = { * tstr => tstr }
+",
+    )
+    .unwrap();
+    let output = dir.join("output");
+    let static_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
+    let generated = codegen_cmd()
+        .arg(format!("--input={}", input.display()))
+        .arg(format!("--output={}", output.display()))
+        .arg(format!("--static-dir={static_dir}"))
+        .arg("--lib-name=empty-schema")
+        .arg("--wasm=false")
+        .arg("--json-schema-export=true")
+        .arg("--json-serde-derives=false")
+        .arg("--package-json=false")
+        .arg("--preserve-encodings=false")
+        .arg("--canonical-form=false")
+        .arg("--no-preserve-comments")
+        // No --json-schema-root, --json-schema-dep, --common-import-override or --json-gen-dep.
+        .output()
+        .unwrap();
+    println!(
+        "generation stderr:
+{}",
+        String::from_utf8_lossy(&generated.stderr)
+    );
+    assert!(
+        generated.status.success(),
+        "the text-only typedef fixture must generate without schema rows:
+{}",
+        String::from_utf8_lossy(&generated.stderr)
+    );
+
+    let json_gen = output.join("wasm/json-gen");
+    let module = std::fs::read_to_string(json_gen.join("src/generated/mod.rs")).unwrap();
+    assert!(
+        module.contains("pub fn add_schemas("),
+        "a zero-row export must retain its public composition entry point:
+{module}"
+    );
+    assert!(
+        !module.contains("Registrar")
+            && !module.contains("reg.add::<")
+            && !module.contains("reg.preclaim_root::<")
+            && !module.contains("::add_schemas(generator)"),
+        "the fixture must really exercise zero own rows and zero dependency calls:
+{module}"
+    );
+    let run = tool_cmd("cargo")
+        .arg("run")
+        .current_dir(&json_gen)
+        .output()
+        .unwrap();
+    println!(
+        "json-gen stdout:
+{}",
+        String::from_utf8_lossy(&run.stdout)
+    );
+    println!(
+        "json-gen stderr:
+{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert!(
+        run.status.success(),
+        "the zero-row generated json-gen crate must compile and run:
+{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let text = std::fs::read_to_string(json_gen.join("schemas/empty_schema.schema.json"))
+        .expect("a zero-row json-gen run must still write its document");
+    println!(
+        "zero-row schema document:
+{text}"
+    );
+    let document: serde_json::Value =
+        serde_json::from_str(&text).expect("the written document must be valid JSON");
+    assert_eq!(document["title"], "empty_schema");
+    let definitions = document
+        .get("$defs")
+        .and_then(serde_json::Value::as_object)
+        .expect("the written document must contain an actual $defs object");
+    assert!(
+        definitions.is_empty(),
+        "the qualified typedef-only/no-dependency case must have empty definitions: {definitions:?}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }

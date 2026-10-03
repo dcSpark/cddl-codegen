@@ -96,8 +96,9 @@ pub(super) const COMPONENT_FIXTURES: &[(&str, &[&str])] = &[
     // fixture whose runtime behaviour is asserted and whose emitted shape is not would be the one
     // place a regression could land with no static gate noticing. Preserve changes inlined-arm
     // capture layout, so the cheap WIT/parity sweep covers that posture (and canonical / JSON) too;
-    // the host execution gate intentionally remains its one default cell.
+    // host runtime rows now select default, canonical and JSON targets explicitly.
     ("tests/component-host/inputs", &[]),
+    ("tests/component-host-raw/inputs", &[]),
     (
         "tests/component-host/inputs",
         &["--preserve-encodings=true"],
@@ -2506,11 +2507,17 @@ const BUILD_SMOKE_FIXTURES: &[BuildSmokeRow] = &[
     ("tests/component-choices/input.cddl", &[], None, None),
     // The host fixture owns the inlined optional-fixed component arm. Preserve changes its native
     // enum arm's encoding-sidecar layout, making this representative wasip2 guest build the
-    // compile control for `capture_field_ignore_encodings`; runtime behavior remains default-only.
+    // compile control for `capture_field_ignore_encodings`; specialized runtime targets are separate.
     (
         "tests/component-host/inputs",
         &["--preserve-encodings=true"],
         None,
+        None,
+    ),
+    (
+        "tests/component-host-raw/inputs",
+        &[],
+        Some("tests/component-host-raw/external_rust_defs"),
         None,
     ),
     // The multi-INTERFACE shape: two `Guest` impls on one guest type under one `export!`, a

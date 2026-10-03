@@ -618,3 +618,237 @@ fn generated_item_path(components: Option<&[String]>, ident: &RustIdent) -> Stri
         Some(components) => format!("crate::generated::{}::{ident}", components.join("::")),
     }
 }
+
+#[cfg(test)]
+mod scope_renderer_tests {
+    use super::*;
+    use crate::generation::extern_interface::{ExternCheckEntry, ExternCheckKind};
+    use crate::intermediate::CDDLIdent;
+    use clap::Parser;
+
+    fn ident(name: &str) -> RustIdent {
+        RustIdent::new(CDDLIdent::new(name))
+    }
+
+    fn cli() -> Cli {
+        Cli::parse_from([
+            "cddl-codegen",
+            "--input",
+            "scope-renderer-input",
+            "--output",
+            "scope-renderer-output",
+            "--wasm=false",
+        ])
+    }
+
+    #[test]
+    fn collection_and_key_renderers_keep_root_and_empty_exported_scope_distinct() {
+        let mut registry = WasmCollectionWrapperRegistry::default();
+        let mut types = IntermediateTypes::new();
+        let scopes = [
+            ("root_item", ROOT_SCOPE.clone()),
+            ("nested_item", ModuleScope::new(vec!["nested".to_owned()])),
+            ("empty_item", ModuleScope::new(vec![])),
+        ];
+        let mut roots = Vec::new();
+        for (name, scope) in scopes {
+            let name = ident(name);
+            types.mark_scope(name.clone(), scope.clone());
+            registry.record_local_class(name.clone(), scope, "[* uint]".to_owned(), true);
+            roots.push((name, DemandSet::BARE));
+        }
+        let index = render_collections_index(registry.local_classes());
+        let keys = render_key_demand_assertions(&roots, &types, &cli());
+        for path in [
+            "crate::generated::RootItem",
+            "crate::generated::nested::NestedItem",
+            "crate::generated::::EmptyItem",
+        ] {
+            assert!(index.contains(&format!("pub use {path};\n")), "{index}");
+            assert!(
+                keys.contains(&format!("_key_demand_ord::<{path}>();")),
+                "{keys}"
+            );
+        }
+        assert!(!index.contains("crate::generated::lib::RootItem"));
+        assert!(!keys.contains("crate::generated::lib::RootItem"));
+        assert!(!index.contains("pub use crate::generated::EmptyItem;"));
+        assert!(!keys.contains("_key_demand_ord::<crate::generated::EmptyItem>();"));
+    }
+
+    #[test]
+    fn extern_self_check_keeps_its_projection_empty_components_root_policy() {
+        let entries = [
+            ExternCheckEntry {
+                components: vec![],
+                ident: ident("empty_item"),
+                kind: ExternCheckKind::Use,
+            },
+            ExternCheckEntry {
+                components: vec!["lib".to_owned()],
+                ident: ident("lib_item"),
+                kind: ExternCheckKind::Use,
+            },
+            ExternCheckEntry {
+                components: vec!["nested".to_owned()],
+                ident: ident("nested_item"),
+                kind: ExternCheckKind::Use,
+            },
+        ];
+        let rendered =
+            render_extern_interface_check(&entries, &IntermediateTypes::new(), &cli(), |_| false);
+        for path in [
+            "crate::generated::EmptyItem",
+            "crate::generated::lib::LibItem",
+            "crate::generated::nested::NestedItem",
+        ] {
+            assert!(
+                rendered.contains(&format!("use {path} as _;\n")),
+                "{rendered}"
+            );
+        }
+        assert!(!rendered.contains("crate::generated::::EmptyItem"));
+        assert!(!rendered.contains("use crate::generated::LibItem as _;"));
+    }
+}
+
+#[cfg(test)]
+mod supplemental_renderer_obligation_tests {
+    use super::*;
+    use crate::generation::extern_interface::{ExternCheckEntry, ExternCheckKind};
+    use crate::intermediate::CDDLIdent;
+
+    #[test]
+    fn supplemental_empty_renderers_keep_their_nonvacuous_carriers() {
+        let cli = Cli {
+            lib_name: "cddl-lib".to_owned(),
+            ..Default::default()
+        };
+        let collections = render_borrowed_collections(&BTreeMap::new(), &cli);
+        assert!(collections.contains("mod borrowed {\n}"), "{collections}");
+        assert!(collections.contains("BORROWED_SHAPES: &[(&str, &str, &str)] = &[\n];"));
+        assert!(!collections.contains("    use "));
+        let keys = render_borrowed_key_types(&[], &cli);
+        assert!(keys.contains("BORROWED_KEY_TYPES: &[(&str, &str)] = &[\n];"));
+        assert!(keys.contains("fn _assert_key_traits<K: Eq + Ord + PartialOrd>() {}"));
+        assert!(!keys.contains("fn _borrowed_key_types_self_check"));
+        let check = render_extern_interface_check(&[], &IntermediateTypes::new(), &cli, |_| false);
+        assert!(!check.contains("fn _assert_serialize"));
+        assert!(!check.contains("fn _assert_deserialize"));
+        assert!(!check.contains("fn _assert_raw_bytes"));
+    }
+
+    #[test]
+    fn supplemental_extern_wire_kinds_keep_canonical_and_deserialize_coordinates() {
+        let id = |name: &str| RustIdent::new(CDDLIdent::new(name.to_owned()));
+        for (preserve_encodings, canonical_form) in [(false, false), (true, false), (true, true)] {
+            let cli = Cli {
+                preserve_encodings,
+                canonical_form,
+                lib_name: "cddl-lib".to_owned(),
+                ..Default::default()
+            };
+            let entries = [
+                ExternCheckEntry {
+                    components: vec![],
+                    ident: id("use_item"),
+                    kind: ExternCheckKind::Use,
+                },
+                ExternCheckEntry {
+                    components: vec![],
+                    ident: id("opaque_item"),
+                    kind: ExternCheckKind::Serialize,
+                },
+                ExternCheckEntry {
+                    components: vec!["nested".to_owned()],
+                    ident: id("group_item"),
+                    kind: ExternCheckKind::EmbeddedGroup,
+                },
+                ExternCheckEntry {
+                    components: vec![],
+                    ident: id("raw_item"),
+                    kind: ExternCheckKind::RawBytes,
+                },
+                ExternCheckEntry {
+                    components: vec![],
+                    ident: id("none_item"),
+                    kind: ExternCheckKind::None,
+                },
+            ];
+            let rendered =
+                render_extern_interface_check(&entries, &IntermediateTypes::new(), &cli, |ident| {
+                    ident.as_ref() == "GroupItem"
+                });
+            assert!(
+                rendered.contains("use crate::generated::UseItem as _;"),
+                "{rendered}"
+            );
+            assert!(rendered.contains("_assert_serialize::<crate::generated::OpaqueItem>();"));
+            assert!(!rendered.contains("_assert_deserialize::<crate::generated::OpaqueItem>();"));
+            assert!(rendered.contains(
+                "_assert_serialize_embedded_group::<crate::generated::nested::GroupItem>();"
+            ));
+            assert!(rendered.contains(
+                "_assert_deserialize_embedded_group::<crate::generated::nested::GroupItem>();"
+            ));
+            assert!(rendered.contains("_assert_raw_bytes::<crate::generated::RawItem>();"));
+            assert!(!rendered.contains("::<crate::generated::NoneItem>"));
+            let bound = if canonical_form {
+                "crate::generated::serialization::Serialize"
+            } else {
+                "cbor_event::se::Serialize"
+            };
+            assert!(
+                rendered.contains(&format!("fn _assert_serialize<T: {bound}>()")),
+                "{rendered}"
+            );
+        }
+    }
+
+    #[test]
+    fn supplemental_json_empty_and_dep_order_use_one_generator() {
+        let rows = BlocksOrLines::default();
+        let empty = render_json_gen_module(
+            &rows,
+            &Cli {
+                lib_name: "cddl-lib".to_owned(),
+                ..Default::default()
+            },
+        );
+        assert!(empty.contains("#[allow(unused_variables)]"), "{empty}");
+        assert!(!empty.contains("use cddl_lib::json_schema_gen::Registrar;"));
+        assert_eq!(
+            empty
+                .matches("schemars::SchemaGenerator::default()")
+                .count(),
+            1
+        );
+        assert!(empty.contains("check_schema_ref_closure(&document, &definitions_path)"));
+        for order in [["first", "second"], ["second", "first"]] {
+            let cli = Cli {
+                lib_name: "cddl-lib".to_owned(),
+                json_schema_dep: order
+                    .iter()
+                    .map(|name| crate::cli::KeyValueArg::new(*name, format!("{name}_json")))
+                    .collect(),
+                ..Default::default()
+            };
+            let rendered = render_json_gen_module(&rows, &cli);
+            let first = rendered
+                .find(&format!("{}_json::add_schemas(generator);", order[0]))
+                .unwrap();
+            let second = rendered
+                .find(&format!("{}_json::add_schemas(generator);", order[1]))
+                .unwrap();
+            assert!(first < second, "{rendered}");
+            assert!(!rendered.contains("#[allow(unused_variables)]"));
+            assert!(!rendered.contains("Registrar::new"));
+            assert_eq!(
+                rendered
+                    .matches("schemars::SchemaGenerator::default()")
+                    .count(),
+                1
+            );
+        }
+    }
+}

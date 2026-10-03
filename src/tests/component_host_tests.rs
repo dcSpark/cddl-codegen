@@ -43,7 +43,7 @@ use std::path::{Path, PathBuf};
 /// Bump on any change to what the cached closure CHECKS (not to the bytes it checks, which the tree
 /// hash already covers). Without it, tightening an assertion would be laundered past every
 /// previously-cached cell.
-const VERDICT_MARKER: &str = "host-behavior-v2";
+const VERDICT_MARKER: &str = "host-behavior-v4";
 
 /// Free scratch below this and the nested build is a coin flip between ENOSPC and a machine-wide
 /// stall, so the gate says so and stops rather than reporting a code verdict it did not reach.
@@ -54,11 +54,81 @@ pub(crate) const SCRATCH_FLOOR_GIB: u64 = 6;
 /// unresponsive.
 pub(crate) const MEMORY_FLOOR_GIB: u64 = 2;
 
-/// The fixtures this gate RUNS. Deliberately one: the fixture is designed to carry every assertion
-/// class at once (see `tests/component-host/inputs/lib.cddl`'s header), and each row here pays a
-/// wasmtime-linked `cargo test`. A second row buys breadth only if it carries a class this one
-/// cannot express.
-const HOST_FIXTURES: &[(&str, &[&str])] = &[("tests/component-host/inputs", &[])];
+/// Runtime profiles are serial and select an explicit host target/feature pair.
+/// The raw bridge has its own input/host so it cannot impose extern contracts on the default
+/// fixture reused by jco. Support sources are copied or appended inside each hashed output root.
+struct HostFixture {
+    label: &'static str,
+    input: &'static str,
+    flags: &'static [&'static str],
+    host: &'static str,
+    host_args: &'static [&'static str],
+    expected_tests: usize,
+    extern_defs: Option<&'static str>,
+}
+
+const HOST_FIXTURES: &[HostFixture] = &[
+    HostFixture {
+        label: "surface",
+        input: "tests/component-host/inputs",
+        flags: &[],
+        host: "tests/component-host/host",
+        host_args: &[
+            "--no-default-features",
+            "--features",
+            "behavior",
+            "--test",
+            "behavior",
+        ],
+        expected_tests: 20,
+        extern_defs: None,
+    },
+    HostFixture {
+        label: "canonical",
+        input: "tests/component-host/inputs",
+        flags: &["--preserve-encodings=true", "--canonical-form=true"],
+        host: "tests/component-host/host",
+        host_args: &[
+            "--no-default-features",
+            "--features",
+            "canonical",
+            "--test",
+            "canonical",
+        ],
+        expected_tests: 1,
+        extern_defs: None,
+    },
+    HostFixture {
+        label: "json",
+        input: "tests/component-host/inputs",
+        flags: &["--json-serde-derives=true"],
+        host: "tests/component-host/host",
+        host_args: &[
+            "--no-default-features",
+            "--features",
+            "json",
+            "--test",
+            "json",
+        ],
+        expected_tests: 2,
+        extern_defs: None,
+    },
+    HostFixture {
+        label: "raw",
+        input: "tests/component-host-raw/inputs",
+        flags: &[],
+        host: "tests/component-host-raw/host",
+        host_args: &[
+            "--no-default-features",
+            "--features",
+            "raw",
+            "--test",
+            "raw",
+        ],
+        expected_tests: 1,
+        extern_defs: Some("tests/component-host-raw/external_rust_defs"),
+    },
+];
 
 /// Recursive copy. The host crate is a handful of files, so this is deliberately the simplest thing
 /// that puts them inside the hashed root.
@@ -164,20 +234,18 @@ fn component_host_behavior() {
     let mut cache_run = 0usize;
     let mut cache_hit = 0usize;
 
-    for (input, flags) in HOST_FIXTURES {
-        let label = format!("{input} {flags:?}");
-        let out = root.join(
-            input
-                .replace(['/', '\\'], "__")
-                .replace(|c: char| !c.is_ascii_alphanumeric() && c != '_', ""),
-        );
+    for fixture in HOST_FIXTURES {
+        let input = fixture.input;
+        let flags = fixture.flags;
+        let label = format!("{} {input} {flags:?}", fixture.label);
+        let out = root.join(fixture.label);
         // A stale tree would poison the tree hash with files this run did not emit.
         let _ = std::fs::remove_dir_all(&out);
         std::fs::create_dir_all(&out).unwrap();
 
         let mut args = vec![
             "--input".to_owned(),
-            (*input).to_owned(),
+            input.to_owned(),
             "--output".to_owned(),
             out.to_str().unwrap().to_owned(),
             "--component=true".to_owned(),
@@ -213,13 +281,39 @@ fn component_host_behavior() {
         );
 
         // INSIDE the hashed root, before the key is taken — see this module's header.
-        copy_tree(Path::new("tests/component-host/host"), &out.join("host"));
+        copy_tree(Path::new(fixture.host), &out.join("host"));
+        // User-owned extern definitions belong in the thin native root, before the tree hash.
+        // Also carry the source support file inside the closure so future cached reads stay bounded.
+        if let Some(defs_path) = fixture.extern_defs {
+            let defs = std::fs::read_to_string(defs_path)
+                .unwrap_or_else(|e| panic!("{label}: cannot read extern defs {defs_path}: {e}"));
+            std::fs::create_dir_all(out.join("support")).unwrap();
+            std::fs::write(out.join("support/external_rust_defs"), &defs).unwrap();
+            let lib_rs = out.join("rust/src/lib.rs");
+            let mut lib = std::fs::read_to_string(&lib_rs).unwrap();
+            lib.push_str("\n\n");
+            lib.push_str(&defs);
+            std::fs::write(lib_rs, lib).unwrap();
+        }
 
         let component_dir = out.join("component");
         let host_dir = out.join("host");
         let artifact = target_dir
             .join("wasm32-wasip2/debug")
             .join("cddl_lib_component.wasm");
+        let mut cache_argv = vec![
+            format!("verdict={VERDICT_MARKER}"),
+            format!("host-test-count={}", fixture.expected_tests),
+            "cwd=component".to_owned(),
+            "cargo".to_owned(),
+            "build".to_owned(),
+            "--target".to_owned(),
+            "wasm32-wasip2".to_owned(),
+            "cwd=host".to_owned(),
+            "cargo".to_owned(),
+            "test".to_owned(),
+        ];
+        cache_argv.extend(fixture.host_args.iter().map(|arg| (*arg).to_owned()));
         let outcome = gate_cache::run_cached(
             "component_host",
             &label,
@@ -229,17 +323,7 @@ fn component_host_behavior() {
                 PathBuf::from("rust/Cargo.toml"),
                 PathBuf::from("host/Cargo.toml"),
             ],
-            &[
-                format!("verdict={VERDICT_MARKER}"),
-                "cwd=component".to_owned(),
-                "cargo".to_owned(),
-                "build".to_owned(),
-                "--target".to_owned(),
-                "wasm32-wasip2".to_owned(),
-                "cwd=host".to_owned(),
-                "cargo".to_owned(),
-                "test".to_owned(),
-            ],
+            &cache_argv,
             || {
                 let build = tool_cmd("cargo")
                     .args(["build", "--target", "wasm32-wasip2"])
@@ -280,6 +364,7 @@ fn component_host_behavior() {
                 }
                 let test = tool_cmd("cargo")
                     .arg("test")
+                    .args(fixture.host_args)
                     .current_dir(&host_dir)
                     .env("CARGO_TARGET_DIR", &target_dir)
                     .env("CDDL_COMPONENT_WASM", &artifact)
@@ -302,6 +387,15 @@ fn component_host_behavior() {
                     failures.push(format!(
                         "{label}: {cause}\n--- stdout ---\n{}\n--- stderr ---\n{stderr}",
                         String::from_utf8_lossy(&test.stdout)
+                    ));
+                    return false;
+                }
+                if !host_test_summary_matches(&test.stdout, fixture.expected_tests) {
+                    failures.push(format!(
+                        "{label}: expected exactly {} passed host tests with zero failures and ignores\n--- stdout ---\n{}\n--- stderr ---\n{}",
+                        fixture.expected_tests,
+                        String::from_utf8_lossy(&test.stdout),
+                        String::from_utf8_lossy(&test.stderr)
                     ));
                     return false;
                 }
@@ -340,6 +434,13 @@ fn the_host_crate_carries_the_files_the_gate_copies() {
         "tests/component-host/host/src/lib.rs",
         "tests/component-host/host/tests/behavior.rs",
         "tests/component-host/inputs/lib.cddl",
+        "tests/component-host/host/tests/canonical.rs",
+        "tests/component-host/host/tests/json.rs",
+        "tests/component-host-raw/inputs/lib.cddl",
+        "tests/component-host-raw/external_rust_defs",
+        "tests/component-host-raw/host/Cargo.toml",
+        "tests/component-host-raw/host/src/lib.rs",
+        "tests/component-host-raw/host/tests/raw.rs",
     ] {
         assert!(
             Path::new(expected).is_file(),
@@ -349,20 +450,58 @@ fn the_host_crate_carries_the_files_the_gate_copies() {
     // The two run-independence properties the gate-cache key rests on, asserted against the source
     // rather than trusted: the WIT is reached by a RELATIVE path and the artifact by an env var, so
     // no scratch path is ever baked into the hashed bytes.
-    let lib = std::fs::read_to_string("tests/component-host/host/src/lib.rs").unwrap();
-    assert!(
-        lib.contains("path: \"../component/wit\""),
-        "the host crate's `bindgen!` no longer resolves the WIT by a relative path — an absolute \
-         scratch path would make every gate-cache key unique to its run"
-    );
-    assert!(
-        lib.contains("CDDL_COMPONENT_WASM"),
-        "the host crate no longer takes the component's path from the environment"
-    );
-    let manifest = std::fs::read_to_string("tests/component-host/host/Cargo.toml").unwrap();
-    assert!(
-        manifest.contains("path = \"../rust\""),
-        "the host crate's path dep on the generated rust crate is gone or absolute — it is the \
-         oracle the byte-equality class compares against"
-    );
+    for host in ["tests/component-host/host", "tests/component-host-raw/host"] {
+        let lib = std::fs::read_to_string(format!("{host}/src/lib.rs")).unwrap();
+        assert!(
+            lib.contains("path: \"../component/wit\""),
+            "the host crate's `bindgen!` no longer resolves the WIT by a relative path — an absolute \
+             scratch path would make every gate-cache key unique to its run"
+        );
+        assert!(
+            lib.contains("CDDL_COMPONENT_WASM"),
+            "the host crate no longer takes the component's path from the environment"
+        );
+        let manifest = std::fs::read_to_string(format!("{host}/Cargo.toml")).unwrap();
+        assert!(
+            manifest.contains("path = \"../rust\""),
+            "the host crate's path dep on the generated rust crate is gone or absolute — it is the \
+             oracle the byte-equality class compares against"
+        );
+    }
+    // The raw runtime door reuses the settled shim instead of inventing another raw contract.
+    let existing = std::fs::read_to_string("tests/component-extern/external_rust_defs").unwrap();
+    let raw = std::fs::read_to_string("tests/component-host-raw/external_rust_defs").unwrap();
+    let start = existing
+        .find("/// `raw = _CDDL_CODEGEN_RAW_BYTES_TYPE_`.")
+        .unwrap();
+    assert_eq!(raw.trim(), existing[start..].trim());
+}
+
+fn host_test_summary_matches(stdout: &[u8], expected: usize) -> bool {
+    let text = String::from_utf8_lossy(stdout);
+    let prefix = format!("test result: ok. {expected} passed; 0 failed; 0 ignored;");
+    let mut summaries = text.lines().filter(|line| line.starts_with("test result:"));
+    expected > 0
+        && summaries
+            .next()
+            .is_some_and(|line| line.starts_with(&prefix))
+        && summaries.next().is_none()
+}
+
+#[test]
+fn component_host_rejects_vacuous_or_incomplete_test_summaries() {
+    let valid = b"running 20 tests\ntest result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.0s\n";
+    assert!(host_test_summary_matches(valid, 20));
+    assert!(!host_test_summary_matches(valid, 1));
+    assert!(!host_test_summary_matches(b"", 20));
+    assert!(!host_test_summary_matches(
+        b"test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.0s\n", 20
+    ));
+    assert!(!host_test_summary_matches(
+        b"test result: ok. 20 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 1.0s\n", 20
+    ));
+    assert!(!host_test_summary_matches(
+        &[valid.as_slice(), valid.as_slice()].concat(),
+        20
+    ));
 }
