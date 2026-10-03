@@ -17,11 +17,10 @@ struct SourceRole {
 }
 
 // Every current source is classified, including deliberately unscanned files.
-// gen-core-19 cuts move the corresponding member anchors into five destination rows:
-// wasm_wrapper_registry, json_schema_claims, encoding_fields, json_annotations, key_demands.
-// Enroll all five in EMITTER_SOURCES as audited conservative coverage, explaining their
-// body/type/attribute/traversal role here and in the roster comment. Only actual rendering
-// destinations enter WASM_RENDERING_EMITTERS. Do not pretend mod.rs was an emitter row.
+// The registry, schema-claim, encoding, JSON-annotation and key-demand owners each
+// have member anchors here and conservative coverage in EMITTER_SOURCES.
+// Only actual WASM rendering owners belong in WASM_RENDERING_EMITTERS.
+// The coordinator mod.rs is classified here without joining the emitter roster.
 const SOURCE_ROLES: &[SourceRole] = &[
     SourceRole {
         file: "bounds.rs",
