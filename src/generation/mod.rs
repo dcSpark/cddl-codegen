@@ -204,6 +204,14 @@ const EXTERN_REEXPORT_CONTRACT_COMMENT: &str = "\
 // each name below (`pub use <your_module>::<Name>;`) so the generated glue resolves against the\n\
 // user-owned definition. See the extern types section of docs/output_format.";
 
+/// Clone a type while replacing only its conceptual shape.
+/// Encoding operations, complete config and generic binding remain owned by the clone.
+fn clone_with_conceptual_type(ty: &RustType, conceptual_type: &ConceptualRustType) -> RustType {
+    let mut cloned = ty.clone();
+    cloned.conceptual_type = conceptual_type.clone();
+    cloned
+}
+
 pub struct GenerationScope {
     rust_lib_scope: codegen::Scope,
     rust_scopes: BTreeMap<ModuleScope, codegen::Scope>,

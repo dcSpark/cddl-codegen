@@ -363,8 +363,7 @@ impl GenerationScope {
                 // Reserved aliases have no AliasInfo entry. Preserve the outer RustType facts
                 // while peeling just the conceptual spelling, rather than reconstructing a fresh
                 // bounds/policy-free type.
-                let mut resolved = ty.clone();
-                resolved.conceptual_type = (**inner).clone();
+                let resolved = clone_with_conceptual_type(ty, inner);
                 self.wasm_collection_reference_inner(types, &resolved, aliases_being_followed)
             }
             ConceptualRustType::Alias(AliasIdent::Rust(ident), inner) => {
@@ -373,8 +372,7 @@ impl GenerationScope {
                     // Keep the historical fallback for an unregistered forward placeholder, but
                     // retain any facts carried on this occurrence while peeling its conceptual
                     // alias node.
-                    let mut resolved = ty.clone();
-                    resolved.conceptual_type = (**inner).clone();
+                    let resolved = clone_with_conceptual_type(ty, inner);
                     return self.wasm_collection_reference_inner(
                         types,
                         &resolved,

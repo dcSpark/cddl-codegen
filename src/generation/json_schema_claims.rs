@@ -204,13 +204,11 @@ impl<'types, 'ast, 'cli> ClaimWalker<'types, 'ast, 'cli> {
                         rust_crate_struct_from_wasm(types, ident, cli)
                     ));
                 }
-                let mut target = ty.clone();
-                target.conceptual_type = (**inner).clone();
+                let target = clone_with_conceptual_type(ty, inner);
                 self.walk_schema_body(&target);
             }
             ConceptualRustType::Alias(AliasIdent::Reserved(_), inner) => {
-                let mut target = ty.clone();
-                target.conceptual_type = (**inner).clone();
+                let target = clone_with_conceptual_type(ty, inner);
                 self.walk_schema_body(&target)
             }
             ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
@@ -248,8 +246,7 @@ impl<'types, 'ast, 'cli> ClaimWalker<'types, 'ast, 'cli> {
                 }
             }
             ConceptualRustType::Alias(_, inner) => {
-                let mut target = ty.clone();
-                target.conceptual_type = (**inner).clone();
+                let target = clone_with_conceptual_type(ty, inner);
                 self.walk_descriptor_leaf(&target);
             }
             ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
@@ -276,13 +273,11 @@ impl<'types, 'ast, 'cli> ClaimWalker<'types, 'ast, 'cli> {
                 // This is the BODY counterpart of the subschema alias descent above: retain the
                 // outer occurrence configuration (pair-map flavor and bounds in particular),
                 // replacing only the conceptual node as emitted aliases do.
-                let mut target = ty.clone();
-                target.conceptual_type = (**inner).clone();
+                let target = clone_with_conceptual_type(ty, inner);
                 self.walk_schema_body(&target)
             }
             ConceptualRustType::Alias(AliasIdent::Reserved(_), inner) => {
-                let mut target = ty.clone();
-                target.conceptual_type = (**inner).clone();
+                let target = clone_with_conceptual_type(ty, inner);
                 self.walk_schema_body(&target)
             }
             // Vec/Option schema bodies reference their element through schemars' subschema path.
