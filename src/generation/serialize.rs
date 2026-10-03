@@ -1287,6 +1287,50 @@ fn ser_rust_ident(
     }
 }
 
+fn ser_alias(
+    ident: &AliasIdent,
+    ty: &ConceptualRustType,
+    cfg: Cow<'_, RustTypeSerializeConfig>,
+    types: &IntermediateTypes,
+    body: &mut dyn CodeBlock,
+    config: SerializeConfig,
+    cli: &Cli,
+) {
+    let alias_metadata = types
+        .type_aliases()
+        .get(ident)
+        .unwrap()
+        .rule_metadata
+        .as_ref();
+    let config_for_alias = if let Some(custom_serialize) =
+        alias_metadata.and_then(|rmd| rmd.custom_serialize.clone())
+    {
+        // The rule's `@custom_encodings` rides with the pair it is written beside —
+        // the second of the two carrier channels the emission sites see a
+        // declaration through (the other being the derivation from the type, which
+        // `encoding_fields_impl`'s own `Alias` arm owns).
+        config
+            .custom_serialize(custom_serialize)
+            .custom_encodings(alias_metadata.and_then(|rmd| rmd.custom_encodings.clone()))
+    } else {
+        config
+    };
+    // Keep the OUTER RustTypeSerializeConfig (`cfg`): an Alias's inner is a bare
+    // ConceptualRustType with no config of its own, so recursing with `(&**ty).into()`
+    // would DEFAULT the config and drop the per-rule policy the alias carries —
+    // notably `@duplicates preserve`, which the Map arm reads to pick the POSITIONAL
+    // encoding sidecar. (Deserialize's Alias arm keeps the config for the same reason;
+    // serialize previously discarded it because no serialize path had needed it —
+    // NonEmptyVec/NonEmptyMap serialize identically to their loose forms.)
+    generate_serialize(
+        types,
+        SerializingRustType::Root(ty, cfg),
+        body,
+        config_for_alias,
+        cli,
+    )
+}
+
 /// Write code for serializing {serializing_rust_type} directly into {body}
 pub(super) fn generate_serialize(
     types: &IntermediateTypes,
@@ -1784,39 +1828,7 @@ pub(super) fn generate_serialize(
                 body.push_block(opt_block);
             }
             SerializingRustType::Root(ConceptualRustType::Alias(ident, ty), cfg) => {
-                let alias_metadata = types
-                    .type_aliases()
-                    .get(ident)
-                    .unwrap()
-                    .rule_metadata
-                    .as_ref();
-                let config_for_alias = if let Some(custom_serialize) =
-                    alias_metadata.and_then(|rmd| rmd.custom_serialize.clone())
-                {
-                    // The rule's `@custom_encodings` rides with the pair it is written beside —
-                    // the second of the two carrier channels the emission sites see a
-                    // declaration through (the other being the derivation from the type, which
-                    // `encoding_fields_impl`'s own `Alias` arm owns).
-                    config.custom_serialize(custom_serialize).custom_encodings(
-                        alias_metadata.and_then(|rmd| rmd.custom_encodings.clone()),
-                    )
-                } else {
-                    config
-                };
-                // Keep the OUTER RustTypeSerializeConfig (`cfg`): an Alias's inner is a bare
-                // ConceptualRustType with no config of its own, so recursing with `(&**ty).into()`
-                // would DEFAULT the config and drop the per-rule policy the alias carries —
-                // notably `@duplicates preserve`, which the Map arm reads to pick the POSITIONAL
-                // encoding sidecar. (Deserialize's Alias arm keeps the config for the same reason;
-                // serialize previously discarded it because no serialize path had needed it —
-                // NonEmptyVec/NonEmptyMap serialize identically to their loose forms.)
-                generate_serialize(
-                    types,
-                    SerializingRustType::Root(ty, cfg),
-                    body,
-                    config_for_alias,
-                    cli,
-                )
+                ser_alias(ident, ty, cfg, types, body, config, cli);
             }
         };
     }

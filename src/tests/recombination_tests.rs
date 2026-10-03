@@ -1330,6 +1330,8 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 // Exact guard payloads/control flow stay unchanged; no active panic allowance is added.
 // Codec arm invariant guards now belong to deserialize.rs::deser_rust_ident.
 // Exact guard payloads/control flow stay unchanged; no active panic allowance is added.
+// Codec arm invariant guards now belong to serialize.rs::ser_alias.
+// Exact guard payloads/control flow stay unchanged; no active panic allowance is added.
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired when the two anonymous-composite families and the group-choice-arm inline group
     // became graceful rejections) Three classes lived here, and they split by the composite's
