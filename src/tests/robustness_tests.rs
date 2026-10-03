@@ -18428,7 +18428,7 @@ fn generic_raw_bytes_base_rejects_gracefully() {
 /// `bytes .cbor (bytes .cbor uint)`, where both depths live in ONE type expression and therefore in
 /// one `RustType`'s encoding chain. SUPPORTED on every profile: each `.cbor` level owns its own
 /// depth-suffixed staging buffer, reader, payload local and encoding member (`cbor_bytes_infix` and
-/// its siblings in `generation/mod.rs`), so the levels no longer contend for one name.
+/// its siblings in `generation/encoding_fields.rs`), so the levels no longer contend for one name.
 ///
 /// This test is a GENERATE-and-BUILD pin at the parse seams, not a wire pin: it asserts that both
 /// seams which can apply the operation accept the composition — the rule-BODY registration and

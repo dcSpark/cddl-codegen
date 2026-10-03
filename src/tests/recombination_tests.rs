@@ -1301,6 +1301,9 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 // `record_dependency_class`/`record_dependency_alias` debug assertions and
 // `raw_collection_dependency_provider_scope` bounded-array/map expects retain their exact payloads.
 // None has an active known-panic key; an observed new panic still requires a regression vector.
+// Encoding inference guards live in `src/generation/encoding_fields.rs`: the fixed-key
+// `key_encoding_field` unimplemented payload and preserve-mode assertions retain exact text;
+// `encoding_fields_impl` retains nominal lookup/index invariant panics. No active key is waived.
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired when the two anonymous-composite families and the group-choice-arm inline group
     // became graceful rejections) Three classes lived here, and they split by the composite's
