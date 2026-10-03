@@ -144,9 +144,10 @@ const SOURCE_ROLES: &[SourceRole] = &[
         file: "json_schema_claims.rs",
         emitter: true,
         wasm: false,
-        reason: "audited conservative schema-claim traversal and registrar type fragments; no WASM rendering",
+        reason: "audited conservative private ClaimWalker state and schema-claim traversal with registrar type fragments; no WASM rendering",
         members: &[
             "json_schema_reachable_claims",
+            "new",
             "claim_named",
             "walk_subschema",
             "walk_descriptor_leaf",

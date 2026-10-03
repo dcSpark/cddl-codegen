@@ -16,31 +16,58 @@ pub(super) fn json_schema_reachable_claims(
     roots: &BTreeSet<RustIdent>,
     cli: &Cli,
 ) -> BTreeSet<String> {
-    fn claim_named(
-        types: &IntermediateTypes<'_>,
-        ident: &RustIdent,
-        cli: &Cli,
-        claims: &mut BTreeSet<String>,
-        visited: &mut BTreeSet<RustIdent>,
-        generic_bases: &BTreeSet<RustIdent>,
-        claim: bool,
-    ) {
-        if !types.scope(ident).export() || generic_bases.contains(ident) {
+    let mut walker = ClaimWalker::new(types, cli);
+    for root in roots {
+        // A root itself is claimed by `reg.add`; start at its generated body so a root is not
+        // claimed merely for being a root, while a recursive path may still legitimately reach and
+        // preclaim it before the rows. Every transitive claim precedes every registration row.
+        // `claim_named` with `claim = false` walks every generated schema-body shape without
+        // placing the root in the ledger a second time (and stops itself at custom/extern roots).
+        walker.claim_named(root, false);
+    }
+    walker.claims
+}
+
+/// Own one schema-claim traversal's state across all roots.
+/// Visited names are global to the traversal, never popped on recursive return.
+struct ClaimWalker<'types, 'ast, 'cli> {
+    types: &'types IntermediateTypes<'ast>,
+    cli: &'cli Cli,
+    claims: BTreeSet<String>,
+    visited: BTreeSet<RustIdent>,
+    generic_bases: BTreeSet<RustIdent>,
+}
+
+impl<'types, 'ast, 'cli> ClaimWalker<'types, 'ast, 'cli> {
+    fn new(types: &'types IntermediateTypes<'ast>, cli: &'cli Cli) -> Self {
+        Self {
+            types,
+            cli,
+            claims: BTreeSet::new(),
+            visited: BTreeSet::new(),
+            generic_bases: types.generic_extern_base_idents(),
+        }
+    }
+
+    fn claim_named(&mut self, ident: &RustIdent, claim: bool) {
+        let types = self.types;
+        let cli = self.cli;
+        if !types.scope(ident).export() || self.generic_bases.contains(ident) {
             return;
         }
         let Some(rust_struct) = types.rust_struct(ident) else {
             if let Some(alias) = types.resolve_alias(&AliasIdent::Rust(ident.clone())) {
-                walk_subschema(types, &alias, cli, claims, visited, generic_bases);
+                self.walk_subschema(&alias);
             }
             return;
         };
         if claim {
-            claims.insert(format!(
+            self.claims.insert(format!(
                 "reg.claim_reachable::<{}>();",
                 rust_crate_struct_from_wasm(types, ident, cli)
             ));
         }
-        if !visited.insert(ident.clone())
+        if !self.visited.insert(ident.clone())
             || rust_struct.config().custom_json
             || matches!(rust_struct.variant(), RustStructType::Extern)
         {
@@ -55,14 +82,7 @@ pub(super) fn json_schema_reachable_claims(
                     if !rust_struct.config().custom_json
                         && natural_any_position(&field.rust_type, field.optional, cli).is_none()
                     {
-                        walk_subschema(
-                            types,
-                            &field.rust_type,
-                            cli,
-                            claims,
-                            visited,
-                            generic_bases,
-                        );
+                        self.walk_subschema(&field.rust_type);
                     }
                 }
                 for row in record.dynamic_rows() {
@@ -71,14 +91,7 @@ pub(super) fn json_schema_reachable_claims(
                         // primitive/any peeked-key path delegates to BTreeMap's key schema body.
                         RestKind::MapEntries { domain, range, .. } => {
                             if !record.is_open_table() && row.map_key_uses_peeked_path(types) {
-                                walk_schema_body(
-                                    types,
-                                    domain,
-                                    cli,
-                                    claims,
-                                    visited,
-                                    generic_bases,
-                                );
+                                self.walk_schema_body(domain);
                             }
                             // Both the flattened open-map adapter and the hand-written open-table
                             // schema emit natural JSON directly for an any range, without calling
@@ -87,7 +100,7 @@ pub(super) fn json_schema_reachable_claims(
                                 range.conceptual_type.resolve_alias_shallow(),
                                 ConceptualRustType::Any
                             ) {
-                                walk_subschema(types, range, cli, claims, visited, generic_bases);
+                                self.walk_subschema(range);
                             }
                         }
                         RestKind::ArrayTail { element, .. } => {
@@ -97,15 +110,13 @@ pub(super) fn json_schema_reachable_claims(
                                 element.conceptual_type.resolve_alias_shallow(),
                                 ConceptualRustType::Any
                             ) {
-                                walk_subschema(types, element, cli, claims, visited, generic_bases)
+                                self.walk_subschema(element)
                             }
                         }
                     }
                 }
             }
-            RustStructType::Array { element_type, .. } => {
-                walk_subschema(types, element_type, cli, claims, visited, generic_bases)
-            }
+            RustStructType::Array { element_type, .. } => self.walk_subschema(element_type),
             RustStructType::Table {
                 domain,
                 range,
@@ -122,7 +133,7 @@ pub(super) fn json_schema_reachable_claims(
                     table = table.with_occurrence_bounds(*bounds);
                 }
                 table = table.with_duplicates_policy(rust_struct.config().duplicates);
-                walk_schema_body(types, &table, cli, claims, visited, generic_bases);
+                self.walk_schema_body(&table);
             }
             RustStructType::TypeChoice { variants, .. }
             | RustStructType::GroupChoice { variants, .. }
@@ -141,18 +152,11 @@ pub(super) fn json_schema_reachable_claims(
                             {
                                 continue;
                             }
-                            walk_subschema(types, ty, cli, claims, visited, generic_bases)
+                            self.walk_subschema(ty)
                         }
                         EnumVariantData::Inlined(record) => {
                             for field in &record.fields {
-                                walk_subschema(
-                                    types,
-                                    &field.rust_type,
-                                    cli,
-                                    claims,
-                                    visited,
-                                    generic_bases,
-                                );
+                                self.walk_subschema(&field.rust_type);
                             }
                         }
                     }
@@ -161,77 +165,25 @@ pub(super) fn json_schema_reachable_claims(
             // Generated wrappers call the wrapped type's `json_schema` body and mirror its
             // `inline_schema`; this follows deeper subschema edges without claiming the wrapped
             // nominal merely because it is stored in the wrapper.
-            RustStructType::Wrapper { wrapped, .. } => {
-                walk_schema_body(types, wrapped, cli, claims, visited, generic_bases)
-            }
+            RustStructType::Wrapper { wrapped, .. } => self.walk_schema_body(wrapped),
             RustStructType::Extern | RustStructType::RawBytesType => {}
         }
     }
 
-    fn walk_subschema(
-        types: &IntermediateTypes<'_>,
-        ty: &RustType,
-        cli: &Cli,
-        claims: &mut BTreeSet<String>,
-        visited: &mut BTreeSet<RustIdent>,
-        generic_bases: &BTreeSet<RustIdent>,
-    ) {
+    fn walk_subschema(&mut self, ty: &RustType) {
+        let types = self.types;
+        let cli = self.cli;
         // A recursive static-array descriptor supplies this whole schema body itself. In
         // particular, a nullable alias can lower to `Option<[T; N]>`, which has no standalone
         // JsonSchema implementation on the pinned array-trait versions; following it here would
         // register an impossible `claim_reachable` despite the enclosing callback never asking for
         // that trait.
         if recursive_exact_array_descriptor(types, ty, false, false, cli).is_some() {
-            fn walk_descriptor_leaf(
-                types: &IntermediateTypes<'_>,
-                ty: &RustType,
-                cli: &Cli,
-                claims: &mut BTreeSet<String>,
-                visited: &mut BTreeSet<RustIdent>,
-                generic_bases: &BTreeSet<RustIdent>,
-            ) {
-                match &ty.conceptual_type {
-                    // A named transparent alias is only a carrier spelling here. Unfold it so a
-                    // `Vec<Alias<Option<[T; N]>>>` reaches a real terminal leaf without claiming
-                    // the alias's impossible pinned-array JsonSchema implementation.
-                    ConceptualRustType::Rust(ident) => {
-                        if let Some(alias) = types.resolve_alias(&AliasIdent::Rust(ident.clone())) {
-                            if types.scope(ident).export() {
-                                walk_descriptor_leaf(
-                                    types,
-                                    &alias,
-                                    cli,
-                                    claims,
-                                    visited,
-                                    generic_bases,
-                                );
-                            }
-                        } else {
-                            claim_named(types, ident, cli, claims, visited, generic_bases, true);
-                        }
-                    }
-                    ConceptualRustType::Alias(_, inner) => {
-                        let mut target = ty.clone();
-                        target.conceptual_type = (**inner).clone();
-                        walk_descriptor_leaf(types, &target, cli, claims, visited, generic_bases);
-                    }
-                    ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
-                        walk_descriptor_leaf(types, inner, cli, claims, visited, generic_bases)
-                    }
-                    // NaturalAny owns a permissive schema directly, so it has no JsonSchema edge.
-                    ConceptualRustType::Any
-                    | ConceptualRustType::Map(_, _)
-                    | ConceptualRustType::Fixed(_)
-                    | ConceptualRustType::Primitive(_) => {}
-                }
-            }
-            walk_descriptor_leaf(types, ty, cli, claims, visited, generic_bases);
+            self.walk_descriptor_leaf(ty);
             return;
         }
         match &ty.conceptual_type {
-            ConceptualRustType::Rust(ident) => {
-                claim_named(types, ident, cli, claims, visited, generic_bases, true)
-            }
+            ConceptualRustType::Rust(ident) => self.claim_named(ident, true),
             ConceptualRustType::Alias(AliasIdent::Rust(ident), inner) => {
                 // A generated, export-scope alias is itself a nameable type token at the derived
                 // field's `subschema_for` boundary. Claim it, then follow the target as a BODY:
@@ -247,32 +199,32 @@ pub(super) fn json_schema_reachable_claims(
                 if !types.alias_projection_suppressed(ident)
                     && !ty.is_type_enforced_exact_homogeneous_array()
                 {
-                    claims.insert(format!(
+                    self.claims.insert(format!(
                         "reg.claim_reachable::<{}>();",
                         rust_crate_struct_from_wasm(types, ident, cli)
                     ));
                 }
                 let mut target = ty.clone();
                 target.conceptual_type = (**inner).clone();
-                walk_schema_body(types, &target, cli, claims, visited, generic_bases);
+                self.walk_schema_body(&target);
             }
             ConceptualRustType::Alias(AliasIdent::Reserved(_), inner) => {
                 let mut target = ty.clone();
                 target.conceptual_type = (**inner).clone();
-                walk_schema_body(types, &target, cli, claims, visited, generic_bases)
+                self.walk_schema_body(&target)
             }
             ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
-                walk_subschema(types, inner, cli, claims, visited, generic_bases)
+                self.walk_subschema(inner)
             }
             ConceptualRustType::Map(key, value) => {
                 // Schemars' ordinary BTreeMap form invokes the key's schema body and takes a
                 // subschema for the value. PairMap is tuple-based and takes subschemas for both.
                 if ty.is_preserve_pair_map() {
-                    walk_subschema(types, key, cli, claims, visited, generic_bases);
+                    self.walk_subschema(key);
                 } else {
-                    walk_schema_body(types, key, cli, claims, visited, generic_bases);
+                    self.walk_schema_body(key);
                 }
-                walk_subschema(types, value, cli, claims, visited, generic_bases);
+                self.walk_subschema(value);
             }
             ConceptualRustType::Any
             | ConceptualRustType::Fixed(_)
@@ -280,18 +232,41 @@ pub(super) fn json_schema_reachable_claims(
         }
     }
 
-    fn walk_schema_body(
-        types: &IntermediateTypes<'_>,
-        ty: &RustType,
-        cli: &Cli,
-        claims: &mut BTreeSet<String>,
-        visited: &mut BTreeSet<RustIdent>,
-        generic_bases: &BTreeSet<RustIdent>,
-    ) {
+    fn walk_descriptor_leaf(&mut self, ty: &RustType) {
+        let types = self.types;
         match &ty.conceptual_type {
+            // A named transparent alias is only a carrier spelling here. Unfold it so a
+            // `Vec<Alias<Option<[T; N]>>>` reaches a real terminal leaf without claiming
+            // the alias's impossible pinned-array JsonSchema implementation.
             ConceptualRustType::Rust(ident) => {
-                claim_named(types, ident, cli, claims, visited, generic_bases, false)
+                if let Some(alias) = types.resolve_alias(&AliasIdent::Rust(ident.clone())) {
+                    if types.scope(ident).export() {
+                        self.walk_descriptor_leaf(&alias);
+                    }
+                } else {
+                    self.claim_named(ident, true);
+                }
             }
+            ConceptualRustType::Alias(_, inner) => {
+                let mut target = ty.clone();
+                target.conceptual_type = (**inner).clone();
+                self.walk_descriptor_leaf(&target);
+            }
+            ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
+                self.walk_descriptor_leaf(inner)
+            }
+            // NaturalAny owns a permissive schema directly, so it has no JsonSchema edge.
+            ConceptualRustType::Any
+            | ConceptualRustType::Map(_, _)
+            | ConceptualRustType::Fixed(_)
+            | ConceptualRustType::Primitive(_) => {}
+        }
+    }
+
+    fn walk_schema_body(&mut self, ty: &RustType) {
+        let types = self.types;
+        match &ty.conceptual_type {
+            ConceptualRustType::Rust(ident) => self.claim_named(ident, false),
             ConceptualRustType::Alias(AliasIdent::Rust(ident), inner) => {
                 // A body call on an alias from an extern dependency is still a call into code this
                 // crate does not own. Do not turn its transparent target into own-crate claims.
@@ -303,24 +278,24 @@ pub(super) fn json_schema_reachable_claims(
                 // replacing only the conceptual node as emitted aliases do.
                 let mut target = ty.clone();
                 target.conceptual_type = (**inner).clone();
-                walk_schema_body(types, &target, cli, claims, visited, generic_bases)
+                self.walk_schema_body(&target)
             }
             ConceptualRustType::Alias(AliasIdent::Reserved(_), inner) => {
                 let mut target = ty.clone();
                 target.conceptual_type = (**inner).clone();
-                walk_schema_body(types, &target, cli, claims, visited, generic_bases)
+                self.walk_schema_body(&target)
             }
             // Vec/Option schema bodies reference their element through schemars' subschema path.
             ConceptualRustType::Array(inner) | ConceptualRustType::Optional(inner) => {
-                walk_subschema(types, inner, cli, claims, visited, generic_bases)
+                self.walk_subschema(inner)
             }
             ConceptualRustType::Map(key, value) => {
                 if ty.is_preserve_pair_map() {
-                    walk_subschema(types, key, cli, claims, visited, generic_bases);
+                    self.walk_subschema(key);
                 } else {
-                    walk_schema_body(types, key, cli, claims, visited, generic_bases);
+                    self.walk_schema_body(key);
                 }
-                walk_subschema(types, value, cli, claims, visited, generic_bases);
+                self.walk_subschema(value);
             }
             // Natural any schemas are emitted directly and intentionally never call AnyCbor's
             // tagged schema; there is no named definition to claim.
@@ -329,25 +304,4 @@ pub(super) fn json_schema_reachable_claims(
             | ConceptualRustType::Primitive(_) => {}
         }
     }
-
-    let mut claims = BTreeSet::new();
-    let mut visited = BTreeSet::new();
-    let generic_bases = types.generic_extern_base_idents();
-    for root in roots {
-        // A root itself is claimed by `reg.add`; start at its generated body so a root is not
-        // claimed merely for being a root, while a recursive path may still legitimately reach and
-        // preclaim it before the rows. Every transitive claim precedes every registration row.
-        // `claim_named` with `claim = false` walks every generated schema-body shape without
-        // placing the root in the ledger a second time (and stops itself at custom/extern roots).
-        claim_named(
-            types,
-            root,
-            cli,
-            &mut claims,
-            &mut visited,
-            &generic_bases,
-            false,
-        );
-    }
-    claims
 }
