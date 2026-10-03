@@ -787,7 +787,7 @@ impl GenerationScope {
     fn emit_json_schema_rows(&mut self, types: &IntermediateTypes, cli: &Cli) {
         // JSON export crate. `json_lines` is the BODY of the emitted `add_schemas(generator)` — one
         // registration row per exported type. The surrounding `export_schemas()` (which owns the
-        // `schemas/` dir and writes the single document) is built in `generation/export.rs`.
+        // `schemas/` dir and writes the single document) is rendered by `generation/sidecars.rs::render_json_gen_module`.
         let mut main_lines_by_file: BTreeMap<ModuleScope, Vec<String>> = BTreeMap::new();
         let mut row_roots = BTreeSet::new();
         // A generic-extern BASE (`ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_`) names no concrete

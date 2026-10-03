@@ -23672,7 +23672,7 @@ fn a_missing_request_sidecar_is_a_cold_workspace_not_an_error() {
 /// The CONSUMER half of the cross-crate `int` key-flavor channel: a spec keying a map on `int` under
 /// `--common-import-override` records the row `(<override>, "int"[, flavor])` in `borrowed_key_types.rs`
 /// IFF the override names a configured `--workspace-dep`. The built-in `Int` is export-scope, so the
-/// sidecar's scope-attribution loop skips it — the carve-out (`generation/export.rs`) is what puts the
+/// sidecar's scope-attribution loop skips it — the carve-out (`generation/sidecars.rs::collect_borrowed_key_rows`) is what puts the
 /// common crate's re-exported `Int` on the wire so the common crate's regen key-flavors it (the dep
 /// half is `workspace_key_requests_derive_effect_and_hard_errors`'s `int` leg).
 ///
@@ -23809,7 +23809,7 @@ fn int_key_via_common_import_override_sidecar() {
 /// The FLAVORED map-key-derive channel (`@used_as_key hash`) end-to-end across two crates — the
 /// compiled cross-crate seam the unit layer (`key_types_accepts_flavor_column` /
 /// `key_types_rejects_unknown_flavor` in `wrapper_requests.rs`, plus the emitter's conditional
-/// three-column form in `generation/export.rs`) structurally cannot see. Same rationale as
+/// three-column form in `generation/sidecars.rs::render_borrowed_key_types`) structurally cannot see. Same rationale as
 /// `workspace_key_requests_derive_effect_and_hard_errors` for the bare channel: the unit tests pin
 /// that the sidecar grammar round-trips and that the emitter chooses the three-column form, but only
 /// a real consumer + dep compiled against each other proves that a `hash` borrow derives exactly

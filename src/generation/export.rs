@@ -49,7 +49,7 @@ pub use generated::*;
 // document's NAME-INJECTIVITY guard) and `check_schema_ref_closure` (the REFERENCE-CLOSURE check) —
 // are no longer emitted per json-gen crate. They live in `static/json_schema_gen.rs`, composed into
 // the common runtime crate by `composed_runtime_static_files` under `--json-schema-export`, and the
-// json-gen crate `use`s them from there (see the emission site below). That file carries the
+// json-gen crate `use`s them from there (see sidecars.rs::render_json_gen_module). That file carries the
 // rationale for why both checks run in the CONSUMER's own `cargo run` rather than in this tool's
 // suite, and the note that their panic wordings are pinned test keys.
 
@@ -1475,13 +1475,14 @@ impl GenerationScope {
         // DEP's crate; when the value is consumer-owned (`{* dep_key => my_local}`) the wrapper is not
         // all-one-dep and never enters `borrowed_collections.rs`, yet the dep must still derive the key
         // traits on `dep_key` or the consumer's rust crate fails to build. This file records every such
-        // borrowed key type so the dep can re-read it via `--key-requests`. Emitted whenever the flag
-        // is present — INCLUDING when nothing is borrowed (stable presence/diffs) — and never
-        // otherwise, mirroring `borrowed_collections.rs`. Fixed format: the four-line banner, a
-        // `_assert_key_traits` bound-carrier + a `_borrowed_key_types_self_check` fn (the compiled half
-        // — a dep dropping a derive fails THIS crate's build naming the type), and the
-        // `#[allow(dead_code)] pub(crate) const BORROWED_KEY_TYPES` machine table (rows sorted by
-        // (dep, ident); the first column is the dep's RUST crate name — the extern-deps dir name).
+        // borrowed key type so the dep can re-read it via `--key-requests`.
+        // A nonempty configured workspace-dependency set emits the sidecar even with no rows.
+        // The renderer retains the fixed banner and chooses a bare two-column or flavored
+        // three-column legend/table. Bare rows share the mode-dependent key bound; flavored
+        // rows use demand-specific bound carriers. The compiled self-check is present only
+        // with rows (an empty bare table retains its bound carrier without a self-check).
+        // Rows are ordered by the full (dep, cddl_ident, scope_path, demand) tuple.
+        // The first column is the dependency's Rust crate name, matching its extern-deps directory.
         if !self.workspace_deps.is_empty() {
             let rows = super::sidecars::collect_borrowed_key_rows(types, &self.workspace_deps, cli);
             let sidecar = super::sidecars::render_borrowed_key_types(&rows, cli);

@@ -641,8 +641,9 @@ fn identifier_hazard_crates_compile() {
 /// enrollment preserves scanner custody without claiming those helpers emit user-field bodies.
 /// `encoding_fields.rs` also stays enrolled for encoding declarations/default/type fragments and
 /// builders, including any future body fragments owned by that subsystem.
-/// `export.rs` and `component.rs` remain absent: their emitted bodies are the json-schema generator
-/// and wit-bindgen guest glue, neither of which puts a user field beside a fixed local.
+/// `export.rs` remains absent because it owns delivery rather than emitted user-field bodies.
+/// `sidecars.rs` and `component.rs` render the json-schema generator and wit-bindgen guest glue,
+/// neither of which puts a user field beside a fixed local.
 /// `json_annotations.rs` owns serde/schemars attributes and recursive descriptor fragments.
 /// `key_demands.rs` owns key trait/bound/attribute fragments and assertion-root selection.
 pub(crate) const EMITTER_SOURCES: &[&str] = &[

@@ -771,7 +771,7 @@ pub(crate) fn extern_interface_files(
 /// iteration). Produced from the SAME projection walk `extern_interface_files` uses, so the export
 /// and its self-check share one membership computation and cannot drift. The row's source CDDL
 /// ident is deliberately NOT carried: the self-check emits no per-row comments (a comment on a
-/// deletable row is a preservation-overlay trap — see `export.rs`), and each row's type path is
+/// deletable row is a preservation-overlay trap — see `sidecars.rs::render_extern_interface_check`), and each row's type path is
 /// its own traceability.
 pub(crate) struct ExternCheckEntry {
     pub components: Vec<String>,

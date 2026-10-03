@@ -188,7 +188,7 @@ pub struct RuleMetadata {
     /// Declares that the referenced (externally-defined) rust type derives `Copy`, so the generator
     /// stops emitting a defensive `.clone()` at every boundary that moves the value (map-key
     /// deserialize loops, wasm getters/accessors). The declaring crate emits a compile-time `Copy`
-    /// assertion for the type (see `export.rs`), so a false `@copy` fails THAT crate's own build with
+    /// assertion for the type (see `generation/sidecars.rs::render_extern_interface_check`), so a false `@copy` fails THAT crate's own build with
     /// a named error — never a distant consumer's. It rides the extern-interface seam, so
     /// `--extern-import` consumers inherit it: `@copy` describes the BASE type, which the projection's
     /// param-less rendering preserves faithfully (unlike `@raw_bytes_flavor` below). On any other
