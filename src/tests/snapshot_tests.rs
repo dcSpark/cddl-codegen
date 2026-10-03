@@ -3207,6 +3207,7 @@ fn emitter_overload_lint_sees_its_anchors() {
     for (file, func) in [
         ("deserialize.rs", "generate_deserialize"),
         ("deserialize.rs", "deser_primitive"),
+        ("deserialize.rs", "emit_primitive_read"),
         ("deserialize.rs", "deser_fixed"),
         ("deserialize.rs", "deser_any"),
         ("deserialize.rs", "make_deser_loop_break_check"),

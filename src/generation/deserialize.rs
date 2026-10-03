@@ -949,6 +949,122 @@ fn deser_fixed(
     deser_code
 }
 
+// `width`: the optional (wmin, wmax) window for a width guard on the value
+// read — Some only for the narrowing-cast unsigned primitives (u8/u16/u32),
+// None for every width-safe caller (bytes/text/u64/n64).
+#[allow(clippy::too_many_arguments)]
+fn emit_primitive_read(
+    p: &Primitive,
+    type_cfg: &RustTypeSerializeConfig,
+    deser_code: &mut DeserializationCode,
+    before_after: &DeserializeBeforeAfter,
+    cli: &Cli,
+    deserializer_name: &str,
+    error_convert: &str,
+    mut final_exprs: Vec<String>,
+    func: &str,
+    x: &str,
+    x_expr: &str,
+    width: Option<(i128, i128)>,
+) {
+    // The nint reader (`negative_integer_sz`) yields the value as `i128`
+    // already, so its RangeCheck `found` needs no widening cast (the unsigned
+    // `func`s read a `u64`, which does).
+    let found_i128 = func == "negative_integer";
+    if cli.preserve_encodings {
+        let enc_expr = match func {
+            "text" | "bytes" => "StringEncoding::from(enc)",
+            _ => "Some(enc)",
+        };
+        final_exprs.push(enc_expr.to_owned());
+        let width_fn = width
+            .map(|(wmin, wmax)| {
+                width_reject(
+                    &format!("x > {wmax}"),
+                    wmin,
+                    wmax,
+                    "(x, enc)",
+                    "(x, enc)",
+                    !error_convert.is_empty(),
+                    found_i128,
+                )
+            })
+            .unwrap_or_default();
+        let enc_map_fn = match &type_cfg.value_bounds() {
+            // Convert the error to DeserializeError so the `.and_then`
+            // closure's `Err(DeserializeFailure::…into())` sees a consistent
+            // E — but ONLY when no earlier stage of this chain already did.
+            // The site's `error_convert` and any `width_fn` both leave the
+            // error type as DeserializeError, so re-converting is a redundant
+            // identity `From<T> for T`. Same `converted`-flag rule as
+            // `width_reject`.
+            Some(bounds) => format!(
+                "{}.and_then(|({}, enc)| {} else {{ Ok({}) }})",
+                if error_convert.is_empty() && width_fn.is_empty() {
+                    CONVERT_ERR_TO_OURS
+                } else {
+                    ""
+                },
+                x,
+                bounds_check_if_block(
+                    bounds,
+                    &bounds_check_expr(*p, x),
+                    false,
+                    primitive_non_negative(*p),
+                    None,
+                    found_i128,
+                ),
+                final_expr(final_exprs, Some(x_expr.to_owned())),
+            ),
+            None => format!(
+                ".map(|({}, enc)| {})",
+                x,
+                final_expr(final_exprs, Some(x_expr.to_owned()))
+            ),
+        };
+        deser_code.content.line(&format!(
+            "{}{}.{}_sz(){}{}{}{}",
+            before_after.before_str(true),
+            deserializer_name,
+            func,
+            error_convert,
+            width_fn,
+            enc_map_fn,
+            before_after.after_str(true)
+        ));
+    } else {
+        let bounds_fn = non_preserve_bounds_fn(*p, x, &type_cfg.value_bounds());
+        let width_fn = width
+            .map(|(wmin, wmax)| {
+                width_reject(
+                    &format!("x > {wmax}"),
+                    wmin,
+                    wmax,
+                    "x",
+                    "x",
+                    !bounds_fn.is_empty(),
+                    found_i128,
+                )
+            })
+            .unwrap_or_default();
+        let cast = match p {
+            Primitive::U64 | Primitive::Str | Primitive::Bytes => Cow::Borrowed(""),
+            _ => Cow::Owned(format!(" as {p}")),
+        };
+        deser_code.content.line(&format!(
+            "{}{}.{}(){}{}?{}{}",
+            before_after.before_str(false),
+            deserializer_name,
+            func,
+            bounds_fn,
+            width_fn,
+            cast,
+            before_after.after_str(false)
+        ));
+        deser_code.throws = true;
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn deser_primitive(
     p: &Primitive,
@@ -1009,119 +1125,35 @@ fn deser_primitive(
         deser_code.throws = true;
         return deser_code;
     }
-    // `width`: the optional (wmin, wmax) window for a width guard on the value
-    // read — Some only for the narrowing-cast unsigned primitives (u8/u16/u32),
-    // None for every width-safe caller (bytes/text/u64/n64).
-    let mut deser_primitive = |mut final_exprs: Vec<String>,
-                               func: &str,
-                               x: &str,
-                               x_expr: &str,
-                               width: Option<(i128, i128)>| {
-        // The nint reader (`negative_integer_sz`) yields the value as `i128`
-        // already, so its RangeCheck `found` needs no widening cast (the unsigned
-        // `func`s read a `u64`, which does).
-        let found_i128 = func == "negative_integer";
-        if cli.preserve_encodings {
-            let enc_expr = match func {
-                "text" | "bytes" => "StringEncoding::from(enc)",
-                _ => "Some(enc)",
-            };
-            final_exprs.push(enc_expr.to_owned());
-            let width_fn = width
-                .map(|(wmin, wmax)| {
-                    width_reject(
-                        &format!("x > {wmax}"),
-                        wmin,
-                        wmax,
-                        "(x, enc)",
-                        "(x, enc)",
-                        !error_convert.is_empty(),
-                        found_i128,
-                    )
-                })
-                .unwrap_or_default();
-            let enc_map_fn = match &type_cfg.value_bounds() {
-                // Convert the error to DeserializeError so the `.and_then`
-                // closure's `Err(DeserializeFailure::…into())` sees a consistent
-                // E — but ONLY when no earlier stage of this chain already did.
-                // The site's `error_convert` and any `width_fn` both leave the
-                // error type as DeserializeError, so re-converting is a redundant
-                // identity `From<T> for T`. Same `converted`-flag rule as
-                // `width_reject`.
-                Some(bounds) => format!(
-                    "{}.and_then(|({}, enc)| {} else {{ Ok({}) }})",
-                    if error_convert.is_empty() && width_fn.is_empty() {
-                        CONVERT_ERR_TO_OURS
-                    } else {
-                        ""
-                    },
-                    x,
-                    bounds_check_if_block(
-                        bounds,
-                        &bounds_check_expr(*p, x),
-                        false,
-                        primitive_non_negative(*p),
-                        None,
-                        found_i128,
-                    ),
-                    final_expr(final_exprs, Some(x_expr.to_owned())),
-                ),
-                None => format!(
-                    ".map(|({}, enc)| {})",
-                    x,
-                    final_expr(final_exprs, Some(x_expr.to_owned()))
-                ),
-            };
-            deser_code.content.line(&format!(
-                "{}{}.{}_sz(){}{}{}{}",
-                before_after.before_str(true),
-                deserializer_name,
-                func,
-                error_convert,
-                width_fn,
-                enc_map_fn,
-                before_after.after_str(true)
-            ));
-        } else {
-            let bounds_fn = non_preserve_bounds_fn(*p, x, &type_cfg.value_bounds());
-            let width_fn = width
-                .map(|(wmin, wmax)| {
-                    width_reject(
-                        &format!("x > {wmax}"),
-                        wmin,
-                        wmax,
-                        "x",
-                        "x",
-                        !bounds_fn.is_empty(),
-                        found_i128,
-                    )
-                })
-                .unwrap_or_default();
-            let cast = match p {
-                Primitive::U64 | Primitive::Str | Primitive::Bytes => Cow::Borrowed(""),
-                _ => Cow::Owned(format!(" as {p}")),
-            };
-            deser_code.content.line(&format!(
-                "{}{}.{}(){}{}?{}{}",
-                before_after.before_str(false),
-                deserializer_name,
-                func,
-                bounds_fn,
-                width_fn,
-                cast,
-                before_after.after_str(false)
-            ));
-            deser_code.throws = true;
-        }
-    };
+
     match p {
-        Primitive::Bytes => deser_primitive(config.final_exprs, "bytes", "bytes", "bytes", None),
+        Primitive::Bytes => emit_primitive_read(
+            p,
+            &type_cfg,
+            &mut deser_code,
+            &before_after,
+            cli,
+            deserializer_name,
+            error_convert,
+            config.final_exprs,
+            "bytes",
+            "bytes",
+            "bytes",
+            None,
+        ),
         Primitive::U8 | Primitive::U16 | Primitive::U32 => {
             // The u64 read is wider than the target: width-guard the cast unless
             // an authored upper bound already caps it.
             let (wmin, wmax) = prim_window(*p);
             let width = (!upper_caps(&type_cfg.value_bounds(), wmax)).then_some((wmin, wmax));
-            deser_primitive(
+            emit_primitive_read(
+                p,
+                &type_cfg,
+                &mut deser_code,
+                &before_after,
+                cli,
+                deserializer_name,
+                error_convert,
                 config.final_exprs,
                 "unsigned_integer",
                 "x",
@@ -1129,7 +1161,20 @@ fn deser_primitive(
                 width,
             )
         }
-        Primitive::U64 => deser_primitive(config.final_exprs, "unsigned_integer", "x", "x", None),
+        Primitive::U64 => emit_primitive_read(
+            p,
+            &type_cfg,
+            &mut deser_code,
+            &before_after,
+            cli,
+            deserializer_name,
+            error_convert,
+            config.final_exprs,
+            "unsigned_integer",
+            "x",
+            "x",
+            None,
+        ),
         Primitive::I8 | Primitive::I16 | Primitive::I32 | Primitive::I64 => {
             // A signed int splits across two CBOR major types (uint arm / nint arm),
             // so we classify the value window per arm: a bound may be vacuous here
@@ -1327,7 +1372,14 @@ fn deser_primitive(
         }
         Primitive::N64 => {
             if cli.preserve_encodings {
-                deser_primitive(
+                emit_primitive_read(
+                    p,
+                    &type_cfg,
+                    &mut deser_code,
+                    &before_after,
+                    cli,
+                    deserializer_name,
+                    error_convert,
                     config.final_exprs,
                     "negative_integer",
                     "x",
@@ -1378,7 +1430,20 @@ fn deser_primitive(
                 ));
             }
         }
-        Primitive::Str => deser_primitive(config.final_exprs, "text", "s", "s", None),
+        Primitive::Str => emit_primitive_read(
+            p,
+            &type_cfg,
+            &mut deser_code,
+            &before_after,
+            cli,
+            deserializer_name,
+            error_convert,
+            config.final_exprs,
+            "text",
+            "s",
+            "s",
+            None,
+        ),
         Primitive::Bool => {
             // no encoding differences for bool. Use `bool::deserialize` (like the
             // float arms below) rather than `raw.bool().map_err(Into::into)`: the

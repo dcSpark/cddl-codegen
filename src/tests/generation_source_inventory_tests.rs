@@ -57,6 +57,7 @@ const SOURCE_ROLES: &[SourceRole] = &[
         reason: "deserialization bodies and overload config",
         members: &[
             "deser_primitive",
+            "emit_primitive_read",
             "deser_fixed",
             "deser_any",
             "generate_deserialize",
