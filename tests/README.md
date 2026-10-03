@@ -4697,7 +4697,7 @@ colliding user name or a named+inline coexistence, so a bug in this class ships 
   so it is the backstop for every mint path present and future — turning the silent E0428
   redefinition (a user rule colliding with a synthesized ident) into a loud, graceful generator
   error. The plain F1/F2/F5 families have no IR-level collision scan (only the `NonEmpty*` families
-  do, in `intermediate/mod.rs`), so for them the backstop is the sole pinned layer;
+  do, in `intermediate/wrapper_collisions.rs`), so for them the backstop is the sole pinned layer;
   `loose_builder_name_claimed_plain_message_names_ident_and_file` pins its message identity and its
   robustness-catalog row pins the outcome label.
 - **`synthesized_name_interaction_sweep`** (`integration_tests.rs`). A table-driven sweep crossing
