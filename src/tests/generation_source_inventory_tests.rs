@@ -248,7 +248,7 @@ const SOURCE_ROLES: &[SourceRole] = &[
         emitter: true,
         wasm: false,
         reason: "serialization bodies and overload config",
-        members: &["generate_serialize", "start_len", "end_len"],
+        members: &["ser_any", "generate_serialize", "start_len", "end_len"],
     },
     SourceRole {
         file: "wit.rs",

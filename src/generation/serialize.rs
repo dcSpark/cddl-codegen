@@ -689,6 +689,22 @@ pub(super) fn make_serialization_impl(name: &str, cli: &Cli) -> codegen::Impl {
     ser_impl
 }
 
+fn ser_any(
+    body: &mut dyn CodeBlock,
+    config: SerializeConfig,
+    cli: &Cli,
+    serializer_pass: &str,
+    line_ender: &str,
+) {
+    body.line(&format!(
+        "{}.serialize({}{}){}",
+        config.expr,
+        serializer_pass,
+        canonical_param(cli),
+        line_ender
+    ));
+}
+
 /// Write code for serializing {serializing_rust_type} directly into {body}
 pub(super) fn generate_serialize(
     types: &IntermediateTypes,
@@ -1186,13 +1202,7 @@ pub(super) fn generate_serialize(
             // same shape as a plain Rust struct reference — mirror the `Rust(_)` fallthrough
             // (`.serialize(serializer[, force_canonical])`) minus owner-encoding threading.
             SerializingRustType::Root(ConceptualRustType::Any, _cfg) => {
-                body.line(&format!(
-                    "{}.serialize({}{}){}",
-                    config.expr,
-                    serializer_pass,
-                    canonical_param(cli),
-                    line_ender
-                ));
+                ser_any(body, config, cli, &serializer_pass, line_ender);
             }
             SerializingRustType::Root(ConceptualRustType::Rust(t), type_cfg) => {
                 // A named record or self-nominalized table with a whole-item custom pair owns
