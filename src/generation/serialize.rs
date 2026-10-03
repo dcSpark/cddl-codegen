@@ -1117,6 +1117,51 @@ fn ser_optionally_tagged(
     generate_serialize(types, child, body, config.tag_depth(tag_level), cli);
 }
 
+#[allow(clippy::too_many_arguments)]
+fn ser_cbor_bytes(
+    child: SerializingRustType<'_>,
+    types: &IntermediateTypes,
+    body: &mut dyn CodeBlock,
+    config: SerializeConfig,
+    cli: &Cli,
+    line_ender: &str,
+    serializer_use: &str,
+    encoding_var_is_copy: bool,
+) {
+    // level (cbor_depth + 1) counted outside-in; the buffer, the finalized byte
+    // vector and the encoding var all take the level's names, and the child recurses
+    // one level deeper. Level 1 keeps the historical spellings, so single-payload
+    // output is byte-identical; without the suffix the INLINE
+    // `bytes .cbor (bytes .cbor T)` spelling has both depths write to one buffer and
+    // the outer write borrows what the inner `finalize()` moved (E0382).
+    let cbor_level = config.cbor_depth + 1;
+    let bytes_infix = cbor_bytes_infix(cbor_level);
+    let inner_se = format!(
+        "{}_{}",
+        config.var_name,
+        cbor_payload_buffer_suffix(cbor_level)
+    );
+    body.line(&format!("let mut {inner_se} = Serializer::new_vec();"));
+    let inner_config = config
+        .clone()
+        .end(false)
+        .serializer_name_overload((&inner_se, true))
+        .cbor_depth(cbor_level);
+    generate_serialize(types, child, body, inner_config, cli);
+    let bytes_local = format!("{}_{}", config.var_name, bytes_infix);
+    body.line(&format!("let {bytes_local} = {inner_se}.finalize();"));
+    write_string_sz(
+        body,
+        "write_bytes",
+        serializer_use,
+        &bytes_local,
+        false,
+        line_ender,
+        &config.encoding_var(Some(&bytes_infix), encoding_var_is_copy),
+        cli,
+    );
+}
+
 /// Write code for serializing {serializing_rust_type} directly into {body}
 pub(super) fn generate_serialize(
     types: &IntermediateTypes,
@@ -1241,37 +1286,15 @@ pub(super) fn generate_serialize(
                 );
             }
             SerializingRustType::EncodingOperation(CBOREncodingOperation::CBORBytes, child) => {
-                // level (cbor_depth + 1) counted outside-in; the buffer, the finalized byte
-                // vector and the encoding var all take the level's names, and the child recurses
-                // one level deeper. Level 1 keeps the historical spellings, so single-payload
-                // output is byte-identical; without the suffix the INLINE
-                // `bytes .cbor (bytes .cbor T)` spelling has both depths write to one buffer and
-                // the outer write borrows what the inner `finalize()` moved (E0382).
-                let cbor_level = config.cbor_depth + 1;
-                let bytes_infix = cbor_bytes_infix(cbor_level);
-                let inner_se = format!(
-                    "{}_{}",
-                    config.var_name,
-                    cbor_payload_buffer_suffix(cbor_level)
-                );
-                body.line(&format!("let mut {inner_se} = Serializer::new_vec();"));
-                let inner_config = config
-                    .clone()
-                    .end(false)
-                    .serializer_name_overload((&inner_se, true))
-                    .cbor_depth(cbor_level);
-                generate_serialize(types, *child, body, inner_config, cli);
-                let bytes_local = format!("{}_{}", config.var_name, bytes_infix);
-                body.line(&format!("let {bytes_local} = {inner_se}.finalize();"));
-                write_string_sz(
+                ser_cbor_bytes(
+                    *child,
+                    types,
                     body,
-                    "write_bytes",
-                    serializer_use,
-                    &bytes_local,
-                    false,
-                    line_ender,
-                    &config.encoding_var(Some(&bytes_infix), encoding_var_is_copy),
+                    config,
                     cli,
+                    line_ender,
+                    serializer_use,
+                    encoding_var_is_copy,
                 );
             }
             SerializingRustType::Root(ConceptualRustType::Fixed(value), _cfg) => {
