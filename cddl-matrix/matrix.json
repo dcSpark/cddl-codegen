@@ -3239,8 +3239,8 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen compiles but emitted round-trip tests fail (cargo test exit 101)",
-            "status": "unsupported"
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
           },
           "preserve": {
             "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
@@ -3309,8 +3309,8 @@
       {
         "emission": {
           "json": {
-            "evidence": "probe (emission=json): cddl-codegen compiles but emitted round-trip tests fail (cargo test exit 101)",
-            "status": "unsupported"
+            "evidence": "probe (emission=json): cddl-codegen exit 0; compiles; round-trips",
+            "status": "supported"
           },
           "preserve": {
             "evidence": "probe (emission=preserve): cddl-codegen exit 0; compiles; round-trips",
