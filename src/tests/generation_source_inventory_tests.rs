@@ -55,7 +55,11 @@ const SOURCE_ROLES: &[SourceRole] = &[
         emitter: true,
         wasm: false,
         reason: "deserialization bodies and overload config",
-        members: &["generate_deserialize", "make_deser_loop_break_check"],
+        members: &[
+            "generate_deserialize",
+            "make_deser_loop_break_check",
+            "final_expr",
+        ],
     },
     SourceRole {
         file: "encoding_fields.rs",

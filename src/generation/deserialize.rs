@@ -862,6 +862,12 @@ pub(super) fn make_deserialization_function(name: &str, cli: &Cli) -> codegen::F
     f
 }
 
+// joins all config.final_expr together (possibly) with the actual value into a tuple type (if multiple)
+// or otherwise the value just goes through on its own
+fn final_expr(encoding_exprs: Vec<String>, actual_value: Option<String>) -> String {
+    tuple_str(actual_value.into_iter().chain(encoding_exprs).collect())
+}
+
 impl GenerationScope {
     /// Generates a DeserializationCode to serialize {serializing_rust_type} using the context in {before_after}
     /// This returned value must be in turn pushed into deserialization code to be used.
@@ -878,11 +884,6 @@ impl GenerationScope {
             assert!(config.final_exprs.is_empty());
         }
         let mut deser_code = DeserializationCode::default();
-        // joins all config.final_expr together (possibly) with the actual value into a tuple type (if multiple)
-        // or otherwise the value just goes through on its own
-        let final_expr = |encoding_exprs: Vec<String>, actual_value: Option<String>| -> String {
-            tuple_str(actual_value.into_iter().chain(encoding_exprs).collect())
-        };
         // Gives a total final expression including the before_after context
         // as well as dealing with avoiding clippy warning which is why we can
         // be conditionally a direct value (if there are encoding vars thus a tuple)
