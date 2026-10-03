@@ -333,7 +333,7 @@ pub struct GenerationScope {
     /// which report it together with `component_import_errors`. Empty off `--component`.
     component_name_collisions: Vec<String>,
     /// The dependency WIT packages `--component-extern-wit` names, read once at the top of the
-    /// component block in `generate()`. Projected into [`Self::component_package`] there, and read
+    /// [`Self::emit_component_surface`]. Projected into [`Self::component_package`] there, and read
     /// again only by `wit_files`, which materializes the imported packages beside the emitted WIT.
     /// Empty off the flag, which is what makes the flag's absence byte-identical to today.
     component_dep_wits: crate::component_wit_deps::DepWitPackages,
@@ -1794,6 +1794,15 @@ impl GenerationScope {
             declare_modules(&mut self.wasm_scopes, &wasm_scope_names);
         }
 
+        if cli.component {
+            self.emit_component_surface(types, cli);
+        }
+
+        self.emit_optional_tests(types, cli);
+        Ok(())
+    }
+
+    fn emit_component_surface(&mut self, types: &IntermediateTypes, cli: &Cli) {
         // component crate
         //
         // ONE block, deliberately — not the 30 interleaved `cli.wasm` gates above. The wasm face
@@ -1801,37 +1810,32 @@ impl GenerationScope {
         // depends on what the walk has already seen); the component face renders from the FINALIZED
         // IR the same way `extern_interface` does, so it needs no walk of its own and gains nothing
         // from being threaded through this one.
-        if cli.component {
-            // The no-deserialize verdicts are complete by here — the rust face's own walk above is
-            // what records them, and the component face runs after it — so the projection can drop
-            // the `from-cbor-bytes` seam of a type that has no `Deserialize` impl to bridge to.
-            let no_deserialize = self.no_deserialize_idents();
-            // The dependencies' committed WIT packages, read ONCE for the whole component face.
-            // A read failure is recorded rather than returned so the component face reports every
-            // seam error of the run together: component_collision_check joins these with the WIT
-            // name collisions into one error, drained by both producers (generated_files and export).
-            match crate::component_wit_deps::load(cli) {
-                Ok(dep_wits) => self.component_dep_wits = dep_wits,
-                Err(msg) => self.component_import_errors.push(msg),
-            }
-            let package = wit::project(types, cli, &no_deserialize, &self.component_dep_wits);
-            // WIT strong uniqueness, against the REAL verdict: an interface is one flat namespace
-            // and names compare with the `[method]`/`[static]`/`[constructor]` prefixes stripped, so
-            // a collision the rust and wasm faces resolve by scoping is a broken WIT package. The
-            // `<resource>.<resource>` member case in particular survives BOTH resolve and encode and
-            // fails only at binary validation, which is why the tool catches it rather than leaving
-            // it to a downstream one. Recorded rather than returned, like the load error above, so
-            // one run reports every collision and import error together (component_collision_check).
-            self.component_name_collisions = wit::wit_name_collisions(&package, cli);
-            self.component_import_errors
-                .extend(package.import_errors.iter().cloned());
-            let glue = component::component_glue(&package, types, cli);
-            self.component_lib_scope.raw(glue);
-            self.component_package = Some(package);
+        // Startup verdict seeding completes the no-deserialize verdicts before emission, so
+        // the component projection can drop the `from-cbor-bytes` seam of a type that has no
+        // `Deserialize` impl to bridge to.
+        let no_deserialize = self.no_deserialize_idents();
+        // The dependencies' committed WIT packages, read ONCE for the whole component face.
+        // A read failure is recorded rather than returned so the component face reports every
+        // seam error of the run together: component_collision_check joins these with the WIT
+        // name collisions into one error, drained by both producers (generated_files and export).
+        match crate::component_wit_deps::load(cli) {
+            Ok(dep_wits) => self.component_dep_wits = dep_wits,
+            Err(msg) => self.component_import_errors.push(msg),
         }
-
-        self.emit_optional_tests(types, cli);
-        Ok(())
+        let package = wit::project(types, cli, &no_deserialize, &self.component_dep_wits);
+        // WIT strong uniqueness, against the REAL verdict: an interface is one flat namespace
+        // and names compare with the `[method]`/`[static]`/`[constructor]` prefixes stripped, so
+        // a collision the rust and wasm faces resolve by scoping is a broken WIT package. The
+        // `<resource>.<resource>` member case in particular survives BOTH resolve and encode and
+        // fails only at binary validation, which is why the tool catches it rather than leaving
+        // it to a downstream one. Recorded rather than returned, like the load error above, so
+        // one run reports every collision and import error together (component_collision_check).
+        self.component_name_collisions = wit::wit_name_collisions(&package, cli);
+        self.component_import_errors
+            .extend(package.import_errors.iter().cloned());
+        let glue = component::component_glue(&package, types, cli);
+        self.component_lib_scope.raw(glue);
+        self.component_package = Some(package);
     }
 
     fn emit_optional_tests(&mut self, types: &IntermediateTypes, cli: &Cli) {
