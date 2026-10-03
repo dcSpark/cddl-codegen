@@ -154,6 +154,19 @@ const SOURCE_ROLES: &[SourceRole] = &[
         ],
     },
     SourceRole {
+        file: "key_demands.rs",
+        emitter: true,
+        wasm: false,
+        reason: "audited conservative key trait/bound/attribute fragments and assertion selection; no WASM rendering",
+        members: &[
+            "key_trait_list",
+            "key_bound",
+            "key_flavor_token",
+            "assertion_roots",
+            "add_struct_derives",
+        ],
+    },
+    SourceRole {
         file: "layout.rs",
         emitter: false,
         wasm: false,
@@ -165,14 +178,7 @@ const SOURCE_ROLES: &[SourceRole] = &[
         emitter: false,
         wasm: true,
         reason: "coordinator/type fragments; currently omitted from body roster",
-        members: &[
-            "generate",
-            "key_trait_list",
-            "key_bound",
-            "key_flavor_token",
-            "assertion_roots",
-            "add_struct_derives",
-        ],
+        members: &["generate"],
     },
     SourceRole {
         file: "no_std_check.rs",

@@ -793,7 +793,7 @@ pub(super) fn generate_c_style_enum(
     }
     e.derive("Copy");
     // Eq/PartialEq/Ord/PartialOrd are needed for a c-style enum used as a map/set key. When it *is* a
-    // key, `add_struct_derives` (below) adds them — and handles `--preserve-encodings` via `derivative`
+    // key, `add_struct_derives` in `key_demands.rs` adds them — and handles `--preserve-encodings` via `derivative`
     // — so deriving them here too would double-derive (`E0119` conflicting impls). Only add them here
     // for the non-key case (unchanged output there).
     if !types.used_as_key(name) {
