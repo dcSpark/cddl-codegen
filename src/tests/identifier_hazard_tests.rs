@@ -635,10 +635,11 @@ fn identifier_hazard_crates_compile() {
 
 // ---- the generated-local vocabulary: LOCKSTEP source scan + hazard sweep ------------------------
 
-/// The emitter sources whose string literals become generated fn BODIES (where a record's field
-/// locals are in scope). `export.rs` and `component.rs` are deliberately absent: their emitted
-/// bodies are the json-schema generator and the wit-bindgen guest glue, neither of which puts a
-/// user field name in scope beside a fixed local.
+/// Sources scanned for generated fn body locals, plus explicitly audited conservative destinations.
+/// `wasm_wrapper_registry.rs` owns type/signature rendering and registry bookkeeping, rather than
+/// user-field bodies; keeping it enrolled preserves scanner custody as those helpers move.
+/// `export.rs` and `component.rs` remain absent: their emitted bodies are the json-schema generator
+/// and wit-bindgen guest glue, neither of which puts a user field beside a fixed local.
 pub(crate) const EMITTER_SOURCES: &[&str] = &[
     "deserialize.rs",
     "serialize.rs",
@@ -646,6 +647,7 @@ pub(crate) const EMITTER_SOURCES: &[&str] = &[
     "enums.rs",
     "collections.rs",
     "wrappers.rs",
+    "wasm_wrapper_registry.rs",
 ];
 
 /// One lexical pass over Rust source, feeding both source-scan gates over the emitters.

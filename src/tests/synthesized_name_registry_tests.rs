@@ -894,10 +894,11 @@ pub(crate) const WASM_RENDERING_EMITTERS: &[&str] = &[
     "src/generation/enums.rs",
     "src/generation/wrappers.rs",
     "src/generation/collections.rs",
+    "src/generation/wasm_wrapper_registry.rs",
 ];
 
-/// The five files are the finite wasm type-rendering emitter registry. The only direct renderer
-/// calls permitted inside it are the three helpers in `generation/mod.rs`; all emission doors must
+/// The listed files are the finite wasm type-rendering emitter registry. The only direct renderer
+/// calls permitted inside it are the three helpers in `generation/wasm_wrapper_registry.rs`; all emission doors must
 /// go through those helpers so they cannot bypass `record_wasm_type_reference`.
 #[test]
 fn wasm_type_rendering_doors_are_lockstep_routed_through_the_registry() {
@@ -923,15 +924,15 @@ fn wasm_type_rendering_doors_are_lockstep_routed_through_the_registry() {
         direct_calls,
         vec![
             (
-                "src/generation/mod.rs".to_owned(),
+                "src/generation/wasm_wrapper_registry.rs".to_owned(),
                 "let rendered = ty.for_wasm_member(types);".to_owned(),
             ),
             (
-                "src/generation/mod.rs".to_owned(),
+                "src/generation/wasm_wrapper_registry.rs".to_owned(),
                 "let rendered = ty.for_wasm_param(types);".to_owned(),
             ),
             (
-                "src/generation/mod.rs".to_owned(),
+                "src/generation/wasm_wrapper_registry.rs".to_owned(),
                 "let rendered = ty.for_wasm_return(types);".to_owned(),
             ),
         ],

@@ -1297,6 +1297,10 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 /// message breaks the contiguity, and a different function yields a different `<symbol>`). The
 /// remaining collapse boundary is per-(message, file, function): two bare sites in the SAME
 /// function share one key (`codegen_struct` / `generate_wrapper_struct` each host two).
+// Registry invariant guards live in `src/generation/wasm_wrapper_registry.rs`:
+// `record_dependency_class`/`record_dependency_alias` debug assertions and
+// `raw_collection_dependency_provider_scope` bounded-array/map expects retain their exact payloads.
+// None has an active known-panic key; an observed new panic still requires a regression vector.
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired when the two anonymous-composite families and the group-choice-arm inline group
     // became graceful rejections) Three classes lived here, and they split by the composite's

@@ -17,7 +17,7 @@ struct SourceRole {
 }
 
 // Every current source is classified, including deliberately unscanned files.
-// Future gen-core-19 moves split the mod.rs member anchors into five destination rows:
+// gen-core-19 cuts move the corresponding member anchors into five destination rows:
 // wasm_wrapper_registry, json_schema_claims, encoding_fields, json_annotations, key_demands.
 // Enroll all five in EMITTER_SOURCES as audited conservative coverage, explaining their
 // body/type/attribute/traversal role here and in the roster comment. Only actual rendering
@@ -90,13 +90,9 @@ const SOURCE_ROLES: &[SourceRole] = &[
         file: "mod.rs",
         emitter: false,
         wasm: true,
-        reason: "coordinator/type fragments and registry doors; currently omitted from body roster",
+        reason: "coordinator/type fragments; currently omitted from body roster",
         members: &[
             "generate",
-            "wasm_member_type",
-            "wasm_param_type",
-            "wasm_return_type",
-            "record_wasm_type_reference",
             "json_schema_reachable_claims",
             "encoding_fields_decls",
             "type_complexity_score",
@@ -162,6 +158,43 @@ const SOURCE_ROLES: &[SourceRole] = &[
         wasm: true,
         reason: "wrapper bodies and WASM signatures",
         members: &["generate_wrapper_struct"],
+    },
+    SourceRole {
+        file: "wasm_wrapper_registry.rs",
+        emitter: true,
+        wasm: true,
+        reason: "audited conservative type/signature rendering destination and provider/reference registry",
+        members: &[
+            "wrapper",
+            "door",
+            "dependency_owned",
+            "dependency_provider_scope",
+            "record_local_class",
+            "record_local_alias",
+            "record_deferred",
+            "record_dependency_class",
+            "record_dependency_alias",
+            "record_reference",
+            "local_classes",
+            "local_class_scope",
+            "own_wrapper_shape",
+            "deferred",
+            "definition_kind",
+            "references",
+            "remove_local_class_for_test",
+            "closure_check",
+            "wasm_collection_reference_ident",
+            "wasm_collection_reference",
+            "wasm_collection_reference_inner",
+            "raw_collection_dependency_provider_scope",
+            "record_wasm_type_reference",
+            "record_wasm_collection_alias_definition",
+            "wasm_member_type",
+            "wasm_param_type",
+            "wasm_return_type",
+            "wasm_collection_wrapper_registry",
+            "remove_wasm_collection_local_class_for_test",
+        ],
     },
     SourceRole {
         file: "write_tail.rs",
@@ -293,17 +326,17 @@ struct RenderingDoor {
 }
 const RENDERING_DOORS: &[RenderingDoor] = &[
     RenderingDoor {
-        file: "mod.rs",
+        file: "wasm_wrapper_registry.rs",
         function: "wasm_member_type",
         method: "for_wasm_member",
     },
     RenderingDoor {
-        file: "mod.rs",
+        file: "wasm_wrapper_registry.rs",
         function: "wasm_param_type",
         method: "for_wasm_param",
     },
     RenderingDoor {
-        file: "mod.rs",
+        file: "wasm_wrapper_registry.rs",
         function: "wasm_return_type",
         method: "for_wasm_return",
     },
