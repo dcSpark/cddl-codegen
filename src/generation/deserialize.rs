@@ -2276,6 +2276,192 @@ impl GenerationScope {
         deser_code
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn deser_optional(
+        &mut self,
+        ty: &RustType,
+        types: &IntermediateTypes,
+        mut deser_code: DeserializationCode,
+        config: DeserializeConfig,
+        before_after: DeserializeBeforeAfter,
+        cli: &Cli,
+        deserializer_name: &str,
+    ) -> DeserializationCode {
+        let read_len_check = config.optional_field || (ty.expanded_field_count(types) != Some(1));
+        // codegen crate doesn't support if/else or appending a block after a block, only strings
+        // so we need to create a local bool var and use a match instead
+        let if_label = if ty.cbor_types(types).contains(&cbor_event::Type::Special) {
+            let is_some_check_var = format!("{}_is_some", config.var_name);
+            let mut is_some_check = Block::new(format!(
+                "let {is_some_check_var} = match {deserializer_name}.cbor_type()?"
+            ));
+            let mut special_block = Block::new("cbor_event::Type::Special =>");
+            // `special()` consumes 1-9 bytes depending on the payload (bool/null are 1
+            // byte, two-byte simples 2, f16/f32/f64 are 3/5/9), so this null-peek must
+            // save/restore the position around it rather than rewind a fixed width.
+            special_block.line(format!(
+                "let initial_position = {deserializer_name}.position();"
+            ));
+            special_block.line(format!("let special = {deserializer_name}.special()?;"));
+            special_block.line(format!(
+                "{deserializer_name}.set_position(initial_position).unwrap();"
+            ));
+            let mut special_match = Block::new("match special");
+            // TODO: we need to check that we don't have null / null somewhere
+            special_match.line("cbor_event::Special::Null => false,");
+            // no need to error check - would happen in generated deserialize code
+            special_match.line("_ => true,");
+            special_block.push_block(special_match);
+            special_block.after(",");
+            is_some_check.push_block(special_block);
+            // it's possible the Some case only has Special as its starting tag(s),
+            // but we don't care since it'll fail in either either case anyway,
+            // and would give a good enough error (ie expected Special::X but found non-Special)
+            is_some_check.line("_ => true,");
+            is_some_check.after(";");
+            deser_code.content.push_block(is_some_check);
+            is_some_check_var
+        } else {
+            String::from(&format!(
+                "{deserializer_name}.cbor_type()? != cbor_event::Type::Special"
+            ))
+        };
+        let mut deser_block = Block::new(format!(
+            "{}match {}",
+            before_after.before_str(false),
+            if_label
+        ));
+        let mut some_block = Block::new("true =>");
+        if read_len_check {
+            let mandatory_fields = ty.expanded_mandatory_field_count(types);
+            if mandatory_fields != 0 {
+                some_block.line(format!("read_len.read_elems({mandatory_fields})?;"));
+                deser_code.read_len_used = true;
+            }
+        }
+        let ty_enc_fields = if cli.preserve_encodings {
+            encoding_fields(types, config.var_name, ty, false, cli)
+        } else {
+            vec![]
+        };
+        // Every tag level already crossed on THIS member name contributed its own
+        // element to the tuple the child read produces (`(x, tag_enc, inner_enc)` for
+        // one level), so the `Some`-mapping below has to bind them too and the `None`
+        // arm has to default them. Deriving the count from `config.tag_depth` — the
+        // same counter `encoding_fields_impl` and the tag arms use — is what keeps the
+        // three in lockstep. Before this, `#6.n(T / null)` under `--preserve-encodings`
+        // emitted a 2-binder pattern against a 3-element tuple and the generated crate
+        // did not compile (E0308) — exit 0, uncompilable output.
+        // Only under `--preserve-encodings`: without it no encoding variable exists at
+        // any level, so the child read yields the bare value and the tuple has one
+        // element whatever the tag depth.
+        let crossed_tag_levels = if cli.preserve_encodings {
+            config.tag_depth
+        } else {
+            0
+        };
+        let crossed_tag_vars: Vec<String> = (1..=crossed_tag_levels)
+            .map(|level| format!("{}_{}_encoding", config.var_name, tag_encoding_infix(level)))
+            .collect();
+        if ty_enc_fields.is_empty() && crossed_tag_vars.is_empty() {
+            self.generate_deserialize(
+                types,
+                ty.into(),
+                DeserializeBeforeAfter::new("Some(", ")", false),
+                // an `Optional` inner is a member position of its OWN
+                config.optional_field(false).clear_declared_spelling(),
+                cli,
+            )
+            .add_to(&mut some_block);
+        } else {
+            let (map_some_before, map_some_after) = if ty.conceptual_type.is_fixed_value() {
+                // case 1: no actual return, only encoding values for tags/fixed values, no need to wrap in Some()
+                ("", "".to_owned())
+            } else {
+                // case 2: need to map FIRST element in Some(x)
+                let enc_vars_str = crossed_tag_vars
+                    .iter()
+                    .cloned()
+                    .chain(
+                        ty_enc_fields
+                            .iter()
+                            .map(|enc_field| enc_field.field_name.clone()),
+                    )
+                    .collect::<Vec<String>>()
+                    .join(", ");
+                // we need to annotate the Ok's error type since the compiler gets confused otherwise
+                (
+                    "Result::<_, DeserializeError>::Ok(",
+                    format!(").map(|(x, {enc_vars_str})| (Some(x), {enc_vars_str}))?"),
+                )
+            };
+            self.generate_deserialize(
+                types,
+                ty.into(),
+                DeserializeBeforeAfter::new(map_some_before, &map_some_after, false),
+                // an `Optional` inner is a member position of its OWN
+                config.optional_field(false).clear_declared_spelling(),
+                cli,
+            )
+            .add_to(&mut some_block);
+        }
+        some_block.after(",");
+        deser_block.push_block(some_block);
+        let mut none_block = Block::new("false =>");
+        if read_len_check {
+            none_block.line("read_len.read_elems(1)?;");
+            deser_code.read_len_used = true;
+        }
+        // Checked inline rather than through the `Fixed(Null)` arm, which under
+        // --preserve-encodings would emit a unit value line this arm does not want.
+        let mut check_null = Block::new(format!(
+            "if {deserializer_name}.special()? != cbor_event::Special::Null"
+        ));
+        check_null.line("return Err(DeserializeFailure::ExpectedNull.into());");
+        none_block.push_block(check_null);
+        if cli.preserve_encodings {
+            let mut none_elems = if ty.conceptual_type.is_fixed_value() {
+                vec![]
+            } else {
+                vec!["None".to_owned()]
+            };
+            // The already-read head size for each crossed tag level, then the inner
+            // type's own defaults — same order as the `Some` arm's binders.
+            //
+            // The tag levels are NOT defaulted, and that asymmetry with the slots
+            // around them is the whole point: a crossed tag's head is bytes this arm
+            // has ALREADY consumed (the enclosing `match .tag_sz()?` bound them to
+            // `tag_enc`, which is in scope here), so defaulting them to `None` made a
+            // widened `d8 0a f6` re-encode as `ca f6` — a preserve-encodings violation
+            // at exit 0. The value slot and the inner type's own encoding slots stay
+            // defaulted BECAUSE the bytes they describe were never on the wire: the
+            // payload is null. Pinned by tests/corpus/tagged_nullable.cddl in both the
+            // rule-body and member positions.
+            none_elems.extend(
+                (1..=crossed_tag_levels).map(|level| format!("Some({})", tag_enc_binding(level))),
+            );
+            none_elems.extend(
+                ty_enc_fields
+                    .iter()
+                    .map(|enc_field| enc_field.default_expr.to_owned()),
+            );
+            match none_elems.len() {
+                // this probably isn't properly supported by other parts of code and is so unlikely to be encountered
+                // that we really don't care right now. if you run into this open an issue and it can be investigated
+                0 => unimplemented!("please open a github issue"),
+                1 => none_block.line(none_elems.first().unwrap()),
+                _ => none_block.line(format!("({})", none_elems.join(", "))),
+            };
+        } else {
+            none_block.line("None");
+        }
+        deser_block.after(before_after.after_str(false));
+        deser_block.push_block(none_block);
+        deser_code.content.push_block(deser_block);
+        deser_code.throws = true;
+        deser_code
+    }
+
     /// Generates a DeserializationCode to serialize {serializing_rust_type} using the context in {before_after}
     /// This returned value must be in turn pushed into deserialization code to be used.
     #[must_use]
@@ -2379,186 +2565,15 @@ impl GenerationScope {
                     );
                 }
                 SerializingRustType::Root(ConceptualRustType::Optional(ty), _cfg) => {
-                    let read_len_check =
-                        config.optional_field || (ty.expanded_field_count(types) != Some(1));
-                    // codegen crate doesn't support if/else or appending a block after a block, only strings
-                    // so we need to create a local bool var and use a match instead
-                    let if_label = if ty.cbor_types(types).contains(&cbor_event::Type::Special) {
-                        let is_some_check_var = format!("{}_is_some", config.var_name);
-                        let mut is_some_check = Block::new(format!(
-                            "let {is_some_check_var} = match {deserializer_name}.cbor_type()?"
-                        ));
-                        let mut special_block = Block::new("cbor_event::Type::Special =>");
-                        // `special()` consumes 1-9 bytes depending on the payload (bool/null are 1
-                        // byte, two-byte simples 2, f16/f32/f64 are 3/5/9), so this null-peek must
-                        // save/restore the position around it rather than rewind a fixed width.
-                        special_block.line(format!(
-                            "let initial_position = {deserializer_name}.position();"
-                        ));
-                        special_block
-                            .line(format!("let special = {deserializer_name}.special()?;"));
-                        special_block.line(format!(
-                            "{deserializer_name}.set_position(initial_position).unwrap();"
-                        ));
-                        let mut special_match = Block::new("match special");
-                        // TODO: we need to check that we don't have null / null somewhere
-                        special_match.line("cbor_event::Special::Null => false,");
-                        // no need to error check - would happen in generated deserialize code
-                        special_match.line("_ => true,");
-                        special_block.push_block(special_match);
-                        special_block.after(",");
-                        is_some_check.push_block(special_block);
-                        // it's possible the Some case only has Special as its starting tag(s),
-                        // but we don't care since it'll fail in either either case anyway,
-                        // and would give a good enough error (ie expected Special::X but found non-Special)
-                        is_some_check.line("_ => true,");
-                        is_some_check.after(";");
-                        deser_code.content.push_block(is_some_check);
-                        is_some_check_var
-                    } else {
-                        String::from(&format!(
-                            "{deserializer_name}.cbor_type()? != cbor_event::Type::Special"
-                        ))
-                    };
-                    let mut deser_block = Block::new(format!(
-                        "{}match {}",
-                        before_after.before_str(false),
-                        if_label
-                    ));
-                    let mut some_block = Block::new("true =>");
-                    if read_len_check {
-                        let mandatory_fields = ty.expanded_mandatory_field_count(types);
-                        if mandatory_fields != 0 {
-                            some_block.line(format!("read_len.read_elems({mandatory_fields})?;"));
-                            deser_code.read_len_used = true;
-                        }
-                    }
-                    let ty_enc_fields = if cli.preserve_encodings {
-                        encoding_fields(types, config.var_name, ty, false, cli)
-                    } else {
-                        vec![]
-                    };
-                    // Every tag level already crossed on THIS member name contributed its own
-                    // element to the tuple the child read produces (`(x, tag_enc, inner_enc)` for
-                    // one level), so the `Some`-mapping below has to bind them too and the `None`
-                    // arm has to default them. Deriving the count from `config.tag_depth` — the
-                    // same counter `encoding_fields_impl` and the tag arms use — is what keeps the
-                    // three in lockstep. Before this, `#6.n(T / null)` under `--preserve-encodings`
-                    // emitted a 2-binder pattern against a 3-element tuple and the generated crate
-                    // did not compile (E0308) — exit 0, uncompilable output.
-                    // Only under `--preserve-encodings`: without it no encoding variable exists at
-                    // any level, so the child read yields the bare value and the tuple has one
-                    // element whatever the tag depth.
-                    let crossed_tag_levels = if cli.preserve_encodings {
-                        config.tag_depth
-                    } else {
-                        0
-                    };
-                    let crossed_tag_vars: Vec<String> = (1..=crossed_tag_levels)
-                        .map(|level| {
-                            format!("{}_{}_encoding", config.var_name, tag_encoding_infix(level))
-                        })
-                        .collect();
-                    if ty_enc_fields.is_empty() && crossed_tag_vars.is_empty() {
-                        self.generate_deserialize(
-                            types,
-                            (&**ty).into(),
-                            DeserializeBeforeAfter::new("Some(", ")", false),
-                            // an `Optional` inner is a member position of its OWN
-                            config.optional_field(false).clear_declared_spelling(),
-                            cli,
-                        )
-                        .add_to(&mut some_block);
-                    } else {
-                        let (map_some_before, map_some_after) = if ty
-                            .conceptual_type
-                            .is_fixed_value()
-                        {
-                            // case 1: no actual return, only encoding values for tags/fixed values, no need to wrap in Some()
-                            ("", "".to_owned())
-                        } else {
-                            // case 2: need to map FIRST element in Some(x)
-                            let enc_vars_str = crossed_tag_vars
-                                .iter()
-                                .cloned()
-                                .chain(
-                                    ty_enc_fields
-                                        .iter()
-                                        .map(|enc_field| enc_field.field_name.clone()),
-                                )
-                                .collect::<Vec<String>>()
-                                .join(", ");
-                            // we need to annotate the Ok's error type since the compiler gets confused otherwise
-                            (
-                                "Result::<_, DeserializeError>::Ok(",
-                                format!(").map(|(x, {enc_vars_str})| (Some(x), {enc_vars_str}))?"),
-                            )
-                        };
-                        self.generate_deserialize(
-                            types,
-                            (&**ty).into(),
-                            DeserializeBeforeAfter::new(map_some_before, &map_some_after, false),
-                            // an `Optional` inner is a member position of its OWN
-                            config.optional_field(false).clear_declared_spelling(),
-                            cli,
-                        )
-                        .add_to(&mut some_block);
-                    }
-                    some_block.after(",");
-                    deser_block.push_block(some_block);
-                    let mut none_block = Block::new("false =>");
-                    if read_len_check {
-                        none_block.line("read_len.read_elems(1)?;");
-                        deser_code.read_len_used = true;
-                    }
-                    // Checked inline rather than through the `Fixed(Null)` arm, which under
-                    // --preserve-encodings would emit a unit value line this arm does not want.
-                    let mut check_null = Block::new(format!(
-                        "if {deserializer_name}.special()? != cbor_event::Special::Null"
-                    ));
-                    check_null.line("return Err(DeserializeFailure::ExpectedNull.into());");
-                    none_block.push_block(check_null);
-                    if cli.preserve_encodings {
-                        let mut none_elems = if ty.conceptual_type.is_fixed_value() {
-                            vec![]
-                        } else {
-                            vec!["None".to_owned()]
-                        };
-                        // The already-read head size for each crossed tag level, then the inner
-                        // type's own defaults — same order as the `Some` arm's binders.
-                        //
-                        // The tag levels are NOT defaulted, and that asymmetry with the slots
-                        // around them is the whole point: a crossed tag's head is bytes this arm
-                        // has ALREADY consumed (the enclosing `match .tag_sz()?` bound them to
-                        // `tag_enc`, which is in scope here), so defaulting them to `None` made a
-                        // widened `d8 0a f6` re-encode as `ca f6` — a preserve-encodings violation
-                        // at exit 0. The value slot and the inner type's own encoding slots stay
-                        // defaulted BECAUSE the bytes they describe were never on the wire: the
-                        // payload is null. Pinned by tests/corpus/tagged_nullable.cddl in both the
-                        // rule-body and member positions.
-                        none_elems.extend(
-                            (1..=crossed_tag_levels)
-                                .map(|level| format!("Some({})", tag_enc_binding(level))),
-                        );
-                        none_elems.extend(
-                            ty_enc_fields
-                                .iter()
-                                .map(|enc_field| enc_field.default_expr.to_owned()),
-                        );
-                        match none_elems.len() {
-                            // this probably isn't properly supported by other parts of code and is so unlikely to be encountered
-                            // that we really don't care right now. if you run into this open an issue and it can be investigated
-                            0 => unimplemented!("please open a github issue"),
-                            1 => none_block.line(none_elems.first().unwrap()),
-                            _ => none_block.line(format!("({})", none_elems.join(", "))),
-                        };
-                    } else {
-                        none_block.line("None");
-                    }
-                    deser_block.after(before_after.after_str(false));
-                    deser_block.push_block(none_block);
-                    deser_code.content.push_block(deser_block);
-                    deser_code.throws = true;
+                    deser_code = self.deser_optional(
+                        ty,
+                        types,
+                        deser_code,
+                        config,
+                        before_after,
+                        cli,
+                        deserializer_name,
+                    );
                 }
                 SerializingRustType::Root(
                     collection_type @ ConceptualRustType::Array(ty),
