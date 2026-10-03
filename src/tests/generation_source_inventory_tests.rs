@@ -56,6 +56,7 @@ const SOURCE_ROLES: &[SourceRole] = &[
         wasm: false,
         reason: "deserialization bodies and overload config",
         members: &[
+            "deser_tagged",
             "deser_primitive",
             "emit_primitive_read",
             "deser_fixed",

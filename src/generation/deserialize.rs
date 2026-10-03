@@ -1618,6 +1618,78 @@ fn final_result_expr_complete(
 }
 
 impl GenerationScope {
+    #[allow(clippy::too_many_arguments)]
+    fn deser_tagged(
+        &mut self,
+        tag: &usize,
+        child: SerializingRustType<'_>,
+        types: &IntermediateTypes,
+        mut deser_code: DeserializationCode,
+        mut config: DeserializeConfig,
+        before_after: DeserializeBeforeAfter,
+        cli: &Cli,
+        deserializer_name: &str,
+    ) -> DeserializationCode {
+        // level (tag_depth + 1) counted outside-in. Stacked mandatory tags NEST these
+        // `match .tag_sz()` blocks, so an un-suffixed `tag_enc` binding would let the
+        // inner level shadow the outer and both final exprs would read the innermost
+        // size. Depth-suffix the binding (`tag_enc` -> `tag_enc2` at level >= 2) so each
+        // level's `Some(..)` final expr references its own size.
+        let tag_level = config.tag_depth + 1;
+        let tag_enc_binding = tag_enc_binding(tag_level);
+        if config.optional_field {
+            deser_code.content.line("read_len.read_elems(1)?;");
+            deser_code.read_len_used = true;
+        }
+        // Under preserve the tag's size is bound alongside its value, and its
+        // `Some(..)` final expr must be pushed before the child consumes `config`.
+        let (reader, arm_pattern) = if cli.preserve_encodings {
+            config.final_exprs.push(format!("Some({tag_enc_binding})"));
+            ("tag_sz", format!("({tag}, {tag_enc_binding})"))
+        } else {
+            ("tag", tag.to_string())
+        };
+        let mut tag_check = Block::new(format!(
+            "{}match {}.{reader}()?",
+            before_after.before, deserializer_name
+        ));
+        let some_deser_code = self
+            .generate_deserialize(
+                types,
+                child,
+                DeserializeBeforeAfter::new("", "", before_after.expects_result),
+                config.optional_field(false).tag_depth(tag_level),
+                cli,
+            )
+            .mark_and_extract_content(&mut deser_code);
+        if let Some(single_line) = some_deser_code.as_single_line() {
+            tag_check.line(format!("{arm_pattern} => {single_line},"));
+        } else {
+            let mut deser_block = Block::new(format!("{arm_pattern} =>"));
+            deser_block.push_all(some_deser_code);
+            deser_block.after(",");
+            tag_check.push_block(deser_block);
+        }
+        tag_check.line(format!(
+            "{} => {}Err(DeserializeFailure::TagMismatch{{ found: tag, expected: {} }}.into()),",
+            if cli.preserve_encodings {
+                "(tag, _enc)"
+            } else {
+                "tag"
+            },
+            if before_after.expects_result {
+                ""
+            } else {
+                "return "
+            },
+            tag
+        ));
+        tag_check.after(before_after.after);
+        deser_code.content.push_block(tag_check);
+        deser_code.throws = true;
+        deser_code
+    }
+
     /// Generates a DeserializationCode to serialize {serializing_rust_type} using the context in {before_after}
     /// This returned value must be in turn pushed into deserialization code to be used.
     #[must_use]
@@ -2948,54 +3020,16 @@ impl GenerationScope {
                     CBOREncodingOperation::Tagged(tag),
                     child,
                 ) => {
-                    // level (tag_depth + 1) counted outside-in. Stacked mandatory tags NEST these
-                    // `match .tag_sz()` blocks, so an un-suffixed `tag_enc` binding would let the
-                    // inner level shadow the outer and both final exprs would read the innermost
-                    // size. Depth-suffix the binding (`tag_enc` -> `tag_enc2` at level >= 2) so each
-                    // level's `Some(..)` final expr references its own size.
-                    let tag_level = config.tag_depth + 1;
-                    let tag_enc_binding = tag_enc_binding(tag_level);
-                    if config.optional_field {
-                        deser_code.content.line("read_len.read_elems(1)?;");
-                        deser_code.read_len_used = true;
-                    }
-                    // Under preserve the tag's size is bound alongside its value, and its
-                    // `Some(..)` final expr must be pushed before the child consumes `config`.
-                    let (reader, arm_pattern) = if cli.preserve_encodings {
-                        config.final_exprs.push(format!("Some({tag_enc_binding})"));
-                        ("tag_sz", format!("({tag}, {tag_enc_binding})"))
-                    } else {
-                        ("tag", tag.to_string())
-                    };
-                    let mut tag_check = Block::new(format!(
-                        "{}match {}.{reader}()?",
-                        before_after.before, deserializer_name
-                    ));
-                    let some_deser_code = self
-                        .generate_deserialize(
-                            types,
-                            *child,
-                            DeserializeBeforeAfter::new("", "", before_after.expects_result),
-                            config.optional_field(false).tag_depth(tag_level),
-                            cli,
-                        )
-                        .mark_and_extract_content(&mut deser_code);
-                    if let Some(single_line) = some_deser_code.as_single_line() {
-                        tag_check.line(format!("{arm_pattern} => {single_line},"));
-                    } else {
-                        let mut deser_block = Block::new(format!("{arm_pattern} =>"));
-                        deser_block.push_all(some_deser_code);
-                        deser_block.after(",");
-                        tag_check.push_block(deser_block);
-                    }
-                    tag_check.line(format!(
-                    "{} => {}Err(DeserializeFailure::TagMismatch{{ found: tag, expected: {} }}.into()),",
-                    if cli.preserve_encodings { "(tag, _enc)" } else { "tag" },
-                    if before_after.expects_result { "" } else { "return " },
-                    tag));
-                    tag_check.after(before_after.after);
-                    deser_code.content.push_block(tag_check);
-                    deser_code.throws = true;
+                    deser_code = self.deser_tagged(
+                        tag,
+                        *child,
+                        types,
+                        deser_code,
+                        config,
+                        before_after,
+                        cli,
+                        deserializer_name,
+                    );
                 }
                 SerializingRustType::EncodingOperation(
                     CBOREncodingOperation::OptionallyTagged(tag),
