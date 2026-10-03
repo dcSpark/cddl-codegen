@@ -1374,6 +1374,13 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 // Component result invariant guard now belongs to component.rs::member_rest_getter_body:
 // "a rest getter always returns something" retains its exact expect payload and position.
 // No active panic allowance is added; main must qualify normalized production frame keys.
+// Component setter index invariants now belong to component.rs::member_setter_body:
+// member.params[0] selects the sole projected setter parameter; args[0] selects the
+// materialized argument for that same one-parameter input in both storage branches.
+// Index expressions and evaluation order retain the original bounds-panic behavior.
+// Actual bounds-panic production-frame attribution remains main qualification; valid
+// projection/materialization cardinality is a source premise, not a reachability proof.
+// No active panic key, array entry or allowance is added or widened.
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired when the two anonymous-composite families and the group-choice-arm inline group
     // became graceful rejections) Three classes lived here, and they split by the composite's

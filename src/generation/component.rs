@@ -1719,24 +1719,7 @@ impl Emitter<'_, '_> {
                 field,
                 plain_storage,
             } => {
-                let param = &member.params[0];
-                // The value window, checked on the boundary value before anything else touches it —
-                // a setter is the one door with no rust constructor between the caller and the
-                // field, so without this the WIT's `result<_, string>` would promise a check the
-                // glue never performs.
-                lines.extend(self.boundary_bounds_checks(std::slice::from_ref(param)));
-                let (materialized, args) = self.materialize(std::slice::from_ref(param), alias);
-                // Every argument guard is released by these statements, BEFORE the `borrow_mut`.
-                lines.extend(materialized);
-                let assigned = if *plain_storage {
-                    args[0].clone()
-                } else {
-                    format!("Some({})", args[0])
-                };
-                lines.push(format!("self.0.borrow_mut().{field} = {assigned};"));
-                if member.fallible {
-                    lines.push("Ok(())".to_owned());
-                }
+                self.member_setter_body(&mut lines, member, alias, field, *plain_storage);
             }
             // The rust getter returns the inner value by reference when it is not `Copy` and by value
             // when it is; `.clone()` normalizes both to an owned value, so one template serves both.
@@ -1921,6 +1904,34 @@ impl Emitter<'_, '_> {
         }
         lines
     }
+    fn member_setter_body(
+        &self,
+        lines: &mut Vec<String>,
+        member: &WitMember,
+        alias: &str,
+        field: &str,
+        plain_storage: bool,
+    ) {
+        let param = &member.params[0];
+        // The value window, checked on the boundary value before anything else touches it —
+        // a setter is the one door with no rust constructor between the caller and the
+        // field, so without this the WIT's `result<_, string>` would promise a check the
+        // glue never performs.
+        lines.extend(self.boundary_bounds_checks(std::slice::from_ref(param)));
+        let (materialized, args) = self.materialize(std::slice::from_ref(param), alias);
+        // Every argument guard is released by these statements, BEFORE the `borrow_mut`.
+        lines.extend(materialized);
+        let assigned = if plain_storage {
+            args[0].clone()
+        } else {
+            format!("Some({})", args[0])
+        };
+        lines.push(format!("self.0.borrow_mut().{field} = {assigned};"));
+        if member.fallible {
+            lines.push("Ok(())".to_owned());
+        }
+    }
+
     fn member_rest_getter_body(
         &self,
         lines: &mut Vec<String>,
