@@ -1395,6 +1395,34 @@ impl GenerationScope {
             }
         }
 
+        let scope_names = self.declare_rust_scope_roots_and_checks(types);
+
+        self.emit_rust_scope_imports(types, cli, &runtime_usage);
+
+        self.emit_serialization_imports(cli);
+
+        // declare submodules
+        // we do this after the rest to avoid declaring serialization mod/cbor encodings/etc
+        // for these modules when they only exist to support modules nested deeper
+        declare_modules(&mut self.rust_scopes, &scope_names);
+
+        // wasm
+        if cli.wasm {
+            self.emit_wasm_imports_and_reexports(types, cli, &runtime_usage)?;
+        }
+
+        if cli.component {
+            self.emit_component_surface(types, cli);
+        }
+
+        self.emit_optional_tests(types, cli);
+        Ok(())
+    }
+
+    fn declare_rust_scope_roots_and_checks(
+        &mut self,
+        types: &IntermediateTypes,
+    ) -> Vec<ModuleScope> {
         // Declare the per-scope modules AFTER the extern / `@raw_bytes_flavor` glue above: an
         // extern-ONLY scope (all its rules are `_CDDL_CODEGEN_EXTERN_TYPE_`) has no generated struct,
         // so the glue's `rust_scopes.entry(..).or_default()` is the ONLY thing that creates its scope
@@ -1429,27 +1457,7 @@ impl GenerationScope {
         if !assertion_roots(types).is_empty() {
             self.rust_lib().raw("mod key_demand_assertions;");
         }
-
-        self.emit_rust_scope_imports(types, cli, &runtime_usage);
-
-        self.emit_serialization_imports(cli);
-
-        // declare submodules
-        // we do this after the rest to avoid declaring serialization mod/cbor encodings/etc
-        // for these modules when they only exist to support modules nested deeper
-        declare_modules(&mut self.rust_scopes, &scope_names);
-
-        // wasm
-        if cli.wasm {
-            self.emit_wasm_imports_and_reexports(types, cli, &runtime_usage)?;
-        }
-
-        if cli.component {
-            self.emit_component_surface(types, cli);
-        }
-
-        self.emit_optional_tests(types, cli);
-        Ok(())
+        scope_names
     }
 
     fn emit_rust_scope_imports(
