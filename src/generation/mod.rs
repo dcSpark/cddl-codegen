@@ -648,373 +648,7 @@ impl GenerationScope {
             }
         }
 
-        // Structs
-        {
-            // we can ignore types already handled by the alias
-            // otherwise the mint walk may cause us to pointlessly create aliases to aliases
-            let mut existing_aliases = types
-                .type_aliases()
-                .keys()
-                .filter_map(|alias| match alias {
-                    AliasIdent::Reserved(_) => None,
-                    AliasIdent::Rust(ident) => Some(ident),
-                })
-                .cloned()
-                .collect::<BTreeSet<RustIdent>>();
-
-            // Shapes owned by EXACTLY ONE named table rule: their embedded/resolved uses share the
-            // rule-named class (a real `#[wasm_bindgen]` class under the CDDL identifier), and the
-            // structural `MapKToV` name becomes a `pub type` alias to it. Same-shape rule PAIRS (2+
-            // owners) and anonymous-only shapes are absent — they keep the structural fallback class
-            // at the crate root. Shared with `scope_references`'s Map arm (import placement) via the
-            // one helper so emission and import placement CANNOT disagree. `generate` cached that
-            // projection on entry.
-            let mut mint_walk =
-                WrapperMintWalk::new(self.wasm_collection_reference_sole_owners.clone());
-
-            for (rust_ident, rust_struct) in types.rust_structs() {
-                assert_eq!(rust_ident, rust_struct.ident());
-                if cli.wasm {
-                    self.mint_struct_wasm_wrappers(
-                        types,
-                        rust_struct,
-                        &mut mint_walk,
-                        &mut existing_aliases,
-                        cli,
-                    );
-                }
-                match rust_struct.variant() {
-                    RustStructType::Record(record) => {
-                        codegen_struct(
-                            self,
-                            types,
-                            rust_ident,
-                            rust_struct.tag(),
-                            record,
-                            rust_struct.config(),
-                            cli,
-                        );
-                    }
-                    RustStructType::Table {
-                        domain,
-                        range,
-                        bounds,
-                    } => {
-                        // A SYNTHESIZED anonymous map instance converges onto the STRUCTURAL map
-                        // wrapper (`MapKToV` / `NonEmptyMapKToV`) via its `gen_wasm_alias` passthrough,
-                        // exactly as the array arm above does for lists — mint no rule-named class.
-                        let anon = types.is_anonymous_collection_instance(rust_ident);
-                        if cli.wasm
-                            && !anon
-                            && bounds
-                                .is_some_and(crate::intermediate::OccurrenceWindow::is_non_empty)
-                        {
-                            // named `{+ k => v}` rule: its JS class is the RESTRICTED wrapper
-                            // (wrapping core::NonEmptyMap) under the rule ident, not the loose table
-                            // wrapper — the map-side twin of the named `[+ T]` array arm.
-                            self.generate_non_empty_map_type(
-                                types,
-                                domain.clone(),
-                                range.clone(),
-                                rust_ident,
-                                true,
-                                rust_struct.config().duplicates_preserve(),
-                                cli,
-                            );
-                        } else if cli.wasm
-                            && !anon
-                            && let Some((min, max)) = {
-                                let table: RustType = ConceptualRustType::Map(
-                                    Box::new(domain.clone()),
-                                    Box::new(range.clone()),
-                                )
-                                .into();
-                                bounds.and_then(|bounds| {
-                                    table
-                                        .with_occurrence_bounds(bounds)
-                                        .bounded_map_u64_bounds()
-                                })
-                            }
-                        {
-                            self.generate_bounded_map_type(
-                                types,
-                                domain.clone(),
-                                range.clone(),
-                                rust_ident,
-                                (min, max),
-                                !types.is_synthesized_collection(rust_ident),
-                                rust_struct.config().duplicates_preserve(),
-                                cli,
-                            );
-                        } else if cli.wasm && !anon {
-                            // A rule-declared LOOSE table never reaches `try_defer_wrapper` (both
-                            // mints below are `exists_in_rust` paths), so the one thing the defer
-                            // seam would have said about a dep-indexed name has to be said here.
-                            self.warn_rule_declared_table_shadows_index(rust_ident);
-                            let map_ident = RustType::wasm_structural_map_name_for(
-                                domain,
-                                range,
-                                rust_struct.config().duplicates_preserve(),
-                                types,
-                            );
-                            if mint_walk.sole_owner(&map_ident) == Some(rust_ident)
-                                && is_loose_table_owner(types, rust_ident)
-                            {
-                                // Sole owner of this shape: emit the real JS class under the rule name
-                                // plus the structural alias. Idempotent — the visit arm may have
-                                // minted it already for an embedded/resolved use; either order
-                                // converges to identical output.
-                                mint_sole_owner_table(
-                                    self,
-                                    types,
-                                    rust_ident,
-                                    &map_ident,
-                                    &mut mint_walk.generated,
-                                    cli,
-                                );
-                            } else if mint_walk.generated.insert(rust_ident.to_string()) {
-                                // Shared shape: a same-shape rule PAIR, or a shape also reached by
-                                // anonymous/embedded uses. Every named rule STILL surfaces as its own
-                                // real JS class under its identifier (unconditionally, independent of
-                                // whether a structural twin was minted first); the structural `MapKToV`
-                                // class, where referenced, is minted by the visit arm above.
-                                codegen_table_type(
-                                    self,
-                                    types,
-                                    rust_ident,
-                                    domain.clone(),
-                                    range.clone(),
-                                    true,
-                                    rust_struct.config().duplicates_preserve(),
-                                    cli,
-                                );
-                            }
-                        }
-                    }
-                    RustStructType::Array {
-                        element_type,
-                        bounds,
-                    } => {
-                        // A SYNTHESIZED anonymous collection instance (`[a: set<key_hash>]` →
-                        // `SetKeyHash`) mints NO rule-named class here: its wasm wrapper is the
-                        // STRUCTURAL one (`KeyHashList`), emitted through the flipped-on
-                        // `gen_wasm_alias` passthrough + base-type walk exactly like an inline
-                        // `[* key_hash]`. Skipping the mint (and its `record_collection_wrapper`) is
-                        // what keeps the synthesized name out of the own-spec shape projection, so a
-                        // `--wrapper-requests` consumer's structural import resolves via own-spec.
-                        if cli.wasm && !types.is_anonymous_collection_instance(rust_ident) {
-                            let reject = rust_struct.config().duplicates_reject();
-                            let non_empty = bounds
-                                .is_some_and(crate::intermediate::OccurrenceWindow::is_non_empty);
-                            if reject {
-                                // `@duplicates reject` rule: its JS class is the uniqueness-twin
-                                // wrapper (wrapping core::OrderedSet / NonEmptyOrderedSet) so the
-                                // boundary conversion to the rust core stays an infallible `From`.
-                                self.generate_reject_ordered_set_type(
-                                    types,
-                                    element_type.clone(),
-                                    rust_ident,
-                                    non_empty,
-                                    bounds.and_then(|bounds| {
-                                        let ty: RustType = ConceptualRustType::Array(Box::new(
-                                            element_type.clone(),
-                                        ))
-                                        .into();
-                                        // Preserve the rule's uniqueness policy while reconstructing
-                                        // its occurrence carrier. Without it, an exact `0*0` reject
-                                        // set looks like an ordinary static array and disappears
-                                        // from the bounded-set branch as a loose OrderedSet.
-                                        ty.with_occurrence_bounds(bounds)
-                                            .with_duplicates_policy(Some(
-                                                crate::comment_ast::DuplicatesPolicy::Reject,
-                                            ))
-                                            .bounded_array_u64_bounds()
-                                    }),
-                                    // See the non-empty arm below: a generator-synthesized
-                                    // collection (a table rule's keys-list) must never claim
-                                    // `rule_declared` — no rule authored that wrapper, so the
-                                    // criterion-9 shadow warning would be about nobody's class.
-                                    !types.is_synthesized_collection(rust_ident),
-                                    cli,
-                                );
-                            } else if non_empty {
-                                // named `[+ T]` rule: its JS class is the RESTRICTED wrapper (wrapping
-                                // core::NonEmptyVec) under the rule ident, not the loose list wrapper.
-                                self.generate_non_empty_array_type(
-                                    types,
-                                    element_type.clone(),
-                                    rust_ident,
-                                    // A rule authored the class UNLESS this Array struct was
-                                    // generator-synthesized (a table rule's keys-list): a synthesized
-                                    // keys-list must never claim `rule_declared` (criterion-9 shadow
-                                    // warning over a wrapper no rule declares). A synthesized keys-list
-                                    // is always `bounds: None`, so this arm is authored in practice;
-                                    // pass the computed value for consistency with the plain arm.
-                                    !types.is_synthesized_collection(rust_ident),
-                                    cli,
-                                );
-                            } else if let Some((min, max)) = {
-                                let ty: RustType =
-                                    ConceptualRustType::Array(Box::new(element_type.clone()))
-                                        .into();
-                                bounds.and_then(|bounds| {
-                                    let ty = ty.with_occurrence_bounds(bounds);
-                                    ty.exact_homogeneous_array_u64_bounds()
-                                        .or_else(|| ty.bounded_array_u64_bounds())
-                                })
-                            } {
-                                self.generate_bounded_array_type(
-                                    types,
-                                    element_type.clone(),
-                                    rust_ident,
-                                    (min, max),
-                                    !types.is_synthesized_collection(rust_ident),
-                                    cli,
-                                );
-                            } else {
-                                self.generate_array_type(
-                                    types,
-                                    element_type.clone(),
-                                    rust_ident,
-                                    // See the non-empty arm: a generator-synthesized keys-list
-                                    // (`create_and_register_array_type`) must not pass
-                                    // `rule_declared: true` — no rule declares it, so the workspace
-                                    // criterion-9 shadow warning must not fire for it.
-                                    !types.is_synthesized_collection(rust_ident),
-                                    cli,
-                                );
-                            }
-                        }
-                    }
-                    RustStructType::TypeChoice { variants } => {
-                        self.generate_type_choices_from_variants(
-                            types,
-                            rust_ident,
-                            variants,
-                            rust_struct.tag(),
-                            rust_struct.config(),
-                            cli,
-                        );
-                    }
-                    RustStructType::GroupChoice { variants, rep } => codegen_group_choices(
-                        self,
-                        types,
-                        rust_ident,
-                        variants,
-                        *rep,
-                        rust_struct.tag(),
-                        rust_struct.config(),
-                        cli,
-                    ),
-                    RustStructType::Wrapper {
-                        wrapped,
-                        min_max,
-                        float_min_max,
-                    } => {
-                        // A nominalized two-arm set idiom carries an OPTIONAL tag: attach
-                        // `OptionallyTagged` (a `TagPresenceEncoding` record) rather than the mandatory
-                        // `Tagged`, so either wire arm round-trips byte-exact — grammar decides the tag
-                        // record. Every other tagged wrapper (single-arm mandatory-tag set, bare
-                        // `@newtype` over a tag) keeps `Tagged`.
-                        let wrapped: Cow<RustType> = match rust_struct.tag() {
-                            Some(tag) if rust_struct.tag_optional() => {
-                                Cow::Owned(wrapped.clone().optionally_tag(tag))
-                            }
-                            Some(tag) => Cow::Owned(wrapped.clone().tag(tag)),
-                            None => Cow::Borrowed(wrapped),
-                        };
-                        generate_wrapper_struct(
-                            self,
-                            types,
-                            rust_ident,
-                            &wrapped,
-                            *min_max,
-                            *float_min_max,
-                            rust_struct.config(),
-                            cli,
-                        );
-                    }
-                    RustStructType::Extern => {
-                        // Emit `Int` when the spec references it, OR when a `--key-requests` row
-                        // demanded it used-as-key (a dep whose own spec never references `int` but
-                        // whose consumer keys a map on `int` under `--common-import-override`): the
-                        // demand alone must force key-flavored emission, since `is_referenced`'s
-                        // reference walk would otherwise skip it. Any other extern is a
-                        // user-specified external type with nothing to emit.
-                        if rust_ident.to_string() == "Int"
-                            && (types.is_referenced(rust_ident) || types.used_as_key(rust_ident))
-                        {
-                            generate_int(self, types, cli);
-                        }
-                    }
-                    RustStructType::CStyleEnum { variants } => {
-                        generate_c_style_enum(
-                            self,
-                            types,
-                            rust_ident,
-                            variants,
-                            rust_struct.tag(),
-                            rust_struct.config(),
-                            cli,
-                        );
-                    }
-                    RustStructType::RawBytesType => {
-                        // nothing to do, user specified
-                    }
-                }
-            }
-
-            // Structural wrappers reachable ONLY through a wasm-emitted plain `pub type` alias, never
-            // through any rust struct — e.g. `x = bytes .cbor { bignint => uint }`, where `x` is a type
-            // alias (not a struct). Its `Map` target is embedded elsewhere only as `Alias(Rust(x), Map)`,
-            // and `x` sits in `existing_aliases`, so the rust-struct walk above never descends into that
-            // Map — leaving the emitted `pub type X = MapKToV` alias naming a class no one minted. Walk
-            // each wasm-alias base type through the same minting path (shared `mint_walk` /
-            // `existing_aliases`, so it stays idempotent with the walk above and self-referential/other
-            // named aliases are not re-descended).
-            if cli.wasm {
-                for (alias_ident, alias_info) in types.type_aliases() {
-                    if matches!(alias_ident, AliasIdent::Rust(_))
-                        && alias_info.declared_wasm_alias()
-                    {
-                        let base = &alias_info.base_type;
-                        // The base type's OWN top-level map carries the rule's `@duplicates` policy
-                        // (`with_duplicates_policy` at registration) — a named/instantiated
-                        // `@duplicates preserve` table's alias line names `PairMapKToV`, so the mint
-                        // must be the pair-map-flavored one. The conceptual visitor below is
-                        // policy-blind, so mint that top level here from the RustType and walk only
-                        // the INNER key/value with the visitor (whose nested maps are inline
-                        // occurrences, always default-flavored).
-                        if base.is_preserve_pair_map()
-                            && let ConceptualRustType::Map(k, v) = &base.conceptual_type
-                        {
-                            mint_walk.mint(
-                                self,
-                                types,
-                                &base.conceptual_type,
-                                MapFlavor::PairMap,
-                                cli,
-                            );
-                            for inner in [k, v] {
-                                inner.conceptual_type.visit_types_excluding(
-                                    types,
-                                    &mut |ty| {
-                                        mint_walk.mint(self, types, ty, MapFlavor::Default, cli)
-                                    },
-                                    &mut existing_aliases,
-                                );
-                            }
-                            continue;
-                        }
-                        base.conceptual_type.visit_types_excluding(
-                            types,
-                            &mut |ty| mint_walk.mint(self, types, ty, MapFlavor::Default, cli),
-                            &mut existing_aliases,
-                        );
-                    }
-                }
-            }
-        }
+        self.emit_structs_and_alias_wrappers(types, cli);
 
         if cli.wasm {
             self.emit_used_as_elem_wrappers(types, cli);
@@ -1476,6 +1110,376 @@ impl GenerationScope {
             let element_type = types.used_as_elem_element_type(ident);
             let structural = RustIdent::new(CDDLIdent::new(element_type.name_as_wasm_array(types)));
             self.generate_array_type(types, element_type, &structural, false, cli);
+        }
+    }
+
+    fn emit_structs_and_alias_wrappers(&mut self, types: &IntermediateTypes, cli: &Cli) {
+        // Structs
+        {
+            // we can ignore types already handled by the alias
+            // otherwise the mint walk may cause us to pointlessly create aliases to aliases
+            let mut existing_aliases = types
+                .type_aliases()
+                .keys()
+                .filter_map(|alias| match alias {
+                    AliasIdent::Reserved(_) => None,
+                    AliasIdent::Rust(ident) => Some(ident),
+                })
+                .cloned()
+                .collect::<BTreeSet<RustIdent>>();
+
+            // Shapes owned by EXACTLY ONE named table rule: their embedded/resolved uses share the
+            // rule-named class (a real `#[wasm_bindgen]` class under the CDDL identifier), and the
+            // structural `MapKToV` name becomes a `pub type` alias to it. Same-shape rule PAIRS (2+
+            // owners) and anonymous-only shapes are absent — they keep the structural fallback class
+            // at the crate root. Shared with `scope_references`'s Map arm (import placement) via the
+            // one helper so emission and import placement CANNOT disagree. `generate` cached that
+            // projection on entry.
+            let mut mint_walk =
+                WrapperMintWalk::new(self.wasm_collection_reference_sole_owners.clone());
+
+            for (rust_ident, rust_struct) in types.rust_structs() {
+                assert_eq!(rust_ident, rust_struct.ident());
+                if cli.wasm {
+                    self.mint_struct_wasm_wrappers(
+                        types,
+                        rust_struct,
+                        &mut mint_walk,
+                        &mut existing_aliases,
+                        cli,
+                    );
+                }
+                match rust_struct.variant() {
+                    RustStructType::Record(record) => {
+                        codegen_struct(
+                            self,
+                            types,
+                            rust_ident,
+                            rust_struct.tag(),
+                            record,
+                            rust_struct.config(),
+                            cli,
+                        );
+                    }
+                    RustStructType::Table {
+                        domain,
+                        range,
+                        bounds,
+                    } => {
+                        // A SYNTHESIZED anonymous map instance converges onto the STRUCTURAL map
+                        // wrapper (`MapKToV` / `NonEmptyMapKToV`) via its `gen_wasm_alias` passthrough,
+                        // exactly as the array arm above does for lists — mint no rule-named class.
+                        let anon = types.is_anonymous_collection_instance(rust_ident);
+                        if cli.wasm
+                            && !anon
+                            && bounds
+                                .is_some_and(crate::intermediate::OccurrenceWindow::is_non_empty)
+                        {
+                            // named `{+ k => v}` rule: its JS class is the RESTRICTED wrapper
+                            // (wrapping core::NonEmptyMap) under the rule ident, not the loose table
+                            // wrapper — the map-side twin of the named `[+ T]` array arm.
+                            self.generate_non_empty_map_type(
+                                types,
+                                domain.clone(),
+                                range.clone(),
+                                rust_ident,
+                                true,
+                                rust_struct.config().duplicates_preserve(),
+                                cli,
+                            );
+                        } else if cli.wasm
+                            && !anon
+                            && let Some((min, max)) = {
+                                let table: RustType = ConceptualRustType::Map(
+                                    Box::new(domain.clone()),
+                                    Box::new(range.clone()),
+                                )
+                                .into();
+                                bounds.and_then(|bounds| {
+                                    table
+                                        .with_occurrence_bounds(bounds)
+                                        .bounded_map_u64_bounds()
+                                })
+                            }
+                        {
+                            self.generate_bounded_map_type(
+                                types,
+                                domain.clone(),
+                                range.clone(),
+                                rust_ident,
+                                (min, max),
+                                !types.is_synthesized_collection(rust_ident),
+                                rust_struct.config().duplicates_preserve(),
+                                cli,
+                            );
+                        } else if cli.wasm && !anon {
+                            // A rule-declared LOOSE table never reaches `try_defer_wrapper` (both
+                            // mints below are `exists_in_rust` paths), so the one thing the defer
+                            // seam would have said about a dep-indexed name has to be said here.
+                            self.warn_rule_declared_table_shadows_index(rust_ident);
+                            let map_ident = RustType::wasm_structural_map_name_for(
+                                domain,
+                                range,
+                                rust_struct.config().duplicates_preserve(),
+                                types,
+                            );
+                            if mint_walk.sole_owner(&map_ident) == Some(rust_ident)
+                                && is_loose_table_owner(types, rust_ident)
+                            {
+                                // Sole owner of this shape: emit the real JS class under the rule name
+                                // plus the structural alias. Idempotent — the visit arm may have
+                                // minted it already for an embedded/resolved use; either order
+                                // converges to identical output.
+                                mint_sole_owner_table(
+                                    self,
+                                    types,
+                                    rust_ident,
+                                    &map_ident,
+                                    &mut mint_walk.generated,
+                                    cli,
+                                );
+                            } else if mint_walk.generated.insert(rust_ident.to_string()) {
+                                // Shared shape: a same-shape rule PAIR, or a shape also reached by
+                                // anonymous/embedded uses. Every named rule STILL surfaces as its own
+                                // real JS class under its identifier (unconditionally, independent of
+                                // whether a structural twin was minted first); the structural `MapKToV`
+                                // class, where referenced, is minted by the visit arm above.
+                                codegen_table_type(
+                                    self,
+                                    types,
+                                    rust_ident,
+                                    domain.clone(),
+                                    range.clone(),
+                                    true,
+                                    rust_struct.config().duplicates_preserve(),
+                                    cli,
+                                );
+                            }
+                        }
+                    }
+                    RustStructType::Array {
+                        element_type,
+                        bounds,
+                    } => {
+                        // A SYNTHESIZED anonymous collection instance (`[a: set<key_hash>]` →
+                        // `SetKeyHash`) mints NO rule-named class here: its wasm wrapper is the
+                        // STRUCTURAL one (`KeyHashList`), emitted through the flipped-on
+                        // `gen_wasm_alias` passthrough + base-type walk exactly like an inline
+                        // `[* key_hash]`. Skipping the mint (and its `record_collection_wrapper`) is
+                        // what keeps the synthesized name out of the own-spec shape projection, so a
+                        // `--wrapper-requests` consumer's structural import resolves via own-spec.
+                        if cli.wasm && !types.is_anonymous_collection_instance(rust_ident) {
+                            let reject = rust_struct.config().duplicates_reject();
+                            let non_empty = bounds
+                                .is_some_and(crate::intermediate::OccurrenceWindow::is_non_empty);
+                            if reject {
+                                // `@duplicates reject` rule: its JS class is the uniqueness-twin
+                                // wrapper (wrapping core::OrderedSet / NonEmptyOrderedSet) so the
+                                // boundary conversion to the rust core stays an infallible `From`.
+                                self.generate_reject_ordered_set_type(
+                                    types,
+                                    element_type.clone(),
+                                    rust_ident,
+                                    non_empty,
+                                    bounds.and_then(|bounds| {
+                                        let ty: RustType = ConceptualRustType::Array(Box::new(
+                                            element_type.clone(),
+                                        ))
+                                        .into();
+                                        // Preserve the rule's uniqueness policy while reconstructing
+                                        // its occurrence carrier. Without it, an exact `0*0` reject
+                                        // set looks like an ordinary static array and disappears
+                                        // from the bounded-set branch as a loose OrderedSet.
+                                        ty.with_occurrence_bounds(bounds)
+                                            .with_duplicates_policy(Some(
+                                                crate::comment_ast::DuplicatesPolicy::Reject,
+                                            ))
+                                            .bounded_array_u64_bounds()
+                                    }),
+                                    // See the non-empty arm below: a generator-synthesized
+                                    // collection (a table rule's keys-list) must never claim
+                                    // `rule_declared` — no rule authored that wrapper, so the
+                                    // criterion-9 shadow warning would be about nobody's class.
+                                    !types.is_synthesized_collection(rust_ident),
+                                    cli,
+                                );
+                            } else if non_empty {
+                                // named `[+ T]` rule: its JS class is the RESTRICTED wrapper (wrapping
+                                // core::NonEmptyVec) under the rule ident, not the loose list wrapper.
+                                self.generate_non_empty_array_type(
+                                    types,
+                                    element_type.clone(),
+                                    rust_ident,
+                                    // A rule authored the class UNLESS this Array struct was
+                                    // generator-synthesized (a table rule's keys-list): a synthesized
+                                    // keys-list must never claim `rule_declared` (criterion-9 shadow
+                                    // warning over a wrapper no rule declares). A synthesized keys-list
+                                    // is always `bounds: None`, so this arm is authored in practice;
+                                    // pass the computed value for consistency with the plain arm.
+                                    !types.is_synthesized_collection(rust_ident),
+                                    cli,
+                                );
+                            } else if let Some((min, max)) = {
+                                let ty: RustType =
+                                    ConceptualRustType::Array(Box::new(element_type.clone()))
+                                        .into();
+                                bounds.and_then(|bounds| {
+                                    let ty = ty.with_occurrence_bounds(bounds);
+                                    ty.exact_homogeneous_array_u64_bounds()
+                                        .or_else(|| ty.bounded_array_u64_bounds())
+                                })
+                            } {
+                                self.generate_bounded_array_type(
+                                    types,
+                                    element_type.clone(),
+                                    rust_ident,
+                                    (min, max),
+                                    !types.is_synthesized_collection(rust_ident),
+                                    cli,
+                                );
+                            } else {
+                                self.generate_array_type(
+                                    types,
+                                    element_type.clone(),
+                                    rust_ident,
+                                    // See the non-empty arm: a generator-synthesized keys-list
+                                    // (`create_and_register_array_type`) must not pass
+                                    // `rule_declared: true` — no rule declares it, so the workspace
+                                    // criterion-9 shadow warning must not fire for it.
+                                    !types.is_synthesized_collection(rust_ident),
+                                    cli,
+                                );
+                            }
+                        }
+                    }
+                    RustStructType::TypeChoice { variants } => {
+                        self.generate_type_choices_from_variants(
+                            types,
+                            rust_ident,
+                            variants,
+                            rust_struct.tag(),
+                            rust_struct.config(),
+                            cli,
+                        );
+                    }
+                    RustStructType::GroupChoice { variants, rep } => codegen_group_choices(
+                        self,
+                        types,
+                        rust_ident,
+                        variants,
+                        *rep,
+                        rust_struct.tag(),
+                        rust_struct.config(),
+                        cli,
+                    ),
+                    RustStructType::Wrapper {
+                        wrapped,
+                        min_max,
+                        float_min_max,
+                    } => {
+                        // A nominalized two-arm set idiom carries an OPTIONAL tag: attach
+                        // `OptionallyTagged` (a `TagPresenceEncoding` record) rather than the mandatory
+                        // `Tagged`, so either wire arm round-trips byte-exact — grammar decides the tag
+                        // record. Every other tagged wrapper (single-arm mandatory-tag set, bare
+                        // `@newtype` over a tag) keeps `Tagged`.
+                        let wrapped: Cow<RustType> = match rust_struct.tag() {
+                            Some(tag) if rust_struct.tag_optional() => {
+                                Cow::Owned(wrapped.clone().optionally_tag(tag))
+                            }
+                            Some(tag) => Cow::Owned(wrapped.clone().tag(tag)),
+                            None => Cow::Borrowed(wrapped),
+                        };
+                        generate_wrapper_struct(
+                            self,
+                            types,
+                            rust_ident,
+                            &wrapped,
+                            *min_max,
+                            *float_min_max,
+                            rust_struct.config(),
+                            cli,
+                        );
+                    }
+                    RustStructType::Extern => {
+                        // Emit `Int` when the spec references it, OR when a `--key-requests` row
+                        // demanded it used-as-key (a dep whose own spec never references `int` but
+                        // whose consumer keys a map on `int` under `--common-import-override`): the
+                        // demand alone must force key-flavored emission, since `is_referenced`'s
+                        // reference walk would otherwise skip it. Any other extern is a
+                        // user-specified external type with nothing to emit.
+                        if rust_ident.to_string() == "Int"
+                            && (types.is_referenced(rust_ident) || types.used_as_key(rust_ident))
+                        {
+                            generate_int(self, types, cli);
+                        }
+                    }
+                    RustStructType::CStyleEnum { variants } => {
+                        generate_c_style_enum(
+                            self,
+                            types,
+                            rust_ident,
+                            variants,
+                            rust_struct.tag(),
+                            rust_struct.config(),
+                            cli,
+                        );
+                    }
+                    RustStructType::RawBytesType => {
+                        // nothing to do, user specified
+                    }
+                }
+            }
+
+            // Structural wrappers reachable ONLY through a wasm-emitted plain `pub type` alias, never
+            // through any rust struct — e.g. `x = bytes .cbor { bignint => uint }`, where `x` is a type
+            // alias (not a struct). Its `Map` target is embedded elsewhere only as `Alias(Rust(x), Map)`,
+            // and `x` sits in `existing_aliases`, so the rust-struct walk above never descends into that
+            // Map — leaving the emitted `pub type X = MapKToV` alias naming a class no one minted. Walk
+            // each wasm-alias base type through the same minting path (shared `mint_walk` /
+            // `existing_aliases`, so it stays idempotent with the walk above and self-referential/other
+            // named aliases are not re-descended).
+            if cli.wasm {
+                for (alias_ident, alias_info) in types.type_aliases() {
+                    if matches!(alias_ident, AliasIdent::Rust(_))
+                        && alias_info.declared_wasm_alias()
+                    {
+                        let base = &alias_info.base_type;
+                        // The base type's OWN top-level map carries the rule's `@duplicates` policy
+                        // (`with_duplicates_policy` at registration) — a named/instantiated
+                        // `@duplicates preserve` table's alias line names `PairMapKToV`, so the mint
+                        // must be the pair-map-flavored one. The conceptual visitor below is
+                        // policy-blind, so mint that top level here from the RustType and walk only
+                        // the INNER key/value with the visitor (whose nested maps are inline
+                        // occurrences, always default-flavored).
+                        if base.is_preserve_pair_map()
+                            && let ConceptualRustType::Map(k, v) = &base.conceptual_type
+                        {
+                            mint_walk.mint(
+                                self,
+                                types,
+                                &base.conceptual_type,
+                                MapFlavor::PairMap,
+                                cli,
+                            );
+                            for inner in [k, v] {
+                                inner.conceptual_type.visit_types_excluding(
+                                    types,
+                                    &mut |ty| {
+                                        mint_walk.mint(self, types, ty, MapFlavor::Default, cli)
+                                    },
+                                    &mut existing_aliases,
+                                );
+                            }
+                            continue;
+                        }
+                        base.conceptual_type.visit_types_excluding(
+                            types,
+                            &mut |ty| mint_walk.mint(self, types, ty, MapFlavor::Default, cli),
+                            &mut existing_aliases,
+                        );
+                    }
+                }
+            }
         }
     }
 

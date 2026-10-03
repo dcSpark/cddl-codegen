@@ -182,6 +182,7 @@ const SOURCE_ROLES: &[SourceRole] = &[
         members: &[
             "generate",
             "clone_with_conceptual_type",
+            "emit_structs_and_alias_wrappers",
             "emit_used_as_elem_wrappers",
             "emit_json_schema_rows",
             "emit_rust_runtime_declarations",

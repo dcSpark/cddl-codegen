@@ -1304,6 +1304,9 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 // Encoding inference guards live in `src/generation/encoding_fields.rs`: the fixed-key
 // `key_encoding_field` unimplemented payload and preserve-mode assertions retain exact text;
 // `encoding_fields_impl` retains nominal lookup/index invariant panics. No active key is waived.
+// The rust-ident/struct-ident invariant assert now lives in mod.rs's
+// `emit_structs_and_alias_wrappers`; its exact assertion and combined mint-walk locals
+// are preserved. It has no active known-panic key; no observed panic is waived.
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired when the two anonymous-composite families and the group-choice-arm inline group
     // became graceful rejections) Three classes lived here, and they split by the composite's
