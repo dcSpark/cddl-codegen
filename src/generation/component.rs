@@ -1791,24 +1791,48 @@ impl Emitter<'_, '_> {
                 rust_ctor,
                 rust_can_fail,
             } => {
-                let (materialized, args) = self.materialize(&member.params, alias);
-                lines.extend(materialized);
-                let call = format!("{rust}::{rust_ctor}({})", args.join(", "));
-                if *rust_can_fail {
-                    lines.push(format!("let inner = {call}.map_err(err)?;"));
-                } else {
-                    lines.push(format!("let inner = {call};"));
-                }
-                let build = format!("{own}::new({rep}(RefCell::new(inner)))");
-                if member.fallible {
-                    lines.push(format!("Ok({build})"));
-                } else {
-                    lines.push(build);
-                }
+                self.member_new_variant_body(
+                    &mut lines,
+                    member,
+                    rust,
+                    own,
+                    rep,
+                    alias,
+                    rust_ctor,
+                    *rust_can_fail,
+                );
             }
         }
         lines
     }
+    #[allow(clippy::too_many_arguments)]
+    fn member_new_variant_body(
+        &self,
+        lines: &mut Vec<String>,
+        member: &WitMember,
+        rust: &str,
+        own: &str,
+        rep: &str,
+        alias: &str,
+        rust_ctor: &str,
+        rust_can_fail: bool,
+    ) {
+        let (materialized, args) = self.materialize(&member.params, alias);
+        lines.extend(materialized);
+        let call = format!("{rust}::{rust_ctor}({})", args.join(", "));
+        if rust_can_fail {
+            lines.push(format!("let inner = {call}.map_err(err)?;"));
+        } else {
+            lines.push(format!("let inner = {call};"));
+        }
+        let build = format!("{own}::new({rep}(RefCell::new(inner)))");
+        if member.fallible {
+            lines.push(format!("Ok({build})"));
+        } else {
+            lines.push(build);
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn member_as_variant_body(
         &self,
