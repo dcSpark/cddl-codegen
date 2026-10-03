@@ -43,6 +43,7 @@ const SOURCE_ROLES: &[SourceRole] = &[
         reason: "wit-bindgen guest glue; no user field beside fixed local",
         members: &[
             "component_glue",
+            "member_wrapper_getter_body",
             "member_setter_body",
             "member_rest_getter_body",
             "member_getter_body",

@@ -1724,14 +1724,7 @@ impl Emitter<'_, '_> {
             // The rust getter returns the inner value by reference when it is not `Copy` and by value
             // when it is; `.clone()` normalizes both to an owned value, so one template serves both.
             WitMemberOp::WrapperGet { getter } => {
-                lines.push("let me = self.0.borrow();".to_owned());
-                lines.push(format!("let inner = me.{getter}().clone();"));
-                let ty = member
-                    .result
-                    .as_ref()
-                    .expect("a wrapper getter always returns something");
-                let conv = self.rust_to_wit(ty, "inner", alias, false);
-                lines.push(self.returned(&conv, member.fallible));
+                self.member_wrapper_getter_body(&mut lines, member, alias, getter);
             }
             WitMemberOp::ToCborBytes => {
                 lines.push(format!(
@@ -1904,6 +1897,23 @@ impl Emitter<'_, '_> {
         }
         lines
     }
+    fn member_wrapper_getter_body(
+        &self,
+        lines: &mut Vec<String>,
+        member: &WitMember,
+        alias: &str,
+        getter: &str,
+    ) {
+        lines.push("let me = self.0.borrow();".to_owned());
+        lines.push(format!("let inner = me.{getter}().clone();"));
+        let ty = member
+            .result
+            .as_ref()
+            .expect("a wrapper getter always returns something");
+        let conv = self.rust_to_wit(ty, "inner", alias, false);
+        lines.push(self.returned(&conv, member.fallible));
+    }
+
     fn member_setter_body(
         &self,
         lines: &mut Vec<String>,
