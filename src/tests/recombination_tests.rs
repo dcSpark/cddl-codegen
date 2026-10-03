@@ -1313,6 +1313,9 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 // Record WASM guards remain in generation/records.rs, now under emit_record_wasm:
 // the Optional-field unreachable guard and array-segment source-index expect retain exact payloads.
 // Neither has an active known-panic key; a new observed class still requires a regression vector.
+// Native record preparation guards remain in generation/records.rs under prepare_record_native:
+// the fixed-value unreachable guard and normalized-occurrence/source-index expects keep their text.
+// No active known-panic keys cover these guards; new observed classes require regression vectors.
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired when the two anonymous-composite families and the group-choice-arm inline group
     // became graceful rejections) Three classes lived here, and they split by the composite's

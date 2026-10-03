@@ -4114,41 +4114,26 @@ fn emit_record_wasm(
     wrapper.push(gen_scope, types);
 }
 
-pub(super) fn codegen_struct(
+/// Native record builders remain owned until encoding fields are attached and the constructor joins.
+struct RecordNativeParts {
+    native_struct: codegen::Struct,
+    native_impl: codegen::Impl,
+    native_new: codegen::Function,
+    native_new_block: Block,
+    new_arg_count: usize,
+    manual_json: bool,
+}
+
+/// Prepare native fields and constructor arguments without consuming the constructor block.
+fn prepare_record_native(
     gen_scope: &mut GenerationScope,
     types: &IntermediateTypes,
     name: &RustIdent,
-    tag: Option<usize>,
     record: &RustRecord,
     config: &RustStructConfig,
     cli: &Cli,
-) {
-    let new_can_fail = record.native_ctor_can_fail(types);
-    // A bounded typed row stays flattened on the open-table class, so its wasm constructor accepts
-    // the same-flavor *loose* builder and crosses the checked carrier door before calling the
-    // native record constructor. That boundary can fail even though the native constructor itself
-    // just accepts an already-checked BoundedMap. This applies at minimum zero too: seeding an
-    // empty carrier would lose the native door's complete checked-construction contract.
-    let typed_bounded_wasm_builder = record.typed_row().filter(|row| {
-        !row.is_array_tail() && row.container_type().bounded_map_u64_bounds().is_some()
-    });
-    let wasm_new_can_fail = new_can_fail || typed_bounded_wasm_builder.is_some();
-    // wasm wrapper
-    if cli.wasm {
-        emit_record_wasm(
-            gen_scope,
-            types,
-            name,
-            record,
-            config,
-            cli,
-            new_can_fail,
-            wasm_new_can_fail,
-        );
-    }
-
-    // Rust-only for the rest of this function
-
+    new_can_fail: bool,
+) -> RecordNativeParts {
     // Struct (fields) + constructor.
     //
     // An OPEN TABLE owns its JSON face BY HAND (`emit_open_table_json`, below): the derives cannot
@@ -4161,7 +4146,7 @@ pub(super) fn codegen_struct(
         && !config.custom_json
         && (cli.json_serde_derives || cli.json_schema_export);
     let manual_json = config.custom_json || hand_written_open_table_json;
-    let (mut native_struct, mut native_impl) =
+    let (mut native_struct, native_impl) =
         create_base_rust_struct(types, name, manual_json, None, cli);
     native_struct.vis("pub");
     if let Some(doc) = ignore_aware_doc(config.doc.as_deref(), record, record.ignored_rest()) {
@@ -4744,6 +4729,59 @@ pub(super) fn codegen_struct(
     if !native_new_comments.is_empty() {
         native_new.doc(native_new_comments.join("\n"));
     }
+    RecordNativeParts {
+        native_struct,
+        native_impl,
+        native_new,
+        native_new_block,
+        new_arg_count,
+        manual_json,
+    }
+}
+
+pub(super) fn codegen_struct(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    name: &RustIdent,
+    tag: Option<usize>,
+    record: &RustRecord,
+    config: &RustStructConfig,
+    cli: &Cli,
+) {
+    let new_can_fail = record.native_ctor_can_fail(types);
+    // A bounded typed row stays flattened on the open-table class, so its wasm constructor accepts
+    // the same-flavor *loose* builder and crosses the checked carrier door before calling the
+    // native record constructor. That boundary can fail even though the native constructor itself
+    // just accepts an already-checked BoundedMap. This applies at minimum zero too: seeding an
+    // empty carrier would lose the native door's complete checked-construction contract.
+    let typed_bounded_wasm_builder = record.typed_row().filter(|row| {
+        !row.is_array_tail() && row.container_type().bounded_map_u64_bounds().is_some()
+    });
+    let wasm_new_can_fail = new_can_fail || typed_bounded_wasm_builder.is_some();
+    // wasm wrapper
+    if cli.wasm {
+        emit_record_wasm(
+            gen_scope,
+            types,
+            name,
+            record,
+            config,
+            cli,
+            new_can_fail,
+            wasm_new_can_fail,
+        );
+    }
+
+    // Rust-only for the rest of this function
+
+    let RecordNativeParts {
+        mut native_struct,
+        mut native_impl,
+        mut native_new,
+        mut native_new_block,
+        new_arg_count,
+        manual_json,
+    } = prepare_record_native(gen_scope, types, name, record, config, cli, new_can_fail);
     let len_encoding_var = if cli.preserve_encodings {
         let encoding_name = RustIdent::new(CDDLIdent::new(format!("{name}Encoding")));
         native_struct.field(

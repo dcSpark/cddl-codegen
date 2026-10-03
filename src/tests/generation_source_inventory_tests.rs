@@ -209,7 +209,11 @@ const SOURCE_ROLES: &[SourceRole] = &[
         emitter: true,
         wasm: true,
         reason: "record/constructor/codec bodies and WASM signatures",
-        members: &["codegen_struct", "emit_record_wasm"],
+        members: &[
+            "codegen_struct",
+            "emit_record_wasm",
+            "prepare_record_native",
+        ],
     },
     SourceRole {
         file: "reference_closure.rs",
