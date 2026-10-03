@@ -1031,12 +1031,13 @@ pub enum CBOREncodingOperation {
 /// used exactly; emitted comparisons cast the f32 value to f64.
 pub type FloatWindow = (Option<(f64, bool)>, Option<(f64, bool)>);
 
-/// A stored integer bound pair `(min, max)`, inclusive on both sides; an absent side is open. This
-/// is the storage of `RustTypeConfig::bounds` and a wrapper's `min_max`. A pair with `min > max` is
-/// the `.ne` encoding: read it through [`IntBounds::read`], never by comparing the sides.
+/// A raw integer bound pair `(min, max)`, inclusive on both sides; an absent side is open.
+/// This is the payload of [`ValueWindow`] and [`OccurrenceWindow`], and the storage of a wrapper's `min_max`.
+/// For scalar value constraints, a pair with `min > max` is the `.ne` encoding: read it through [`IntBounds::read`].
+/// Occurrence windows retain their own checked and invalid-window policies rather than acquiring scalar exclusion semantics.
 pub type IntWindow = (Option<i128>, Option<i128>);
 
-/// What a stored integer bound pair (`RustTypeConfig::bounds`, a wrapper's `min_max`) means.
+/// The interpretation of a raw [`IntWindow`] payload, including a wrapper's `min_max`.
 ///
 /// `.ne N` is stored as the inverted pair `(N + 1, N - 1)`: the pair stays the storage because the
 /// emitted `RangeCheck` payload reports it verbatim. This type is the one encoder
@@ -1066,6 +1067,9 @@ impl IntBounds {
 }
 
 /// A scalar integer value or byte/text length window, preserving the emitted raw payload.
+/// The inverted `.ne` payload retains its [`IntBounds`] interpretation.
+/// [`Self::from_raw`] preserves endpoints without validation; attachment and checked helpers retain their existing policies.
+/// [`Self::raw`] exposes the tuple, and `Debug` preserves its legacy appearance rather than showing the typed role.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct ValueWindow(IntWindow);
 impl ValueWindow {
@@ -1088,6 +1092,10 @@ impl std::fmt::Debug for ValueWindow {
     }
 }
 /// An authored collection occurrence window; explicit upper MAX remains distinct from open.
+/// [`Self::from_raw`] preserves optional endpoints without validation.
+/// Use [`Self::checked_u64`] or [`Self::exact_len`] at the corresponding checked interpretation boundary.
+/// [`Self::raw`] exposes the tuple, and `Debug` preserves its legacy appearance rather than showing the typed role.
+/// This authored representation is distinct from a dynamic row's normalized [`RestOccurrenceWindow`].
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct OccurrenceWindow(IntWindow);
 impl OccurrenceWindow {
@@ -1123,7 +1131,10 @@ impl std::fmt::Debug for OccurrenceWindow {
         std::fmt::Debug::fmt(&self.0, f)
     }
 }
-/// The semantic role of the one integer-bound slot. Float storage remains separate.
+/// The semantic role of [`RustTypeSerializeConfig::bounds`].
+/// Scalar integer/length constraints use [`Self::Value`]; collection cardinality uses [`Self::Occurrence`].
+/// Float storage remains separate; the attachment helpers retain their existing assertion order.
+/// [`Self::raw`] and `Debug` project the legacy tuple without exposing its role; identical text does not imply library source compatibility.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TypeBounds {
     Value(ValueWindow),
@@ -1144,7 +1155,12 @@ impl std::fmt::Debug for TypeBounds {
         std::fmt::Debug::fmt(&self.raw(), f)
     }
 }
-/// A dynamic row's already-normalized numeric window, distinct from authored endpoints.
+/// A dynamic row's already-normalized numeric window, distinct from authored [`OccurrenceWindow`] endpoints.
+/// The parser normalizes open endpoints to numeric zero/MAX before constructing this type.
+/// [`Self::from_raw`] preserves that supplied pair without validation; [`Self::raw`] exposes it.
+/// [`Self::rust_bounds`] retains the row ABI's zero/MAX endpoint elision.
+/// The enclosing row stores the loose zero/MAX case as `None`; a minimum-one/MAX row selects the NonEmpty carrier.
+/// `Debug` preserves the legacy tuple appearance rather than showing the typed role.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct RestOccurrenceWindow((u64, u64));
 impl RestOccurrenceWindow {
@@ -1185,6 +1201,9 @@ pub struct RustTypeSerializeConfig {
     /// default value when missing in deserialization
     pub default: Option<FixedValue>,
     /// A scalar value/size or collection occurrence constraint, with its stored role explicit.
+    /// Read role-specific raw tuples through [`Self::value_bounds`] or [`Self::occurrence_bounds`].
+    /// [`Self::raw_bounds`] is the shared payload view; [`Self::occurrence_window`] retains the occurrence type.
+    /// Direct callers must construct [`TypeBounds::Value`] or [`TypeBounds::Occurrence`] instead of assigning a bare tuple.
     pub bounds: Option<TypeBounds>,
     /// Per-rule `@duplicates` policy for an array or table collection member. On arrays (`[* a]` /
     /// `[+ a]`, including the tag-258 set idiom), `Some(Reject)` swaps to the uniqueness twin
@@ -1323,7 +1342,16 @@ impl<'a> CollectionTypeView<'a> {
     }
 }
 
-/// A complete rust type, including serialization options that don't impact other areas
+/// A complete Rust type, including serialization encodings and value/occurrence configuration.
+///
+/// This type does not implement `Deref<Target = ConceptualRustType>`.
+/// Conceptual-only queries use [`Self::conceptual_type`]: replace `ty.is_fixed_value()` with `ty.conceptual_type.is_fixed_value()`.
+/// A borrow expected to be `&ConceptualRustType` must use `&ty.conceptual_type`.
+/// Keep complete-type queries such as [`Self::for_rust_member`], [`Self::cbor_types`], [`Self::has_value_bounds`], and exact/occurrence or alias-aware queries on `RustType`.
+///
+/// The former public `with_bounds` tuple method is replaced by [`Self::with_value_bounds`] and [`Self::with_occurrence_bounds`].
+/// For example, `ty.with_value_bounds((Some(1), Some(4)))` attaches a value window, while `ty.with_occurrence_bounds((Some(1), None))` attaches an open minimum-one occurrence window.
+/// See [`TypeBounds`] for typed storage and raw projections; these changes require direct library IR consumers to update their source.
 #[derive(Clone, PartialEq)]
 pub struct RustType {
     /// Conceptual type i.e. how it's used in non-serialization contexts
@@ -1527,8 +1555,9 @@ impl RustType {
     }
 
     /// Attach a NaN-safe float value window (`float64 .le 10.5`, `[f: 0.5..10.5]`). Parallel to
-    /// `with_bounds`: a type never carries both integer and float bounds (asserted here). A window
-    /// with both sides absent collapses to no bound (returns self unchanged).
+    /// integer-window attachment: this method requires both the integer and float slots to be empty.
+    /// Integer-window attachment retains its existing asymmetric guard; direct configuration is not universally validated.
+    /// A window with both sides absent collapses to no bound (returns self unchanged).
     pub fn with_float_bounds(mut self, window: FloatWindow) -> Self {
         assert!(self.config.bounds.is_none());
         assert!(self.config.float_bounds.is_none());

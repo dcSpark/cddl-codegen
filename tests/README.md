@@ -1492,8 +1492,10 @@ gap — a table RULE cannot be requested — is spelled, not left as a silent ab
 coverage after its pin is renamed away.
 
 The four per-mode sweeps are always-on and GENERATION-only (emitted source, this crate's own
-collection index, the workspace sidecar, and the run's stderr). The compile/link floors are
-`#[ignore]`d and batched per (mode, floor), each memoized by `gate_cache::run_cached`:
+collection index, the workspace sidecar, and the run's stderr).
+The compile/link floors are `#[ignore]`d.
+The original per-mode batches and local named-map legs are memoized by `gate_cache::run_cached` on generated content.
+The real synthetic-dependency named-map legs run uncached because the dependency contents are outside the consumer's generated-content hash.
 `wrapper_participation_mode_floors` (check.ts gate `wrapper_participation_floors`) does a `cargo
 check` of the standalone `Local` column plus a real `cargo build --target wasm32-unknown-unknown` of
 the index and workspace columns against the committed wasm-clean dep pair — GREEN only, since
@@ -1513,16 +1515,19 @@ primitive-map case whose loose source stays in a dependency index, and
 `wrapper_participation_requested_workspace_dep_keeps_local_and_extern_homes` composes one co-hosted
 source with a genuine mapped extern import. In the deferred control the dependency import lives in
 generated root and `requested_collections.rs` reaches it through `use super::*;`; asserting both the
-absent local body and that import is what keeps a future ownership refactor honest. What the link
-legs add over the incident
-cells is the POSITION crossing: a named-rule declaration, a by-name reference and a non-root
-declaring scope had never reached a wasm32 link, and an import routed into the wrong module is
-exactly the class every host-target check survives.
+absent local body and that import is what keeps a future ownership refactor honest.
+The named-map owner controls `named_bounded_maps_import_their_actual_loose_source_home` and `named_maps_route_real_dependency_sources_and_loose_owners` pin exact source imports and carrier identity without compiling generated crates.
+The local control covers 24 cells: plain/preserved encodings × ordinary/pair maps × finite `2*3` and explicit full-`u64` maxima at minima zero/one × root/non-root declarations.
+The real-dependency control covers 16 default-profile cells: index/workspace modes × ordinary/pair maps × those three bounded windows and an actual loose-owner control.
+Each dependency really exports the loose source and its collection index, includes separate runtime-support shapes, and is wired into the consumer's manifests.
+The existing full `wrapper_participation_floors` gate adds native cargo checks and, when the target is installed, wasm32 builds for both sets of named-map cells.
+The named-map legs cover named-rule declarations, by-name references, and root/non-root source homes.
+Native checks validate generated references, and wasm32 builds additionally exercise target-specific linking.
 
-The grid's table and compile floors currently establish those participation decisions at the
-default profile. Preserve-profile behavior has focused incident controls (including deferred map
-sources), but there is no preserve/JSON profile cross-product over every row. That is a measured
-scope boundary of the current system;
+The original participation grid establishes its decisions at the default profile.
+The additional local named-map owner cells cover default and preserved encodings; the deferred named-map cells remain default-profile checks.
+Focused preserve controls and the full-`u64` request floor do not establish a preserve/JSON cross-product over every grid row.
+That is a measured scope boundary of the current system;
 `testing.add-profile-wrapper-participation-grid-participation-differs-across` records the signal
 that would justify multiplying the grid by profiles.
 
@@ -1865,6 +1870,12 @@ incremental compilation replays content-hashed lint results instead of re-checki
 content change goes Dirty and re-lints (verified by injecting a `();` `no_effect` canary into the
 generated source and watching the gate command fail). Re-prove it that way, not by timing, if the
 speed ever raises the suspicion again.
+
+Rule-position SIZE regressions are pinned by `unsigned_alias_size_rule_positions_preserve_domains` and `outer_parenthesized_size_preserves_rule_controls`.
+The local test `integration_tests::resolved_control_heads_compile` compiles generated Rust and WASM crates for the native target under plain and preserved encodings, then exercises native SIZE admission and wire controls.
+Numeric collection-control refusal, existing diagnostic priority, and retained occurrence/scalar controls are pinned by `collection_numeric_controls_refuse_before_occurrence_lowering`, `collection_numeric_controls_preserve_existing_error_priority`, and `collection_numeric_refusal_keeps_occurrences_and_scalar_controls` in `robustness_tests`.
+Private parser tests `nested_generic_binding_shapes_and_growing_recursion_are_finite` and `parameter_shadowing_and_alias_only_cycles_do_not_invent_collection_heads` cover finite generic shape resolution and lexical shadowing in `parsing::numeric_collection_controls`.
+These parser/IR/source assertions do not establish native runtime behavior.
 
 `length_windows_compile_for_wasm32` generates byte/text length windows at and above wasm32's `usize::MAX` (rule, `@newtype`, member, element, and map key/value positions, with `--emit-tests`) and compiles the rust crate under `cargo clippy --all-targets` and the wasm crate under `cargo check`, both for `wasm32-unknown-unknown`, so an emitted length literal that overflows a 32-bit `usize` or compares against its maximum fails there; `robustness_tests::length_window_bounds_fit_every_target_usize` pins the widened `(len() as u64)` spellings.
 

@@ -467,6 +467,7 @@ pub enum RustStructType {
         domain: RustType,
         range: RustType,
         /// occurrence-count bounds (`+` / `n*m`) — a cardinality constraint on the table itself.
+        /// [`OccurrenceWindow`] retains authored optional endpoints; use its `raw` method for the legacy tuple.
         /// `None` is the unbounded `*` table, the `+` / `1*` shape `(Some(1), None)` selects
         /// `NonEmptyMap`, and every other window selects `BoundedMap` (`NonEmptyPairMap` /
         /// `BoundedPairMap` under `@duplicates preserve`). Rides the registered alias's `RustType` so
@@ -476,6 +477,7 @@ pub enum RustStructType {
     Array {
         element_type: RustType,
         /// occurrence-count bounds (`+` / `n*m`) — a LENGTH constraint on the array itself.
+        /// [`OccurrenceWindow`] retains authored optional endpoints; use its `raw` method for the legacy tuple.
         /// Applied to the registered alias RustType's config so embed sites enforce it; kept off
         /// the element_type so it can't be misread as an element VALUE bound.
         bounds: Option<OccurrenceWindow>,
@@ -1145,12 +1147,12 @@ pub struct RestRow {
     /// row and array tail: those see the COMPLEMENT of the typed row's major (or, with no typed row,
     /// everything), which is not a single major and is expressed by the loop's arm layout instead.
     pub dispatch_major: Option<CBORType>,
-    /// The normalized inclusive occurrence window for this dynamic sequence. `None` is loose
-    /// `0..`; `Some((1, u64::MAX))` is the established `+` / `1*` NonEmpty carrier; every other
-    /// value selects the appropriate Bounded carrier. The normalization lives on the row rather than
-    /// in an emitter-local flag, so field spelling, decode conversion, JSON, wasm, WIT, and wrapper
-    /// ownership all see the SAME invariant. Both array tails and dynamic map rows use the full
-    /// loose/NonEmpty/Bounded carrier vocabulary.
+    /// The normalized inclusive occurrence window for this dynamic sequence.
+    /// `None` is the loose zero/MAX case; `Some(RestOccurrenceWindow::from_raw((1, u64::MAX)))` is the established `+` / `1*` NonEmpty carrier.
+    /// Every other normalized window selects the appropriate Bounded carrier.
+    /// [`RestOccurrenceWindow::raw`] exposes numeric endpoints; these are not authored optional endpoints like [`OccurrenceWindow`].
+    /// The normalization lives on the row rather than in an emitter-local flag, so field spelling, decode conversion, JSON, wasm, WIT, and wrapper ownership all see the SAME invariant.
+    /// Both array tails and dynamic map rows use the full loose/NonEmpty/Bounded carrier vocabulary.
     pub occurrence: Option<RestOccurrenceWindow>,
 }
 
