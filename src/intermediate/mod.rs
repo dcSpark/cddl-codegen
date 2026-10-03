@@ -3905,247 +3905,7 @@ impl<'a> IntermediateTypes<'a> {
         if self.has_rejections() {
             return Err(self.rejections_error());
         }
-        // recursively check all types used as keys or contained within a type used as a key
-        // this is so we only derive comparison or hash traits for those types. Demand is propagated as
-        // SETS (`DemandSet`), union-merged: a tagged root spreads ITS flavor to every contained type;
-        // an auto-detected internal map key spreads the mode-dependent `bare` internal bundle. Flavors
-        // can only ADD to `bare`, never narrow it, so a type that is both is safe.
-        let mut key_demand: BTreeMap<RustIdent, DemandSet> = BTreeMap::new();
-        fn mark_key_demand(
-            ty: &ConceptualRustType,
-            key_demand: &mut BTreeMap<RustIdent, DemandSet>,
-            demand: DemandSet,
-        ) {
-            if let ConceptualRustType::Rust(ident) = ty {
-                let e = key_demand.entry(ident.clone()).or_default();
-                *e = e.union(demand);
-            }
-        }
-        // An auto-detected internal map key demands today's `bare` internal bundle (mode-dependent).
-        let bare = DemandSet {
-            bare: true,
-            hash: false,
-            ord: false,
-        };
-        // A `@duplicates reject` set's element type goes through the uniqueness twin's
-        // `TryFrom<Vec<T>>` door, whose hybrid `scan_unique` (linear below a small-size threshold,
-        // sorted-index above) is bounded `T: Ord` — so demand the `ord` flavor
-        // (`Eq/PartialEq/Ord/PartialOrd`). (`mark_key_demand` marks `Rust(ident)` nodes only;
-        // primitive/std elements carry `Ord` intrinsically EXCEPT floats, which are rejected
-        // gracefully below like float map keys.)
-        let ord = DemandSet {
-            bare: false,
-            hash: false,
-            ord: true,
-        };
-        // A SET NOMINAL's element needs the FULL comparison bundle: the wrapper's always-on
-        // `PartialEq/Eq/PartialOrd/Ord/Hash` derives flow through its `OrderedSet`/`Vec` inner onto
-        // the element type. Matches the demand the wrapper forces on ITSELF (`wrappers.rs`).
-        let full_set_demand = DemandSet {
-            bare: true,
-            hash: true,
-            ord: true,
-        };
-        fn check_used_as_key(
-            ty: &ConceptualRustType,
-            types: &IntermediateTypes<'_>,
-            key_demand: &mut BTreeMap<RustIdent, DemandSet>,
-            bare: DemandSet,
-        ) {
-            if let ConceptualRustType::Map(k, _v) = ty {
-                k.conceptual_type
-                    .visit_types(types, &mut |ty| mark_key_demand(ty, key_demand, bare));
-            }
-        }
-        // A map key that is (or recursively contains) a float compiles to a `BTreeMap<f64, _>` (or
-        // an `OrderedHashMap` bounded `K: Hash + Eq + Ord` under --preserve-encodings); floats
-        // implement none of Eq/Ord/Hash, so the emitted crate always fails to build (E0277). Such
-        // rules are rejected gracefully at generation below. Collected into a local set (recorded
-        // after the loop) to sidestep the borrow checker, like `used_as_key`, since the loop borrows
-        // `self` immutably. `visit_types` guards recursion with a visited-ident set, so a
-        // self-referential key type can't loop.
-        let mut float_key_rejections = BTreeSet::new();
-        fn key_contains_float(ty: &ConceptualRustType, types: &IntermediateTypes<'_>) -> bool {
-            let mut found = false;
-            ty.visit_types(types, &mut |t| {
-                if matches!(
-                    t,
-                    ConceptualRustType::Primitive(p) if p.is_float()
-                ) {
-                    found = true;
-                }
-            });
-            found
-        }
-        fn float_key_msg(rule: &RustIdent) -> String {
-            format!(
-                "rule `{rule}`: table key type contains a float (floats have no total order, so they cannot be map keys) — use an integer/text/bytes key domain instead"
-            )
-        }
-        // The rest-row twin of `float_key_msg`: an open struct-map's captured entries live in the same
-        // `BTreeMap`/`OrderedHashMap` a table's do, so a float key domain is the same E0277 — named
-        // for the position so the remedy points at the rest row rather than at a table rule.
-        fn float_rest_key_msg(rule: &RustIdent) -> String {
-            format!(
-                "rule `{rule}`: open struct-map rest-row key type contains a float (floats have no total order, so they cannot be map keys) — use an integer/text/bytes key domain instead"
-            )
-        }
-        // The set-side twin of `float_key_msg`: a set's uniqueness door and (for a tag-258
-        // nominal) always-on comparison derives need `Ord` on the element, which floats don't
-        // have. A named tag-258 set stays a comparison-bearing wrapper even under `preserve`, so
-        // that policy can never be offered as a float repair.
-        fn float_set_elem_msg(rule: &RustIdent) -> String {
-            format!(
-                "rule `{rule}`: set element type contains a float (floats have no total order, so set elements cannot be compared for uniqueness) — use a non-float element type. A tag-258 set nominal always requires comparison derives, even with `@duplicates preserve`, so preserve cannot repair it; to keep float elements, rewrite that tag-258 set as a plain array (`foo = [* float64]`). A plain `@duplicates reject` array can instead drop that directive and use normal Vec semantics"
-            )
-        }
-        // do a recursive check on the ones explicitly tagged as keys using @used_as_key: each tagged
-        // root spreads its OWN flavor to every type it (transitively) contains. Iterating the roots map
-        // (not the full `key_demand`, which finalize is about to expand) keeps the propagated flavor
-        // exactly what the tag declared.
-        for (ident, demand) in &self.key_demand_roots {
-            if let Some(rust_struct) = self.rust_struct(ident) {
-                let demand = *demand;
-                rust_struct
-                    .visit_types(self, &mut |ty| mark_key_demand(ty, &mut key_demand, demand));
-            }
-        }
-        // check all other places used as keys
-        for rust_struct in self.rust_structs().values() {
-            let rule_ident = rust_struct.ident().clone();
-            rust_struct.visit_types(self, &mut |ty| {
-                check_used_as_key(ty, self, &mut key_demand, bare);
-                // A nested/inline map (`{ number => uint }` as an array element or map value)
-                // surfaces as a Map conceptual type rather than a Table struct, so its float key is
-                // rejected here — the Table branch below only sees top-level `x = { k => v }` rules.
-                if let ConceptualRustType::Map(k, _v) = ty
-                    && key_contains_float(&k.conceptual_type, self)
-                {
-                    float_key_rejections.insert(float_key_msg(&rule_ident));
-                }
-            });
-            // A reject-mode set's element type gets the `ord` demand so the twin's uniqueness scan
-            // compiles. The policy lives on the struct config (and its alias). A float element can
-            // never satisfy that `Ord` bound, so it is rejected gracefully (the set-side analog of
-            // the float-key rejection above) instead of emitting a non-compiling crate.
-            if let RustStructType::Array { element_type, .. } = rust_struct.variant()
-                && rust_struct.config().duplicates_reject()
-            {
-                element_type
-                    .conceptual_type
-                    .visit_types(self, &mut |ty| mark_key_demand(ty, &mut key_demand, ord));
-                if key_contains_float(&element_type.conceptual_type, self) {
-                    float_key_rejections.insert(float_set_elem_msg(&rule_ident));
-                }
-            }
-            // A nominal wrapper over an ARRAY still routes its inner through the reject-set
-            // uniqueness carrier when the rule selected `@duplicates reject`. The ordinary Array
-            // branch above cannot see that element because this surface is a Wrapper (not a
-            // transparent alias), notably the flat repeated-group carrier. Its element needs the
-            // same `Ord` demand for `OrderedSet::try_from(Vec<_>)` to compile.
-            if let RustStructType::Wrapper { wrapped, .. } = rust_struct.variant()
-                && rust_struct.config().duplicates_reject()
-                && !rust_struct.config().set_nominal
-                && let ConceptualRustType::Array(element_type) = &wrapped.conceptual_type
-            {
-                element_type
-                    .conceptual_type
-                    .visit_types(self, &mut |ty| mark_key_demand(ty, &mut key_demand, ord));
-                if key_contains_float(&element_type.conceptual_type, self) {
-                    float_key_rejections.insert(float_set_elem_msg(&rule_ident));
-                }
-            }
-            // A SET NOMINAL wrapper (Phase 2.2/2.3) derives always-on encodings-ignored
-            // `PartialEq/Eq/PartialOrd/Ord/Hash`, and its inner collection (`OrderedSet<Elem>` under
-            // reject, `Vec<Elem>` under preserve) propagates every one of those bounds onto `Elem`.
-            // So the element needs the FULL demand (`bare + hash + ord`), regardless of policy —
-            // otherwise a Rust-struct element (`set<key_hash>`) fails to satisfy `Eq/Ord/Hash` and the
-            // crate does not compile. Primitive/std elements carry the bounds intrinsically (no-op).
-            if let RustStructType::Wrapper { wrapped, .. } = rust_struct.variant()
-                && rust_struct.config().set_nominal
-                && let ConceptualRustType::Array(element_type) = &wrapped.conceptual_type
-            {
-                element_type.conceptual_type.visit_types(self, &mut |ty| {
-                    mark_key_demand(ty, &mut key_demand, full_set_demand)
-                });
-                // The wrapper's always-on `Ord`/`Hash` derives (and, under reject, the uniqueness
-                // door's `T: Ord`) flow onto the element regardless of policy, so a float element
-                // can never compile — reject gracefully like the reject-array branch above.
-                if key_contains_float(&element_type.conceptual_type, self) {
-                    float_key_rejections.insert(float_set_elem_msg(&rule_ident));
-                }
-            }
-            // An open struct-map's CAPTURED rest row (`{ 1: uint, * K => V }`) keys the very same
-            // container a table rule does, but the IR stores its `K` FLAT (`RestKind::MapEntries`),
-            // never as a `Map(k, v)` node — so neither `check_used_as_key` above nor the `Table`
-            // branch below ever sees it, and without this branch a typed `K` reaches
-            // `BTreeMap<K, V>`/`OrderedHashMap<K, V>` with no `Eq`/`Ord`/`Hash` derives (E0277 in the
-            // generated crate, and — for a dep-owned `K` — no `borrowed_key_types.rs` row for the
-            // dependency to satisfy either, since that file is built from this same map).
-            //
-            // Gated on the TYPED path: a bare `uint`/`text`/`any` domain keys nothing that could be
-            // marked (`mark_key_demand` marks `Rust(ident)` nodes only), so gating keeps every
-            // existing spec's derives byte-identical rather than relying on that coincidence.
-            // BOTH dynamic rows: an open table's TYPED row keys the same container kind, so a walk
-            // that reads only the catch-all leaves `K_t` without its comparison derives (E0277 in the
-            // generated crate, and no `borrowed_key_types.rs` row for a dep-owned `K_t`).
-            for rest in match rust_struct.variant() {
-                RustStructType::Record(record) => Some(record),
-                _ => None,
-            }
-            .into_iter()
-            .flat_map(|record| record.captured_dynamic_rows())
-            .filter(|rest| !rest.is_array_tail() && !rest.map_key_uses_peeked_path(self))
-            {
-                // Same relaxation as the `Table` branch: a `@duplicates preserve` row's keys live in
-                // a `PairMap`, compared by a linear `PartialEq` scan rather than hashed/ordered, so
-                // the `ord` (Eq-containing) flavor suffices where the loose container needs `bare`.
-                let key_flavor = if rest.duplicates() == Some(DuplicatesPolicy::Preserve) {
-                    ord
-                } else {
-                    bare
-                };
-                rest.domain().conceptual_type.visit_types(self, &mut |ty| {
-                    mark_key_demand(ty, &mut key_demand, key_flavor)
-                });
-                // Walked directly (not as a `Map` node), so the float check is this branch's own —
-                // and, running after generic resolution, it also catches a float behind a resolved
-                // generic instance (`* gen<float64> => v`).
-                if key_contains_float(&rest.domain().conceptual_type, self) {
-                    float_key_rejections.insert(float_rest_key_msg(&rule_ident));
-                }
-            }
-            if let RustStructType::Table { domain, .. } = rust_struct.variant() {
-                // A `@duplicates preserve` table's key is compared with the pair-map's linear
-                // `contains`/`find` scan (`K: PartialEq`), NOT hashed or ordered like a `BTreeMap`/
-                // `OrderedHashMap` key — so it needs only the `ord` (Eq-containing) flavor, not the
-                // full `bare` (`Hash + Eq + Ord`) bundle the loose table forces on its key. This is
-                // the map-side of the reject-set `ord` relaxation above.
-                let key_flavor = if rust_struct.config().duplicates_preserve() {
-                    ord
-                } else {
-                    bare
-                };
-                domain.conceptual_type.visit_types(self, &mut |ty| {
-                    mark_key_demand(ty, &mut key_demand, key_flavor)
-                });
-                // A top-level table rule's key is its `domain`, walked directly (not as a Map node),
-                // so it needs its own check. This runs AFTER generic resolution, so it also catches
-                // float keys hidden behind a resolved generic instance (`{ gen<float64> => uint }`),
-                // the one seam that sees such instances. The marking above is left intact (harmless —
-                // the crate never generates once we reject) so this is a pure add-on.
-                if key_contains_float(&domain.conceptual_type, self) {
-                    float_key_rejections.insert(float_key_msg(&rule_ident));
-                }
-            }
-        }
-        // we use a separate one here to get around the borrow checker in the above visit_types
-        for (ident, demand) in key_demand {
-            self.union_key_demand(ident, demand);
-        }
-        for msg in float_key_rejections {
-            self.record_rejection(msg);
-        }
+        self.propagate_key_demand();
         // `@used_as_key` / `@used_as_elem` ask for a wasm surface keyed on the rule's OWN type, and a
         // generic DEFINITION has none — only its instantiations name concrete types. `@used_as_key`
         // was dropped silently (the demand-propagation walk skips a root with no `rust_structs`
@@ -5048,6 +4808,251 @@ impl<'a> IntermediateTypes<'a> {
             }
         }
         Ok(())
+    }
+
+    fn propagate_key_demand(&mut self) {
+        // recursively check all types used as keys or contained within a type used as a key
+        // this is so we only derive comparison or hash traits for those types. Demand is propagated as
+        // SETS (`DemandSet`), union-merged: a tagged root spreads ITS flavor to every contained type;
+        // an auto-detected internal map key spreads the mode-dependent `bare` internal bundle. Flavors
+        // can only ADD to `bare`, never narrow it, so a type that is both is safe.
+        let mut key_demand: BTreeMap<RustIdent, DemandSet> = BTreeMap::new();
+        fn accumulate_key_demand(
+            ty: &ConceptualRustType,
+            key_demand: &mut BTreeMap<RustIdent, DemandSet>,
+            demand: DemandSet,
+        ) {
+            if let ConceptualRustType::Rust(ident) = ty {
+                let e = key_demand.entry(ident.clone()).or_default();
+                *e = e.union(demand);
+            }
+        }
+        // An auto-detected internal map key demands today's `bare` internal bundle (mode-dependent).
+        let bare = DemandSet {
+            bare: true,
+            hash: false,
+            ord: false,
+        };
+        // A `@duplicates reject` set's element type goes through the uniqueness twin's
+        // `TryFrom<Vec<T>>` door, whose hybrid `scan_unique` (linear below a small-size threshold,
+        // sorted-index above) is bounded `T: Ord` — so demand the `ord` flavor
+        // (`Eq/PartialEq/Ord/PartialOrd`). (`accumulate_key_demand` marks `Rust(ident)` nodes only;
+        // primitive/std elements carry `Ord` intrinsically EXCEPT floats, which are rejected
+        // gracefully below like float map keys.)
+        let ord = DemandSet {
+            bare: false,
+            hash: false,
+            ord: true,
+        };
+        // A SET NOMINAL's element needs the FULL comparison bundle: the wrapper's always-on
+        // `PartialEq/Eq/PartialOrd/Ord/Hash` derives flow through its `OrderedSet`/`Vec` inner onto
+        // the element type. Matches the demand the wrapper forces on ITSELF (`wrappers.rs`).
+        let full_set_demand = DemandSet {
+            bare: true,
+            hash: true,
+            ord: true,
+        };
+        fn check_used_as_key(
+            ty: &ConceptualRustType,
+            types: &IntermediateTypes<'_>,
+            key_demand: &mut BTreeMap<RustIdent, DemandSet>,
+            bare: DemandSet,
+        ) {
+            if let ConceptualRustType::Map(k, _v) = ty {
+                k.conceptual_type
+                    .visit_types(types, &mut |ty| accumulate_key_demand(ty, key_demand, bare));
+            }
+        }
+        // A map key that is (or recursively contains) a float compiles to a `BTreeMap<f64, _>` (or
+        // an `OrderedHashMap` bounded `K: Hash + Eq + Ord` under --preserve-encodings); floats
+        // implement none of Eq/Ord/Hash, so the emitted crate always fails to build (E0277). Such
+        // rules are rejected gracefully at generation below. Collected into a local set (recorded
+        // after the loop) to sidestep the borrow checker, like `used_as_key`, since the loop borrows
+        // `self` immutably. `visit_types` guards recursion with a visited-ident set, so a
+        // self-referential key type can't loop.
+        let mut float_key_rejections = BTreeSet::new();
+        fn key_contains_float(ty: &ConceptualRustType, types: &IntermediateTypes<'_>) -> bool {
+            let mut found = false;
+            ty.visit_types(types, &mut |t| {
+                if matches!(
+                    t,
+                    ConceptualRustType::Primitive(p) if p.is_float()
+                ) {
+                    found = true;
+                }
+            });
+            found
+        }
+        fn float_key_msg(rule: &RustIdent) -> String {
+            format!(
+                "rule `{rule}`: table key type contains a float (floats have no total order, so they cannot be map keys) — use an integer/text/bytes key domain instead"
+            )
+        }
+        // The rest-row twin of `float_key_msg`: an open struct-map's captured entries live in the same
+        // `BTreeMap`/`OrderedHashMap` a table's do, so a float key domain is the same E0277 — named
+        // for the position so the remedy points at the rest row rather than at a table rule.
+        fn float_rest_key_msg(rule: &RustIdent) -> String {
+            format!(
+                "rule `{rule}`: open struct-map rest-row key type contains a float (floats have no total order, so they cannot be map keys) — use an integer/text/bytes key domain instead"
+            )
+        }
+        // The set-side twin of `float_key_msg`: a set's uniqueness door and (for a tag-258
+        // nominal) always-on comparison derives need `Ord` on the element, which floats don't
+        // have. A named tag-258 set stays a comparison-bearing wrapper even under `preserve`, so
+        // that policy can never be offered as a float repair.
+        fn float_set_elem_msg(rule: &RustIdent) -> String {
+            format!(
+                "rule `{rule}`: set element type contains a float (floats have no total order, so set elements cannot be compared for uniqueness) — use a non-float element type. A tag-258 set nominal always requires comparison derives, even with `@duplicates preserve`, so preserve cannot repair it; to keep float elements, rewrite that tag-258 set as a plain array (`foo = [* float64]`). A plain `@duplicates reject` array can instead drop that directive and use normal Vec semantics"
+            )
+        }
+        // do a recursive check on the ones explicitly tagged as keys using @used_as_key: each tagged
+        // root spreads its OWN flavor to every type it (transitively) contains. Iterating the roots map
+        // (not the full `key_demand`, which finalize is about to expand) keeps the propagated flavor
+        // exactly what the tag declared.
+        for (ident, demand) in &self.key_demand_roots {
+            if let Some(rust_struct) = self.rust_struct(ident) {
+                let demand = *demand;
+                rust_struct.visit_types(self, &mut |ty| {
+                    accumulate_key_demand(ty, &mut key_demand, demand)
+                });
+            }
+        }
+        // check all other places used as keys
+        for rust_struct in self.rust_structs().values() {
+            let rule_ident = rust_struct.ident().clone();
+            rust_struct.visit_types(self, &mut |ty| {
+                check_used_as_key(ty, self, &mut key_demand, bare);
+                // A nested/inline map (`{ number => uint }` as an array element or map value)
+                // surfaces as a Map conceptual type rather than a Table struct, so its float key is
+                // rejected here — the Table branch below only sees top-level `x = { k => v }` rules.
+                if let ConceptualRustType::Map(k, _v) = ty
+                    && key_contains_float(&k.conceptual_type, self)
+                {
+                    float_key_rejections.insert(float_key_msg(&rule_ident));
+                }
+            });
+            // A reject-mode set's element type gets the `ord` demand so the twin's uniqueness scan
+            // compiles. The policy lives on the struct config (and its alias). A float element can
+            // never satisfy that `Ord` bound, so it is rejected gracefully (the set-side analog of
+            // the float-key rejection above) instead of emitting a non-compiling crate.
+            if let RustStructType::Array { element_type, .. } = rust_struct.variant()
+                && rust_struct.config().duplicates_reject()
+            {
+                element_type.conceptual_type.visit_types(self, &mut |ty| {
+                    accumulate_key_demand(ty, &mut key_demand, ord)
+                });
+                if key_contains_float(&element_type.conceptual_type, self) {
+                    float_key_rejections.insert(float_set_elem_msg(&rule_ident));
+                }
+            }
+            // A nominal wrapper over an ARRAY still routes its inner through the reject-set
+            // uniqueness carrier when the rule selected `@duplicates reject`. The ordinary Array
+            // branch above cannot see that element because this surface is a Wrapper (not a
+            // transparent alias), notably the flat repeated-group carrier. Its element needs the
+            // same `Ord` demand for `OrderedSet::try_from(Vec<_>)` to compile.
+            if let RustStructType::Wrapper { wrapped, .. } = rust_struct.variant()
+                && rust_struct.config().duplicates_reject()
+                && !rust_struct.config().set_nominal
+                && let ConceptualRustType::Array(element_type) = &wrapped.conceptual_type
+            {
+                element_type.conceptual_type.visit_types(self, &mut |ty| {
+                    accumulate_key_demand(ty, &mut key_demand, ord)
+                });
+                if key_contains_float(&element_type.conceptual_type, self) {
+                    float_key_rejections.insert(float_set_elem_msg(&rule_ident));
+                }
+            }
+            // A SET NOMINAL wrapper (Phase 2.2/2.3) derives always-on encodings-ignored
+            // `PartialEq/Eq/PartialOrd/Ord/Hash`, and its inner collection (`OrderedSet<Elem>` under
+            // reject, `Vec<Elem>` under preserve) propagates every one of those bounds onto `Elem`.
+            // So the element needs the FULL demand (`bare + hash + ord`), regardless of policy —
+            // otherwise a Rust-struct element (`set<key_hash>`) fails to satisfy `Eq/Ord/Hash` and the
+            // crate does not compile. Primitive/std elements carry the bounds intrinsically (no-op).
+            if let RustStructType::Wrapper { wrapped, .. } = rust_struct.variant()
+                && rust_struct.config().set_nominal
+                && let ConceptualRustType::Array(element_type) = &wrapped.conceptual_type
+            {
+                element_type.conceptual_type.visit_types(self, &mut |ty| {
+                    accumulate_key_demand(ty, &mut key_demand, full_set_demand)
+                });
+                // The wrapper's always-on `Ord`/`Hash` derives (and, under reject, the uniqueness
+                // door's `T: Ord`) flow onto the element regardless of policy, so a float element
+                // can never compile — reject gracefully like the reject-array branch above.
+                if key_contains_float(&element_type.conceptual_type, self) {
+                    float_key_rejections.insert(float_set_elem_msg(&rule_ident));
+                }
+            }
+            // An open struct-map's CAPTURED rest row (`{ 1: uint, * K => V }`) keys the very same
+            // container a table rule does, but the IR stores its `K` FLAT (`RestKind::MapEntries`),
+            // never as a `Map(k, v)` node — so neither `check_used_as_key` above nor the `Table`
+            // branch below ever sees it, and without this branch a typed `K` reaches
+            // `BTreeMap<K, V>`/`OrderedHashMap<K, V>` with no `Eq`/`Ord`/`Hash` derives (E0277 in the
+            // generated crate, and — for a dep-owned `K` — no `borrowed_key_types.rs` row for the
+            // dependency to satisfy either, since that file is built from this same map).
+            //
+            // Gated on the TYPED path: a bare `uint`/`text`/`any` domain keys nothing that could be
+            // marked (`accumulate_key_demand` marks `Rust(ident)` nodes only), so gating keeps every
+            // existing spec's derives byte-identical rather than relying on that coincidence.
+            // BOTH dynamic rows: an open table's TYPED row keys the same container kind, so a walk
+            // that reads only the catch-all leaves `K_t` without its comparison derives (E0277 in the
+            // generated crate, and no `borrowed_key_types.rs` row for a dep-owned `K_t`).
+            for rest in match rust_struct.variant() {
+                RustStructType::Record(record) => Some(record),
+                _ => None,
+            }
+            .into_iter()
+            .flat_map(|record| record.captured_dynamic_rows())
+            .filter(|rest| !rest.is_array_tail() && !rest.map_key_uses_peeked_path(self))
+            {
+                // Same relaxation as the `Table` branch: a `@duplicates preserve` row's keys live in
+                // a `PairMap`, compared by a linear `PartialEq` scan rather than hashed/ordered, so
+                // the `ord` (Eq-containing) flavor suffices where the loose container needs `bare`.
+                let key_flavor = if rest.duplicates() == Some(DuplicatesPolicy::Preserve) {
+                    ord
+                } else {
+                    bare
+                };
+                rest.domain().conceptual_type.visit_types(self, &mut |ty| {
+                    accumulate_key_demand(ty, &mut key_demand, key_flavor)
+                });
+                // Walked directly (not as a `Map` node), so the float check is this branch's own —
+                // and, running after generic resolution, it also catches a float behind a resolved
+                // generic instance (`* gen<float64> => v`).
+                if key_contains_float(&rest.domain().conceptual_type, self) {
+                    float_key_rejections.insert(float_rest_key_msg(&rule_ident));
+                }
+            }
+            if let RustStructType::Table { domain, .. } = rust_struct.variant() {
+                // A `@duplicates preserve` table's key is compared with the pair-map's linear
+                // `contains`/`find` scan (`K: PartialEq`), NOT hashed or ordered like a `BTreeMap`/
+                // `OrderedHashMap` key — so it needs only the `ord` (Eq-containing) flavor, not the
+                // full `bare` (`Hash + Eq + Ord`) bundle the loose table forces on its key. This is
+                // the map-side of the reject-set `ord` relaxation above.
+                let key_flavor = if rust_struct.config().duplicates_preserve() {
+                    ord
+                } else {
+                    bare
+                };
+                domain.conceptual_type.visit_types(self, &mut |ty| {
+                    accumulate_key_demand(ty, &mut key_demand, key_flavor)
+                });
+                // A top-level table rule's key is its `domain`, walked directly (not as a Map node),
+                // so it needs its own check. This runs AFTER generic resolution, so it also catches
+                // float keys hidden behind a resolved generic instance (`{ gen<float64> => uint }`),
+                // the one seam that sees such instances. The marking above is left intact (harmless —
+                // the crate never generates once we reject) so this is a pure add-on.
+                if key_contains_float(&domain.conceptual_type, self) {
+                    float_key_rejections.insert(float_key_msg(&rule_ident));
+                }
+            }
+        }
+        // we use a separate one here to get around the borrow checker in the above visit_types
+        for (ident, demand) in key_demand {
+            self.union_key_demand(ident, demand);
+        }
+        for msg in float_key_rejections {
+            self.record_rejection(msg);
+        }
     }
 
     fn validate_emitted_name_surface(&self) -> Vec<String> {
