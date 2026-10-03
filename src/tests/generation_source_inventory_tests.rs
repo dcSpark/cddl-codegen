@@ -59,6 +59,7 @@ const SOURCE_ROLES: &[SourceRole] = &[
             "generate_deserialize",
             "make_deser_loop_break_check",
             "final_expr",
+            "final_result_expr_complete",
         ],
     },
     SourceRole {

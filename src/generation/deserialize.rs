@@ -868,6 +868,35 @@ fn final_expr(encoding_exprs: Vec<String>, actual_value: Option<String>) -> Stri
     tuple_str(actual_value.into_iter().chain(encoding_exprs).collect())
 }
 
+// Gives a total final expression including the before_after context
+// as well as dealing with avoiding clippy warning which is why we can
+// be conditionally a direct value (if there are encoding vars thus a tuple)
+// or we can be a result that goes straight through (subject to before_after)
+// This helps avoid clippy::needless_question_mark here.
+fn final_result_expr_complete(
+    before_after: &DeserializeBeforeAfter,
+    throws: &mut bool,
+    final_exprs: Vec<String>,
+    result_expr: &str,
+) -> String {
+    if final_exprs.is_empty() {
+        format!(
+            "{}{}{}",
+            before_after.before_str(true),
+            result_expr,
+            before_after.after_str(true)
+        )
+    } else {
+        *throws = true;
+        format!(
+            "{}{}{}",
+            before_after.before_str(false),
+            final_expr(final_exprs, Some(format!("{result_expr}?"))),
+            before_after.after_str(false)
+        )
+    }
+}
+
 impl GenerationScope {
     /// Generates a DeserializationCode to serialize {serializing_rust_type} using the context in {before_after}
     /// This returned value must be in turn pushed into deserialization code to be used.
@@ -884,30 +913,6 @@ impl GenerationScope {
             assert!(config.final_exprs.is_empty());
         }
         let mut deser_code = DeserializationCode::default();
-        // Gives a total final expression including the before_after context
-        // as well as dealing with avoiding clippy warning which is why we can
-        // be conditionally a direct value (if there are encoding vars thus a tuple)
-        // or we can be a result that goes straight through (subject to before_after)
-        // This helps avoid clippy::needless_question_mark here.
-        let final_result_expr_complete =
-            |throws: &mut bool, final_exprs: Vec<String>, result_expr: &str| -> String {
-                if final_exprs.is_empty() {
-                    format!(
-                        "{}{}{}",
-                        before_after.before_str(true),
-                        result_expr,
-                        before_after.after_str(true)
-                    )
-                } else {
-                    *throws = true;
-                    format!(
-                        "{}{}{}",
-                        before_after.before_str(false),
-                        final_expr(final_exprs, Some(format!("{result_expr}?"))),
-                        before_after.after_str(false)
-                    )
-                }
-            };
         let deserializer_name = config.deserializer_name();
         // field-level @custom_deserialize overrides everything
         if let Some(custom_deserialize) = &config.custom_deserialize {
@@ -1450,6 +1455,7 @@ impl GenerationScope {
                             // DeserializeError` impls it fails inference (E0282/E0283) — e.g.
                             // `[* bool]` emitted non-compiling code.
                             deser_code.content.line(&final_result_expr_complete(
+                                &before_after,
                                 &mut deser_code.throws,
                                 config.final_exprs,
                                 &format!("bool::deserialize({deserializer_name})"),
@@ -1572,6 +1578,7 @@ impl GenerationScope {
                                     None => read_expr,
                                 };
                                 deser_code.content.line(&final_result_expr_complete(
+                                    &before_after,
                                     &mut deser_code.throws,
                                     config.final_exprs,
                                     &result_expr,
@@ -1595,6 +1602,7 @@ impl GenerationScope {
                         cli.common_import_rust()
                     );
                     deser_code.content.line(&final_result_expr_complete(
+                        &before_after,
                         &mut deser_code.throws,
                         config.final_exprs,
                         &final_expr_value,
@@ -1610,6 +1618,7 @@ impl GenerationScope {
                     {
                         // because this is type-level we must handle final_exprs as it could be wrapped in a tag, etc
                         deser_code.content.line(&final_result_expr_complete(
+                            &before_after,
                             &mut deser_code.throws,
                             config.final_exprs,
                             &format!("{}({})", custom_deserialize, deserializer_name),
@@ -1841,6 +1850,7 @@ impl GenerationScope {
                                     );
 
                                     deser_code.content.line(&final_result_expr_complete(
+                                        &before_after,
                                         &mut deser_code.throws,
                                         config.final_exprs,
                                         &final_expr_value,
@@ -1856,6 +1866,7 @@ impl GenerationScope {
                                         config.call_target(ident)
                                     );
                                     deser_code.content.line(&final_result_expr_complete(
+                                        &before_after,
                                         &mut deser_code.throws,
                                         config.final_exprs,
                                         &final_expr_value,
