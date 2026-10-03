@@ -925,20 +925,7 @@ pub(crate) fn project(
     // carry it rather than the glue swallowing it.
     mark_imported_doors_fallible(&mut interfaces, &imported);
 
-    // Only the packages something actually imported: the `with:` map the guest emitter builds from
-    // this is one entry per imported INTERFACE, and an entry for an interface the world never
-    // imports is a mapping `wit_bindgen` has no key to match.
-    let used_deps: BTreeSet<String> = imported
-        .values()
-        .filter(|dep_type| {
-            interfaces.values().any(|iface| {
-                iface
-                    .uses
-                    .contains_key(&WitUseTarget::Foreign(dep_type.use_path.clone()))
-            })
-        })
-        .map(|dep_type| dep_type.dep.clone())
-        .collect();
+    let used_deps = used_imported_dependencies(&interfaces, &imported);
 
     WitPackage {
         id: cli.wit_package(),
@@ -1130,6 +1117,26 @@ fn normalize_interfaces(interfaces: &mut BTreeMap<ModuleScope, WitInterface>) {
         iface.funcs.sort_by(|a, b| a.name.cmp(&b.name));
         iface.funcs.dedup_by(|a, b| a.name == b.name);
     }
+}
+
+fn used_imported_dependencies(
+    interfaces: &BTreeMap<ModuleScope, WitInterface>,
+    imported: &BTreeMap<RustIdent, ImportedDepType>,
+) -> BTreeSet<String> {
+    // Only the packages something actually imported: the `with:` map the guest emitter builds from
+    // this is one entry per imported INTERFACE, and an entry for an interface the world never
+    // imports is a mapping `wit_bindgen` has no key to match.
+    imported
+        .values()
+        .filter(|dep_type| {
+            interfaces.values().any(|iface| {
+                iface
+                    .uses
+                    .contains_key(&WitUseTarget::Foreign(dep_type.use_path.clone()))
+            })
+        })
+        .map(|dep_type| dep_type.dep.clone())
+        .collect()
 }
 
 /// Mark every constructor, member and free function whose signature touches an imported type as
