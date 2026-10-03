@@ -80,6 +80,19 @@ const SOURCE_ROLES: &[SourceRole] = &[
         members: &["render_rust_type"],
     },
     SourceRole {
+        file: "json_schema_claims.rs",
+        emitter: true,
+        wasm: false,
+        reason: "audited conservative schema-claim traversal and registrar type fragments; no WASM rendering",
+        members: &[
+            "json_schema_reachable_claims",
+            "claim_named",
+            "walk_subschema",
+            "walk_descriptor_leaf",
+            "walk_schema_body",
+        ],
+    },
+    SourceRole {
         file: "layout.rs",
         emitter: false,
         wasm: false,
@@ -93,7 +106,6 @@ const SOURCE_ROLES: &[SourceRole] = &[
         reason: "coordinator/type fragments; currently omitted from body roster",
         members: &[
             "generate",
-            "json_schema_reachable_claims",
             "encoding_fields_decls",
             "type_complexity_score",
             "type_complexity_score_vectors",

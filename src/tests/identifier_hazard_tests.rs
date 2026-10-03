@@ -636,8 +636,9 @@ fn identifier_hazard_crates_compile() {
 // ---- the generated-local vocabulary: LOCKSTEP source scan + hazard sweep ------------------------
 
 /// Sources scanned for generated fn body locals, plus explicitly audited conservative destinations.
-/// `wasm_wrapper_registry.rs` owns type/signature rendering and registry bookkeeping, rather than
-/// user-field bodies; keeping it enrolled preserves scanner custody as those helpers move.
+/// `wasm_wrapper_registry.rs` owns type/signature rendering and registry bookkeeping;
+/// `json_schema_claims.rs` owns schema traversal and registrar type fragments. Their conservative
+/// enrollment preserves scanner custody without claiming those helpers emit user-field bodies.
 /// `export.rs` and `component.rs` remain absent: their emitted bodies are the json-schema generator
 /// and wit-bindgen guest glue, neither of which puts a user field beside a fixed local.
 pub(crate) const EMITTER_SOURCES: &[&str] = &[
@@ -648,6 +649,7 @@ pub(crate) const EMITTER_SOURCES: &[&str] = &[
     "collections.rs",
     "wrappers.rs",
     "wasm_wrapper_registry.rs",
+    "json_schema_claims.rs",
 ];
 
 /// One lexical pass over Rust source, feeding both source-scan gates over the emitters.
