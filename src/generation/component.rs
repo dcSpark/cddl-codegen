@@ -1692,13 +1692,7 @@ impl Emitter<'_, '_> {
             // Getters read through ONE shared borrow and clone out of it. Minting a handle inside the
             // closure is safe — it constructs a NEW `RefCell`, it never borrows an existing one.
             WitMemberOp::Getter { field } => {
-                lines.push("let me = self.0.borrow();".to_owned());
-                let ty = member
-                    .result
-                    .as_ref()
-                    .expect("a getter always returns something");
-                let conv = self.rust_to_wit(ty, &format!("me.{field}"), alias, false);
-                lines.push(self.returned(&conv, member.fallible));
+                self.member_getter_body(&mut lines, member, alias, field);
             }
             WitMemberOp::RestGetter {
                 field,
@@ -1937,6 +1931,21 @@ impl Emitter<'_, '_> {
             }
         }
         lines
+    }
+    fn member_getter_body(
+        &self,
+        lines: &mut Vec<String>,
+        member: &WitMember,
+        alias: &str,
+        field: &str,
+    ) {
+        lines.push("let me = self.0.borrow();".to_owned());
+        let ty = member
+            .result
+            .as_ref()
+            .expect("a getter always returns something");
+        let conv = self.rust_to_wit(ty, &format!("me.{field}"), alias, false);
+        lines.push(self.returned(&conv, member.fallible));
     }
 }
 
