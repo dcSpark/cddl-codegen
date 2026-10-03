@@ -205,6 +205,15 @@ pub(crate) fn generate_tag_check(
     deser_func.push_block(tag_check);
 }
 
+/// Cheap wrapper facts shared without capturing the scope, type registry, or CLI.
+#[derive(Clone, Copy)]
+struct WrapperFacts<'a> {
+    checked_scalar: bool,
+    getter_name: &'a str,
+    emit_getter: bool,
+    set_nominal: bool,
+}
+
 // This is used mostly for when thing are tagged have specific ranges.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn generate_wrapper_struct(
@@ -259,210 +268,22 @@ pub(super) fn generate_wrapper_struct(
         hash: true,
         ord: true,
     };
+    let facts = WrapperFacts {
+        checked_scalar,
+        getter_name,
+        emit_getter,
+        set_nominal,
+    };
     if cli.wasm {
-        let mut wrapper = create_base_wasm_wrapper(gen_scope, types, type_name, true, cli);
-        if let Some(doc) = struct_config.doc.as_ref() {
-            wrapper.s.doc(doc);
-        }
-        let mut wasm_new = codegen::Function::new("new");
-        wasm_new
-            .arg(
-                "inner",
-                gen_scope.wasm_param_type(
-                    types,
-                    field_type,
-                    type_name,
-                    "wrapper constructor parameter",
-                ),
-            )
-            .vis("pub");
-
-        // Delegate to the rust wrapper's `new`, mirroring the enum-variant wasm ctor: convert the
-        // wasm inner to the rust inner (fallibility, if any, lives in the rust `new`, so pass
-        // can_fail = false here), then let the rust ctor produce the native wrapper. Building
-        // `Self(inner.into())` directly would need two chained `.into()`s for a Rust-typed inner
-        // (wasm→native inner, then native inner→native wrapper) with an uninferable middle type.
-        let ctor = format!(
-            "{}::{}({})",
-            rust_crate_struct_from_wasm(types, type_name, cli),
-            if checked_scalar { "try_from" } else { "new" },
-            field_type.from_wasm_boundary_clone_expr(types, "inner", false)
-        );
-        super::enums::finish_wasm_ctor(
-            &mut wasm_new,
+        emit_wrapper_wasm_face(
+            gen_scope,
+            types,
             type_name,
-            &ctor,
-            types.can_new_fail(type_name),
+            field_type,
+            struct_config,
+            cli,
+            &facts,
         );
-        wrapper.s_impl.push_fn(wasm_new);
-        // Only the `@duplicates reject` set nominal wraps a uniqueness twin
-        // (`OrderedSet`/`NonEmptyOrderedSet`/`BoundedOrderedSet`), whose checked `push` / `contains`
-        // doors the flat delegation below relies on. Loose/min-one twins additionally expose
-        // `insert -> bool` / `try_opt_from`; bounded twins intentionally do not. A `@duplicates preserve` set
-        // nominal wraps a plain `Vec`/`NonEmptyVec` (different method surface, no `try_opt_from`), so
-        // it keeps the original 0-arg `get()` returning its companion list wrapper.
-        let reject_twin = matches!(
-            struct_config.duplicates,
-            Some(crate::comment_ast::DuplicatesPolicy::Reject)
-        );
-        let bounded_reject = field_type.is_bounded_reject_ordered_set();
-        if set_nominal && reject_twin {
-            // FLATTENED set-nominal surface. The wasm class has no `Deref`, so before this the only
-            // read door was a 0-arg `get()` returning the companion collection class — forcing every
-            // JS read into a two-layer `set.get().get(i)` unwrap. Instead, DELEGATE the companion's
-            // collection surface directly onto the nominal (`self.0` is the rust nominal, which
-            // `Deref`s to its ordered-set inner — `len`/`get(index)`/`push`/`contains`/`Index` all
-            // resolve through it; only loose/min-one flavors add `insert`/`try_opt_from`. JS reads
-            // `set.get(i)`, and the wasm surface tells the same story as the rust set API. `try_from`
-            // delegates to the rust nominal's `TryFrom<Vec<_>>` door so a flat list constructs the
-            // nominal without threading through the companion class.
-            let element_type = match &field_type.conceptual_type {
-                ConceptualRustType::Array(elem) => (**elem).clone(),
-                // set_nominal is set only for Array-wrapped rules (parsing.rs); no other shape reaches here.
-                other => unreachable!("set nominal wrapped a non-array type: {other:?}"),
-            };
-            let native_wrapper = rust_crate_struct_from_wasm(types, type_name, cli);
-            super::collections::push_ordered_set_accessors(
-                gen_scope,
-                &mut wrapper,
-                types,
-                type_name,
-                &element_type,
-                super::collections::OrderedSetAccessorOptions {
-                    with_insert: !bounded_reject,
-                    label_prefix: "set-nominal",
-                },
-                cli,
-            );
-            // A list-taking construction door + the empty-means-absent `try_opt_from` (the wasm
-            // mirror of the rust nominal's inherent constructor — its landing removes the matching
-            // `PARITY_EXEMPT` entries). Both delegate to the rust nominal's `TryFrom<Vec<Elem>>` /
-            // `try_opt_from` through a SHARED list door: an element a BARE `Vec` can carry across the
-            // ABI crosses as `Vec<Elem>` (passed straight through); otherwise the minted `<Elem>List`
-            // wrapper (always emitted alongside this nominal's companion) is cloned into the native
-            // `Vec`. The bare-`Vec` test is `vec_of_self_directly_wasm_exposable` — the ELEMENT's own
-            // exposability is the wrong question, and asking it put `Vec<Vec<u8>>` in this signature
-            // for a bytes-element set (generation exit 0, wasm crate E0271).
-            // A nested non-empty-array element has no clean loose source, so no list door is emitted
-            // for it — the sole residual, uncovered by any fixture; a future one re-reds parity on
-            // `<Nominal>::try_opt_from` (loud, local) rather than silently miscompiling here.
-            let elem_wasm = gen_scope.wasm_member_type(
-                types,
-                &element_type,
-                type_name,
-                "set-nominal try_from element type",
-            );
-            let list_door: Option<(&str, String, Option<String>)> =
-                if element_type.vec_of_self_directly_wasm_exposable(types) {
-                    Some(("elements", format!("Vec<{elem_wasm}>"), None))
-                } else if !element_type.is_non_empty_array() {
-                    let loose_type =
-                        RustType::new(ConceptualRustType::Array(Box::new(element_type.clone())));
-                    let loose = gen_scope.wasm_member_type(
-                        types,
-                        &loose_type,
-                        type_name,
-                        "set-nominal try_from loose-list source",
-                    );
-                    let inner_vec = element_type.name_as_rust_array(types, true, cli);
-                    Some((
-                        "list",
-                        format!("&{loose}"),
-                        Some(format!("let list: {inner_vec} = list.clone().into();")),
-                    ))
-                } else {
-                    None
-                };
-            if let Some((arg, arg_ty, prep)) = &list_door {
-                let try_from_fn = wrapper
-                    .s_impl
-                    .new_fn("try_from")
-                    .vis("pub")
-                    .ret(format!("Result<{type_name}, JsError>"))
-                    .arg(arg, arg_ty);
-                if let Some(prep) = prep {
-                    try_from_fn.line(prep);
-                }
-                try_from_fn.line(format!(
-                    "{native_wrapper}::try_from({arg}).map(Self).map_err(|e| JsError::new(&e.to_string()))"
-                ));
-                if !bounded_reject {
-                    let try_opt_fn = wrapper
-                        .s_impl
-                        .new_fn("try_opt_from")
-                        .vis("pub")
-                        .ret(format!("Result<Option<{type_name}>, JsError>"))
-                        .arg(arg, arg_ty);
-                    if let Some(prep) = prep {
-                        try_opt_fn.line(prep);
-                    }
-                    try_opt_fn.line(format!(
-                    "{native_wrapper}::try_opt_from({arg}).map(|opt| opt.map(Self)).map_err(|e| JsError::new(&e.to_string()))"
-                ));
-                }
-            }
-            // A custom `@newtype <name>` getter (rare on a set nominal) still returns the companion —
-            // it does not collide with the flat `get(index)` above.
-            if let Some(Some(_)) = struct_config.newtype_getter.as_ref() {
-                let getter_body = format!("self.0.{getter_name}()");
-                wrapper
-                    .s_impl
-                    .new_fn(getter_name)
-                    .vis("pub")
-                    .arg_ref_self()
-                    .ret(gen_scope.wasm_return_type(
-                        types,
-                        field_type,
-                        type_name,
-                        "wrapper custom getter return",
-                    ))
-                    .line(field_type.to_wasm_boundary(types, &getter_body, false));
-            }
-        } else if set_nominal {
-            // PRESERVE set nominal (`@duplicates preserve`): wraps a plain `Vec`/`NonEmptyVec`, so the
-            // uniqueness-twin flat surface above does not apply. It keeps the original 0-arg `get()`
-            // returning its companion list wrapper — reconstructed through the emitted
-            // `From<Wrapper> for <inner>` impl (a bare set nominal has no rust inherent `get()` to
-            // delegate to), then the usual inner→wasm boundary conversion. A custom `@newtype <name>`
-            // getter instead delegates to the rust getter, byte-identical.
-            let getter_body = if matches!(struct_config.newtype_getter.as_ref(), Some(Some(_))) {
-                format!("self.0.{getter_name}()")
-            } else {
-                // qualified-path form `<T>::from` — a generic inner (`Vec<u64>`) parses `<` as a
-                // comparison in the bare `T::from` spelling; `from_wasm=true` crate-qualifies the
-                // element so the inner spelling matches the structural wasm wrapper's native field.
-                format!(
-                    "<{}>::from(self.0.clone())",
-                    field_type.for_rust_member(types, true, cli)
-                )
-            };
-            let mut get = codegen::Function::new(getter_name);
-            get.vis("pub")
-                .arg_ref_self()
-                .ret(gen_scope.wasm_return_type(
-                    types,
-                    field_type,
-                    type_name,
-                    "wrapper set getter return",
-                ))
-                .line(field_type.to_wasm_boundary(types, &getter_body, false));
-            wrapper.s_impl.push_fn(get);
-        } else if emit_getter {
-            // Non-set wrappers keep delegating to the rust getter, byte-identical.
-            let getter_body = format!("self.0.{getter_name}()");
-            let mut get = codegen::Function::new(getter_name);
-            get.vis("pub")
-                .arg_ref_self()
-                .ret(gen_scope.wasm_return_type(
-                    types,
-                    field_type,
-                    type_name,
-                    "wrapper getter return",
-                ))
-                .line(field_type.to_wasm_boundary(types, &getter_body, false));
-            wrapper.s_impl.push_fn(get);
-        }
-        wrapper.push(gen_scope, types);
     }
 
     // TODO: do we want to get rid of the rust struct and embed the tag / min/max size here?
@@ -1293,6 +1114,223 @@ pub(super) fn generate_wrapper_struct(
             .rust_serialize(types, type_name)
             .push_impl(deser_impl);
     }
+}
+
+/// Emit the gated WASM face without changing registry-rendering or constructor order.
+fn emit_wrapper_wasm_face(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    type_name: &RustIdent,
+    field_type: &RustType,
+    struct_config: &RustStructConfig,
+    cli: &Cli,
+    facts: &WrapperFacts<'_>,
+) {
+    let WrapperFacts {
+        checked_scalar,
+        getter_name,
+        emit_getter,
+        set_nominal,
+        ..
+    } = *facts;
+    let mut wrapper = create_base_wasm_wrapper(gen_scope, types, type_name, true, cli);
+    if let Some(doc) = struct_config.doc.as_ref() {
+        wrapper.s.doc(doc);
+    }
+    let mut wasm_new = codegen::Function::new("new");
+    wasm_new
+        .arg(
+            "inner",
+            gen_scope.wasm_param_type(
+                types,
+                field_type,
+                type_name,
+                "wrapper constructor parameter",
+            ),
+        )
+        .vis("pub");
+
+    // Delegate to the rust wrapper's `new`, mirroring the enum-variant wasm ctor: convert the
+    // wasm inner to the rust inner (fallibility, if any, lives in the rust `new`, so pass
+    // can_fail = false here), then let the rust ctor produce the native wrapper. Building
+    // `Self(inner.into())` directly would need two chained `.into()`s for a Rust-typed inner
+    // (wasm→native inner, then native inner→native wrapper) with an uninferable middle type.
+    let ctor = format!(
+        "{}::{}({})",
+        rust_crate_struct_from_wasm(types, type_name, cli),
+        if checked_scalar { "try_from" } else { "new" },
+        field_type.from_wasm_boundary_clone_expr(types, "inner", false)
+    );
+    super::enums::finish_wasm_ctor(
+        &mut wasm_new,
+        type_name,
+        &ctor,
+        types.can_new_fail(type_name),
+    );
+    wrapper.s_impl.push_fn(wasm_new);
+    // Only the `@duplicates reject` set nominal wraps a uniqueness twin
+    // (`OrderedSet`/`NonEmptyOrderedSet`/`BoundedOrderedSet`), whose checked `push` / `contains`
+    // doors the flat delegation below relies on. Loose/min-one twins additionally expose
+    // `insert -> bool` / `try_opt_from`; bounded twins intentionally do not. A `@duplicates preserve` set
+    // nominal wraps a plain `Vec`/`NonEmptyVec` (different method surface, no `try_opt_from`), so
+    // it keeps the original 0-arg `get()` returning its companion list wrapper.
+    let reject_twin = matches!(
+        struct_config.duplicates,
+        Some(crate::comment_ast::DuplicatesPolicy::Reject)
+    );
+    let bounded_reject = field_type.is_bounded_reject_ordered_set();
+    if set_nominal && reject_twin {
+        // FLATTENED set-nominal surface. The wasm class has no `Deref`, so before this the only
+        // read door was a 0-arg `get()` returning the companion collection class — forcing every
+        // JS read into a two-layer `set.get().get(i)` unwrap. Instead, DELEGATE the companion's
+        // collection surface directly onto the nominal (`self.0` is the rust nominal, which
+        // `Deref`s to its ordered-set inner — `len`/`get(index)`/`push`/`contains`/`Index` all
+        // resolve through it; only loose/min-one flavors add `insert`/`try_opt_from`. JS reads
+        // `set.get(i)`, and the wasm surface tells the same story as the rust set API. `try_from`
+        // delegates to the rust nominal's `TryFrom<Vec<_>>` door so a flat list constructs the
+        // nominal without threading through the companion class.
+        let element_type = match &field_type.conceptual_type {
+            ConceptualRustType::Array(elem) => (**elem).clone(),
+            // set_nominal is set only for Array-wrapped rules (parsing.rs); no other shape reaches here.
+            other => unreachable!("set nominal wrapped a non-array type: {other:?}"),
+        };
+        let native_wrapper = rust_crate_struct_from_wasm(types, type_name, cli);
+        super::collections::push_ordered_set_accessors(
+            gen_scope,
+            &mut wrapper,
+            types,
+            type_name,
+            &element_type,
+            super::collections::OrderedSetAccessorOptions {
+                with_insert: !bounded_reject,
+                label_prefix: "set-nominal",
+            },
+            cli,
+        );
+        // A list-taking construction door + the empty-means-absent `try_opt_from` (the wasm
+        // mirror of the rust nominal's inherent constructor — its landing removes the matching
+        // `PARITY_EXEMPT` entries). Both delegate to the rust nominal's `TryFrom<Vec<Elem>>` /
+        // `try_opt_from` through a SHARED list door: an element a BARE `Vec` can carry across the
+        // ABI crosses as `Vec<Elem>` (passed straight through); otherwise the minted `<Elem>List`
+        // wrapper (always emitted alongside this nominal's companion) is cloned into the native
+        // `Vec`. The bare-`Vec` test is `vec_of_self_directly_wasm_exposable` — the ELEMENT's own
+        // exposability is the wrong question, and asking it put `Vec<Vec<u8>>` in this signature
+        // for a bytes-element set (generation exit 0, wasm crate E0271).
+        // A nested non-empty-array element has no clean loose source, so no list door is emitted
+        // for it — the sole residual, uncovered by any fixture; a future one re-reds parity on
+        // `<Nominal>::try_opt_from` (loud, local) rather than silently miscompiling here.
+        let elem_wasm = gen_scope.wasm_member_type(
+            types,
+            &element_type,
+            type_name,
+            "set-nominal try_from element type",
+        );
+        let list_door: Option<(&str, String, Option<String>)> =
+            if element_type.vec_of_self_directly_wasm_exposable(types) {
+                Some(("elements", format!("Vec<{elem_wasm}>"), None))
+            } else if !element_type.is_non_empty_array() {
+                let loose_type =
+                    RustType::new(ConceptualRustType::Array(Box::new(element_type.clone())));
+                let loose = gen_scope.wasm_member_type(
+                    types,
+                    &loose_type,
+                    type_name,
+                    "set-nominal try_from loose-list source",
+                );
+                let inner_vec = element_type.name_as_rust_array(types, true, cli);
+                Some((
+                    "list",
+                    format!("&{loose}"),
+                    Some(format!("let list: {inner_vec} = list.clone().into();")),
+                ))
+            } else {
+                None
+            };
+        if let Some((arg, arg_ty, prep)) = &list_door {
+            let try_from_fn = wrapper
+                .s_impl
+                .new_fn("try_from")
+                .vis("pub")
+                .ret(format!("Result<{type_name}, JsError>"))
+                .arg(arg, arg_ty);
+            if let Some(prep) = prep {
+                try_from_fn.line(prep);
+            }
+            try_from_fn.line(format!(
+                "{native_wrapper}::try_from({arg}).map(Self).map_err(|e| JsError::new(&e.to_string()))"
+            ));
+            if !bounded_reject {
+                let try_opt_fn = wrapper
+                    .s_impl
+                    .new_fn("try_opt_from")
+                    .vis("pub")
+                    .ret(format!("Result<Option<{type_name}>, JsError>"))
+                    .arg(arg, arg_ty);
+                if let Some(prep) = prep {
+                    try_opt_fn.line(prep);
+                }
+                try_opt_fn.line(format!(
+                "{native_wrapper}::try_opt_from({arg}).map(|opt| opt.map(Self)).map_err(|e| JsError::new(&e.to_string()))"
+            ));
+            }
+        }
+        // A custom `@newtype <name>` getter (rare on a set nominal) still returns the companion —
+        // it does not collide with the flat `get(index)` above.
+        if let Some(Some(_)) = struct_config.newtype_getter.as_ref() {
+            let getter_body = format!("self.0.{getter_name}()");
+            wrapper
+                .s_impl
+                .new_fn(getter_name)
+                .vis("pub")
+                .arg_ref_self()
+                .ret(gen_scope.wasm_return_type(
+                    types,
+                    field_type,
+                    type_name,
+                    "wrapper custom getter return",
+                ))
+                .line(field_type.to_wasm_boundary(types, &getter_body, false));
+        }
+    } else if set_nominal {
+        // PRESERVE set nominal (`@duplicates preserve`): wraps a plain `Vec`/`NonEmptyVec`, so the
+        // uniqueness-twin flat surface above does not apply. It keeps the original 0-arg `get()`
+        // returning its companion list wrapper — reconstructed through the emitted
+        // `From<Wrapper> for <inner>` impl (a bare set nominal has no rust inherent `get()` to
+        // delegate to), then the usual inner→wasm boundary conversion. A custom `@newtype <name>`
+        // getter instead delegates to the rust getter, byte-identical.
+        let getter_body = if matches!(struct_config.newtype_getter.as_ref(), Some(Some(_))) {
+            format!("self.0.{getter_name}()")
+        } else {
+            // qualified-path form `<T>::from` — a generic inner (`Vec<u64>`) parses `<` as a
+            // comparison in the bare `T::from` spelling; `from_wasm=true` crate-qualifies the
+            // element so the inner spelling matches the structural wasm wrapper's native field.
+            format!(
+                "<{}>::from(self.0.clone())",
+                field_type.for_rust_member(types, true, cli)
+            )
+        };
+        let mut get = codegen::Function::new(getter_name);
+        get.vis("pub")
+            .arg_ref_self()
+            .ret(gen_scope.wasm_return_type(
+                types,
+                field_type,
+                type_name,
+                "wrapper set getter return",
+            ))
+            .line(field_type.to_wasm_boundary(types, &getter_body, false));
+        wrapper.s_impl.push_fn(get);
+    } else if emit_getter {
+        // Non-set wrappers keep delegating to the rust getter, byte-identical.
+        let getter_body = format!("self.0.{getter_name}()");
+        let mut get = codegen::Function::new(getter_name);
+        get.vis("pub")
+            .arg_ref_self()
+            .ret(gen_scope.wasm_return_type(types, field_type, type_name, "wrapper getter return"))
+            .line(field_type.to_wasm_boundary(types, &getter_body, false));
+        wrapper.s_impl.push_fn(get);
+    }
+    wrapper.push(gen_scope, types);
 }
 
 /// The carrier a set nominal wraps, as far as its ergonomic impls care. Mirrors the branch order of
