@@ -5395,7 +5395,7 @@ covered by `extern_interface_check_regen_over_deletion_no_trap`'s hand spec.
 A **coverage-by-construction** gate for the axis every OTHER construct gate is blind to: **module
 placement**. The corpus gates, the wasm-ABI matrix, and the parity differential all feed the
 generator SINGLE-file specs, so every construct is only ever verified in root scope. Multifile
-emission branches on scope — `mark_refs` (`intermediate/mod.rs`) resolves each collection
+emission branches on scope — `mark_refs` (`intermediate/scope_refs.rs`) resolves each collection
 occurrence's wasm wrapper NAME and HOME scope through `IntermediateTypes::wasm_collection_wrapper`
 (the emitter's `for_wasm_member` twin, `table_shape_sole_owners`-aware), while the wrapper/alias
 definitions land wherever `types.scope(ident)` puts them — and that region had exactly one hand

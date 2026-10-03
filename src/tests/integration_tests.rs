@@ -473,7 +473,7 @@ For more information about this error, try `rustc --explain E0583`.\n";
 /// (E0583 alias/enum-only non-root module declaring `pub mod serialization;` without the file;
 /// E0432 anonymous same-shape table importing the structural name from root scope instead of the
 /// sole owner's module; E0433 cross-module named `.cbor` ref omitting the inner-type import) are all
-/// fixed in `generation/export.rs`'s module-declaration loop and `intermediate/mod.rs`'s
+/// fixed in `generation/export.rs`'s module-declaration loop and `intermediate/scope_refs.rs`'s
 /// `scope_references`/`mark_refs`. The ARRAY/MAP structural-WRAPPER placement class is fixed too:
 /// `mark_refs` resolves each collection occurrence's wrapper NAME and HOME scope through the shared
 /// `wasm_collection_wrapper` helper (the emitter's `for_wasm_member` twin) instead of a hard-coded

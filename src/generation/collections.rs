@@ -980,7 +980,7 @@ impl GenerationScope {
         );
         // LOCKSTEP: a `@duplicates reject` rule of ANY bounds enters through `try_from(&<Elem>List)`
         // whenever this `loose_list` is `Some` (non-exposable, non-nested, not self-named element), so
-        // the import tracker's struct-walk Array arm (`scope_references`/`mark_refs`, intermediate/mod.rs)
+        // the import tracker's struct-walk Array arm (`scope_references`/`mark_refs`, intermediate/scope_refs.rs)
         // registers the loose source for reject rules under the SAME condition — its gate keys on
         // `duplicates == Reject` (not just the non-empty bound). Change the two together.
         // Only the LOCAL-mint path reaches here: a deferred wrapper returned above and borrows the
