@@ -3357,7 +3357,7 @@ fn build_map_field_deser_arm(
     deser_block
 }
 
-/// Shared constructor documentation buffering; argument rendering and projections stay explicit.
+/// Constructor documentation buffer shared by native and WASM emission.
 #[derive(Default)]
 struct ConstructorDocs {
     entries: Vec<String>,
@@ -3371,6 +3371,30 @@ impl ConstructorDocs {
     fn apply_to(self, constructor: &mut codegen::Function) {
         if !self.entries.is_empty() {
             constructor.doc(self.entries.join("\n"));
+        }
+    }
+}
+
+/// Buffer native projections and documentation while emitting each compatible WASM slot in order.
+#[derive(Default)]
+struct WasmCtorParams {
+    native_args: Vec<String>,
+    comments: ConstructorDocs,
+}
+
+impl WasmCtorParams {
+    fn push_single(
+        &mut self,
+        constructor: &mut codegen::Function,
+        param_name: &str,
+        render_type: impl FnOnce() -> String,
+        native_expression: impl FnOnce() -> String,
+        doc: impl FnOnce() -> Option<String>,
+    ) {
+        constructor.arg(param_name, render_type());
+        self.native_args.push(native_expression());
+        if let Some(comment) = doc() {
+            self.comments.push(comment);
         }
     }
 }
@@ -3396,8 +3420,7 @@ fn emit_record_wasm(
         wasm_new.ret("Self");
     }
     wasm_new.vis("pub");
-    let mut wasm_new_args = Vec::new();
-    let mut wasm_new_comments = ConstructorDocs::default();
+    let mut ctor_params = WasmCtorParams::default();
     let multi_array_segments =
         record.rep == Representation::Array && !record.array_segments.is_empty();
     for field in &record.fields {
@@ -3566,23 +3589,30 @@ fn emit_record_wasm(
                 }
             } else {
                 // new
-                wasm_new.arg(
+                ctor_params.push_single(
+                    &mut wasm_new,
                     &field.name,
-                    gen_scope.wasm_param_type(
-                        types,
-                        &field.rust_type,
-                        name,
-                        "record constructor parameter",
-                    ),
+                    || {
+                        gen_scope.wasm_param_type(
+                            types,
+                            &field.rust_type,
+                            name,
+                            "record constructor parameter",
+                        )
+                    },
+                    || {
+                        field
+                            .rust_type
+                            .from_wasm_boundary_clone_expr(types, &field.name, false)
+                    },
+                    || {
+                        field
+                            .rule_metadata
+                            .doc
+                            .as_ref()
+                            .map(|comment| format!("* `{}` - {}", field.name, comment))
+                    },
                 );
-                wasm_new_args.push(field.rust_type.from_wasm_boundary_clone_expr(
-                    types,
-                    &field.name,
-                    false,
-                ));
-                if let Some(comment) = &field.rule_metadata.doc {
-                    wasm_new_comments.push(format!("* `{}` - {}", field.name, comment));
-                }
                 // do we want setters here later for mandatory types covered by new?
                 // getter
                 let mut getter = codegen::Function::new(&field.name);
@@ -3660,21 +3690,25 @@ fn emit_record_wasm(
                         "open-table constructor value parameter",
                     ),
                 );
-            wasm_new_args.push(
+            ctor_params.native_args.push(
                 typed
                     .domain()
                     .from_wasm_boundary_clone_expr(types, &first_key, false),
             );
-            wasm_new_args.push(typed.range().from_wasm_boundary_clone_expr(
-                types,
-                &first_value,
-                false,
-            ));
-            wasm_new_comments.push(format!(
+            ctor_params
+                .native_args
+                .push(
+                    typed
+                        .range()
+                        .from_wasm_boundary_clone_expr(types, &first_value, false),
+                );
+            ctor_params.comments.push(format!(
                 "* `{first_key}` - the key of the first typed entry (CDDL `+ k1 => v1`: an open \
                  table spelled with `+` holds at least one typed entry)"
             ));
-            wasm_new_comments.push(format!("* `{first_value}` - its value"));
+            ctor_params
+                .comments
+                .push(format!("* `{first_value}` - its value"));
         } else if let Some((min, max)) = typed.container_type().bounded_map_u64_bounds() {
             // The bounded typed field has no whole-row wasm class — its public API remains the
             // owner's flattened map surface. A loose structural builder is the one auxiliary
@@ -3703,10 +3737,10 @@ fn emit_record_wasm(
             // by the collection wrapper doors.
             let staging_ty = builder.for_rust_member(types, true, cli);
             let carrier_ty = rest_member_type(typed).for_rust_member(types, true, cli);
-            wasm_new_args.push(format!(
+            ctor_params.native_args.push(format!(
                 "<{carrier_ty}>::try_from(<{staging_ty}>::from({builder_name}.clone())).map_err(|e| JsError::new(&e.to_string()))?"
             ));
-            wasm_new_comments.push(format!(
+            ctor_params.comments.push(format!(
                 "* `{builder_name}` - the loose typed-row builder for the bounded CDDL \
                  `{min}*{}` window; its complete contents are checked before construction",
                 if max == u64::MAX {
@@ -3751,24 +3785,31 @@ fn emit_record_wasm(
             .filter(|row| row.is_array_tail())
         {
             let rest_ty = rest_member_type(rest);
-            wasm_new.arg(
+            ctor_params.push_single(
+                &mut wasm_new,
                 &rest.field_name,
-                gen_scope.wasm_param_type(
-                    types,
-                    &rest_ty,
-                    name,
-                    "multiple-array-segment constructor parameter",
-                ),
+                || {
+                    gen_scope.wasm_param_type(
+                        types,
+                        &rest_ty,
+                        name,
+                        "multiple-array-segment constructor parameter",
+                    )
+                },
+                || {
+                    rest_ty.from_wasm_boundary_clone_expr(
+                        types,
+                        &rest.field_name,
+                        false,
+                    )
+                },
+                || {
+                    Some(format!(
+                        "* `{}` - the complete list wrapper for this authored array occurrence segment (its CDDL occurrence window is enforced before construction)",
+                        rest.field_name,
+                    ))
+                },
             );
-            wasm_new_args.push(rest_ty.from_wasm_boundary_clone_expr(
-                types,
-                &rest.field_name,
-                false,
-            ));
-            wasm_new_comments.push(format!(
-                "* `{}` - the complete list wrapper for this authored array occurrence segment (its CDDL occurrence window is enforced before construction)",
-                rest.field_name,
-            ));
         }
     }
     // A one-or-more open-array tail has the same valid-by-construction door as its Rust record:
@@ -3779,30 +3820,35 @@ fn emit_record_wasm(
         .filter(|row| !multi_array_segments && row.is_non_empty_array_tail())
     {
         let first_arg = first_array_tail_element_param_ident(record, rest);
-        wasm_new.arg(
+        ctor_params.push_single(
+            &mut wasm_new,
             &first_arg,
-            gen_scope.wasm_param_type(
-                types,
-                rest.element(),
-                name,
-                "open-array constructor first parameter",
-            ),
+            || {
+                gen_scope.wasm_param_type(
+                    types,
+                    rest.element(),
+                    name,
+                    "open-array constructor first parameter",
+                )
+            },
+            || {
+                rest.element()
+                    .from_wasm_boundary_clone_expr(types, &first_arg, false)
+            },
+            || {
+                Some(match array_segment_boundary(types, record, rest) {
+                    ArraySegmentBoundary::FixedDomainRetry => format!(
+                        "* `{first_arg}` - the first finite fixed-domain occurrence-segment element before its possible-next chain (CDDL `+ t` / `1* t`: the segment holds at least one element)"
+                    ),
+                    ArraySegmentBoundary::ExactCount | ArraySegmentBoundary::MajorDisjoint => format!(
+                        "* `{first_arg}` - the first major-disjoint occurrence-segment element before its later possible-next member (CDDL `+ t` / `1* t`: the segment holds at least one element)"
+                    ),
+                    ArraySegmentBoundary::Final => format!(
+                        "* `{first_arg}` - the first trailing element (CDDL `+ t` / `1* t`: the tail holds at least one element)"
+                    ),
+                })
+            },
         );
-        wasm_new_args.push(
-            rest.element()
-                .from_wasm_boundary_clone_expr(types, &first_arg, false),
-        );
-        wasm_new_comments.push(match array_segment_boundary(types, record, rest) {
-            ArraySegmentBoundary::FixedDomainRetry => format!(
-                "* `{first_arg}` - the first finite fixed-domain occurrence-segment element before its possible-next chain (CDDL `+ t` / `1* t`: the segment holds at least one element)"
-            ),
-            ArraySegmentBoundary::ExactCount | ArraySegmentBoundary::MajorDisjoint => format!(
-                "* `{first_arg}` - the first major-disjoint occurrence-segment element before its later possible-next member (CDDL `+ t` / `1* t`: the segment holds at least one element)"
-            ),
-            ArraySegmentBoundary::Final => format!(
-                "* `{first_arg}` - the first trailing element (CDDL `+ t` / `1* t`: the tail holds at least one element)"
-            ),
-        });
     }
     // Every bounded array tail is supplied as its complete checked list wrapper. Unlike the
     // min-one compatibility ABI above it must not be rebuilt from a first element, and unlike a
@@ -3814,35 +3860,42 @@ fn emit_record_wasm(
             && !row.is_non_empty_array_tail()
     }) {
         let rest_ty = rest_member_type(rest);
-        wasm_new.arg(
+        ctor_params.push_single(
+            &mut wasm_new,
             &rest.field_name,
-            gen_scope.wasm_param_type(
-                types,
-                &rest_ty,
-                name,
-                "open-array bounded constructor parameter",
-            ),
+            || {
+                gen_scope.wasm_param_type(
+                    types,
+                    &rest_ty,
+                    name,
+                    "open-array bounded constructor parameter",
+                )
+            },
+            || {
+                rest_ty.from_wasm_boundary_clone_expr(types, &rest.field_name, false)
+            },
+            || {
+                Some(match array_segment_boundary(types, record, rest) {
+                    ArraySegmentBoundary::ExactCount => format!(
+                        "* `{}` - the complete checked exact-count occurrence-segment wrapper before its later authored member (its CDDL occurrence window is enforced before construction)",
+                        rest.field_name
+                    ),
+                    ArraySegmentBoundary::FixedDomainRetry => format!(
+                        "* `{}` - the complete checked finite fixed-domain occurrence-segment wrapper before its possible-next chain (its CDDL occurrence window is enforced before construction)",
+                        rest.field_name
+                    ),
+                    ArraySegmentBoundary::MajorDisjoint => format!(
+                        "* `{}` - the complete checked major-disjoint occurrence-segment wrapper before its later possible-next member (its CDDL occurrence window is enforced before construction)",
+                        rest.field_name
+                    ),
+                    ArraySegmentBoundary::Final => format!(
+                        "* `{}` - the complete checked trailing-array wrapper (its CDDL occurrence window \
+                         is enforced before construction)",
+                        rest.field_name
+                    ),
+                })
+            },
         );
-        wasm_new_args.push(rest_ty.from_wasm_boundary_clone_expr(types, &rest.field_name, false));
-        wasm_new_comments.push(match array_segment_boundary(types, record, rest) {
-            ArraySegmentBoundary::ExactCount => format!(
-                "* `{}` - the complete checked exact-count occurrence-segment wrapper before its later authored member (its CDDL occurrence window is enforced before construction)",
-                rest.field_name
-            ),
-            ArraySegmentBoundary::FixedDomainRetry => format!(
-                "* `{}` - the complete checked finite fixed-domain occurrence-segment wrapper before its possible-next chain (its CDDL occurrence window is enforced before construction)",
-                rest.field_name
-            ),
-            ArraySegmentBoundary::MajorDisjoint => format!(
-                "* `{}` - the complete checked major-disjoint occurrence-segment wrapper before its later possible-next member (its CDDL occurrence window is enforced before construction)",
-                rest.field_name
-            ),
-            ArraySegmentBoundary::Final => format!(
-                "* `{}` - the complete checked trailing-array wrapper (its CDDL occurrence window \
-                 is enforced before construction)",
-                rest.field_name
-            ),
-        });
     }
     // A restricted open-struct rest or open-table catch-all has a read-only wasm getter, so it
     // cannot default to an empty carrier without making admitted non-empty values impossible to
@@ -3853,21 +3906,28 @@ fn emit_record_wasm(
         .filter(|row| !record.is_typed_row(row) && record.ctor_takes_complete_map_row(row, types))
     {
         let rest_ty = rest_member_type(rest);
-        wasm_new.arg(
+        ctor_params.push_single(
+            &mut wasm_new,
             &rest.field_name,
-            gen_scope.wasm_param_type(
-                types,
-                &rest_ty,
-                name,
-                "open-map restricted constructor parameter",
-            ),
+            || {
+                gen_scope.wasm_param_type(
+                    types,
+                    &rest_ty,
+                    name,
+                    "open-map restricted constructor parameter",
+                )
+            },
+            || {
+                rest_ty.from_wasm_boundary_clone_expr(types, &rest.field_name, false)
+            },
+            || {
+                Some(format!(
+                    "* `{}` - the complete checked captured map row (its declared occurrence window \
+                     is enforced before construction)",
+                    rest.field_name
+                ))
+            },
         );
-        wasm_new_args.push(rest_ty.from_wasm_boundary_clone_expr(types, &rest.field_name, false));
-        wasm_new_comments.push(format!(
-            "* `{}` - the complete checked captured map row (its declared occurrence window \
-             is enforced before construction)",
-            rest.field_name
-        ));
     }
     // Open rest (CAPTURE only): a getter returning the captured content as its minted wasm wrapper
     // — a map wrapper (`MapKToV` / the `@duplicates preserve` PairMap-backed twin) for a `* k => v`
@@ -4065,6 +4125,10 @@ fn emit_record_wasm(
     // source order.  The wasm surface keeps its established field-then-wrapper parameter
     // layout, so assemble the native call independently instead of assuming both orders are
     // identical (which would feed a list wrapper to the next fixed scalar).
+    let WasmCtorParams {
+        native_args,
+        comments,
+    } = ctor_params;
     let wasm_native_new_args = if record.rep == Representation::Array
         && !record.array_segments.is_empty()
     {
@@ -4101,7 +4165,7 @@ fn emit_record_wasm(
         args.sort_by_key(|(source_index, _)| *source_index);
         args.into_iter().map(|(_, arg)| arg).collect::<Vec<_>>()
     } else {
-        wasm_new_args
+        native_args
     };
     if new_can_fail {
         wasm_new.line(format!(
@@ -4122,7 +4186,7 @@ fn emit_record_wasm(
             wasm_native_new_args.join(", ")
         ));
     }
-    wasm_new_comments.apply_to(&mut wasm_new);
+    comments.apply_to(&mut wasm_new);
     if let Some(doc) = ignore_aware_doc(config.doc.as_deref(), record, record.ignored_rest()) {
         wrapper.s.doc(&doc);
     }
