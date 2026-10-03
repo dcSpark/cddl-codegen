@@ -3357,6 +3357,763 @@ fn build_map_field_deser_arm(
     deser_block
 }
 
+/// Emit the complete WASM record face; the coordinator owns the WASM gate and fallibility flags.
+/// Keep parameter projections, renderer/conversion batches and inline bounded handovers in order.
+#[allow(clippy::too_many_arguments)] // Explicit phase inputs preserve borrow splitting and evaluation order.
+fn emit_record_wasm(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    name: &RustIdent,
+    record: &RustRecord,
+    config: &RustStructConfig,
+    cli: &Cli,
+    new_can_fail: bool,
+    wasm_new_can_fail: bool,
+) {
+    let mut wrapper = create_base_wasm_wrapper(gen_scope, types, name, true, cli);
+    let mut wasm_new = codegen::Function::new("new");
+    if wasm_new_can_fail {
+        wasm_new.ret(format!("Result<{name}, JsError>"));
+    } else {
+        wasm_new.ret("Self");
+    }
+    wasm_new.vis("pub");
+    let mut wasm_new_args = Vec::new();
+    let mut wasm_new_comments = Vec::new();
+    let multi_array_segments =
+        record.rep == Representation::Array && !record.array_segments.is_empty();
+    for field in &record.fields {
+        // Fixed values don't need constructors or getters or fields in the rust code
+        if !field.rust_type.conceptual_type.is_fixed_value() {
+            if field.optional {
+                // setter
+                let mut setter = codegen::Function::new(format!("set_{}", field.name));
+                setter
+                    .arg_mut_self()
+                    .arg(
+                        &field.name,
+                        gen_scope.wasm_param_type(
+                            types,
+                            &field.rust_type,
+                            name,
+                            "record optional setter parameter",
+                        ),
+                    )
+                    .vis("pub");
+                // don't call needs_bounds_check_if_inlined() since if it's a RustType it's checked during that ctor
+                let setter_can_fail = field.rust_type.has_value_bounds();
+                if setter_can_fail {
+                    setter.ret("Result<(), JsError>");
+                    if let Some(line) = wasm_bounds_check_line(
+                        &field.rust_type,
+                        &field.name,
+                        &cli.common_import_wasm(),
+                    ) {
+                        setter.line(&line);
+                    }
+                }
+                let value =
+                    field
+                        .rust_type
+                        .from_wasm_boundary_clone_expr(types, &field.name, false);
+                let assignment = if field.rust_type.config.default.is_some() {
+                    format!("self.0.{} = {value}", field.name)
+                } else {
+                    format!("self.0.{} = Some({value})", field.name)
+                };
+                if setter_can_fail {
+                    setter.line(format!("{assignment};")).line("Ok(())");
+                } else {
+                    setter.line(assignment);
+                }
+
+                wrapper.s_impl.push_fn(setter);
+                // getter
+                // Set true iff the getter takes the flatten path below (nullable optional field
+                // stored as Option<Option<T>>). This is the single source of truth for "this
+                // position is lossy", so the `has_<field>` presence accessor emitted after the
+                // getter can never drift from the flatten emission.
+                let mut field_getter_flattens = false;
+                let mut getter = codegen::Function::new(&field.name);
+                getter.arg_ref_self().vis("pub");
+                if field.rust_type.config.default.is_some() {
+                    getter
+                        .ret(gen_scope.wasm_return_type(
+                            types,
+                            &field.rust_type,
+                            name,
+                            "record optional getter return",
+                        ))
+                        .line(field.rust_type.to_wasm_boundary(
+                            types,
+                            &format!("self.0.{}", field.name),
+                            false,
+                        ));
+                } else if field.is_double_option() {
+                    // A nullable optional field is stored as `Option<Option<T>>`, which
+                    // wasm-bindgen can't return. Flatten the presence-`Option` into the value's
+                    // `Option` and return a single `Option<T>` (same convention as the map
+                    // accessors / c-style enum getters). Native storage keeps all three states
+                    // (absent / present-null / present-value), so CBOR round-trips are unaffected —
+                    // only the wasm read conflates absent with present-null.
+                    field_getter_flattens = true;
+                    let flattened = format!(
+                        "self.0.{}{}.flatten()",
+                        field.name,
+                        if field.rust_type.conceptual_type.is_copy(types) {
+                            ""
+                        } else {
+                            ".clone()"
+                        }
+                    );
+                    // `flatten()` yields the native carrier `Option<Inner>`. This branch
+                    // bypasses RustType::to_wasm_boundary_optional, so convert the inner value
+                    // to its wasm face here: an exact byte leaf (`[u8; N]`) loosens to
+                    // `Vec<u8>`; any inner that is not directly wasm-exposable (a record, data
+                    // enum, named or restricted collection, `@copy` extern) crosses through its
+                    // wrapper's `From<native>` impl, exactly as the ordinary optional getter does.
+                    let ConceptualRustType::Optional(inner) =
+                        field.rust_type.conceptual_type.resolve_alias_shallow()
+                    else {
+                        unreachable!("is_double_option() requires an Optional field type")
+                    };
+                    let flattened = if inner.exact_byte_array_len_checked().is_some() {
+                        format!("{flattened}.map(|bytes| bytes.to_vec())")
+                    } else if inner.directly_wasm_exposable(types) {
+                        flattened
+                    } else {
+                        format!("{flattened}.map(std::convert::Into::into)")
+                    };
+                    getter
+                        .doc("Returns None if the field is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).")
+                        .ret(gen_scope.wasm_return_type(types, &field.rust_type, name, "record optional getter return"))
+                        .line(flattened);
+                } else {
+                    getter
+                        .ret(format!(
+                            "Option<{}>",
+                            gen_scope.wasm_return_type(
+                                types,
+                                &field.rust_type,
+                                name,
+                                "record optional getter return"
+                            )
+                        ))
+                        .line(field.rust_type.to_wasm_boundary_optional(
+                            types,
+                            &format!("self.0.{}", field.name),
+                            false,
+                        ));
+                }
+                wrapper.s_impl.push_fn(getter);
+                // Presence accessor for the flattened optional-nullable field. The getter above
+                // collapses Option<Option<T>> -> Option<T> (absent and present-null both read
+                // None); `has_<field>()` exposes the outer presence so a JS consumer can tell the
+                // three states apart. Gated on `field_getter_flattens` — the exact flatten
+                // condition — so the accessor and the flatten can never diverge.
+                //
+                // Collision guard: the accessor name `has_<field>` is synthesized, so a sibling
+                // field literally named `has_<field>` (whose own wasm getter is `pub fn
+                // has_<field>`) would make two identically-named methods in one impl —
+                // non-compiling (E0592/E0201) for an otherwise-valid spec. On a clash we SKIP the
+                // disambiguator loudly rather than invent a rename: the flattening getter still
+                // works, only the three-state distinguisher is lost. The wasm getter surface of a
+                // record is exactly one method per non-fixed-value field, named `field.name`, so a
+                // clash is exactly `has_<field>` appearing as a sibling field name.
+                if field_getter_flattens {
+                    let has_name = format!("has_{}", field.name);
+                    let collides = record
+                        .fields
+                        .iter()
+                        .filter(|f| !f.rust_type.conceptual_type.is_fixed_value())
+                        .any(|f| f.name == has_name);
+                    if collides {
+                        crate::warn!(
+                            "cddl-codegen --wasm: {name}: presence accessor `{has_name}()` for \
+                             optional-nullable field `{}` collides with a sibling field of the \
+                             same name — skipping the accessor (the flattening getter still \
+                             works; the absent-vs-present-null distinction is lost for this field)",
+                            field.name
+                        );
+                    } else {
+                        let mut has_field = codegen::Function::new(&has_name);
+                        has_field
+                            .arg_ref_self()
+                            .vis("pub")
+                            .ret("bool")
+                            .doc("Returns whether the optional field is present (outer Some), distinguishing an absent field from a present-but-null one (both of which the getter reports as None).")
+                            .line(format!("self.0.{}.is_some()", field.name));
+                        wrapper.s_impl.push_fn(has_field);
+                    }
+                }
+            } else {
+                // new
+                wasm_new.arg(
+                    &field.name,
+                    gen_scope.wasm_param_type(
+                        types,
+                        &field.rust_type,
+                        name,
+                        "record constructor parameter",
+                    ),
+                );
+                wasm_new_args.push(field.rust_type.from_wasm_boundary_clone_expr(
+                    types,
+                    &field.name,
+                    false,
+                ));
+                if let Some(comment) = &field.rule_metadata.doc {
+                    wasm_new_comments.push(format!("* `{}` - {}", field.name, comment));
+                }
+                // do we want setters here later for mandatory types covered by new?
+                // getter
+                let mut getter = codegen::Function::new(&field.name);
+                getter
+                    .arg_ref_self()
+                    .ret(gen_scope.wasm_return_type(
+                        types,
+                        &field.rust_type,
+                        name,
+                        "record getter return",
+                    ))
+                    .vis("pub")
+                    .line(field.rust_type.to_wasm_boundary(
+                        types,
+                        &format!("self.0.{}", field.name),
+                        false,
+                    ));
+                wrapper.s_impl.push_fn(getter);
+            }
+        } else if field.optional && field.rust_type.conceptual_type.is_fixed_value() {
+            // Optional fixed value: the native struct stores presence as a `bool`. Expose that
+            // bit across the wasm boundary — getter returns it, setter sets it. (Mandatory
+            // fixed values carry no information and get no accessor, same as the rust side.)
+            let mut getter = codegen::Function::new(&field.name);
+            getter
+                .arg_ref_self()
+                .ret("bool")
+                .vis("pub")
+                .line(format!("self.0.{}", field.name));
+            wrapper.s_impl.push_fn(getter);
+            let mut setter = codegen::Function::new(format!("set_{}", field.name));
+            setter
+                .arg_mut_self()
+                .arg("present", "bool")
+                .vis("pub")
+                .line(format!("self.0.{} = present", field.name));
+            wrapper.s_impl.push_fn(setter);
+        }
+    }
+    // An OPEN TABLE's TYPED row: its map surface is FLATTENED onto THIS class instead of hung off
+    // a whole-map getter — `insert`/`get`/`len`/`keys` (plus `has` for a nullable value) delegate
+    // straight to the typed container field, through the very helper the two map-wrapper twins
+    // use. The rationale is the set nominal's, verbatim (`docs/docs/wasm_differences.mdx` §
+    // "Sets"): a wasm class has no `Deref`, so a two-layer `t.entries().get(k)` is the cost of a
+    // container getter, and a JS caller wants `t.get(k)`. It also means the typed row mints NO
+    // `MapKToV` class of its own, which is what leaves the collision-detector family at three new
+    // legs rather than four (see the note in `non_empty_map_wrapper_name_collisions`). The
+    // CATCH-ALL row keeps its container and its read-only `rest()` getter, below.
+    if let Some(typed) = record.typed_row().filter(|r| !r.is_array_tail()) {
+        // The NonEmpty flavor's construction door, mirroring the rust `new(first_key,
+        // first_value)` it calls: the ONE case where an open table's wasm `new` takes arguments.
+        if record.is_non_empty_open_table() {
+            let first_key =
+                record.fresh_open_table_non_empty_param_ident("first_key", std::iter::empty());
+            let first_value = record.fresh_open_table_non_empty_param_ident(
+                "first_value",
+                std::iter::once(first_key.clone()),
+            );
+            wasm_new
+                .arg(
+                    &first_key,
+                    gen_scope.wasm_param_type(
+                        types,
+                        typed.domain(),
+                        name,
+                        "open-table constructor key parameter",
+                    ),
+                )
+                .arg(
+                    &first_value,
+                    gen_scope.wasm_param_type(
+                        types,
+                        typed.range(),
+                        name,
+                        "open-table constructor value parameter",
+                    ),
+                );
+            wasm_new_args.push(
+                typed
+                    .domain()
+                    .from_wasm_boundary_clone_expr(types, &first_key, false),
+            );
+            wasm_new_args.push(typed.range().from_wasm_boundary_clone_expr(
+                types,
+                &first_value,
+                false,
+            ));
+            wasm_new_comments.push(format!(
+                "* `{first_key}` - the key of the first typed entry (CDDL `+ k1 => v1`: an open \
+                 table spelled with `+` holds at least one typed entry)"
+            ));
+            wasm_new_comments.push(format!("* `{first_value}` - its value"));
+        } else if let Some((min, max)) = typed.container_type().bounded_map_u64_bounds() {
+            // The bounded typed field has no whole-row wasm class — its public API remains the
+            // owner's flattened map surface. A loose structural builder is the one auxiliary
+            // class needed to hand a complete row to the checked native carrier, including a
+            // zero-minimum row: the native construction door must accept all valid complete
+            // values instead of forcing callers to reconstruct them by later mutation.
+            let builder_name = record
+                .fresh_bounded_typed_wasm_builder_ident(&format!("{}_builder", typed.field_name));
+            let builder = typed.staging_container_type();
+            wasm_new.arg(
+                &builder_name,
+                gen_scope.wasm_param_type(
+                    types,
+                    &builder,
+                    name,
+                    "open-table bounded constructor builder parameter",
+                ),
+            );
+            // The wrapper-to-loose-map `Into` must be given its native source type before it
+            // enters the bounded carrier's `TryFrom` door. A bare
+            // `entries_builder.clone().into().try_into()` leaves both conversions inferred
+            // from the final `?`, which rustc cannot solve for a wasm constructor argument.
+            // This code is emitted into the WASM crate, so its key/value types must use the
+            // rust-crate-qualified spelling (`cddl_lib::Pid`, not the wasm `Pid` wrapper).
+            // `for_rust_member(..., true, ...)` is the established wasm-to-rust spelling used
+            // by the collection wrapper doors.
+            let staging_ty = builder.for_rust_member(types, true, cli);
+            let carrier_ty = rest_member_type(typed).for_rust_member(types, true, cli);
+            wasm_new_args.push(format!(
+                "<{carrier_ty}>::try_from(<{staging_ty}>::from({builder_name}.clone())).map_err(|e| JsError::new(&e.to_string()))?"
+            ));
+            wasm_new_comments.push(format!(
+                "* `{builder_name}` - the loose typed-row builder for the bounded CDDL \
+                 `{min}*{}` window; its complete contents are checked before construction",
+                if max == u64::MAX {
+                    String::new()
+                } else {
+                    max.to_string()
+                }
+            ));
+        }
+        wrapper
+            .s_impl
+            .new_fn("len")
+            .vis("pub")
+            .ret("usize")
+            .arg_ref_self()
+            .doc(
+                "The number of TYPED entries (CDDL `* k1 => v1`, the first row). The catch-all \
+                 row's own count is `rest().len()`.",
+            )
+            .line(format!("self.0.{}.len()", typed.field_name));
+        push_table_accessors(
+            gen_scope,
+            &mut wrapper,
+            types,
+            name,
+            typed.domain(),
+            typed.range(),
+            &format!("self.0.{}", typed.field_name),
+            // A finite typed-row maximum is held by BoundedMap/BoundedPairMap, so flattened
+            // wasm insertion must surface the carrier's checked Result instead of exposing an
+            // unchecked mutation path. Min-only `+` retains its established infallible grow.
+            rest_member_type(typed).bounded_map_u64_bounds().is_some(),
+            cli,
+        );
+    }
+    // A multi-segment ARRAY has a complete wrapper parameter for every captured segment,
+    // including loose and one-or-more windows. This new shape is source-ordered at the native
+    // boundary; the wasm surface projects the arguments by source index before calling it.
+    if multi_array_segments {
+        for rest in record
+            .captured_dynamic_rows()
+            .filter(|row| row.is_array_tail())
+        {
+            let rest_ty = rest_member_type(rest);
+            wasm_new.arg(
+                &rest.field_name,
+                gen_scope.wasm_param_type(
+                    types,
+                    &rest_ty,
+                    name,
+                    "multiple-array-segment constructor parameter",
+                ),
+            );
+            wasm_new_args.push(rest_ty.from_wasm_boundary_clone_expr(
+                types,
+                &rest.field_name,
+                false,
+            ));
+            wasm_new_comments.push(format!(
+                "* `{}` - the complete list wrapper for this authored array occurrence segment (its CDDL occurrence window is enforced before construction)",
+                rest.field_name,
+            ));
+        }
+    }
+    // A one-or-more open-array tail has the same valid-by-construction door as its Rust record:
+    // take one element here and let the Rust `new(first)` build the restricted `NonEmptyVec`.
+    // The parameter name is shared with the Rust constructor (`first_array_tail_element_param_ident`).
+    for rest in record
+        .captured_dynamic_rows()
+        .filter(|row| !multi_array_segments && row.is_non_empty_array_tail())
+    {
+        let first_arg = first_array_tail_element_param_ident(record, rest);
+        wasm_new.arg(
+            &first_arg,
+            gen_scope.wasm_param_type(
+                types,
+                rest.element(),
+                name,
+                "open-array constructor first parameter",
+            ),
+        );
+        wasm_new_args.push(
+            rest.element()
+                .from_wasm_boundary_clone_expr(types, &first_arg, false),
+        );
+        wasm_new_comments.push(match array_segment_boundary(types, record, rest) {
+            ArraySegmentBoundary::FixedDomainRetry => format!(
+                "* `{first_arg}` - the first finite fixed-domain occurrence-segment element before its possible-next chain (CDDL `+ t` / `1* t`: the segment holds at least one element)"
+            ),
+            ArraySegmentBoundary::ExactCount | ArraySegmentBoundary::MajorDisjoint => format!(
+                "* `{first_arg}` - the first major-disjoint occurrence-segment element before its later possible-next member (CDDL `+ t` / `1* t`: the segment holds at least one element)"
+            ),
+            ArraySegmentBoundary::Final => format!(
+                "* `{first_arg}` - the first trailing element (CDDL `+ t` / `1* t`: the tail holds at least one element)"
+            ),
+        });
+    }
+    // Every bounded array tail is supplied as its complete checked list wrapper. Unlike the
+    // min-one compatibility ABI above it must not be rebuilt from a first element, and unlike a
+    // loose tail it must not default empty (zero-minimum windows still admit non-empty values).
+    for rest in record.captured_dynamic_rows().filter(|row| {
+        !multi_array_segments
+            && row.is_array_tail()
+            && row.is_restricted()
+            && !row.is_non_empty_array_tail()
+    }) {
+        let rest_ty = rest_member_type(rest);
+        wasm_new.arg(
+            &rest.field_name,
+            gen_scope.wasm_param_type(
+                types,
+                &rest_ty,
+                name,
+                "open-array bounded constructor parameter",
+            ),
+        );
+        wasm_new_args.push(rest_ty.from_wasm_boundary_clone_expr(types, &rest.field_name, false));
+        wasm_new_comments.push(match array_segment_boundary(types, record, rest) {
+            ArraySegmentBoundary::ExactCount => format!(
+                "* `{}` - the complete checked exact-count occurrence-segment wrapper before its later authored member (its CDDL occurrence window is enforced before construction)",
+                rest.field_name
+            ),
+            ArraySegmentBoundary::FixedDomainRetry => format!(
+                "* `{}` - the complete checked finite fixed-domain occurrence-segment wrapper before its possible-next chain (its CDDL occurrence window is enforced before construction)",
+                rest.field_name
+            ),
+            ArraySegmentBoundary::MajorDisjoint => format!(
+                "* `{}` - the complete checked major-disjoint occurrence-segment wrapper before its later possible-next member (its CDDL occurrence window is enforced before construction)",
+                rest.field_name
+            ),
+            ArraySegmentBoundary::Final => format!(
+                "* `{}` - the complete checked trailing-array wrapper (its CDDL occurrence window \
+                 is enforced before construction)",
+                rest.field_name
+            ),
+        });
+    }
+    // A restricted open-struct rest or open-table catch-all has a read-only wasm getter, so it
+    // cannot default to an empty carrier without making admitted non-empty values impossible to
+    // build on this face.  Pass its complete checked structural wrapper through to the native
+    // constructor.  The typed row is deliberately excluded: it remains flattened above.
+    for rest in record
+        .captured_dynamic_rows()
+        .filter(|row| !record.is_typed_row(row) && record.ctor_takes_complete_map_row(row, types))
+    {
+        let rest_ty = rest_member_type(rest);
+        wasm_new.arg(
+            &rest.field_name,
+            gen_scope.wasm_param_type(
+                types,
+                &rest_ty,
+                name,
+                "open-map restricted constructor parameter",
+            ),
+        );
+        wasm_new_args.push(rest_ty.from_wasm_boundary_clone_expr(types, &rest.field_name, false));
+        wasm_new_comments.push(format!(
+            "* `{}` - the complete checked captured map row (its declared occurrence window \
+             is enforced before construction)",
+            rest.field_name
+        ));
+    }
+    // Open rest (CAPTURE only): a getter returning the captured content as its minted wasm wrapper
+    // — a map wrapper (`MapKToV` / the `@duplicates preserve` PairMap-backed twin) for a `* k => v`
+    // row, or a list wrapper (`TList` / `AnyList`) for an array `* t` tail. Loose rows have no
+    // `new()` arg and default empty. The returned wrapper is a detached snapshot; captured map
+    // rows mutate the parent through the record-level `insert_<row>` door below. Restricted map
+    // rows enter `new()` as a complete checked wrapper and use that same checked mutation door.
+    // The wrapper
+    // class is minted in the wasm pass (`WrapperMintWalk::mint` for the rest map/list).
+    // An `@ignore` row/tail stores nothing, so it has no getter (its wasm class is a closed struct's).
+    // An open table's TYPED row is excluded — its surface is flattened above.
+    for rest in record
+        .captured_dynamic_rows()
+        .filter(|r| !record.is_typed_row(r))
+    {
+        let rest_ty = rest_member_type(rest);
+        let boundary = array_segment_boundary(types, record, rest);
+        let mut getter = codegen::Function::new(&rest.field_name);
+        getter
+            .arg_ref_self()
+            .ret(gen_scope.wasm_return_type(types, &rest_ty, name, "open-rest getter return"))
+            .vis("pub")
+            .doc(if rest.is_array_tail() && !record.array_segments.is_empty() {
+                match boundary {
+                    ArraySegmentBoundary::FixedDomainRetry => {
+                        "The captured finite fixed-domain occurrence segment before its possible-next \
+                         chain, as its wasm list wrapper; the decoder retries the repeated element \
+                         and restores the later-member cursor."
+                    }
+                    ArraySegmentBoundary::ExactCount | ArraySegmentBoundary::MajorDisjoint => {
+                        "The captured array occurrence segment before a later authored member, as its \
+                         wasm list wrapper; its greedy boundary is generator-proven from the possible-next \
+                         wire heads or owned by its occurrence count."
+                    }
+                    ArraySegmentBoundary::Final => {
+                        "The captured final authored array occurrence segment, as its wasm list wrapper; \
+                         its occurrence window is enforced before construction."
+                    }
+                }
+            } else if rest.is_array_tail() && !boundary.is_final() {
+                match boundary {
+                    ArraySegmentBoundary::FixedDomainRetry => {
+                        "The captured finite fixed-domain occurrence segment before its possible-next \
+                         chain, as the wasm list wrapper; the decoder retries the repeated element \
+                         and restores the later-member cursor."
+                    }
+                    _ if rest.is_non_empty_array_tail() => {
+                        "The captured one-or-more major-disjoint occurrence segment before its later \
+                         possible-next member (CDDL `+ t` / `1* t`), as the restricted wasm list \
+                         wrapper."
+                    }
+                    ArraySegmentBoundary::ExactCount if rest.is_restricted() => {
+                        "The captured bounded exact-count occurrence segment before a later \
+                         authored member, as its checked wasm list wrapper."
+                    }
+                    _ if rest.is_restricted() => {
+                        "The captured bounded major-disjoint occurrence segment before a later \
+                         possible-next member, as its checked wasm list wrapper."
+                    }
+                    _ => {
+                        "The captured major-disjoint occurrence segment before a later possible-next \
+                         member (CDDL `* t`), as the wasm list wrapper."
+                    }
+                }
+            } else if rest.is_non_empty_array_tail() {
+                "The captured one-or-more trailing array elements beyond the declared members \
+                 (CDDL `+ t` / `1* t` rest tail), as the restricted wasm list wrapper."
+            } else if rest.is_array_tail() && rest.is_restricted() {
+                "The captured bounded trailing array elements beyond the declared members, as \
+                 their checked wasm list wrapper."
+            } else if rest.is_array_tail() {
+                "The captured trailing array elements beyond the declared members (CDDL \
+                 `* t` rest tail), as the wasm list wrapper."
+            } else if rest.is_restricted() {
+                "The complete checked captured open-map row, as its read-only restricted wasm \
+                 map wrapper. Its CDDL occurrence window was enforced before construction."
+            } else {
+                "The captured open-map entries whose keys are not declared fields (CDDL \
+                 `* k => v` rest row), as the wasm map wrapper."
+            })
+            .line(rest_ty.to_wasm_boundary(
+                types,
+                &if record.has_protected_rest_keys(types) && !rest.is_array_tail() {
+                    format!("self.0.{}()", rest.field_name)
+                } else {
+                    format!("self.0.{}", rest.field_name)
+                },
+                false,
+            ));
+        wrapper.s_impl.push_fn(getter);
+    }
+    // An open-map getter deliberately returns an owned snapshot: wasm-bindgen cannot lend the
+    // native field through a JS object.  Its map-wrapper `insert` therefore mutates only that
+    // snapshot.  Give every captured MAP row an explicit mutation door on the OWNER instead.
+    // Array tails remain snapshot-only, as do `@ignore` rows (which have no stored carrier at
+    // all); the open-table typed row is already the owner's flattened `insert` surface above.
+    //
+    // The return is uniformly `Result<(), JsError>`.  A map wrapper's `insert` returns a
+    // displaced value, but that result is not meaningful for the record operation (and a
+    // PairMap has no displaced value because it appends).  The common unit result instead
+    // makes every invariant-bearing case honest: exact-zero records delegate to their native
+    // validation door, and bounded carriers preserve their checked/atomic insert path.
+    for rest in record
+        .captured_dynamic_rows()
+        .filter(|row| !record.is_typed_row(row) && !row.is_array_tail())
+    {
+        let method_name = format!("insert_{}", rest.field_name);
+        let snapshot_getter = format!("`{}()`", rest.field_name);
+        // A collision-protected row delegates to the native record's public insertion door.
+        // Its loose exact-byte parameters are intentionally `Vec<u8>` because that native door
+        // owns the named Vec-to-array conversion. Every other row mutates its carrier directly
+        // below, so it must perform the handover on this wasm face before storage.
+        let direct_storage = !record.has_protected_rest_keys(types);
+        let key = direct_storage
+            .then(|| super::collections::wasm_exact_byte_handover(rest.domain(), "key", cli))
+            .flatten()
+            .unwrap_or_else(|| {
+                rest.domain()
+                    .from_wasm_boundary_clone_expr(types, "key", false)
+            });
+        let value = direct_storage
+            .then(|| super::collections::wasm_exact_byte_handover(rest.range(), "value", cli))
+            .flatten()
+            .unwrap_or_else(|| {
+                rest.range()
+                    .from_wasm_boundary_clone_expr(types, "value", false)
+            });
+        let mut insert = codegen::Function::new(&method_name);
+        insert
+            .arg_mut_self()
+            .arg(
+                "key",
+                gen_scope.wasm_param_type(
+                    types,
+                    rest.domain(),
+                    name,
+                    "open-rest insert key parameter",
+                ),
+            )
+            .arg(
+                "value",
+                gen_scope.wasm_param_type(
+                    types,
+                    rest.range(),
+                    name,
+                    "open-rest insert value parameter",
+                ),
+            )
+            .ret("Result<(), JsError>")
+            .vis("pub")
+            .doc(if record.has_protected_rest_keys(types) {
+                format!(
+                    "Inserts an entry into this record's captured open-map row. The native record \
+                     rejects collisions with declared and exact-zero fixed keys before changing \
+                     the parent; failures are returned as `JsError`. {snapshot_getter} remains \
+                     a detached read snapshot."
+                )
+            } else if rest_member_type(rest).bounded_map_u64_bounds().is_some() {
+                format!(
+                    "Inserts an entry into this record's captured open-map row through its checked \
+                     occurrence carrier. A maximum-window failure leaves the parent unchanged and \
+                     is returned as `JsError`. {snapshot_getter} remains a detached read snapshot."
+                )
+            } else {
+                format!(
+                    "Inserts an entry into this record's captured open-map row. This mutates the \
+                     parent record; {snapshot_getter} remains a detached read snapshot. Under \
+                     `@duplicates preserve`, each call appends a pair rather than replacing an \
+                     equal key."
+                )
+            });
+        if record.has_protected_rest_keys(types) {
+            // Collision-protected records deliberately keep their rest field private. Reuse the
+            // native record-level door so wasm cannot duplicate (and later drift from) its
+            // typed/any/preserve key comparison and clone-and-swap atomicity rules.
+            insert.line(format!(
+                "self.0.{method_name}({key}, {value}).map_err(|e| JsError::new(&e.to_string()))"
+            ));
+        } else if rest_member_type(rest).bounded_map_u64_bounds().is_some() {
+            insert.line(format!(
+                "self.0.{}.insert({key}, {value}).map(|_| ()).map_err(|e| JsError::new(&e.to_string()))",
+                rest.field_name
+            ));
+        } else {
+            insert
+                .line(format!(
+                    "self.0.{}.insert({key}, {value});",
+                    rest.field_name
+                ))
+                .line("Ok(())");
+        }
+        wrapper.s_impl.push_fn(insert);
+    }
+    // The native constructor for a multiple occurrence-segment record deliberately follows CDDL
+    // source order.  The wasm surface keeps its established field-then-wrapper parameter
+    // layout, so assemble the native call independently instead of assuming both orders are
+    // identical (which would feed a list wrapper to the next fixed scalar).
+    let wasm_native_new_args = if record.rep == Representation::Array
+        && !record.array_segments.is_empty()
+    {
+        let mut args: Vec<(usize, String)> = record
+            .fields
+            .iter()
+            .filter(|field| {
+                !field.optional
+                    && !field.rust_type.conceptual_type.is_fixed_value()
+                    && field.rust_type.config.default.is_none()
+            })
+            .map(|field| {
+                (
+                    field.source_index,
+                    field
+                        .rust_type
+                        .from_wasm_boundary_clone_expr(types, &field.name, false),
+                )
+            })
+            .chain(
+                record
+                    .captured_dynamic_rows()
+                    .filter(|row| row.is_array_tail())
+                    .map(|row| {
+                        let rest_ty = rest_member_type(row);
+                        (
+                            row.array_source_index()
+                                .expect("array segment has a source index"),
+                            rest_ty.from_wasm_boundary_clone_expr(types, &row.field_name, false),
+                        )
+                    }),
+            )
+            .collect();
+        args.sort_by_key(|(source_index, _)| *source_index);
+        args.into_iter().map(|(_, arg)| arg).collect::<Vec<_>>()
+    } else {
+        wasm_new_args
+    };
+    if new_can_fail {
+        wasm_new.line(format!(
+            "{}::new({}).map(Into::into).map_err(Into::into)",
+            rust_crate_struct_from_wasm(types, name, cli),
+            wasm_native_new_args.join(", ")
+        ));
+    } else if wasm_new_can_fail {
+        wasm_new.line(format!(
+            "Ok(Self({}::new({})))",
+            rust_crate_struct_from_wasm(types, name, cli),
+            wasm_native_new_args.join(", ")
+        ));
+    } else {
+        wasm_new.line(format!(
+            "Self({}::new({}))",
+            rust_crate_struct_from_wasm(types, name, cli),
+            wasm_native_new_args.join(", ")
+        ));
+    }
+    if !wasm_new_comments.is_empty() {
+        wasm_new.doc(wasm_new_comments.join("\n"));
+    }
+    if let Some(doc) = ignore_aware_doc(config.doc.as_deref(), record, record.ignored_rest()) {
+        wrapper.s.doc(&doc);
+    }
+    wrapper.s_impl.push_fn(wasm_new);
+    wrapper.push(gen_scope, types);
+}
+
 pub(super) fn codegen_struct(
     gen_scope: &mut GenerationScope,
     types: &IntermediateTypes,
@@ -3378,761 +4135,16 @@ pub(super) fn codegen_struct(
     let wasm_new_can_fail = new_can_fail || typed_bounded_wasm_builder.is_some();
     // wasm wrapper
     if cli.wasm {
-        let mut wrapper = create_base_wasm_wrapper(gen_scope, types, name, true, cli);
-        let mut wasm_new = codegen::Function::new("new");
-        if wasm_new_can_fail {
-            wasm_new.ret(format!("Result<{name}, JsError>"));
-        } else {
-            wasm_new.ret("Self");
-        }
-        wasm_new.vis("pub");
-        let mut wasm_new_args = Vec::new();
-        let mut wasm_new_comments = Vec::new();
-        let multi_array_segments =
-            record.rep == Representation::Array && !record.array_segments.is_empty();
-        for field in &record.fields {
-            // Fixed values don't need constructors or getters or fields in the rust code
-            if !field.rust_type.conceptual_type.is_fixed_value() {
-                if field.optional {
-                    // setter
-                    let mut setter = codegen::Function::new(format!("set_{}", field.name));
-                    setter
-                        .arg_mut_self()
-                        .arg(
-                            &field.name,
-                            gen_scope.wasm_param_type(
-                                types,
-                                &field.rust_type,
-                                name,
-                                "record optional setter parameter",
-                            ),
-                        )
-                        .vis("pub");
-                    // don't call needs_bounds_check_if_inlined() since if it's a RustType it's checked during that ctor
-                    let setter_can_fail = field.rust_type.has_value_bounds();
-                    if setter_can_fail {
-                        setter.ret("Result<(), JsError>");
-                        if let Some(line) = wasm_bounds_check_line(
-                            &field.rust_type,
-                            &field.name,
-                            &cli.common_import_wasm(),
-                        ) {
-                            setter.line(&line);
-                        }
-                    }
-                    let value =
-                        field
-                            .rust_type
-                            .from_wasm_boundary_clone_expr(types, &field.name, false);
-                    let assignment = if field.rust_type.config.default.is_some() {
-                        format!("self.0.{} = {value}", field.name)
-                    } else {
-                        format!("self.0.{} = Some({value})", field.name)
-                    };
-                    if setter_can_fail {
-                        setter.line(format!("{assignment};")).line("Ok(())");
-                    } else {
-                        setter.line(assignment);
-                    }
-
-                    wrapper.s_impl.push_fn(setter);
-                    // getter
-                    // Set true iff the getter takes the flatten path below (nullable optional field
-                    // stored as Option<Option<T>>). This is the single source of truth for "this
-                    // position is lossy", so the `has_<field>` presence accessor emitted after the
-                    // getter can never drift from the flatten emission.
-                    let mut field_getter_flattens = false;
-                    let mut getter = codegen::Function::new(&field.name);
-                    getter.arg_ref_self().vis("pub");
-                    if field.rust_type.config.default.is_some() {
-                        getter
-                            .ret(gen_scope.wasm_return_type(
-                                types,
-                                &field.rust_type,
-                                name,
-                                "record optional getter return",
-                            ))
-                            .line(field.rust_type.to_wasm_boundary(
-                                types,
-                                &format!("self.0.{}", field.name),
-                                false,
-                            ));
-                    } else if field.is_double_option() {
-                        // A nullable optional field is stored as `Option<Option<T>>`, which
-                        // wasm-bindgen can't return. Flatten the presence-`Option` into the value's
-                        // `Option` and return a single `Option<T>` (same convention as the map
-                        // accessors / c-style enum getters). Native storage keeps all three states
-                        // (absent / present-null / present-value), so CBOR round-trips are unaffected —
-                        // only the wasm read conflates absent with present-null.
-                        field_getter_flattens = true;
-                        let flattened = format!(
-                            "self.0.{}{}.flatten()",
-                            field.name,
-                            if field.rust_type.conceptual_type.is_copy(types) {
-                                ""
-                            } else {
-                                ".clone()"
-                            }
-                        );
-                        // `flatten()` yields the native carrier `Option<Inner>`. This branch
-                        // bypasses RustType::to_wasm_boundary_optional, so convert the inner value
-                        // to its wasm face here: an exact byte leaf (`[u8; N]`) loosens to
-                        // `Vec<u8>`; any inner that is not directly wasm-exposable (a record, data
-                        // enum, named or restricted collection, `@copy` extern) crosses through its
-                        // wrapper's `From<native>` impl, exactly as the ordinary optional getter does.
-                        let ConceptualRustType::Optional(inner) =
-                            field.rust_type.conceptual_type.resolve_alias_shallow()
-                        else {
-                            unreachable!("is_double_option() requires an Optional field type")
-                        };
-                        let flattened = if inner.exact_byte_array_len_checked().is_some() {
-                            format!("{flattened}.map(|bytes| bytes.to_vec())")
-                        } else if inner.directly_wasm_exposable(types) {
-                            flattened
-                        } else {
-                            format!("{flattened}.map(std::convert::Into::into)")
-                        };
-                        getter
-                            .doc("Returns None if the field is absent OR present-but-null (wasm-bindgen can't represent Option<Option<T>>).")
-                            .ret(gen_scope.wasm_return_type(types, &field.rust_type, name, "record optional getter return"))
-                            .line(flattened);
-                    } else {
-                        getter
-                            .ret(format!(
-                                "Option<{}>",
-                                gen_scope.wasm_return_type(
-                                    types,
-                                    &field.rust_type,
-                                    name,
-                                    "record optional getter return"
-                                )
-                            ))
-                            .line(field.rust_type.to_wasm_boundary_optional(
-                                types,
-                                &format!("self.0.{}", field.name),
-                                false,
-                            ));
-                    }
-                    wrapper.s_impl.push_fn(getter);
-                    // Presence accessor for the flattened optional-nullable field. The getter above
-                    // collapses Option<Option<T>> -> Option<T> (absent and present-null both read
-                    // None); `has_<field>()` exposes the outer presence so a JS consumer can tell the
-                    // three states apart. Gated on `field_getter_flattens` — the exact flatten
-                    // condition — so the accessor and the flatten can never diverge.
-                    //
-                    // Collision guard: the accessor name `has_<field>` is synthesized, so a sibling
-                    // field literally named `has_<field>` (whose own wasm getter is `pub fn
-                    // has_<field>`) would make two identically-named methods in one impl —
-                    // non-compiling (E0592/E0201) for an otherwise-valid spec. On a clash we SKIP the
-                    // disambiguator loudly rather than invent a rename: the flattening getter still
-                    // works, only the three-state distinguisher is lost. The wasm getter surface of a
-                    // record is exactly one method per non-fixed-value field, named `field.name`, so a
-                    // clash is exactly `has_<field>` appearing as a sibling field name.
-                    if field_getter_flattens {
-                        let has_name = format!("has_{}", field.name);
-                        let collides = record
-                            .fields
-                            .iter()
-                            .filter(|f| !f.rust_type.conceptual_type.is_fixed_value())
-                            .any(|f| f.name == has_name);
-                        if collides {
-                            crate::warn!(
-                                "cddl-codegen --wasm: {name}: presence accessor `{has_name}()` for \
-                                 optional-nullable field `{}` collides with a sibling field of the \
-                                 same name — skipping the accessor (the flattening getter still \
-                                 works; the absent-vs-present-null distinction is lost for this field)",
-                                field.name
-                            );
-                        } else {
-                            let mut has_field = codegen::Function::new(&has_name);
-                            has_field
-                                .arg_ref_self()
-                                .vis("pub")
-                                .ret("bool")
-                                .doc("Returns whether the optional field is present (outer Some), distinguishing an absent field from a present-but-null one (both of which the getter reports as None).")
-                                .line(format!("self.0.{}.is_some()", field.name));
-                            wrapper.s_impl.push_fn(has_field);
-                        }
-                    }
-                } else {
-                    // new
-                    wasm_new.arg(
-                        &field.name,
-                        gen_scope.wasm_param_type(
-                            types,
-                            &field.rust_type,
-                            name,
-                            "record constructor parameter",
-                        ),
-                    );
-                    wasm_new_args.push(field.rust_type.from_wasm_boundary_clone_expr(
-                        types,
-                        &field.name,
-                        false,
-                    ));
-                    if let Some(comment) = &field.rule_metadata.doc {
-                        wasm_new_comments.push(format!("* `{}` - {}", field.name, comment));
-                    }
-                    // do we want setters here later for mandatory types covered by new?
-                    // getter
-                    let mut getter = codegen::Function::new(&field.name);
-                    getter
-                        .arg_ref_self()
-                        .ret(gen_scope.wasm_return_type(
-                            types,
-                            &field.rust_type,
-                            name,
-                            "record getter return",
-                        ))
-                        .vis("pub")
-                        .line(field.rust_type.to_wasm_boundary(
-                            types,
-                            &format!("self.0.{}", field.name),
-                            false,
-                        ));
-                    wrapper.s_impl.push_fn(getter);
-                }
-            } else if field.optional && field.rust_type.conceptual_type.is_fixed_value() {
-                // Optional fixed value: the native struct stores presence as a `bool`. Expose that
-                // bit across the wasm boundary — getter returns it, setter sets it. (Mandatory
-                // fixed values carry no information and get no accessor, same as the rust side.)
-                let mut getter = codegen::Function::new(&field.name);
-                getter
-                    .arg_ref_self()
-                    .ret("bool")
-                    .vis("pub")
-                    .line(format!("self.0.{}", field.name));
-                wrapper.s_impl.push_fn(getter);
-                let mut setter = codegen::Function::new(format!("set_{}", field.name));
-                setter
-                    .arg_mut_self()
-                    .arg("present", "bool")
-                    .vis("pub")
-                    .line(format!("self.0.{} = present", field.name));
-                wrapper.s_impl.push_fn(setter);
-            }
-        }
-        // An OPEN TABLE's TYPED row: its map surface is FLATTENED onto THIS class instead of hung off
-        // a whole-map getter — `insert`/`get`/`len`/`keys` (plus `has` for a nullable value) delegate
-        // straight to the typed container field, through the very helper the two map-wrapper twins
-        // use. The rationale is the set nominal's, verbatim (`docs/docs/wasm_differences.mdx` §
-        // "Sets"): a wasm class has no `Deref`, so a two-layer `t.entries().get(k)` is the cost of a
-        // container getter, and a JS caller wants `t.get(k)`. It also means the typed row mints NO
-        // `MapKToV` class of its own, which is what leaves the collision-detector family at three new
-        // legs rather than four (see the note in `non_empty_map_wrapper_name_collisions`). The
-        // CATCH-ALL row keeps its container and its read-only `rest()` getter, below.
-        if let Some(typed) = record.typed_row().filter(|r| !r.is_array_tail()) {
-            // The NonEmpty flavor's construction door, mirroring the rust `new(first_key,
-            // first_value)` it calls: the ONE case where an open table's wasm `new` takes arguments.
-            if record.is_non_empty_open_table() {
-                let first_key =
-                    record.fresh_open_table_non_empty_param_ident("first_key", std::iter::empty());
-                let first_value = record.fresh_open_table_non_empty_param_ident(
-                    "first_value",
-                    std::iter::once(first_key.clone()),
-                );
-                wasm_new
-                    .arg(
-                        &first_key,
-                        gen_scope.wasm_param_type(
-                            types,
-                            typed.domain(),
-                            name,
-                            "open-table constructor key parameter",
-                        ),
-                    )
-                    .arg(
-                        &first_value,
-                        gen_scope.wasm_param_type(
-                            types,
-                            typed.range(),
-                            name,
-                            "open-table constructor value parameter",
-                        ),
-                    );
-                wasm_new_args.push(
-                    typed
-                        .domain()
-                        .from_wasm_boundary_clone_expr(types, &first_key, false),
-                );
-                wasm_new_args.push(typed.range().from_wasm_boundary_clone_expr(
-                    types,
-                    &first_value,
-                    false,
-                ));
-                wasm_new_comments.push(format!(
-                    "* `{first_key}` - the key of the first typed entry (CDDL `+ k1 => v1`: an open \
-                     table spelled with `+` holds at least one typed entry)"
-                ));
-                wasm_new_comments.push(format!("* `{first_value}` - its value"));
-            } else if let Some((min, max)) = typed.container_type().bounded_map_u64_bounds() {
-                // The bounded typed field has no whole-row wasm class — its public API remains the
-                // owner's flattened map surface. A loose structural builder is the one auxiliary
-                // class needed to hand a complete row to the checked native carrier, including a
-                // zero-minimum row: the native construction door must accept all valid complete
-                // values instead of forcing callers to reconstruct them by later mutation.
-                let builder_name = record.fresh_bounded_typed_wasm_builder_ident(&format!(
-                    "{}_builder",
-                    typed.field_name
-                ));
-                let builder = typed.staging_container_type();
-                wasm_new.arg(
-                    &builder_name,
-                    gen_scope.wasm_param_type(
-                        types,
-                        &builder,
-                        name,
-                        "open-table bounded constructor builder parameter",
-                    ),
-                );
-                // The wrapper-to-loose-map `Into` must be given its native source type before it
-                // enters the bounded carrier's `TryFrom` door. A bare
-                // `entries_builder.clone().into().try_into()` leaves both conversions inferred
-                // from the final `?`, which rustc cannot solve for a wasm constructor argument.
-                // This code is emitted into the WASM crate, so its key/value types must use the
-                // rust-crate-qualified spelling (`cddl_lib::Pid`, not the wasm `Pid` wrapper).
-                // `for_rust_member(..., true, ...)` is the established wasm-to-rust spelling used
-                // by the collection wrapper doors.
-                let staging_ty = builder.for_rust_member(types, true, cli);
-                let carrier_ty = rest_member_type(typed).for_rust_member(types, true, cli);
-                wasm_new_args.push(format!(
-                    "<{carrier_ty}>::try_from(<{staging_ty}>::from({builder_name}.clone())).map_err(|e| JsError::new(&e.to_string()))?"
-                ));
-                wasm_new_comments.push(format!(
-                    "* `{builder_name}` - the loose typed-row builder for the bounded CDDL \
-                     `{min}*{}` window; its complete contents are checked before construction",
-                    if max == u64::MAX {
-                        String::new()
-                    } else {
-                        max.to_string()
-                    }
-                ));
-            }
-            wrapper
-                .s_impl
-                .new_fn("len")
-                .vis("pub")
-                .ret("usize")
-                .arg_ref_self()
-                .doc(
-                    "The number of TYPED entries (CDDL `* k1 => v1`, the first row). The catch-all \
-                     row's own count is `rest().len()`.",
-                )
-                .line(format!("self.0.{}.len()", typed.field_name));
-            push_table_accessors(
-                gen_scope,
-                &mut wrapper,
-                types,
-                name,
-                typed.domain(),
-                typed.range(),
-                &format!("self.0.{}", typed.field_name),
-                // A finite typed-row maximum is held by BoundedMap/BoundedPairMap, so flattened
-                // wasm insertion must surface the carrier's checked Result instead of exposing an
-                // unchecked mutation path. Min-only `+` retains its established infallible grow.
-                rest_member_type(typed).bounded_map_u64_bounds().is_some(),
-                cli,
-            );
-        }
-        // A multi-segment ARRAY has a complete wrapper parameter for every captured segment,
-        // including loose and one-or-more windows. This new shape is source-ordered at the native
-        // boundary; the wasm surface projects the arguments by source index before calling it.
-        if multi_array_segments {
-            for rest in record
-                .captured_dynamic_rows()
-                .filter(|row| row.is_array_tail())
-            {
-                let rest_ty = rest_member_type(rest);
-                wasm_new.arg(
-                    &rest.field_name,
-                    gen_scope.wasm_param_type(
-                        types,
-                        &rest_ty,
-                        name,
-                        "multiple-array-segment constructor parameter",
-                    ),
-                );
-                wasm_new_args.push(rest_ty.from_wasm_boundary_clone_expr(
-                    types,
-                    &rest.field_name,
-                    false,
-                ));
-                wasm_new_comments.push(format!(
-                    "* `{}` - the complete list wrapper for this authored array occurrence segment (its CDDL occurrence window is enforced before construction)",
-                    rest.field_name,
-                ));
-            }
-        }
-        // A one-or-more open-array tail has the same valid-by-construction door as its Rust record:
-        // take one element here and let the Rust `new(first)` build the restricted `NonEmptyVec`.
-        // The parameter name is shared with the Rust constructor (`first_array_tail_element_param_ident`).
-        for rest in record
-            .captured_dynamic_rows()
-            .filter(|row| !multi_array_segments && row.is_non_empty_array_tail())
-        {
-            let first_arg = first_array_tail_element_param_ident(record, rest);
-            wasm_new.arg(
-                &first_arg,
-                gen_scope.wasm_param_type(
-                    types,
-                    rest.element(),
-                    name,
-                    "open-array constructor first parameter",
-                ),
-            );
-            wasm_new_args.push(
-                rest.element()
-                    .from_wasm_boundary_clone_expr(types, &first_arg, false),
-            );
-            wasm_new_comments.push(match array_segment_boundary(types, record, rest) {
-                ArraySegmentBoundary::FixedDomainRetry => format!(
-                    "* `{first_arg}` - the first finite fixed-domain occurrence-segment element before its possible-next chain (CDDL `+ t` / `1* t`: the segment holds at least one element)"
-                ),
-                ArraySegmentBoundary::ExactCount | ArraySegmentBoundary::MajorDisjoint => format!(
-                    "* `{first_arg}` - the first major-disjoint occurrence-segment element before its later possible-next member (CDDL `+ t` / `1* t`: the segment holds at least one element)"
-                ),
-                ArraySegmentBoundary::Final => format!(
-                    "* `{first_arg}` - the first trailing element (CDDL `+ t` / `1* t`: the tail holds at least one element)"
-                ),
-            });
-        }
-        // Every bounded array tail is supplied as its complete checked list wrapper. Unlike the
-        // min-one compatibility ABI above it must not be rebuilt from a first element, and unlike a
-        // loose tail it must not default empty (zero-minimum windows still admit non-empty values).
-        for rest in record.captured_dynamic_rows().filter(|row| {
-            !multi_array_segments
-                && row.is_array_tail()
-                && row.is_restricted()
-                && !row.is_non_empty_array_tail()
-        }) {
-            let rest_ty = rest_member_type(rest);
-            wasm_new.arg(
-                &rest.field_name,
-                gen_scope.wasm_param_type(
-                    types,
-                    &rest_ty,
-                    name,
-                    "open-array bounded constructor parameter",
-                ),
-            );
-            wasm_new_args.push(rest_ty.from_wasm_boundary_clone_expr(
-                types,
-                &rest.field_name,
-                false,
-            ));
-            wasm_new_comments.push(match array_segment_boundary(types, record, rest) {
-                ArraySegmentBoundary::ExactCount => format!(
-                    "* `{}` - the complete checked exact-count occurrence-segment wrapper before its later authored member (its CDDL occurrence window is enforced before construction)",
-                    rest.field_name
-                ),
-                ArraySegmentBoundary::FixedDomainRetry => format!(
-                    "* `{}` - the complete checked finite fixed-domain occurrence-segment wrapper before its possible-next chain (its CDDL occurrence window is enforced before construction)",
-                    rest.field_name
-                ),
-                ArraySegmentBoundary::MajorDisjoint => format!(
-                    "* `{}` - the complete checked major-disjoint occurrence-segment wrapper before its later possible-next member (its CDDL occurrence window is enforced before construction)",
-                    rest.field_name
-                ),
-                ArraySegmentBoundary::Final => format!(
-                    "* `{}` - the complete checked trailing-array wrapper (its CDDL occurrence window \
-                     is enforced before construction)",
-                    rest.field_name
-                ),
-            });
-        }
-        // A restricted open-struct rest or open-table catch-all has a read-only wasm getter, so it
-        // cannot default to an empty carrier without making admitted non-empty values impossible to
-        // build on this face.  Pass its complete checked structural wrapper through to the native
-        // constructor.  The typed row is deliberately excluded: it remains flattened above.
-        for rest in record.captured_dynamic_rows().filter(|row| {
-            !record.is_typed_row(row) && record.ctor_takes_complete_map_row(row, types)
-        }) {
-            let rest_ty = rest_member_type(rest);
-            wasm_new.arg(
-                &rest.field_name,
-                gen_scope.wasm_param_type(
-                    types,
-                    &rest_ty,
-                    name,
-                    "open-map restricted constructor parameter",
-                ),
-            );
-            wasm_new_args.push(rest_ty.from_wasm_boundary_clone_expr(
-                types,
-                &rest.field_name,
-                false,
-            ));
-            wasm_new_comments.push(format!(
-                "* `{}` - the complete checked captured map row (its declared occurrence window \
-                 is enforced before construction)",
-                rest.field_name
-            ));
-        }
-        // Open rest (CAPTURE only): a getter returning the captured content as its minted wasm wrapper
-        // — a map wrapper (`MapKToV` / the `@duplicates preserve` PairMap-backed twin) for a `* k => v`
-        // row, or a list wrapper (`TList` / `AnyList`) for an array `* t` tail. Loose rows have no
-        // `new()` arg and default empty. The returned wrapper is a detached snapshot; captured map
-        // rows mutate the parent through the record-level `insert_<row>` door below. Restricted map
-        // rows enter `new()` as a complete checked wrapper and use that same checked mutation door.
-        // The wrapper
-        // class is minted in the wasm pass (`WrapperMintWalk::mint` for the rest map/list).
-        // An `@ignore` row/tail stores nothing, so it has no getter (its wasm class is a closed struct's).
-        // An open table's TYPED row is excluded — its surface is flattened above.
-        for rest in record
-            .captured_dynamic_rows()
-            .filter(|r| !record.is_typed_row(r))
-        {
-            let rest_ty = rest_member_type(rest);
-            let boundary = array_segment_boundary(types, record, rest);
-            let mut getter = codegen::Function::new(&rest.field_name);
-            getter
-                .arg_ref_self()
-                .ret(gen_scope.wasm_return_type(types, &rest_ty, name, "open-rest getter return"))
-                .vis("pub")
-                .doc(if rest.is_array_tail() && !record.array_segments.is_empty() {
-                    match boundary {
-                        ArraySegmentBoundary::FixedDomainRetry => {
-                            "The captured finite fixed-domain occurrence segment before its possible-next \
-                             chain, as its wasm list wrapper; the decoder retries the repeated element \
-                             and restores the later-member cursor."
-                        }
-                        ArraySegmentBoundary::ExactCount | ArraySegmentBoundary::MajorDisjoint => {
-                            "The captured array occurrence segment before a later authored member, as its \
-                             wasm list wrapper; its greedy boundary is generator-proven from the possible-next \
-                             wire heads or owned by its occurrence count."
-                        }
-                        ArraySegmentBoundary::Final => {
-                            "The captured final authored array occurrence segment, as its wasm list wrapper; \
-                             its occurrence window is enforced before construction."
-                        }
-                    }
-                } else if rest.is_array_tail() && !boundary.is_final() {
-                    match boundary {
-                        ArraySegmentBoundary::FixedDomainRetry => {
-                            "The captured finite fixed-domain occurrence segment before its possible-next \
-                             chain, as the wasm list wrapper; the decoder retries the repeated element \
-                             and restores the later-member cursor."
-                        }
-                        _ if rest.is_non_empty_array_tail() => {
-                            "The captured one-or-more major-disjoint occurrence segment before its later \
-                             possible-next member (CDDL `+ t` / `1* t`), as the restricted wasm list \
-                             wrapper."
-                        }
-                        ArraySegmentBoundary::ExactCount if rest.is_restricted() => {
-                            "The captured bounded exact-count occurrence segment before a later \
-                             authored member, as its checked wasm list wrapper."
-                        }
-                        _ if rest.is_restricted() => {
-                            "The captured bounded major-disjoint occurrence segment before a later \
-                             possible-next member, as its checked wasm list wrapper."
-                        }
-                        _ => {
-                            "The captured major-disjoint occurrence segment before a later possible-next \
-                             member (CDDL `* t`), as the wasm list wrapper."
-                        }
-                    }
-                } else if rest.is_non_empty_array_tail() {
-                    "The captured one-or-more trailing array elements beyond the declared members \
-                     (CDDL `+ t` / `1* t` rest tail), as the restricted wasm list wrapper."
-                } else if rest.is_array_tail() && rest.is_restricted() {
-                    "The captured bounded trailing array elements beyond the declared members, as \
-                     their checked wasm list wrapper."
-                } else if rest.is_array_tail() {
-                    "The captured trailing array elements beyond the declared members (CDDL \
-                     `* t` rest tail), as the wasm list wrapper."
-                } else if rest.is_restricted() {
-                    "The complete checked captured open-map row, as its read-only restricted wasm \
-                     map wrapper. Its CDDL occurrence window was enforced before construction."
-                } else {
-                    "The captured open-map entries whose keys are not declared fields (CDDL \
-                     `* k => v` rest row), as the wasm map wrapper."
-                })
-                .line(rest_ty.to_wasm_boundary(
-                    types,
-                    &if record.has_protected_rest_keys(types) && !rest.is_array_tail() {
-                        format!("self.0.{}()", rest.field_name)
-                    } else {
-                        format!("self.0.{}", rest.field_name)
-                    },
-                    false,
-                ));
-            wrapper.s_impl.push_fn(getter);
-        }
-        // An open-map getter deliberately returns an owned snapshot: wasm-bindgen cannot lend the
-        // native field through a JS object.  Its map-wrapper `insert` therefore mutates only that
-        // snapshot.  Give every captured MAP row an explicit mutation door on the OWNER instead.
-        // Array tails remain snapshot-only, as do `@ignore` rows (which have no stored carrier at
-        // all); the open-table typed row is already the owner's flattened `insert` surface above.
-        //
-        // The return is uniformly `Result<(), JsError>`.  A map wrapper's `insert` returns a
-        // displaced value, but that result is not meaningful for the record operation (and a
-        // PairMap has no displaced value because it appends).  The common unit result instead
-        // makes every invariant-bearing case honest: exact-zero records delegate to their native
-        // validation door, and bounded carriers preserve their checked/atomic insert path.
-        for rest in record
-            .captured_dynamic_rows()
-            .filter(|row| !record.is_typed_row(row) && !row.is_array_tail())
-        {
-            let method_name = format!("insert_{}", rest.field_name);
-            let snapshot_getter = format!("`{}()`", rest.field_name);
-            // A collision-protected row delegates to the native record's public insertion door.
-            // Its loose exact-byte parameters are intentionally `Vec<u8>` because that native door
-            // owns the named Vec-to-array conversion. Every other row mutates its carrier directly
-            // below, so it must perform the handover on this wasm face before storage.
-            let direct_storage = !record.has_protected_rest_keys(types);
-            let key = direct_storage
-                .then(|| super::collections::wasm_exact_byte_handover(rest.domain(), "key", cli))
-                .flatten()
-                .unwrap_or_else(|| {
-                    rest.domain()
-                        .from_wasm_boundary_clone_expr(types, "key", false)
-                });
-            let value = direct_storage
-                .then(|| super::collections::wasm_exact_byte_handover(rest.range(), "value", cli))
-                .flatten()
-                .unwrap_or_else(|| {
-                    rest.range()
-                        .from_wasm_boundary_clone_expr(types, "value", false)
-                });
-            let mut insert = codegen::Function::new(&method_name);
-            insert
-                .arg_mut_self()
-                .arg(
-                    "key",
-                    gen_scope.wasm_param_type(
-                        types,
-                        rest.domain(),
-                        name,
-                        "open-rest insert key parameter",
-                    ),
-                )
-                .arg(
-                    "value",
-                    gen_scope.wasm_param_type(
-                        types,
-                        rest.range(),
-                        name,
-                        "open-rest insert value parameter",
-                    ),
-                )
-                .ret("Result<(), JsError>")
-                .vis("pub")
-                .doc(if record.has_protected_rest_keys(types) {
-                    format!(
-                        "Inserts an entry into this record's captured open-map row. The native record \
-                         rejects collisions with declared and exact-zero fixed keys before changing \
-                         the parent; failures are returned as `JsError`. {snapshot_getter} remains \
-                         a detached read snapshot."
-                    )
-                } else if rest_member_type(rest).bounded_map_u64_bounds().is_some() {
-                    format!(
-                        "Inserts an entry into this record's captured open-map row through its checked \
-                         occurrence carrier. A maximum-window failure leaves the parent unchanged and \
-                         is returned as `JsError`. {snapshot_getter} remains a detached read snapshot."
-                    )
-                } else {
-                    format!(
-                        "Inserts an entry into this record's captured open-map row. This mutates the \
-                         parent record; {snapshot_getter} remains a detached read snapshot. Under \
-                         `@duplicates preserve`, each call appends a pair rather than replacing an \
-                         equal key."
-                    )
-                });
-            if record.has_protected_rest_keys(types) {
-                // Collision-protected records deliberately keep their rest field private. Reuse the
-                // native record-level door so wasm cannot duplicate (and later drift from) its
-                // typed/any/preserve key comparison and clone-and-swap atomicity rules.
-                insert.line(format!(
-                    "self.0.{method_name}({key}, {value}).map_err(|e| JsError::new(&e.to_string()))"
-                ));
-            } else if rest_member_type(rest).bounded_map_u64_bounds().is_some() {
-                insert.line(format!(
-                    "self.0.{}.insert({key}, {value}).map(|_| ()).map_err(|e| JsError::new(&e.to_string()))",
-                    rest.field_name
-                ));
-            } else {
-                insert
-                    .line(format!(
-                        "self.0.{}.insert({key}, {value});",
-                        rest.field_name
-                    ))
-                    .line("Ok(())");
-            }
-            wrapper.s_impl.push_fn(insert);
-        }
-        // The native constructor for a multiple occurrence-segment record deliberately follows CDDL
-        // source order.  The wasm surface keeps its established field-then-wrapper parameter
-        // layout, so assemble the native call independently instead of assuming both orders are
-        // identical (which would feed a list wrapper to the next fixed scalar).
-        let wasm_native_new_args = if record.rep == Representation::Array
-            && !record.array_segments.is_empty()
-        {
-            let mut args: Vec<(usize, String)> = record
-                .fields
-                .iter()
-                .filter(|field| {
-                    !field.optional
-                        && !field.rust_type.conceptual_type.is_fixed_value()
-                        && field.rust_type.config.default.is_none()
-                })
-                .map(|field| {
-                    (
-                        field.source_index,
-                        field
-                            .rust_type
-                            .from_wasm_boundary_clone_expr(types, &field.name, false),
-                    )
-                })
-                .chain(
-                    record
-                        .captured_dynamic_rows()
-                        .filter(|row| row.is_array_tail())
-                        .map(|row| {
-                            let rest_ty = rest_member_type(row);
-                            (
-                                row.array_source_index()
-                                    .expect("array segment has a source index"),
-                                rest_ty.from_wasm_boundary_clone_expr(
-                                    types,
-                                    &row.field_name,
-                                    false,
-                                ),
-                            )
-                        }),
-                )
-                .collect();
-            args.sort_by_key(|(source_index, _)| *source_index);
-            args.into_iter().map(|(_, arg)| arg).collect::<Vec<_>>()
-        } else {
-            wasm_new_args
-        };
-        if new_can_fail {
-            wasm_new.line(format!(
-                "{}::new({}).map(Into::into).map_err(Into::into)",
-                rust_crate_struct_from_wasm(types, name, cli),
-                wasm_native_new_args.join(", ")
-            ));
-        } else if wasm_new_can_fail {
-            wasm_new.line(format!(
-                "Ok(Self({}::new({})))",
-                rust_crate_struct_from_wasm(types, name, cli),
-                wasm_native_new_args.join(", ")
-            ));
-        } else {
-            wasm_new.line(format!(
-                "Self({}::new({}))",
-                rust_crate_struct_from_wasm(types, name, cli),
-                wasm_native_new_args.join(", ")
-            ));
-        }
-        if !wasm_new_comments.is_empty() {
-            wasm_new.doc(wasm_new_comments.join("\n"));
-        }
-        if let Some(doc) = ignore_aware_doc(config.doc.as_deref(), record, record.ignored_rest()) {
-            wrapper.s.doc(&doc);
-        }
-        wrapper.s_impl.push_fn(wasm_new);
-        wrapper.push(gen_scope, types);
+        emit_record_wasm(
+            gen_scope,
+            types,
+            name,
+            record,
+            config,
+            cli,
+            new_can_fail,
+            wasm_new_can_fail,
+        );
     }
 
     // Rust-only for the rest of this function
