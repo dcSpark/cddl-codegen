@@ -1332,68 +1332,7 @@ impl GenerationScope {
             }
         }
 
-        // Extern-type re-export glue. Generated code refers to each in-crate extern type by its bare
-        // ident within the scope that declared it (and cross-scope as `crate::generated::<scope>::Name`;
-        // the serializer sees it via `use super::*;`). Under the thin-root split the user cannot inject
-        // that definition into `generated/**` (clobbered every run), so the contract is to DEFINE the
-        // extern in a hand-written module and RE-EXPORT it at the crate root (`pub use utils::Name;` in
-        // the thin `lib.rs`). Re-export it from crate root INTO the declaring scope's generated module so
-        // every such bare/`use super::*` reference resolves; the explicit `pub use crate::Name;` binds to
-        // the user's definition and beats the `pub use generated::*;` glob cycle. Emitted unconditionally
-        // — under `--common-import-override` the extern is still crate-local. Covers BOTH user-supplied
-        // extern flavors — `_CDDL_CODEGEN_EXTERN_TYPE_` (`Extern`) and `_CDDL_CODEGEN_RAW_BYTES_TYPE_`
-        // (`RawBytesType`) — the contract is identical, and a raw-bytes rule referenced only through
-        // `pub type` aliases has NO other resolution path (the alias target is a bare ident, and the
-        // struct-field import walk never sees alias-only references — proven by CML cip36's
-        // `public_key = _CDDL_CODEGEN_RAW_BYTES_TYPE_` aliases failing E0412 on regen). Skipped:
-        //   - the built-in `Int` extern (the tool generates its definition when referenced),
-        //   - generic-extern instances that already emit a `pub type` alias in this module (the base
-        //     generic extern carries the glue instead — re-exporting the aliased name would collide),
-        //   - externs under `EXTERN_DEPS_DIR` (non-exported scopes; those resolve through their dep
-        //     crate already — `ModuleScope::export()` is the discriminator).
-        let rust_aliased: BTreeSet<&RustIdent> = types
-            .type_aliases()
-            .iter()
-            .filter_map(|(alias_ident, info)| match alias_ident {
-                AliasIdent::Rust(ident) if info.emits_rust_alias() => Some(ident),
-                _ => None,
-            })
-            .collect();
-        let externs_by_scope =
-            extern_reexports_by_scope(types, |rust_ident| !rust_aliased.contains(rust_ident));
-        // Scopes that have already received the contract comment, so the `@raw_bytes_flavor` loop
-        // below doesn't emit a second comment into a scope whose base extern already carried one.
-        let mut rust_glue_commented: BTreeSet<ModuleScope> = BTreeSet::new();
-        for (scope, idents) in &externs_by_scope {
-            let content = self.rust_scopes.entry(scope.clone()).or_default();
-            content.raw(EXTERN_REEXPORT_CONTRACT_COMMENT);
-            rust_glue_commented.insert(scope.clone());
-            for ident in idents {
-                content.raw(format!("pub use crate::{ident};"));
-                // Collected at the emission site (single source of truth) so the surfaced required
-                // set can never drift from the glue actually emitted.
-                self.required_rust_reexports.insert(ident.to_string());
-            }
-        }
-        // `@raw_bytes_flavor` re-export glue. A tagged extern generic instantiated with a raw-bytes
-        // argument aliases the user-owned `<Base>RawBytes` wrapper flavor (the `pub type` alias sits
-        // in the declaring scope's module), so that scope needs `pub use crate::<Base>RawBytes;` too
-        // — in ADDITION to the base `pub use crate::<Base>;` above when other instances use the plain
-        // name. The flavored name isn't a registered struct (the flavor is user-owned, like the base
-        // generic extern's wasm side), so it's emitted here from the recorded-emitted set rather than
-        // by the struct loop; placed in the SAME scope as the base extern so the alias resolves.
-        for base in types.raw_bytes_flavor_emitted() {
-            let scope = types.scope(base);
-            if scope.export() {
-                let content = self.rust_scopes.entry(scope.clone()).or_default();
-                if rust_glue_commented.insert(scope.clone()) {
-                    content.raw(EXTERN_REEXPORT_CONTRACT_COMMENT);
-                }
-                content.raw(format!("pub use crate::{base}RawBytes;"));
-                self.required_rust_reexports
-                    .insert(format!("{base}RawBytes"));
-            }
-        }
+        self.emit_rust_extern_reexports(types);
 
         let scope_names = self.declare_rust_scope_roots_and_checks(types);
 
@@ -1458,6 +1397,71 @@ impl GenerationScope {
             self.rust_lib().raw("mod key_demand_assertions;");
         }
         scope_names
+    }
+
+    fn emit_rust_extern_reexports(&mut self, types: &IntermediateTypes) {
+        // Extern-type re-export glue. Generated code refers to each in-crate extern type by its bare
+        // ident within the scope that declared it (and cross-scope as `crate::generated::<scope>::Name`;
+        // the serializer sees it via `use super::*;`). Under the thin-root split the user cannot inject
+        // that definition into `generated/**` (clobbered every run), so the contract is to DEFINE the
+        // extern in a hand-written module and RE-EXPORT it at the crate root (`pub use utils::Name;` in
+        // the thin `lib.rs`). Re-export it from crate root INTO the declaring scope's generated module so
+        // every such bare/`use super::*` reference resolves; the explicit `pub use crate::Name;` binds to
+        // the user's definition and beats the `pub use generated::*;` glob cycle. Emitted unconditionally
+        // — under `--common-import-override` the extern is still crate-local. Covers BOTH user-supplied
+        // extern flavors — `_CDDL_CODEGEN_EXTERN_TYPE_` (`Extern`) and `_CDDL_CODEGEN_RAW_BYTES_TYPE_`
+        // (`RawBytesType`) — the contract is identical, and a raw-bytes rule referenced only through
+        // `pub type` aliases has NO other resolution path (the alias target is a bare ident, and the
+        // struct-field import walk never sees alias-only references — proven by CML cip36's
+        // `public_key = _CDDL_CODEGEN_RAW_BYTES_TYPE_` aliases failing E0412 on regen). Skipped:
+        //   - the built-in `Int` extern (the tool generates its definition when referenced),
+        //   - generic-extern instances that already emit a `pub type` alias in this module (the base
+        //     generic extern carries the glue instead — re-exporting the aliased name would collide),
+        //   - externs under `EXTERN_DEPS_DIR` (non-exported scopes; those resolve through their dep
+        //     crate already — `ModuleScope::export()` is the discriminator).
+        let rust_aliased: BTreeSet<&RustIdent> = types
+            .type_aliases()
+            .iter()
+            .filter_map(|(alias_ident, info)| match alias_ident {
+                AliasIdent::Rust(ident) if info.emits_rust_alias() => Some(ident),
+                _ => None,
+            })
+            .collect();
+        let externs_by_scope =
+            extern_reexports_by_scope(types, |rust_ident| !rust_aliased.contains(rust_ident));
+        // Scopes that have already received the contract comment, so the `@raw_bytes_flavor` loop
+        // below doesn't emit a second comment into a scope whose base extern already carried one.
+        let mut rust_glue_commented: BTreeSet<ModuleScope> = BTreeSet::new();
+        for (scope, idents) in &externs_by_scope {
+            let content = self.rust_scopes.entry(scope.clone()).or_default();
+            content.raw(EXTERN_REEXPORT_CONTRACT_COMMENT);
+            rust_glue_commented.insert(scope.clone());
+            for ident in idents {
+                content.raw(format!("pub use crate::{ident};"));
+                // Collected at the emission site (single source of truth) so the surfaced required
+                // set can never drift from the glue actually emitted.
+                self.required_rust_reexports.insert(ident.to_string());
+            }
+        }
+        // `@raw_bytes_flavor` re-export glue. A tagged extern generic instantiated with a raw-bytes
+        // argument aliases the user-owned `<Base>RawBytes` wrapper flavor (the `pub type` alias sits
+        // in the declaring scope's module), so that scope needs `pub use crate::<Base>RawBytes;` too
+        // — in ADDITION to the base `pub use crate::<Base>;` above when other instances use the plain
+        // name. The flavored name isn't a registered struct (the flavor is user-owned, like the base
+        // generic extern's wasm side), so it's emitted here from the recorded-emitted set rather than
+        // by the struct loop; placed in the SAME scope as the base extern so the alias resolves.
+        for base in types.raw_bytes_flavor_emitted() {
+            let scope = types.scope(base);
+            if scope.export() {
+                let content = self.rust_scopes.entry(scope.clone()).or_default();
+                if rust_glue_commented.insert(scope.clone()) {
+                    content.raw(EXTERN_REEXPORT_CONTRACT_COMMENT);
+                }
+                content.raw(format!("pub use crate::{base}RawBytes;"));
+                self.required_rust_reexports
+                    .insert(format!("{base}RawBytes"));
+            }
+        }
     }
 
     fn emit_rust_scope_imports(
