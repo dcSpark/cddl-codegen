@@ -4739,50 +4739,20 @@ fn prepare_record_native(
     }
 }
 
-pub(super) fn codegen_struct(
+/// Attach preserve encodings while the native struct and constructor block are still owned.
+#[allow(clippy::too_many_arguments)] // Explicit mutable builder borrows preserve the phase handoff.
+fn attach_record_encodings(
     gen_scope: &mut GenerationScope,
     types: &IntermediateTypes,
     name: &RustIdent,
     tag: Option<usize>,
     record: &RustRecord,
-    config: &RustStructConfig,
+    manual_json: bool,
+    native_struct: &mut codegen::Struct,
+    native_new_block: &mut Block,
     cli: &Cli,
-) {
-    let new_can_fail = record.native_ctor_can_fail(types);
-    // A bounded typed row stays flattened on the open-table class, so its wasm constructor accepts
-    // the same-flavor *loose* builder and crosses the checked carrier door before calling the
-    // native record constructor. That boundary can fail even though the native constructor itself
-    // just accepts an already-checked BoundedMap. This applies at minimum zero too: seeding an
-    // empty carrier would lose the native door's complete checked-construction contract.
-    let typed_bounded_wasm_builder = record.typed_row().filter(|row| {
-        !row.is_array_tail() && row.container_type().bounded_map_u64_bounds().is_some()
-    });
-    let wasm_new_can_fail = new_can_fail || typed_bounded_wasm_builder.is_some();
-    // wasm wrapper
-    if cli.wasm {
-        emit_record_wasm(
-            gen_scope,
-            types,
-            name,
-            record,
-            config,
-            cli,
-            new_can_fail,
-            wasm_new_can_fail,
-        );
-    }
-
-    // Rust-only for the rest of this function
-
-    let RecordNativeParts {
-        mut native_struct,
-        mut native_impl,
-        mut native_new,
-        mut native_new_block,
-        new_arg_count,
-        manual_json,
-    } = prepare_record_native(gen_scope, types, name, record, config, cli, new_can_fail);
-    let len_encoding_var = if cli.preserve_encodings {
+) -> Option<&'static str> {
+    if cli.preserve_encodings {
         let encoding_name = RustIdent::new(CDDLIdent::new(format!("{name}Encoding")));
         native_struct.field(
             format!(
@@ -4898,7 +4868,63 @@ pub(super) fn codegen_struct(
         Some("len_encoding")
     } else {
         None
-    };
+    }
+}
+
+pub(super) fn codegen_struct(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    name: &RustIdent,
+    tag: Option<usize>,
+    record: &RustRecord,
+    config: &RustStructConfig,
+    cli: &Cli,
+) {
+    let new_can_fail = record.native_ctor_can_fail(types);
+    // A bounded typed row stays flattened on the open-table class, so its wasm constructor accepts
+    // the same-flavor *loose* builder and crosses the checked carrier door before calling the
+    // native record constructor. That boundary can fail even though the native constructor itself
+    // just accepts an already-checked BoundedMap. This applies at minimum zero too: seeding an
+    // empty carrier would lose the native door's complete checked-construction contract.
+    let typed_bounded_wasm_builder = record.typed_row().filter(|row| {
+        !row.is_array_tail() && row.container_type().bounded_map_u64_bounds().is_some()
+    });
+    let wasm_new_can_fail = new_can_fail || typed_bounded_wasm_builder.is_some();
+    // wasm wrapper
+    if cli.wasm {
+        emit_record_wasm(
+            gen_scope,
+            types,
+            name,
+            record,
+            config,
+            cli,
+            new_can_fail,
+            wasm_new_can_fail,
+        );
+    }
+
+    // Rust-only for the rest of this function
+
+    let RecordNativeParts {
+        mut native_struct,
+        mut native_impl,
+        mut native_new,
+        mut native_new_block,
+        new_arg_count,
+        manual_json,
+    } = prepare_record_native(gen_scope, types, name, record, config, cli, new_can_fail);
+    let len_encoding_var = attach_record_encodings(
+        gen_scope,
+        types,
+        name,
+        tag,
+        record,
+        manual_json,
+        &mut native_struct,
+        &mut native_new_block,
+        cli,
+    );
     native_new.push_block(native_new_block);
     native_impl.push_fn(native_new);
     // A possible fixed/rest key collision makes the captured map private: callers may observe

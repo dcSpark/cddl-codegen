@@ -213,6 +213,7 @@ const SOURCE_ROLES: &[SourceRole] = &[
             "codegen_struct",
             "emit_record_wasm",
             "prepare_record_native",
+            "attach_record_encodings",
         ],
     },
     SourceRole {

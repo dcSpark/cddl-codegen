@@ -1316,6 +1316,8 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 // Native record preparation guards remain in generation/records.rs under prepare_record_native:
 // the fixed-value unreachable guard and normalized-occurrence/source-index expects keep their text.
 // No active known-panic keys cover these guards; new observed classes require regression vectors.
+// Record encoding attachment's map field-key unwrap now belongs to attach_record_encodings.
+// It stays in generation/records.rs with unchanged behavior and no active known-panic allowance.
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired when the two anonymous-composite families and the group-choice-arm inline group
     // became graceful rejections) Three classes lived here, and they split by the composite's
