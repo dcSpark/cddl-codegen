@@ -209,6 +209,7 @@ pub(crate) fn generate_tag_check(
 #[derive(Clone, Copy)]
 struct WrapperFacts<'a> {
     checked_scalar: bool,
+    native_ctor_name: &'static str,
     effective_min_max: Option<IntWindow>,
     getter_name: &'a str,
     emit_getter: bool,
@@ -272,6 +273,7 @@ pub(super) fn generate_wrapper_struct(
     };
     let facts = WrapperFacts {
         checked_scalar,
+        native_ctor_name: if checked_scalar { "try_from" } else { "new" },
         effective_min_max,
         getter_name,
         emit_getter,
@@ -418,7 +420,7 @@ fn emit_wrapper_wasm_face(
     facts: &WrapperFacts<'_>,
 ) {
     let WrapperFacts {
-        checked_scalar,
+        native_ctor_name,
         getter_name,
         emit_getter,
         set_nominal,
@@ -449,7 +451,7 @@ fn emit_wrapper_wasm_face(
     let ctor = format!(
         "{}::{}({})",
         rust_crate_struct_from_wasm(types, type_name, cli),
-        if checked_scalar { "try_from" } else { "new" },
+        native_ctor_name,
         field_type.from_wasm_boundary_clone_expr(types, "inner", false)
     );
     super::enums::finish_wasm_ctor(
@@ -645,7 +647,7 @@ fn emit_wrapper_json_impls(
     self_var: &str,
 ) -> WrapperJsonImpls {
     let WrapperFacts {
-        checked_scalar,
+        native_ctor_name,
         effective_min_max,
         ..
     } = *facts;
@@ -758,7 +760,7 @@ fn emit_wrapper_json_impls(
                 if types.can_new_fail(type_name) {
                     serde_deser_fn.line(format!(
                         "Self::{}(inner).map_err(|_e| serde::de::Error::custom(\"invalid {type_name}\"))",
-                        if checked_scalar { "try_from" } else { "new" }
+                        native_ctor_name
                     ));
                 } else {
                     serde_deser_fn.line("Ok(Self::new(inner))");
@@ -828,7 +830,7 @@ fn emit_wrapper_json_impls(
                         "inner"
                     };
                     serde_deser_fn
-                        .line(format!("Self::{}({new_arg})", if checked_scalar { "try_from" } else { "new" }))
+                        .line(format!("Self::{}({new_arg})", native_ctor_name))
                         .line(format!(".map_err(|_e| {{ serde::de::Error::invalid_value(serde::de::Unexpected::{unexpected}, &\"invalid {type_name}\") }})"));
                 } else {
                     serde_deser_fn.line("Ok(Self::new(inner))");
@@ -1308,34 +1310,11 @@ fn emit_wrapper_codec_impls(
 
                 // `new` runs in this type's own module, so it alone may materialize the private
                 // carrier. The sibling CBOR module above must use `TryFrom` instead.
-                let mut ctor_block = Block::new("Ok(Self");
-                ctor_block.line("inner,");
-                if !enc_fields.is_empty() {
-                    ctor_block.line("encodings: None,");
-                }
-                ctor_block.after(")");
-                new_func.push_block(ctor_block);
+                new_func.push_block(make_wrapper_initial_ctor_block(enc_fields, true));
             } else {
-                let mut deser_ctor = Block::new("Ok(Self");
-                deser_ctor.line("inner,");
-                if !enc_fields.is_empty() {
-                    let mut encoding_ctor = Block::new(format!("encodings: Some({encoding_name}"));
-                    for field_enc in enc_fields {
-                        encoding_ctor.line(format!("{},", field_enc.field_name));
-                    }
-                    encoding_ctor.after("),");
-                    deser_ctor.push_block(encoding_ctor);
-                }
-                deser_ctor.after(")");
-                deser_body.push_block(deser_ctor);
+                deser_body.push_block(make_wrapper_decoded_ctor_block(&encoding_name, enc_fields));
 
-                let mut ctor_block = Block::new("Ok(Self");
-                ctor_block.line("inner,");
-                if !enc_fields.is_empty() {
-                    ctor_block.line("encodings: None,");
-                }
-                ctor_block.after(")");
-                new_func.push_block(ctor_block);
+                new_func.push_block(make_wrapper_initial_ctor_block(enc_fields, true));
             }
         } else {
             if checked_scalar {
@@ -1383,25 +1362,9 @@ fn emit_wrapper_codec_impls(
                 )
                 .add_to(&mut deser_body);
 
-            let mut deser_ctor = Block::new("Ok(Self");
-            deser_ctor.line("inner,");
-            if !enc_fields.is_empty() {
-                let mut encoding_ctor = Block::new(format!("encodings: Some({encoding_name}"));
-                for field_enc in enc_fields {
-                    encoding_ctor.line(format!("{},", field_enc.field_name));
-                }
-                encoding_ctor.after("),");
-                deser_ctor.push_block(encoding_ctor);
-            }
-            deser_ctor.after(")");
-            deser_body.push_block(deser_ctor);
+            deser_body.push_block(make_wrapper_decoded_ctor_block(&encoding_name, enc_fields));
 
-            let mut ctor_block = Block::new("Self");
-            ctor_block.line("inner,");
-            if !enc_fields.is_empty() {
-                ctor_block.line("encodings: None,");
-            }
-            new_func.push_block(ctor_block);
+            new_func.push_block(make_wrapper_initial_ctor_block(enc_fields, false));
         } else {
             gen_scope
                 .generate_deserialize(
@@ -1504,6 +1467,38 @@ fn emit_set_nominal_ergonomics(
         }
         gen_scope.rust(types, type_name).raw(&ergo);
     }
+}
+
+/// Render only the equal ordinary preserve decoded constructor shape.
+fn make_wrapper_decoded_ctor_block(
+    encoding_name: &RustIdent,
+    enc_fields: &[EncodingField],
+) -> Block {
+    let mut deser_ctor = Block::new("Ok(Self");
+    deser_ctor.line("inner,");
+    if !enc_fields.is_empty() {
+        let mut encoding_ctor = Block::new(format!("encodings: Some({encoding_name}"));
+        for field_enc in enc_fields {
+            encoding_ctor.line(format!("{},", field_enc.field_name));
+        }
+        encoding_ctor.after("),");
+        deser_ctor.push_block(encoding_ctor);
+    }
+    deser_ctor.after(")");
+    deser_ctor
+}
+
+/// Render the named-field initial constructor while preserving its fallibility shell.
+fn make_wrapper_initial_ctor_block(enc_fields: &[EncodingField], fallible: bool) -> Block {
+    let mut ctor_block = Block::new(if fallible { "Ok(Self" } else { "Self" });
+    ctor_block.line("inner,");
+    if !enc_fields.is_empty() {
+        ctor_block.line("encodings: None,");
+    }
+    if fallible {
+        ctor_block.after(")");
+    }
+    ctor_block
 }
 
 /// The carrier a set nominal wraps, as far as its ergonomic impls care. Mirrors the branch order of

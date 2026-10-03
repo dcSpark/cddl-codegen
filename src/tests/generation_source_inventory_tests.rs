@@ -297,6 +297,8 @@ const SOURCE_ROLES: &[SourceRole] = &[
             "emit_wrapper_struct_and_encodings",
             "emit_wrapper_codec_impls",
             "emit_set_nominal_ergonomics",
+            "make_wrapper_decoded_ctor_block",
+            "make_wrapper_initial_ctor_block",
         ],
     },
     SourceRole {
