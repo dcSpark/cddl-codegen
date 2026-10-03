@@ -1771,6 +1771,152 @@ impl GenerationScope {
         deser_code
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn deser_cbor_bytes(
+        &mut self,
+        child: SerializingRustType<'_>,
+        types: &IntermediateTypes,
+        mut deser_code: DeserializationCode,
+        mut config: DeserializeConfig,
+        before_after: DeserializeBeforeAfter,
+        cli: &Cli,
+        deserializer_name: &str,
+    ) -> DeserializationCode {
+        // The byte string HOLDING the payload is itself an item of whatever stream this
+        // arm was reached through, so it is read from `deserializer_name` like every
+        // sibling arm — not unconditionally from `raw`. The two differ exactly when a
+        // `.cbor` payload is nested inside another one's collection loop: there the
+        // enclosing reader is the outer payload's `inner_de` overload, and naming `raw`
+        // consumed the next OUTER item as the element's payload. Only the decode side
+        // was affected (the serializer writes the nested payload correctly), so the
+        // shape compiled, encoded to spec, and then rejected its own output.
+        // level (cbor_depth + 1) counted outside-in, in lockstep with
+        // `encoding_fields_impl`: the byte vector, its encoding var, the reader over it
+        // and the staging local all take the level's names, and the payload recurses one
+        // level deeper. Level 1 keeps the historical spellings.
+        let cbor_level = config.cbor_depth + 1;
+        let bytes_infix = cbor_bytes_infix(cbor_level);
+        let bytes_local = format!("{}_{}", config.var_name, bytes_infix);
+        if cli.preserve_encodings {
+            config
+                .final_exprs
+                .push(format!("StringEncoding::from({bytes_local}_encoding)"));
+            deser_code.content.line(&format!(
+                "let ({bytes_local}, {bytes_local}_encoding) = {deserializer_name}.bytes_sz()?;"
+            ));
+        } else {
+            deser_code.content.line(&format!(
+                "let {bytes_local} = {deserializer_name}.bytes()?;"
+            ));
+        };
+        // Shadowing `inner_de` is safe for the nested-COLLECTION shape because the inner
+        // rebind is scoped to the loop-BODY block: the next iteration's length/break
+        // probe and the map arm's key read both sit before it and still see the enclosing
+        // payload's reader — and that element is a fresh member name, so its level
+        // restarts at 1 and the historical spelling is kept. DIRECT nesting within one op
+        // chain has no such block: both readers live in one scope, and the outer's
+        // leftover-bytes check below would silently re-probe the INNER reader. Hence the
+        // level suffix, which is the only thing separating the two here.
+        let name_overload = cbor_payload_reader(cbor_level);
+        deser_code.content.line(&format!(
+            "let {name_overload} = &mut Deserializer::from({bytes_local});"
+        ));
+        // `.cbor` says the byte string IS the payload type's encoding, so bytes left over
+        // after the payload are not a value this type admits. Without the check below the
+        // embed accepted them and — since nothing holds them — re-encoded only the
+        // consumed prefix, so an ACCEPTED input round-tripped to DIFFERENT bytes:
+        // over-acceptance on every profile, and a `--preserve-encodings` fidelity
+        // violation on top. Found by the byte fuzzer (`fuzz/README.md` § "Findings
+        // disposition"); pinned by `structural_rejects` in `tests/core/tests.rs` at both
+        // `.cbor` spellings (rule body and member expression).
+        //
+        // Deliberately the SAME error as the top-level leftover check in
+        // `static/serialization.rs`'s `from_cbor_bytes` — one fact, one spelling, so a
+        // consumer matching on trailing data at the top level matches it here too. It
+        // flows through `DeserializeError`, so the enclosing annotation still names the
+        // member the leftover bytes were found in.
+        // The check has to run once the payload IS consumed, so it follows the payload's
+        // own code — which is only expressible where that code is a complete STATEMENT.
+        // At a terminal position (a block's tail, a tuple element) the payload value is
+        // an expression and nothing may follow it, so bind it first and yield the
+        // binding. Both spellings are emitted rather than always binding, because the
+        // statement positions are the common ones and a `let x = x_payload;` rebinding
+        // in every consumer's generated crate is noise that says nothing.
+        //
+        // A VALUE-LESS payload is a third case, and takes neither spelling. Without
+        // encodings a fixed value stores nothing, so there is nothing to stage: read it
+        // with a discarding wrapper, run the check, then satisfy the caller's wrapper
+        // with the unit the payload evaluates to. Staging it would bind `let x_payload =
+        // ();` and re-emit `x_payload` — the same unit, but at the discarding STATEMENT
+        // slots a fixed member is read in (an array struct's field sequence, a map
+        // entry's `k_present = (|| { .. })()?` block) a bare expression line is not Rust.
+        // Under `--preserve-encodings` a fixed value DOES carry an encoding, so it is a
+        // value like any other and this leg must not take it.
+        //
+        // Value-less-ness is a property of the whole encoding CHAIN, not of its root: a
+        // mandatory `Tagged` operation stores nothing of its own without encodings
+        // either (the number is a constant, verified on the way past), so
+        // `bytes .cbor #6.1(42)` is exactly as value-less as `bytes .cbor 42` and must
+        // take the same leg.
+        let value_less_payload = !cli.preserve_encodings && payload_is_value_less(&child);
+        if value_less_payload {
+            self.generate_deserialize(
+                types,
+                child,
+                DeserializeBeforeAfter::new("", "", false),
+                config
+                    .overload_deserializer(&name_overload)
+                    .cbor_depth(cbor_level),
+                cli,
+            )
+            .add_to_code(&mut deser_code);
+            deser_code
+                .content
+                .push_block(cbor_payload_trailing_check(&name_overload));
+            line_unit_value(&mut deser_code, &before_after);
+        } else if before_after.is_statement() {
+            self.generate_deserialize(
+                types,
+                child,
+                before_after,
+                config
+                    .overload_deserializer(&name_overload)
+                    .cbor_depth(cbor_level),
+                cli,
+            )
+            .add_to_code(&mut deser_code);
+            deser_code
+                .content
+                .push_block(cbor_payload_trailing_check(&name_overload));
+        } else {
+            let payload_binding = format!(
+                "{}_{}",
+                config.var_name,
+                cbor_payload_binding_suffix(cbor_level)
+            );
+            self.generate_deserialize(
+                types,
+                child,
+                DeserializeBeforeAfter::new(&format!("let {payload_binding} = "), ";", false),
+                config
+                    .overload_deserializer(&name_overload)
+                    .cbor_depth(cbor_level),
+                cli,
+            )
+            .add_to_code(&mut deser_code);
+            deser_code
+                .content
+                .push_block(cbor_payload_trailing_check(&name_overload));
+            deser_code.content.line(&format!(
+                "{}{payload_binding}{}",
+                before_after.before_str(false),
+                before_after.after_str(false)
+            ));
+        }
+        deser_code.throws = true;
+        deser_code
+    }
+
     /// Generates a DeserializationCode to serialize {serializing_rust_type} using the context in {before_after}
     /// This returned value must be in turn pushed into deserialization code to be used.
     #[must_use]
@@ -2957,143 +3103,15 @@ impl GenerationScope {
                     .add_to_code(&mut deser_code);
                 }
                 SerializingRustType::EncodingOperation(CBOREncodingOperation::CBORBytes, child) => {
-                    // The byte string HOLDING the payload is itself an item of whatever stream this
-                    // arm was reached through, so it is read from `deserializer_name` like every
-                    // sibling arm — not unconditionally from `raw`. The two differ exactly when a
-                    // `.cbor` payload is nested inside another one's collection loop: there the
-                    // enclosing reader is the outer payload's `inner_de` overload, and naming `raw`
-                    // consumed the next OUTER item as the element's payload. Only the decode side
-                    // was affected (the serializer writes the nested payload correctly), so the
-                    // shape compiled, encoded to spec, and then rejected its own output.
-                    // level (cbor_depth + 1) counted outside-in, in lockstep with
-                    // `encoding_fields_impl`: the byte vector, its encoding var, the reader over it
-                    // and the staging local all take the level's names, and the payload recurses one
-                    // level deeper. Level 1 keeps the historical spellings.
-                    let cbor_level = config.cbor_depth + 1;
-                    let bytes_infix = cbor_bytes_infix(cbor_level);
-                    let bytes_local = format!("{}_{}", config.var_name, bytes_infix);
-                    if cli.preserve_encodings {
-                        config
-                            .final_exprs
-                            .push(format!("StringEncoding::from({bytes_local}_encoding)"));
-                        deser_code.content.line(&format!(
-                            "let ({bytes_local}, {bytes_local}_encoding) = {deserializer_name}.bytes_sz()?;"
-                        ));
-                    } else {
-                        deser_code.content.line(&format!(
-                            "let {bytes_local} = {deserializer_name}.bytes()?;"
-                        ));
-                    };
-                    // Shadowing `inner_de` is safe for the nested-COLLECTION shape because the inner
-                    // rebind is scoped to the loop-BODY block: the next iteration's length/break
-                    // probe and the map arm's key read both sit before it and still see the enclosing
-                    // payload's reader — and that element is a fresh member name, so its level
-                    // restarts at 1 and the historical spelling is kept. DIRECT nesting within one op
-                    // chain has no such block: both readers live in one scope, and the outer's
-                    // leftover-bytes check below would silently re-probe the INNER reader. Hence the
-                    // level suffix, which is the only thing separating the two here.
-                    let name_overload = cbor_payload_reader(cbor_level);
-                    deser_code.content.line(&format!(
-                        "let {name_overload} = &mut Deserializer::from({bytes_local});"
-                    ));
-                    // `.cbor` says the byte string IS the payload type's encoding, so bytes left over
-                    // after the payload are not a value this type admits. Without the check below the
-                    // embed accepted them and — since nothing holds them — re-encoded only the
-                    // consumed prefix, so an ACCEPTED input round-tripped to DIFFERENT bytes:
-                    // over-acceptance on every profile, and a `--preserve-encodings` fidelity
-                    // violation on top. Found by the byte fuzzer (`fuzz/README.md` § "Findings
-                    // disposition"); pinned by `structural_rejects` in `tests/core/tests.rs` at both
-                    // `.cbor` spellings (rule body and member expression).
-                    //
-                    // Deliberately the SAME error as the top-level leftover check in
-                    // `static/serialization.rs`'s `from_cbor_bytes` — one fact, one spelling, so a
-                    // consumer matching on trailing data at the top level matches it here too. It
-                    // flows through `DeserializeError`, so the enclosing annotation still names the
-                    // member the leftover bytes were found in.
-                    // The check has to run once the payload IS consumed, so it follows the payload's
-                    // own code — which is only expressible where that code is a complete STATEMENT.
-                    // At a terminal position (a block's tail, a tuple element) the payload value is
-                    // an expression and nothing may follow it, so bind it first and yield the
-                    // binding. Both spellings are emitted rather than always binding, because the
-                    // statement positions are the common ones and a `let x = x_payload;` rebinding
-                    // in every consumer's generated crate is noise that says nothing.
-                    //
-                    // A VALUE-LESS payload is a third case, and takes neither spelling. Without
-                    // encodings a fixed value stores nothing, so there is nothing to stage: read it
-                    // with a discarding wrapper, run the check, then satisfy the caller's wrapper
-                    // with the unit the payload evaluates to. Staging it would bind `let x_payload =
-                    // ();` and re-emit `x_payload` — the same unit, but at the discarding STATEMENT
-                    // slots a fixed member is read in (an array struct's field sequence, a map
-                    // entry's `k_present = (|| { .. })()?` block) a bare expression line is not Rust.
-                    // Under `--preserve-encodings` a fixed value DOES carry an encoding, so it is a
-                    // value like any other and this leg must not take it.
-                    //
-                    // Value-less-ness is a property of the whole encoding CHAIN, not of its root: a
-                    // mandatory `Tagged` operation stores nothing of its own without encodings
-                    // either (the number is a constant, verified on the way past), so
-                    // `bytes .cbor #6.1(42)` is exactly as value-less as `bytes .cbor 42` and must
-                    // take the same leg.
-                    let value_less_payload =
-                        !cli.preserve_encodings && payload_is_value_less(&child);
-                    if value_less_payload {
-                        self.generate_deserialize(
-                            types,
-                            *child,
-                            DeserializeBeforeAfter::new("", "", false),
-                            config
-                                .overload_deserializer(&name_overload)
-                                .cbor_depth(cbor_level),
-                            cli,
-                        )
-                        .add_to_code(&mut deser_code);
-                        deser_code
-                            .content
-                            .push_block(cbor_payload_trailing_check(&name_overload));
-                        line_unit_value(&mut deser_code, &before_after);
-                    } else if before_after.is_statement() {
-                        self.generate_deserialize(
-                            types,
-                            *child,
-                            before_after,
-                            config
-                                .overload_deserializer(&name_overload)
-                                .cbor_depth(cbor_level),
-                            cli,
-                        )
-                        .add_to_code(&mut deser_code);
-                        deser_code
-                            .content
-                            .push_block(cbor_payload_trailing_check(&name_overload));
-                    } else {
-                        let payload_binding = format!(
-                            "{}_{}",
-                            config.var_name,
-                            cbor_payload_binding_suffix(cbor_level)
-                        );
-                        self.generate_deserialize(
-                            types,
-                            *child,
-                            DeserializeBeforeAfter::new(
-                                &format!("let {payload_binding} = "),
-                                ";",
-                                false,
-                            ),
-                            config
-                                .overload_deserializer(&name_overload)
-                                .cbor_depth(cbor_level),
-                            cli,
-                        )
-                        .add_to_code(&mut deser_code);
-                        deser_code
-                            .content
-                            .push_block(cbor_payload_trailing_check(&name_overload));
-                        deser_code.content.line(&format!(
-                            "{}{payload_binding}{}",
-                            before_after.before_str(false),
-                            before_after.after_str(false)
-                        ));
-                    }
-                    deser_code.throws = true;
+                    deser_code = self.deser_cbor_bytes(
+                        *child,
+                        types,
+                        deser_code,
+                        config,
+                        before_after,
+                        cli,
+                        deserializer_name,
+                    );
                 }
                 SerializingRustType::EncodingOperation(
                     CBOREncodingOperation::Tagged(tag),
