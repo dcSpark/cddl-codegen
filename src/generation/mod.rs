@@ -1830,6 +1830,11 @@ impl GenerationScope {
             self.component_package = Some(package);
         }
 
+        self.emit_optional_tests(types, cli);
+        Ok(())
+    }
+
+    fn emit_optional_tests(&mut self, types: &IntermediateTypes, cli: &Cli) {
         // optional generated-test module (reject + round-trip halves; off by default, so it
         // doesn't touch the snapshot suite)
         //
@@ -1889,7 +1894,6 @@ impl GenerationScope {
                 "cddl-codegen --emit-tests: component module skipped (component test emission not yet supported)"
             );
         }
-        Ok(())
     }
 
     /// Mint the wasm structural wrapper classes one rust struct's members need (the per-struct half

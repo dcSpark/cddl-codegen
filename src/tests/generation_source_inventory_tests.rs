@@ -179,7 +179,11 @@ const SOURCE_ROLES: &[SourceRole] = &[
         emitter: false,
         wasm: true,
         reason: "coordinator/type fragments; currently omitted from body roster",
-        members: &["generate", "clone_with_conceptual_type"],
+        members: &[
+            "generate",
+            "clone_with_conceptual_type",
+            "emit_optional_tests",
+        ],
     },
     SourceRole {
         file: "no_std_check.rs",
