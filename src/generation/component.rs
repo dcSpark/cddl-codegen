@@ -1741,14 +1741,10 @@ impl Emitter<'_, '_> {
             // `&*` is load-bearing: `serde_json`'s parameter is generic, so the auto-deref that lets
             // the cbor seam pass a `Ref` to a `&Self` parameter does not apply.
             WitMemberOp::ToJson => {
-                lines.push(
-                    "serde_json::to_string_pretty(&*self.0.borrow()).map_err(err)".to_owned(),
-                );
+                self.member_to_json_body(&mut lines);
             }
             WitMemberOp::FromJson => {
-                let arg = kebab_to_snake(&member.params[0].name);
-                lines.push(format!("serde_json::from_str::<{rust}>(&{arg})"));
-                mint_from(&mut lines, own, rep);
+                self.member_from_json_body(&mut lines, member, rust, own, rep);
             }
             WitMemberOp::FromCborBytes => {
                 self.member_from_cbor_body(&mut lines, member, rust, own, rep);
@@ -1885,6 +1881,23 @@ impl Emitter<'_, '_> {
         }
         lines
     }
+    fn member_from_json_body(
+        &self,
+        lines: &mut Vec<String>,
+        member: &WitMember,
+        rust: &str,
+        own: &str,
+        rep: &str,
+    ) {
+        let arg = kebab_to_snake(&member.params[0].name);
+        lines.push(format!("serde_json::from_str::<{rust}>(&{arg})"));
+        mint_from(lines, own, rep);
+    }
+
+    fn member_to_json_body(&self, lines: &mut Vec<String>) {
+        lines.push("serde_json::to_string_pretty(&*self.0.borrow()).map_err(err)".to_owned());
+    }
+
     fn member_to_canonical_cbor_body(&self, lines: &mut Vec<String>, rust: &str) {
         lines.push(format!(
             "<{rust} as {rt}::serialization::Serialize>::to_canonical_cbor_bytes(&self.0.borrow())",
