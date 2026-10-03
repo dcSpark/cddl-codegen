@@ -1755,18 +1755,10 @@ impl Emitter<'_, '_> {
             // `to_raw_bytes` hands back a borrow, so the copy to an owned `Vec` is this face's, not
             // the trait's.
             WitMemberOp::ToRawBytes => {
-                lines.push(format!(
-                    "<{rust} as {rt}::serialization::RawBytesEncoding>::to_raw_bytes(&self.0.borrow()).to_vec()",
-                    rt = self.runtime()
-                ));
+                self.member_to_raw_body(&mut lines, rust);
             }
             WitMemberOp::FromRawBytes => {
-                let arg = kebab_to_snake(&member.params[0].name);
-                lines.push(format!(
-                    "<{rust} as {rt}::serialization::RawBytesEncoding>::from_raw_bytes(&{arg})",
-                    rt = self.runtime()
-                ));
-                mint_from(&mut lines, own, rep);
+                self.member_from_raw_body(&mut lines, member, rust, own, rep);
             }
             // A choice's discriminant, derived by matching the rust DATA enum — never by naming the
             // rust `<Name>Kind`, which is emitted only under `cli.wasm` and is therefore absent from
@@ -1881,6 +1873,29 @@ impl Emitter<'_, '_> {
         }
         lines
     }
+    fn member_from_raw_body(
+        &self,
+        lines: &mut Vec<String>,
+        member: &WitMember,
+        rust: &str,
+        own: &str,
+        rep: &str,
+    ) {
+        let arg = kebab_to_snake(&member.params[0].name);
+        lines.push(format!(
+            "<{rust} as {rt}::serialization::RawBytesEncoding>::from_raw_bytes(&{arg})",
+            rt = self.runtime()
+        ));
+        mint_from(lines, own, rep);
+    }
+
+    fn member_to_raw_body(&self, lines: &mut Vec<String>, rust: &str) {
+        lines.push(format!(
+                "<{rust} as {rt}::serialization::RawBytesEncoding>::to_raw_bytes(&self.0.borrow()).to_vec()",
+                rt = self.runtime()
+            ));
+    }
+
     fn member_from_json_body(
         &self,
         lines: &mut Vec<String>,
