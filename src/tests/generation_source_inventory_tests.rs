@@ -182,6 +182,7 @@ const SOURCE_ROLES: &[SourceRole] = &[
         members: &[
             "generate",
             "clone_with_conceptual_type",
+            "emit_rust_scope_imports",
             "emit_serialization_imports",
             "emit_wasm_imports_and_reexports",
             "emit_component_surface",
