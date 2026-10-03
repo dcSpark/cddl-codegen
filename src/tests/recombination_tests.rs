@@ -1361,6 +1361,10 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 // unreachable!("a set nominal always wraps a homogeneous occurrence array") retains
 // its exact payload and non-array branch.
 // No active panic key or allowance is added or widened; main qualification remains pending.
+// WIT projection invariant guard now belongs to wit.rs::project_record_field_rows:
+// a mandatory member's `.default` must be stripped at field construction before it
+// reaches the WIT projection: exact debug_assert condition and payload retained.
+// No active panic allowance is added; main must qualify normalized production frame keys.
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired when the two anonymous-composite families and the group-choice-arm inline group
     // became graceful rejections) Three classes lived here, and they split by the composite's

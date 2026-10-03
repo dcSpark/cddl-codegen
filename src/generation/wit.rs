@@ -1657,96 +1657,7 @@ fn project_record(
     let mut params = Vec::new();
     let mut members = Vec::new();
     let mut ctor_fallible = false;
-    for field in &record.fields {
-        let field_name = convert_to_kebab_case(&field.name);
-        if field.rust_type.conceptual_type.is_fixed_value() {
-            // A mandatory fixed value carries no information and gets no accessor (the rust and wasm
-            // faces agree). An OPTIONAL one stores its presence as a `bool`, which is real state.
-            if field.optional {
-                members.push(WitMember {
-                    name: field_name.clone(),
-                    is_static: false,
-                    params: Vec::new(),
-                    result: Some(WitType::Bool),
-                    fallible: false,
-                    op: WitMemberOp::PresenceGetter {
-                        field: field.name.clone(),
-                    },
-                });
-                members.push(WitMember {
-                    name: format!("set-{field_name}"),
-                    is_static: false,
-                    params: vec![WitParam::synthetic("present", WitType::Bool, false)],
-                    result: None,
-                    fallible: false,
-                    op: WitMemberOp::PresenceSetter {
-                        field: field.name.clone(),
-                    },
-                });
-            }
-            continue;
-        }
-        let ty = map_rust_type(&field.rust_type, ctx)?;
-        let validates = wit_param_validates(&field.rust_type, ctx.types);
-        // A `.default`-carrying member is stored PLAIN by the rust struct — the default substitutes
-        // for absence — so the component face reads and writes it as a bare value, exactly as the
-        // wasm face does. The record-field construction seam guarantees the other half of that
-        // pairing (see `RustField::rust_type`'s invariant): a `.default` on a MANDATORY member is
-        // inert by RFC 8610 §3.8.2 and is stripped before the field is built, so every defaulted
-        // field reaching this projection is optional and therefore still gets a setter.
-        let plain_storage = field.rust_type.config.default.is_some();
-        debug_assert!(
-            !plain_storage || field.optional,
-            "a mandatory member's `.default` must be stripped at field construction before it \
-             reaches the WIT projection"
-        );
-        members.push(WitMember {
-            name: field_name.clone(),
-            is_static: false,
-            params: Vec::new(),
-            result: Some(if field.optional && !plain_storage {
-                WitType::Option(Box::new(ty.clone()))
-            } else {
-                ty.clone()
-            }),
-            fallible: false,
-            op: WitMemberOp::Getter {
-                field: field.name.clone(),
-            },
-        });
-        if field.optional {
-            // The setter takes the BARE type, as the wasm face's does — it sets a value, it never
-            // clears one. For a presence-`Option` field the getter reports absence, so the two are
-            // deliberately asymmetric; for a defaulted (plain) field the getter reports the default,
-            // so neither side can express clearing.
-            members.push(WitMember {
-                name: format!("set-{field_name}"),
-                is_static: false,
-                params: vec![WitParam {
-                    name: field_name,
-                    rust_name: field.name.clone(),
-                    ty,
-                    validates,
-                    rust_type: Some(field.rust_type.clone()),
-                }],
-                result: None,
-                fallible: validates,
-                op: WitMemberOp::Setter {
-                    field: field.name.clone(),
-                    plain_storage,
-                },
-            });
-        } else {
-            params.push(WitParam {
-                name: field_name,
-                rust_name: field.name.clone(),
-                ty,
-                validates,
-                rust_type: Some(field.rust_type.clone()),
-            });
-            ctor_fallible |= validates;
-        }
-    }
+    project_record_field_rows(record, ctx, &mut params, &mut members, &mut ctor_fallible)?;
     // The NonEmpty open table's construction door (`t = { + K_t => V_t, * K_r => V_r }`): the rust
     // `new` takes the first typed entry, so the WIT constructor projects exactly those two params.
     // WIT has no min-1 expression for a resource, so the bound lives ONLY in the rust door the
@@ -1918,6 +1829,106 @@ fn project_record(
         }),
         members,
     })
+}
+
+fn project_record_field_rows(
+    record: &RustRecord,
+    ctx: &mut TypeCtx,
+    params: &mut Vec<WitParam>,
+    members: &mut Vec<WitMember>,
+    ctor_fallible: &mut bool,
+) -> ProjectResult<()> {
+    for field in &record.fields {
+        let field_name = convert_to_kebab_case(&field.name);
+        if field.rust_type.conceptual_type.is_fixed_value() {
+            // A mandatory fixed value carries no information and gets no accessor (the rust and wasm
+            // faces agree). An OPTIONAL one stores its presence as a `bool`, which is real state.
+            if field.optional {
+                members.push(WitMember {
+                    name: field_name.clone(),
+                    is_static: false,
+                    params: Vec::new(),
+                    result: Some(WitType::Bool),
+                    fallible: false,
+                    op: WitMemberOp::PresenceGetter {
+                        field: field.name.clone(),
+                    },
+                });
+                members.push(WitMember {
+                    name: format!("set-{field_name}"),
+                    is_static: false,
+                    params: vec![WitParam::synthetic("present", WitType::Bool, false)],
+                    result: None,
+                    fallible: false,
+                    op: WitMemberOp::PresenceSetter {
+                        field: field.name.clone(),
+                    },
+                });
+            }
+            continue;
+        }
+        let ty = map_rust_type(&field.rust_type, ctx)?;
+        let validates = wit_param_validates(&field.rust_type, ctx.types);
+        // A `.default`-carrying member is stored PLAIN by the rust struct — the default substitutes
+        // for absence — so the component face reads and writes it as a bare value, exactly as the
+        // wasm face does. The record-field construction seam guarantees the other half of that
+        // pairing (see `RustField::rust_type`'s invariant): a `.default` on a MANDATORY member is
+        // inert by RFC 8610 §3.8.2 and is stripped before the field is built, so every defaulted
+        // field reaching this projection is optional and therefore still gets a setter.
+        let plain_storage = field.rust_type.config.default.is_some();
+        debug_assert!(
+            !plain_storage || field.optional,
+            "a mandatory member's `.default` must be stripped at field construction before it \
+             reaches the WIT projection"
+        );
+        members.push(WitMember {
+            name: field_name.clone(),
+            is_static: false,
+            params: Vec::new(),
+            result: Some(if field.optional && !plain_storage {
+                WitType::Option(Box::new(ty.clone()))
+            } else {
+                ty.clone()
+            }),
+            fallible: false,
+            op: WitMemberOp::Getter {
+                field: field.name.clone(),
+            },
+        });
+        if field.optional {
+            // The setter takes the BARE type, as the wasm face's does — it sets a value, it never
+            // clears one. For a presence-`Option` field the getter reports absence, so the two are
+            // deliberately asymmetric; for a defaulted (plain) field the getter reports the default,
+            // so neither side can express clearing.
+            members.push(WitMember {
+                name: format!("set-{field_name}"),
+                is_static: false,
+                params: vec![WitParam {
+                    name: field_name,
+                    rust_name: field.name.clone(),
+                    ty,
+                    validates,
+                    rust_type: Some(field.rust_type.clone()),
+                }],
+                result: None,
+                fallible: validates,
+                op: WitMemberOp::Setter {
+                    field: field.name.clone(),
+                    plain_storage,
+                },
+            });
+        } else {
+            params.push(WitParam {
+                name: field_name,
+                rust_name: field.name.clone(),
+                ty,
+                validates,
+                rust_type: Some(field.rust_type.clone()),
+            });
+            *ctor_fallible |= validates;
+        }
+    }
+    Ok(())
 }
 
 /// A `@newtype` wrapper → a `resource` with a constructor and the inner-value getter. The getter's

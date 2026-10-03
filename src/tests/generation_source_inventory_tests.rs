@@ -301,7 +301,7 @@ const SOURCE_ROLES: &[SourceRole] = &[
         emitter: false,
         wasm: false,
         reason: "component WIT projection",
-        members: &["wit_escape"],
+        members: &["wit_escape", "project_record_field_rows"],
     },
     SourceRole {
         file: "wrappers.rs",
