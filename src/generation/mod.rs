@@ -1054,152 +1054,8 @@ impl GenerationScope {
             generate_any_cbor_wasm(self, types, cli);
         }
 
-        // JSON export crate. `json_lines` is the BODY of the emitted `add_schemas(generator)` — one
-        // registration row per exported type. The surrounding `export_schemas()` (which owns the
-        // `schemas/` dir and writes the single document) is built in `generation/export.rs`.
         if cli.json_schema_export {
-            let mut main_lines_by_file: BTreeMap<ModuleScope, Vec<String>> = BTreeMap::new();
-            let mut row_roots = BTreeSet::new();
-            // A generic-extern BASE (`ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_`) names no concrete
-            // type, so a row naming the bare `ExtSet` is E0107 no matter what the user writes —
-            // the same class the extern-interface self-check skips (`ExternCheckKind::None`). Its
-            // concrete instances (`my_set = ext_set<uint>` -> `MySet`) get their own rows and are
-            // kept. Keyed on `generic_extern_base_idents()` (the union of the parse-time record and
-            // the usage-site instances) so BOTH a base with ZERO instances (`ext_unused<T>`) and a
-            // base declared plain-but-used-generic (`extern_generic<..>`, tests/core) are skipped.
-            let generic_bases = types.generic_extern_base_idents();
-            for (rust_ident, rust_struct) in types.rust_structs() {
-                let is_typedef = matches!(
-                    rust_struct.variant(),
-                    RustStructType::Array { .. } | RustStructType::Table { .. }
-                );
-                // The is_referenced check is for things like Int which are included by default
-                // in order for the CDDL to parse but might not be used.
-                // However, we need to export other root types from the user's spec
-                if is_typedef || (rust_ident.as_ref() == "Int" && !types.is_referenced(rust_ident))
-                {
-                    continue;
-                }
-                // Skip the generic-extern base (see above).
-                if generic_bases.contains(rust_ident) {
-                    continue;
-                }
-                // Skip types owned by a non-exported (cross-crate extern-dep) scope: the emitted
-                // path would be `dep_crate::sub::Thing`, but this json-gen crate's `Cargo.toml`
-                // depends only on the own rust crate (E0433), and by design each crate's OWN json-gen
-                // run exports its own schemas — the consumer must not re-export a dependency's.
-                if !types.scope(rust_ident).export() {
-                    continue;
-                }
-                // Skip a rule the SPEC AUTHOR declared out of the published JSON surface
-                // (`@no_json_schema_export`). Unlike the four skips above — each a property the tool
-                // derives from the IR — this one is not derivable: a type having a derivable JSON
-                // schema is not evidence that the derived shape is that type's published encoding. A
-                // `serde`/`schemars` derive can exist as an artifact while the real encoding is
-                // produced by a PARENT's hand-written impl (the row would then publish a
-                // contradictory shape), the type's `JsonSchema` impl can be a deliberate stub (a junk
-                // row), or — for an own-spec extern — the hand-written rust type may have no
-                // `JsonSchema` impl at all, making the row an `E0277` inside a generated file. The
-                // tool cannot tell those apart from a genuine schema root; the spec author can.
-                if types.is_no_json_schema_export(rust_ident) {
-                    continue;
-                }
-                main_lines_by_file
-                    .entry(types.scope(rust_ident).clone())
-                    .or_default()
-                    .push(format!(
-                        "reg.add::<{}>();",
-                        rust_crate_struct_from_wasm(types, rust_ident, cli)
-                    ));
-                row_roots.insert(rust_ident.clone());
-            }
-            // A row's `subschema_for` recursively enters definitions while the generated type's
-            // schema body runs. Claim the same-crate, nameable candidates first, without invoking
-            // schemars' mutating `subschema_for` early: the registrar then catches a collision
-            // between two row-less descendants even when their default `schema_id()` silently
-            // merges them. This is deliberately separate from CLI roots: their paths have no IR.
-            for claim in json_schema_reachable_claims(types, &row_roots, cli) {
-                self.json_lines.line(&claim);
-            }
-            // Preclaim every own-spec row before the CLI roots. The generated reachability walk
-            // above inventories DESCENDANTS, not the row roots themselves; without this phase an
-            // extra root colliding with a spec row would claim the ledger first merely because its
-            // preclaim sits before registration. Keeping the sequence spec first, CLI second
-            // preserves the actionable contract: the CLI path is the second named claimant.
-            // These are published roots, so inline rows participate too.
-            for root in &row_roots {
-                self.json_lines.line(&format!(
-                    "reg.preclaim_root::<{}>();",
-                    rust_crate_struct_from_wasm(types, root, cli)
-                ));
-            }
-            // `AnyCbor` is the other own-spec row, but it is a static-runtime type rather than a
-            // RustStruct and therefore is not in `row_roots`. Preclaim it in the same spec-root
-            // phase for the identical spec-before-CLI collision contract.
-            if types.uses_any_cbor() && cli.export_static_files() {
-                self.json_lines.line(&format!(
-                    "reg.preclaim_root::<{}::any_cbor::AnyCbor>();",
-                    cli.lib_name_code()
-                ));
-            }
-            // CLI roots name types the IR cannot inspect. Preclaim every one before any row asks
-            // schemars to traverse an opaque body, so supplying BOTH sides of an opaque collision
-            // makes the name ledger name both types rather than stopping at a one-sided `<name>2`.
-            // `preclaim_root`, unlike the generated-reachability walk above, includes inline roots:
-            // a CLI root is an authored published declaration and `add` publishes its body by name.
-            for root in &cli.json_schema_root {
-                self.json_lines
-                    .line(&format!("reg.preclaim_root::<{root}>();"));
-            }
-            // `AnyCbor` (CDDL `any`) is a static-runtime type, not a `RustStruct`, so the loop above
-            // never emits its registration row. Nothing else reaches it either: a GENERATED type
-            // describes an `any`-typed member with the NATURAL rendering's permissive schema
-            // (`#[schemars(schema_with = "…::natural_any_cbor_schema")]`), which never names
-            // `AnyCbor`. So `AnyCbor`'s own tagged-`oneOf` schema — the one describing the `AnyCbor`
-            // wasm wrapper's `to_json` surface — enters the document ONLY through this row. Only in
-            // the own-static crate: under `--common-import-override` `AnyCbor` lives in the common
-            // crate, whose own json-gen run exports its schema (the same "each crate exports only its
-            // own schemas" rule the non-export-scope skip enforces).
-            if types.uses_any_cbor() && cli.export_static_files() {
-                main_lines_by_file
-                    .entry((*ROOT_SCOPE).clone())
-                    .or_default()
-                    .push(format!(
-                        "reg.add::<{}::any_cbor::AnyCbor>();",
-                        cli.lib_name_code()
-                    ));
-            }
-            let multiple_files = main_lines_by_file.len() > 1;
-            for (scope_name, lines) in main_lines_by_file {
-                if multiple_files {
-                    self.json_lines.line(&format!("// {scope_name}"));
-                }
-                for line in lines {
-                    self.json_lines.line(&line);
-                }
-            }
-            // `--json-schema-root` extra roots: a published type the CDDL never describes (a
-            // hand-written address/key type, or one owned by a crate with no spec at all). The value
-            // is a user-supplied RUST path emitted verbatim — the flag consults no IR whatsoever, so
-            // a path naming a type whose rule carries `@no_json_schema_export` re-registers it, and
-            // an unresolvable path is an E0433/E0412 in the consumer's json-gen build rather than a
-            // generation-time reject (cddl-codegen does not typecheck Rust).
-            //
-            // AFTER every spec-derived row: materialization order remains spec first, so schemars'
-            // own assigned refs keep that established ordering. Name conflicts are caught earlier
-            // by the spec-root-then-CLI-root preclaim sequence above, making the CLI path the second
-            // named claimant — the side the user can change without touching their spec.
-            //
-            // FLAG ORDER, never sorted: the flag list is an input, so preserving it keeps "same
-            // inputs -> same bytes" while staying readable; sorting would reorder registration, which
-            // is observable through the guard's messages.
-            //
-            // No banner comment above the block: this file is inside the comment-preservation
-            // overlay's tree, and a comment above rows that all vanish when the flag is dropped is
-            // the stranded-comment/`unpreserved-comment` trap class. The rows carry their own meaning.
-            for root in &cli.json_schema_root {
-                self.json_lines.line(&format!("reg.add::<{root}>();"));
-            }
+            self.emit_json_schema_rows(types, cli);
         }
 
         let runtime_usage = self.emit_rust_runtime_declarations(types, cli);
@@ -1471,6 +1327,153 @@ impl GenerationScope {
             }
         }
         runtime_usage
+    }
+
+    fn emit_json_schema_rows(&mut self, types: &IntermediateTypes, cli: &Cli) {
+        // JSON export crate. `json_lines` is the BODY of the emitted `add_schemas(generator)` — one
+        // registration row per exported type. The surrounding `export_schemas()` (which owns the
+        // `schemas/` dir and writes the single document) is built in `generation/export.rs`.
+        let mut main_lines_by_file: BTreeMap<ModuleScope, Vec<String>> = BTreeMap::new();
+        let mut row_roots = BTreeSet::new();
+        // A generic-extern BASE (`ext_set<T> = _CDDL_CODEGEN_EXTERN_TYPE_`) names no concrete
+        // type, so a row naming the bare `ExtSet` is E0107 no matter what the user writes —
+        // the same class the extern-interface self-check skips (`ExternCheckKind::None`). Its
+        // concrete instances (`my_set = ext_set<uint>` -> `MySet`) get their own rows and are
+        // kept. Keyed on `generic_extern_base_idents()` (the union of the parse-time record and
+        // the usage-site instances) so BOTH a base with ZERO instances (`ext_unused<T>`) and a
+        // base declared plain-but-used-generic (`extern_generic<..>`, tests/core) are skipped.
+        let generic_bases = types.generic_extern_base_idents();
+        for (rust_ident, rust_struct) in types.rust_structs() {
+            let is_typedef = matches!(
+                rust_struct.variant(),
+                RustStructType::Array { .. } | RustStructType::Table { .. }
+            );
+            // The is_referenced check is for things like Int which are included by default
+            // in order for the CDDL to parse but might not be used.
+            // However, we need to export other root types from the user's spec
+            if is_typedef || (rust_ident.as_ref() == "Int" && !types.is_referenced(rust_ident)) {
+                continue;
+            }
+            // Skip the generic-extern base (see above).
+            if generic_bases.contains(rust_ident) {
+                continue;
+            }
+            // Skip types owned by a non-exported (cross-crate extern-dep) scope: the emitted
+            // path would be `dep_crate::sub::Thing`, but this json-gen crate's `Cargo.toml`
+            // depends only on the own rust crate (E0433), and by design each crate's OWN json-gen
+            // run exports its own schemas — the consumer must not re-export a dependency's.
+            if !types.scope(rust_ident).export() {
+                continue;
+            }
+            // Skip a rule the SPEC AUTHOR declared out of the published JSON surface
+            // (`@no_json_schema_export`). Unlike the four skips above — each a property the tool
+            // derives from the IR — this one is not derivable: a type having a derivable JSON
+            // schema is not evidence that the derived shape is that type's published encoding. A
+            // `serde`/`schemars` derive can exist as an artifact while the real encoding is
+            // produced by a PARENT's hand-written impl (the row would then publish a
+            // contradictory shape), the type's `JsonSchema` impl can be a deliberate stub (a junk
+            // row), or — for an own-spec extern — the hand-written rust type may have no
+            // `JsonSchema` impl at all, making the row an `E0277` inside a generated file. The
+            // tool cannot tell those apart from a genuine schema root; the spec author can.
+            if types.is_no_json_schema_export(rust_ident) {
+                continue;
+            }
+            main_lines_by_file
+                .entry(types.scope(rust_ident).clone())
+                .or_default()
+                .push(format!(
+                    "reg.add::<{}>();",
+                    rust_crate_struct_from_wasm(types, rust_ident, cli)
+                ));
+            row_roots.insert(rust_ident.clone());
+        }
+        // A row's `subschema_for` recursively enters definitions while the generated type's
+        // schema body runs. Claim the same-crate, nameable candidates first, without invoking
+        // schemars' mutating `subschema_for` early: the registrar then catches a collision
+        // between two row-less descendants even when their default `schema_id()` silently
+        // merges them. This is deliberately separate from CLI roots: their paths have no IR.
+        for claim in json_schema_reachable_claims(types, &row_roots, cli) {
+            self.json_lines.line(&claim);
+        }
+        // Preclaim every own-spec row before the CLI roots. The generated reachability walk
+        // above inventories DESCENDANTS, not the row roots themselves; without this phase an
+        // extra root colliding with a spec row would claim the ledger first merely because its
+        // preclaim sits before registration. Keeping the sequence spec first, CLI second
+        // preserves the actionable contract: the CLI path is the second named claimant.
+        // These are published roots, so inline rows participate too.
+        for root in &row_roots {
+            self.json_lines.line(&format!(
+                "reg.preclaim_root::<{}>();",
+                rust_crate_struct_from_wasm(types, root, cli)
+            ));
+        }
+        // `AnyCbor` is the other own-spec row, but it is a static-runtime type rather than a
+        // RustStruct and therefore is not in `row_roots`. Preclaim it in the same spec-root
+        // phase for the identical spec-before-CLI collision contract.
+        if types.uses_any_cbor() && cli.export_static_files() {
+            self.json_lines.line(&format!(
+                "reg.preclaim_root::<{}::any_cbor::AnyCbor>();",
+                cli.lib_name_code()
+            ));
+        }
+        // CLI roots name types the IR cannot inspect. Preclaim every one before any row asks
+        // schemars to traverse an opaque body, so supplying BOTH sides of an opaque collision
+        // makes the name ledger name both types rather than stopping at a one-sided `<name>2`.
+        // `preclaim_root`, unlike the generated-reachability walk above, includes inline roots:
+        // a CLI root is an authored published declaration and `add` publishes its body by name.
+        for root in &cli.json_schema_root {
+            self.json_lines
+                .line(&format!("reg.preclaim_root::<{root}>();"));
+        }
+        // `AnyCbor` (CDDL `any`) is a static-runtime type, not a `RustStruct`, so the loop above
+        // never emits its registration row. Nothing else reaches it either: a GENERATED type
+        // describes an `any`-typed member with the NATURAL rendering's permissive schema
+        // (`#[schemars(schema_with = "…::natural_any_cbor_schema")]`), which never names
+        // `AnyCbor`. So `AnyCbor`'s own tagged-`oneOf` schema — the one describing the `AnyCbor`
+        // wasm wrapper's `to_json` surface — enters the document ONLY through this row. Only in
+        // the own-static crate: under `--common-import-override` `AnyCbor` lives in the common
+        // crate, whose own json-gen run exports its schema (the same "each crate exports only its
+        // own schemas" rule the non-export-scope skip enforces).
+        if types.uses_any_cbor() && cli.export_static_files() {
+            main_lines_by_file
+                .entry((*ROOT_SCOPE).clone())
+                .or_default()
+                .push(format!(
+                    "reg.add::<{}::any_cbor::AnyCbor>();",
+                    cli.lib_name_code()
+                ));
+        }
+        let multiple_files = main_lines_by_file.len() > 1;
+        for (scope_name, lines) in main_lines_by_file {
+            if multiple_files {
+                self.json_lines.line(&format!("// {scope_name}"));
+            }
+            for line in lines {
+                self.json_lines.line(&line);
+            }
+        }
+        // `--json-schema-root` extra roots: a published type the CDDL never describes (a
+        // hand-written address/key type, or one owned by a crate with no spec at all). The value
+        // is a user-supplied RUST path emitted verbatim — the flag consults no IR whatsoever, so
+        // a path naming a type whose rule carries `@no_json_schema_export` re-registers it, and
+        // an unresolvable path is an E0433/E0412 in the consumer's json-gen build rather than a
+        // generation-time reject (cddl-codegen does not typecheck Rust).
+        //
+        // AFTER every spec-derived row: materialization order remains spec first, so schemars'
+        // own assigned refs keep that established ordering. Name conflicts are caught earlier
+        // by the spec-root-then-CLI-root preclaim sequence above, making the CLI path the second
+        // named claimant — the side the user can change without touching their spec.
+        //
+        // FLAG ORDER, never sorted: the flag list is an input, so preserving it keeps "same
+        // inputs -> same bytes" while staying readable; sorting would reorder registration, which
+        // is observable through the guard's messages.
+        //
+        // No banner comment above the block: this file is inside the comment-preservation
+        // overlay's tree, and a comment above rows that all vanish when the flag is dropped is
+        // the stranded-comment/`unpreserved-comment` trap class. The rows carry their own meaning.
+        for root in &cli.json_schema_root {
+            self.json_lines.line(&format!("reg.add::<{root}>();"));
+        }
     }
 
     fn emit_rust_scope_imports(
