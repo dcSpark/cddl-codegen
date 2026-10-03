@@ -290,7 +290,11 @@ const SOURCE_ROLES: &[SourceRole] = &[
         emitter: true,
         wasm: true,
         reason: "wrapper bodies and WASM signatures",
-        members: &["generate_wrapper_struct", "emit_wrapper_wasm_face"],
+        members: &[
+            "generate_wrapper_struct",
+            "emit_wrapper_wasm_face",
+            "emit_wrapper_json_impls",
+        ],
     },
     SourceRole {
         file: "wasm_wrapper_registry.rs",

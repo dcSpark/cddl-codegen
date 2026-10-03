@@ -1346,6 +1346,10 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 // unreachable!("set nominal wrapped a non-array type: {other:?}") retains its exact
 // formatted payload and operand at the non-array set-nominal arm.
 // No active panic key or allowance is added or widened; main qualification remains pending.
+// Wrapper JSON invariant guards now belong to wrappers.rs::emit_wrapper_json_impls:
+// Alias and Any retain bare unreachable!() guards; FixedValue::Undefined retains
+// unreachable!("fixed undefined is a nominal unit value, never a JSON constructor argument").
+// No active panic key or allowance is added or widened; main qualification remains pending.
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired when the two anonymous-composite families and the group-choice-arm inline group
     // became graceful rejections) Three classes lived here, and they split by the composite's

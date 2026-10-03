@@ -209,6 +209,7 @@ pub(crate) fn generate_tag_check(
 #[derive(Clone, Copy)]
 struct WrapperFacts<'a> {
     checked_scalar: bool,
+    effective_min_max: Option<IntWindow>,
     getter_name: &'a str,
     emit_getter: bool,
     set_nominal: bool,
@@ -270,6 +271,7 @@ pub(super) fn generate_wrapper_struct(
     };
     let facts = WrapperFacts {
         checked_scalar,
+        effective_min_max,
         getter_name,
         emit_getter,
         set_nominal,
@@ -306,279 +308,21 @@ pub(super) fn generate_wrapper_struct(
     };
 
     // manual JSON impls
-    let mut serde_ser_impl = codegen::Impl::new(type_name);
-    let mut serde_deser_impl = codegen::Impl::new(type_name);
-    let mut json_schema_impl = codegen::Impl::new(type_name);
-    let json_hex_bytes = matches!(
-        field_type.conceptual_type.resolve_alias_shallow(),
-        ConceptualRustType::Primitive(Primitive::Bytes)
+    let WrapperJsonImpls {
+        serde_ser_impl,
+        serde_deser_impl,
+        json_schema_impl,
+        json_hex_bytes,
+    } = emit_wrapper_json_impls(
+        types,
+        type_name,
+        field_type,
+        float_min_max,
+        struct_config,
+        cli,
+        &facts,
+        self_var,
     );
-    // A newtype wrapping an `any` (e.g. `t = #6.11(any)` → `Tagged(AnyCbor)`)
-    // renders its JSON NATURALLY, not through `AnyCbor`'s tagged codec. The wrapper's manual serde /
-    // schemars route through the `any_cbor` runtime module's natural adapter (the CBOR-only tag is
-    // absent from JSON, so the natural walk of the inner value is the whole JSON surface).
-    let json_natural_any = matches!(
-        field_type.conceptual_type.resolve_alias_shallow(),
-        ConceptualRustType::Any
-    );
-    let any_cbor_mod = format!("{}::any_cbor", cli.common_import_rust());
-    // Newtypes own manual JSON impls rather than field annotations. Reuse the same recursive
-    // descriptor as records and newtype enum arms so an authored wrapper cannot hide a sequence
-    // carrier between JSON and a wide/natural exact array.
-    let json_static_array_descriptor =
-        super::recursive_exact_array_descriptor(types, field_type, false, false, cli);
-    let static_array_mod = format!("{}::static_array", cli.common_import_rust());
-    let json_direct_typed_static_array = match field_type.conceptual_type.resolve_alias_shallow() {
-        ConceptualRustType::Array(element)
-            if !field_type.contains_exact_natural_any_static_array() =>
-        {
-            field_type
-                .exact_homogeneous_array_len_checked()
-                // Arrays through the pinned serde/schemars trait limit retain the pre-Cycle-36
-                // manual wrapper derive path. This fallback exists solely for a direct wide typed
-                // wrapper, which otherwise asks those derives for unavailable array traits.
-                .filter(|len| *len > 32)
-                .map(|len| (element.for_rust_member(types, false, cli), len))
-        }
-        _ => None,
-    };
-    let json_schema_type = if json_hex_bytes {
-        Cow::Borrowed("String")
-    } else {
-        Cow::Owned(field_type.for_rust_member(types, false, cli))
-    };
-
-    if !struct_config.custom_json {
-        // serde Serialize / Deserialize
-        if cli.json_serde_derives {
-            let mut serde_ser_fn = codegen::Function::new("serialize");
-            serde_ser_fn
-                .generic("S")
-                .bound("S", "serde::Serializer")
-                .arg_ref_self()
-                .arg("serializer", "S")
-                .ret("Result<S::Ok, S::Error>");
-            let mut serde_deser_fn = codegen::Function::new("deserialize");
-            serde_deser_fn
-                .generic("D")
-                .bound("D", "serde::de::Deserializer<'de>")
-                .arg("deserializer", "D")
-                .ret("Result<Self, D::Error>");
-            if json_hex_bytes {
-                serde_ser_fn.line(format!(
-                    "serializer.serialize_str(&hex::encode({self_var}.clone()))"
-                ));
-                // One rejection wording for one class: every way the string can be refused — a
-                // non-canonical hex character, an odd digit count, a failing `new` — builds the
-                // SAME serde error, so a consumer reading it cannot tell which check refused it.
-                let err_expr = "serde::de::Error::invalid_value(serde::de::Unexpected::Str(&s), &\"invalid hex bytes\")";
-                let err_body = format!("{{ {err_expr} }}");
-                serde_deser_fn
-                    .line("let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;")
-                    // The accepted JSON grammar for a bytes newtype is CANONICAL hex — exactly what
-                    // the serialize half above emits — and it is the runtime's
-                    // `decode_canonical_hex` that owns it, not this call site. Routing through the
-                    // shared door rather than calling the backing decoder here is what keeps this
-                    // surface's grammar identical to `RawBytesEncoding::from_raw_hex`'s: the
-                    // decoder itself is lenient (it strips a `0x`/`0X` prefix and takes either
-                    // case), so a direct call would silently widen the read side past what the
-                    // write side emits.
-                    .line("decode_canonical_hex(&s)");
-                if types.can_new_fail(type_name) {
-                    serde_deser_fn
-                        .line(format!(
-                            ".ok().and_then(|bytes| {type_name}::try_from(bytes).ok())"
-                        ))
-                        .line(format!(".ok_or_else(|| {err_body})"));
-                } else {
-                    serde_deser_fn
-                        .line(format!(".map({type_name}::new)"))
-                        .line(format!(".map_err(|_e| {err_body})"));
-                }
-            } else if json_natural_any {
-                serde_ser_fn.line(format!(
-                    "{any_cbor_mod}::natural_any_cbor::serialize(&{self_var}, serializer)"
-                ));
-                serde_deser_fn
-                    .line(format!(
-                        "let inner = {any_cbor_mod}::natural_any_cbor::deserialize(deserializer)?;"
-                    ))
-                    // `any` is never a can_new_fail wrapper, so construction is infallible.
-                    .line("Ok(Self::new(inner))");
-            } else if let Some((descriptor, _member_type)) = &json_static_array_descriptor {
-                serde_ser_fn.line(format!(
-                    "{static_array_mod}::serialize_recursive::<{descriptor}, _, _>(&{self_var}, serializer)"
-                ));
-                serde_deser_fn.line(format!(
-                    "let inner = {static_array_mod}::deserialize_recursive::<{descriptor}, _, _>(deserializer)?;"
-                ));
-                if types.can_new_fail(type_name) {
-                    serde_deser_fn.line(format!(
-                        "Self::{}(inner).map_err(|_e| serde::de::Error::custom(\"invalid {type_name}\"))",
-                        if checked_scalar { "try_from" } else { "new" }
-                    ));
-                } else {
-                    serde_deser_fn.line("Ok(Self::new(inner))");
-                }
-            } else if json_direct_typed_static_array.is_some() {
-                serde_ser_fn.line(format!(
-                    "{static_array_mod}::static_array::serialize(&{self_var}, serializer)"
-                ));
-                serde_deser_fn.line(format!(
-                    "let inner = {static_array_mod}::static_array::deserialize(deserializer)?;"
-                ));
-                serde_deser_fn.line("Ok(Self::new(inner))");
-            } else {
-                serde_ser_fn.line(format!("{self_var}.serialize(serializer)"));
-                serde_deser_fn
-                    .line(format!("let inner = <{json_schema_type} as serde::de::Deserialize>::deserialize(deserializer)?;"));
-                if types.can_new_fail(type_name) {
-                    let unexpected = match field_type.conceptual_type.resolve_alias_shallow() {
-                        ConceptualRustType::Alias(_, _) => unreachable!(),
-                        ConceptualRustType::Array(_) => "Seq",
-                        ConceptualRustType::Fixed(fixed) => match fixed {
-                            FixedValue::Bool(_) => "Bool(inner)",
-                            FixedValue::Float(_) => "Float(inner)",
-                            FixedValue::Nint(_) => "Signed(inner as i64)",
-                            FixedValue::Null => "Option",
-                            FixedValue::Undefined => unreachable!(
-                                "fixed undefined is a nominal unit value, never a JSON constructor argument"
-                            ),
-                            FixedValue::Text(_) => "Str(&inner)",
-                            FixedValue::Bytes(_) => "Bytes(&inner)",
-                            FixedValue::Uint(_) => "Unsigned(inner)",
-                        },
-                        ConceptualRustType::Map(_, _) => "Map",
-                        ConceptualRustType::Optional(_) => "Option",
-                        ConceptualRustType::Primitive(p) => match p {
-                            Primitive::Bool => "Bool(inner)",
-                            Primitive::Bytes => "Bytes(&inner)",
-                            Primitive::F16 | Primitive::F32 | Primitive::F16To32 => {
-                                "Float(inner as f64)"
-                            }
-                            Primitive::F64 | Primitive::F32To64 | Primitive::Float => {
-                                "Float(inner)"
-                            }
-                            Primitive::I8
-                            | Primitive::I16
-                            | Primitive::I32
-                            | Primitive::I64
-                            | Primitive::N64 => "Signed(inner as i64)",
-                            Primitive::Str => "Str(&inner)",
-                            Primitive::U8 | Primitive::U16 | Primitive::U32 => {
-                                "Unsigned(inner as u64)"
-                            }
-                            Primitive::U64 => "Unsigned(inner)",
-                        },
-                        ConceptualRustType::Rust(_) => "StructVariant",
-                        // `any`+json rejects at generation, and `any` is never a can_new_fail
-                        // wrapper, so this JSON serde-derive path is unreachable for it.
-                        ConceptualRustType::Any => unreachable!(),
-                    };
-                    // Unexpected::Str(&inner)/Bytes(&inner) borrow `inner` in the error closure,
-                    // but `Self::new(inner)` moves it first (String/Vec aren't Copy) → E0382. Clone
-                    // into the constructor in that case so the original survives for the error. The
-                    // other (Copy) variants need no clone.
-                    let new_arg = if unexpected.contains("&inner") {
-                        "inner.clone()"
-                    } else {
-                        "inner"
-                    };
-                    serde_deser_fn
-                        .line(format!("Self::{}({new_arg})", if checked_scalar { "try_from" } else { "new" }))
-                        .line(format!(".map_err(|_e| {{ serde::de::Error::invalid_value(serde::de::Unexpected::{unexpected}, &\"invalid {type_name}\") }})"));
-                } else {
-                    serde_deser_fn.line("Ok(Self::new(inner))");
-                }
-            }
-            serde_ser_impl
-                .impl_trait("serde::Serialize")
-                .push_fn(serde_ser_fn);
-            serde_deser_impl
-                .impl_trait("serde::de::Deserialize<'de>")
-                .generic("'de")
-                .push_fn(serde_deser_fn);
-        }
-
-        // JsonSchema
-        if cli.json_schema_export {
-            let mut schema_name_fn = codegen::Function::new("schema_name");
-            schema_name_fn
-                .ret("alloc::borrow::Cow<'static, str>")
-                .line(format!("alloc::borrow::Cow::Borrowed(\"{type_name}\")"));
-            let mut json_schema_fn = codegen::Function::new("json_schema");
-            json_schema_fn
-                .arg("generator", "&mut schemars::SchemaGenerator")
-                .ret("schemars::Schema");
-            let mut inline_schema = codegen::Function::new("inline_schema");
-            inline_schema.ret("bool");
-            if json_natural_any {
-                // Permissive natural-rendering schema, distinct from `AnyCbor`'s own tagged codec schema.
-                json_schema_fn.line(format!(
-                    "{any_cbor_mod}::natural_any_cbor_schema(generator)"
-                ));
-                inline_schema.line("false");
-            } else if let Some(len) = field_type.exact_byte_array_len_checked() {
-                // Byte wrappers serialize as canonical hexadecimal strings.  The native carrier
-                // makes the byte count exact, so the JSON string has exactly twice that many
-                // characters; delegating to `String` alone would silently advertise every length.
-                let hex_len = len * 2;
-                json_schema_fn
-                    // `out` is already in GENERATED_LOCAL_PROBED_SAFE (including the JSON
-                    // profiles). Reuse that swept local instead of minting an unverdicted
-                    // `schema` binding at this emitter seam.
-                    .line("let mut out = String::json_schema(generator);")
-                    .line(format!(
-                        "out.insert(\"minLength\".to_owned(), {hex_len}u64.into());"
-                    ))
-                    .line(format!(
-                        "out.insert(\"maxLength\".to_owned(), {hex_len}u64.into());"
-                    ))
-                    .line("out");
-                inline_schema.line("String::inline_schema()");
-            } else if let Some((descriptor, member_type)) = &json_static_array_descriptor {
-                json_schema_fn.line(format!(
-                    "{static_array_mod}::recursive_schema::<{descriptor}, {member_type}>(generator)"
-                ));
-                inline_schema.line("false");
-            } else if let Some((element, len)) = &json_direct_typed_static_array {
-                json_schema_fn.line(format!(
-                    "{static_array_mod}::static_array_schema::<{element}, {len}>(generator)"
-                ));
-                inline_schema.line("false");
-            } else if effective_min_max.is_some() || float_min_max.is_some() {
-                // qualified-path form: `json_schema_type` is a type-position spelling, so a generic
-                // backing type (map/array @newtype) needs `<T as Trait>::method`, not `T::method`
-                // (which parses `<` as a comparison in expression position). Matches the
-                // `<{json_schema_type} as serde::de::Deserialize>::deserialize` precedent above.
-                json_schema_fn.line(format!(
-                    "let mut out = <{json_schema_type} as schemars::JsonSchema>::json_schema(generator);"
-                ));
-                emit_checked_scalar_json_schema_bounds(
-                    &mut json_schema_fn,
-                    field_type,
-                    effective_min_max,
-                    float_min_max,
-                );
-                json_schema_fn.line("out");
-                inline_schema.line(format!(
-                    "<{json_schema_type} as schemars::JsonSchema>::inline_schema()"
-                ));
-            } else {
-                json_schema_fn.line(format!(
-                    "<{json_schema_type} as schemars::JsonSchema>::json_schema(generator)"
-                ));
-                inline_schema.line(format!(
-                    "<{json_schema_type} as schemars::JsonSchema>::inline_schema()"
-                ));
-            }
-            json_schema_impl
-                .impl_trait("schemars::JsonSchema")
-                .push_fn(schema_name_fn)
-                .push_fn(json_schema_fn)
-                .push_fn(inline_schema);
-        }
-    }
     s.vis("pub");
     // A complete pair makes this wrapper's wire self-carrying. In particular, preserve mode must
     // not infer the wrapped collection's length/key/value sidecars: they describe the DEFAULT map
@@ -1331,6 +1075,312 @@ fn emit_wrapper_wasm_face(
         wrapper.s_impl.push_fn(get);
     }
     wrapper.push(gen_scope, types);
+}
+
+/// JSON impl builders are published only after native construction and set ergonomics.
+struct WrapperJsonImpls {
+    serde_ser_impl: codegen::Impl,
+    serde_deser_impl: codegen::Impl,
+    json_schema_impl: codegen::Impl,
+    json_hex_bytes: bool,
+}
+
+/// Assemble JSON faces at the original descriptor-evaluation point.
+#[allow(clippy::too_many_arguments)] // Explicit phase inputs retain staged evaluation and borrow separation.
+fn emit_wrapper_json_impls(
+    types: &IntermediateTypes,
+    type_name: &RustIdent,
+    field_type: &RustType,
+    float_min_max: Option<crate::intermediate::FloatWindow>,
+    struct_config: &RustStructConfig,
+    cli: &Cli,
+    facts: &WrapperFacts<'_>,
+    self_var: &str,
+) -> WrapperJsonImpls {
+    let WrapperFacts {
+        checked_scalar,
+        effective_min_max,
+        ..
+    } = *facts;
+    let mut serde_ser_impl = codegen::Impl::new(type_name);
+    let mut serde_deser_impl = codegen::Impl::new(type_name);
+    let mut json_schema_impl = codegen::Impl::new(type_name);
+    let json_hex_bytes = matches!(
+        field_type.conceptual_type.resolve_alias_shallow(),
+        ConceptualRustType::Primitive(Primitive::Bytes)
+    );
+    // A newtype wrapping an `any` (e.g. `t = #6.11(any)` → `Tagged(AnyCbor)`)
+    // renders its JSON NATURALLY, not through `AnyCbor`'s tagged codec. The wrapper's manual serde /
+    // schemars route through the `any_cbor` runtime module's natural adapter (the CBOR-only tag is
+    // absent from JSON, so the natural walk of the inner value is the whole JSON surface).
+    let json_natural_any = matches!(
+        field_type.conceptual_type.resolve_alias_shallow(),
+        ConceptualRustType::Any
+    );
+    let any_cbor_mod = format!("{}::any_cbor", cli.common_import_rust());
+    // Newtypes own manual JSON impls rather than field annotations. Reuse the same recursive
+    // descriptor as records and newtype enum arms so an authored wrapper cannot hide a sequence
+    // carrier between JSON and a wide/natural exact array.
+    let json_static_array_descriptor =
+        super::recursive_exact_array_descriptor(types, field_type, false, false, cli);
+    let static_array_mod = format!("{}::static_array", cli.common_import_rust());
+    let json_direct_typed_static_array = match field_type.conceptual_type.resolve_alias_shallow() {
+        ConceptualRustType::Array(element)
+            if !field_type.contains_exact_natural_any_static_array() =>
+        {
+            field_type
+                .exact_homogeneous_array_len_checked()
+                // Arrays through the pinned serde/schemars trait limit retain the pre-Cycle-36
+                // manual wrapper derive path. This fallback exists solely for a direct wide typed
+                // wrapper, which otherwise asks those derives for unavailable array traits.
+                .filter(|len| *len > 32)
+                .map(|len| (element.for_rust_member(types, false, cli), len))
+        }
+        _ => None,
+    };
+    let json_schema_type = if json_hex_bytes {
+        Cow::Borrowed("String")
+    } else {
+        Cow::Owned(field_type.for_rust_member(types, false, cli))
+    };
+
+    if !struct_config.custom_json {
+        // serde Serialize / Deserialize
+        if cli.json_serde_derives {
+            let mut serde_ser_fn = codegen::Function::new("serialize");
+            serde_ser_fn
+                .generic("S")
+                .bound("S", "serde::Serializer")
+                .arg_ref_self()
+                .arg("serializer", "S")
+                .ret("Result<S::Ok, S::Error>");
+            let mut serde_deser_fn = codegen::Function::new("deserialize");
+            serde_deser_fn
+                .generic("D")
+                .bound("D", "serde::de::Deserializer<'de>")
+                .arg("deserializer", "D")
+                .ret("Result<Self, D::Error>");
+            if json_hex_bytes {
+                serde_ser_fn.line(format!(
+                    "serializer.serialize_str(&hex::encode({self_var}.clone()))"
+                ));
+                // One rejection wording for one class: every way the string can be refused — a
+                // non-canonical hex character, an odd digit count, a failing `new` — builds the
+                // SAME serde error, so a consumer reading it cannot tell which check refused it.
+                let err_expr = "serde::de::Error::invalid_value(serde::de::Unexpected::Str(&s), &\"invalid hex bytes\")";
+                let err_body = format!("{{ {err_expr} }}");
+                serde_deser_fn
+                    .line("let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;")
+                    // The accepted JSON grammar for a bytes newtype is CANONICAL hex — exactly what
+                    // the serialize half above emits — and it is the runtime's
+                    // `decode_canonical_hex` that owns it, not this call site. Routing through the
+                    // shared door rather than calling the backing decoder here is what keeps this
+                    // surface's grammar identical to `RawBytesEncoding::from_raw_hex`'s: the
+                    // decoder itself is lenient (it strips a `0x`/`0X` prefix and takes either
+                    // case), so a direct call would silently widen the read side past what the
+                    // write side emits.
+                    .line("decode_canonical_hex(&s)");
+                if types.can_new_fail(type_name) {
+                    serde_deser_fn
+                        .line(format!(
+                            ".ok().and_then(|bytes| {type_name}::try_from(bytes).ok())"
+                        ))
+                        .line(format!(".ok_or_else(|| {err_body})"));
+                } else {
+                    serde_deser_fn
+                        .line(format!(".map({type_name}::new)"))
+                        .line(format!(".map_err(|_e| {err_body})"));
+                }
+            } else if json_natural_any {
+                serde_ser_fn.line(format!(
+                    "{any_cbor_mod}::natural_any_cbor::serialize(&{self_var}, serializer)"
+                ));
+                serde_deser_fn
+                    .line(format!(
+                        "let inner = {any_cbor_mod}::natural_any_cbor::deserialize(deserializer)?;"
+                    ))
+                    // `any` is never a can_new_fail wrapper, so construction is infallible.
+                    .line("Ok(Self::new(inner))");
+            } else if let Some((descriptor, _member_type)) = &json_static_array_descriptor {
+                serde_ser_fn.line(format!(
+                    "{static_array_mod}::serialize_recursive::<{descriptor}, _, _>(&{self_var}, serializer)"
+                ));
+                serde_deser_fn.line(format!(
+                    "let inner = {static_array_mod}::deserialize_recursive::<{descriptor}, _, _>(deserializer)?;"
+                ));
+                if types.can_new_fail(type_name) {
+                    serde_deser_fn.line(format!(
+                        "Self::{}(inner).map_err(|_e| serde::de::Error::custom(\"invalid {type_name}\"))",
+                        if checked_scalar { "try_from" } else { "new" }
+                    ));
+                } else {
+                    serde_deser_fn.line("Ok(Self::new(inner))");
+                }
+            } else if json_direct_typed_static_array.is_some() {
+                serde_ser_fn.line(format!(
+                    "{static_array_mod}::static_array::serialize(&{self_var}, serializer)"
+                ));
+                serde_deser_fn.line(format!(
+                    "let inner = {static_array_mod}::static_array::deserialize(deserializer)?;"
+                ));
+                serde_deser_fn.line("Ok(Self::new(inner))");
+            } else {
+                serde_ser_fn.line(format!("{self_var}.serialize(serializer)"));
+                serde_deser_fn
+                    .line(format!("let inner = <{json_schema_type} as serde::de::Deserialize>::deserialize(deserializer)?;"));
+                if types.can_new_fail(type_name) {
+                    let unexpected = match field_type.conceptual_type.resolve_alias_shallow() {
+                        ConceptualRustType::Alias(_, _) => unreachable!(),
+                        ConceptualRustType::Array(_) => "Seq",
+                        ConceptualRustType::Fixed(fixed) => match fixed {
+                            FixedValue::Bool(_) => "Bool(inner)",
+                            FixedValue::Float(_) => "Float(inner)",
+                            FixedValue::Nint(_) => "Signed(inner as i64)",
+                            FixedValue::Null => "Option",
+                            FixedValue::Undefined => unreachable!(
+                                "fixed undefined is a nominal unit value, never a JSON constructor argument"
+                            ),
+                            FixedValue::Text(_) => "Str(&inner)",
+                            FixedValue::Bytes(_) => "Bytes(&inner)",
+                            FixedValue::Uint(_) => "Unsigned(inner)",
+                        },
+                        ConceptualRustType::Map(_, _) => "Map",
+                        ConceptualRustType::Optional(_) => "Option",
+                        ConceptualRustType::Primitive(p) => match p {
+                            Primitive::Bool => "Bool(inner)",
+                            Primitive::Bytes => "Bytes(&inner)",
+                            Primitive::F16 | Primitive::F32 | Primitive::F16To32 => {
+                                "Float(inner as f64)"
+                            }
+                            Primitive::F64 | Primitive::F32To64 | Primitive::Float => {
+                                "Float(inner)"
+                            }
+                            Primitive::I8
+                            | Primitive::I16
+                            | Primitive::I32
+                            | Primitive::I64
+                            | Primitive::N64 => "Signed(inner as i64)",
+                            Primitive::Str => "Str(&inner)",
+                            Primitive::U8 | Primitive::U16 | Primitive::U32 => {
+                                "Unsigned(inner as u64)"
+                            }
+                            Primitive::U64 => "Unsigned(inner)",
+                        },
+                        ConceptualRustType::Rust(_) => "StructVariant",
+                        // `any`+json rejects at generation, and `any` is never a can_new_fail
+                        // wrapper, so this JSON serde-derive path is unreachable for it.
+                        ConceptualRustType::Any => unreachable!(),
+                    };
+                    // Unexpected::Str(&inner)/Bytes(&inner) borrow `inner` in the error closure,
+                    // but `Self::new(inner)` moves it first (String/Vec aren't Copy) → E0382. Clone
+                    // into the constructor in that case so the original survives for the error. The
+                    // other (Copy) variants need no clone.
+                    let new_arg = if unexpected.contains("&inner") {
+                        "inner.clone()"
+                    } else {
+                        "inner"
+                    };
+                    serde_deser_fn
+                        .line(format!("Self::{}({new_arg})", if checked_scalar { "try_from" } else { "new" }))
+                        .line(format!(".map_err(|_e| {{ serde::de::Error::invalid_value(serde::de::Unexpected::{unexpected}, &\"invalid {type_name}\") }})"));
+                } else {
+                    serde_deser_fn.line("Ok(Self::new(inner))");
+                }
+            }
+            serde_ser_impl
+                .impl_trait("serde::Serialize")
+                .push_fn(serde_ser_fn);
+            serde_deser_impl
+                .impl_trait("serde::de::Deserialize<'de>")
+                .generic("'de")
+                .push_fn(serde_deser_fn);
+        }
+
+        // JsonSchema
+        if cli.json_schema_export {
+            let mut schema_name_fn = codegen::Function::new("schema_name");
+            schema_name_fn
+                .ret("alloc::borrow::Cow<'static, str>")
+                .line(format!("alloc::borrow::Cow::Borrowed(\"{type_name}\")"));
+            let mut json_schema_fn = codegen::Function::new("json_schema");
+            json_schema_fn
+                .arg("generator", "&mut schemars::SchemaGenerator")
+                .ret("schemars::Schema");
+            let mut inline_schema = codegen::Function::new("inline_schema");
+            inline_schema.ret("bool");
+            if json_natural_any {
+                // Permissive natural-rendering schema, distinct from `AnyCbor`'s own tagged codec schema.
+                json_schema_fn.line(format!(
+                    "{any_cbor_mod}::natural_any_cbor_schema(generator)"
+                ));
+                inline_schema.line("false");
+            } else if let Some(len) = field_type.exact_byte_array_len_checked() {
+                // Byte wrappers serialize as canonical hexadecimal strings.  The native carrier
+                // makes the byte count exact, so the JSON string has exactly twice that many
+                // characters; delegating to `String` alone would silently advertise every length.
+                let hex_len = len * 2;
+                json_schema_fn
+                    // `out` is already in GENERATED_LOCAL_PROBED_SAFE (including the JSON
+                    // profiles). Reuse that swept local instead of minting an unverdicted
+                    // `schema` binding at this emitter seam.
+                    .line("let mut out = String::json_schema(generator);")
+                    .line(format!(
+                        "out.insert(\"minLength\".to_owned(), {hex_len}u64.into());"
+                    ))
+                    .line(format!(
+                        "out.insert(\"maxLength\".to_owned(), {hex_len}u64.into());"
+                    ))
+                    .line("out");
+                inline_schema.line("String::inline_schema()");
+            } else if let Some((descriptor, member_type)) = &json_static_array_descriptor {
+                json_schema_fn.line(format!(
+                    "{static_array_mod}::recursive_schema::<{descriptor}, {member_type}>(generator)"
+                ));
+                inline_schema.line("false");
+            } else if let Some((element, len)) = &json_direct_typed_static_array {
+                json_schema_fn.line(format!(
+                    "{static_array_mod}::static_array_schema::<{element}, {len}>(generator)"
+                ));
+                inline_schema.line("false");
+            } else if effective_min_max.is_some() || float_min_max.is_some() {
+                // qualified-path form: `json_schema_type` is a type-position spelling, so a generic
+                // backing type (map/array @newtype) needs `<T as Trait>::method`, not `T::method`
+                // (which parses `<` as a comparison in expression position). Matches the
+                // `<{json_schema_type} as serde::de::Deserialize>::deserialize` precedent above.
+                json_schema_fn.line(format!(
+                    "let mut out = <{json_schema_type} as schemars::JsonSchema>::json_schema(generator);"
+                ));
+                emit_checked_scalar_json_schema_bounds(
+                    &mut json_schema_fn,
+                    field_type,
+                    effective_min_max,
+                    float_min_max,
+                );
+                json_schema_fn.line("out");
+                inline_schema.line(format!(
+                    "<{json_schema_type} as schemars::JsonSchema>::inline_schema()"
+                ));
+            } else {
+                json_schema_fn.line(format!(
+                    "<{json_schema_type} as schemars::JsonSchema>::json_schema(generator)"
+                ));
+                inline_schema.line(format!(
+                    "<{json_schema_type} as schemars::JsonSchema>::inline_schema()"
+                ));
+            }
+            json_schema_impl
+                .impl_trait("schemars::JsonSchema")
+                .push_fn(schema_name_fn)
+                .push_fn(json_schema_fn)
+                .push_fn(inline_schema);
+        }
+    }
+    WrapperJsonImpls {
+        serde_ser_impl,
+        serde_deser_impl,
+        json_schema_impl,
+        json_hex_bytes,
+    }
 }
 
 /// The carrier a set nominal wraps, as far as its ergonomic impls care. Mirrors the branch order of
