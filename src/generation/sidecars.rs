@@ -125,3 +125,165 @@ pub(super) fn render_key_demand_assertions(
     }
     file
 }
+
+pub(super) fn render_extern_interface_check(
+    entries: &[crate::generation::extern_interface::ExternCheckEntry],
+    types: &IntermediateTypes,
+    cli: &Cli,
+    deserialize_generated: impl Fn(&RustIdent) -> bool,
+) -> String {
+    use crate::generation::extern_interface::ExternCheckKind;
+    let common = cli.common_import_rust();
+    // The generated `Serialize` bound differs by mode: only the CANONICAL runtime
+    // (`--preserve-encodings --canonical-form`) carries a custom `serialization::Serialize`
+    // trait (its `serialize` takes a `force_canonical` flag); every other mode — including
+    // preserve-without-canonical — serializes through `cbor_event::se::Serialize` directly.
+    // `Deserialize` and `RawBytesEncoding` are the crate's own runtime traits in all modes.
+    let serialize_bound = if cli.preserve_encodings && cli.canonical_form {
+        format!("{common}::serialization::Serialize")
+    } else {
+        "cbor_event::se::Serialize".to_owned()
+    };
+    let path_of = |components: &[String], ident: &RustIdent| -> String {
+        if components.is_empty() {
+            format!("crate::generated::{ident}")
+        } else {
+            format!("crate::generated::{}::{ident}", components.join("::"))
+        }
+    };
+    // Whole-value `Serialize`/`Deserialize` cover both the opaque `Serialize` rows AND the
+    // transparent group-body `EmbeddedGroup` rows: a group-choice arm that splices a plain
+    // group calls `.serialize()` on the whole value, so the whole-value bounds must hold for
+    // an `EmbeddedGroup` row too (its `Deserialize` gated on the dep generating one, same as
+    // `Serialize` rows).
+    let deser_asserted = |entry: &crate::generation::extern_interface::ExternCheckEntry| -> bool {
+        matches!(
+            entry.kind,
+            ExternCheckKind::Serialize | ExternCheckKind::EmbeddedGroup
+        ) && deserialize_generated(&entry.ident)
+    };
+    let any_serialize = entries.iter().any(|e| {
+        matches!(
+            e.kind,
+            ExternCheckKind::Serialize | ExternCheckKind::EmbeddedGroup
+        )
+    });
+    let any_deser = entries.iter().any(deser_asserted);
+    let any_raw_bytes = entries
+        .iter()
+        .any(|e| matches!(e.kind, ExternCheckKind::RawBytes));
+    // `@copy` roots: every exported extern / raw-bytes ident declared `@copy`. The honesty
+    // assertion proves the externally-defined rust type actually derives `Copy` in THIS
+    // crate, so a false `@copy` fails the declaring crate's own build with a named error —
+    // never a distant consumer's (a consumer imports the tag through a non-exported extern-dep
+    // scope, which never reaches these entries).
+    let any_copy = entries.iter().any(|e| types.is_copy_extern(&e.ident));
+    // The embedded-group surface (`serialize_as_embedded_group` / `deserialize_as_embedded_group`)
+    // a spliced record MEMBER delegates through, asserted only for group-body rows. Its
+    // `Deserialize` twin is gated per-type on the dep generating one, exactly like the
+    // whole-value side.
+    let any_embedded_group = entries
+        .iter()
+        .any(|e| matches!(e.kind, ExternCheckKind::EmbeddedGroup));
+    let any_embedded_group_deser = entries.iter().any(|e| {
+        matches!(e.kind, ExternCheckKind::EmbeddedGroup) && deserialize_generated(&e.ident)
+    });
+
+    let mut file = String::from(
+        "// Compiled self-check for the dep-side extern-interface export\n\
+     // (`extern-interface/<dep>/**`). Machine-generated from the SAME projection as that\n\
+     // export, so the two cannot drift. Every exported name is asserted to be a real,\n\
+     // correctly-typed surface in THIS crate: opaque rows implement `Serialize` (and\n\
+     // `Deserialize` where the dep generates one), raw-bytes rows `RawBytesEncoding`, and\n\
+     // transparent rows (aliases, c-style enums, named collections) must simply exist. A\n\
+     // hand-edited or stale export — or a projection bug — therefore fails THIS crate's own\n\
+     // build, naming the type. Do not edit.\n\
+     // Rows carry NO per-row comments by design: a spec change can delete any row, and a\n\
+     // comment stranded on a deleted row is what the edit-preservation overlay turns into a\n\
+     // build-breaking sentinel on the next regen. All commentary lives in this fixed banner;\n\
+     // each row's type path is its own traceability.\n",
+    );
+    // Bound-carrier fns, emitted only for the kinds actually present so an absent trait (e.g.
+    // `RawBytesEncoding` in a crate with no raw-bytes type) is never named.
+    if any_serialize {
+        file.push_str(&format!(
+            "#[allow(dead_code)]\nfn _assert_serialize<T: {serialize_bound}>() {{}}\n"
+        ));
+    }
+    if any_deser {
+        file.push_str(&format!(
+        "#[allow(dead_code)]\nfn _assert_deserialize<T: {common}::serialization::Deserialize>() {{}}\n"
+    ));
+    }
+    if any_raw_bytes {
+        file.push_str(&format!(
+        "#[allow(dead_code)]\nfn _assert_raw_bytes<T: {common}::serialization::RawBytesEncoding>() {{}}\n"
+    ));
+    }
+    if any_copy {
+        file.push_str("#[allow(dead_code)]\nfn _assert_copy<T: Copy>() {}\n");
+    }
+    // The embedded-group traits are the crate's own runtime traits in ALL modes (unlike
+    // whole-value `Serialize`, whose custom canonical variant only exists in canonical mode).
+    if any_embedded_group {
+        file.push_str(&format!(
+        "#[allow(dead_code)]\nfn _assert_serialize_embedded_group<T: {common}::serialization::SerializeEmbeddedGroup>() {{}}\n"
+    ));
+    }
+    if any_embedded_group_deser {
+        file.push_str(&format!(
+        "#[allow(dead_code)]\nfn _assert_deserialize_embedded_group<T: {common}::serialization::DeserializeEmbeddedGroup>() {{}}\n"
+    ));
+    }
+    // Transparent rows: a module-level `use … as _;` existence check (an anonymous import
+    // never triggers unused-import warnings, but stay explicit).
+    for entry in entries {
+        if matches!(entry.kind, ExternCheckKind::Use) {
+            file.push_str(&format!(
+                "#[allow(unused_imports)]\nuse {} as _;\n",
+                path_of(&entry.components, &entry.ident),
+            ));
+        }
+    }
+    // Opaque / raw-bytes rows: bound-carrier instantiations inside a never-called fn.
+    file.push_str("#[allow(dead_code)]\nfn _extern_interface_self_check() {\n");
+    for entry in entries {
+        let path = path_of(&entry.components, &entry.ident);
+        match entry.kind {
+            ExternCheckKind::Serialize => {
+                file.push_str(&format!("    _assert_serialize::<{path}>();\n"));
+                if deserialize_generated(&entry.ident) {
+                    file.push_str(&format!("    _assert_deserialize::<{path}>();\n"));
+                }
+            }
+            ExternCheckKind::EmbeddedGroup => {
+                // Both surfaces the consumer's generated code uses for a spliced plain group:
+                // whole-value (a group-choice arm's `.serialize()`) and embedded (a record
+                // member's `serialize_as_embedded_group`), each `Deserialize` side gated on
+                // the dep generating one.
+                file.push_str(&format!("    _assert_serialize::<{path}>();\n"));
+                file.push_str(&format!(
+                    "    _assert_serialize_embedded_group::<{path}>();\n"
+                ));
+                if deserialize_generated(&entry.ident) {
+                    file.push_str(&format!("    _assert_deserialize::<{path}>();\n"));
+                    file.push_str(&format!(
+                        "    _assert_deserialize_embedded_group::<{path}>();\n"
+                    ));
+                }
+            }
+            ExternCheckKind::RawBytes => {
+                file.push_str(&format!("    _assert_raw_bytes::<{path}>();\n"));
+            }
+            ExternCheckKind::Use | ExternCheckKind::None => {}
+        }
+        // `@copy` honesty assertion, orthogonal to the wire-surface kind above: a `@copy`
+        // extern is a Serialize row, a `@copy` raw-bytes type a RawBytes row, and either must
+        // actually be `Copy`.
+        if types.is_copy_extern(&entry.ident) {
+            file.push_str(&format!("    _assert_copy::<{path}>();\n"));
+        }
+    }
+    file.push_str("}\n");
+    file
+}
