@@ -544,7 +544,7 @@ impl GenerationScope {
         &mut self,
         types: &IntermediateTypes,
     ) -> Vec<ModuleScope> {
-        // Declare the per-scope modules AFTER the extern / `@raw_bytes_flavor` glue above: an
+        // Declare the per-scope modules AFTER the extern / `@raw_bytes_flavor` glue phase: an
         // extern-ONLY scope (all its rules are `_CDDL_CODEGEN_EXTERN_TYPE_`) has no generated struct,
         // so the glue's `rust_scopes.entry(..).or_default()` is the ONLY thing that creates its scope
         // entry — snapshotting `rust_scopes.keys()` before the glue would emit that scope's
@@ -762,7 +762,7 @@ impl GenerationScope {
         // The root's entry is MATERIALIZED first rather than assumed present: a spec whose rules are
         // ALL `_CDDL_CODEGEN_EXTERN_TYPE_` / `_CDDL_CODEGEN_RAW_BYTES_TYPE_` markers registers no
         // generated struct, so nothing has created a root `rust_scopes` entry by the time this loop
-        // runs — the extern re-export glue below is what creates it. The loop then declared nothing
+        // runs — the extern re-export phase is what creates it. The loop then declared nothing
         // while `merge_scopes_to_strings` still wrote `generated/serialization.rs` AND
         // `extern_interface_check.rs` still named `crate::generated::serialization::RawBytesEncoding`,
         // so the crate failed its own build with E0433 and no user-supplied definition could fix it.
@@ -1444,7 +1444,7 @@ impl GenerationScope {
                     }
                     // A type-alias BASE can carry an inline `[+ T]` / `{+ k => v}` shape that only
                     // this alias reaches — e.g. `x = bytes .cbor [+ uint]` classifies as a plain
-                    // alias (not a `RustStructType::Array`), so the rust_structs minting walk below
+                    // alias (not a `RustStructType::Array`), so the struct minting phase
                     // never visits it, while the wasm alias line above names the restricted wrapper
                     // (`pub type X = NonEmptyU64List;`). Mint the wrappers the base needs here; the
                     // dedup-to-named and `already_generated` guards inside apply as everywhere else,
