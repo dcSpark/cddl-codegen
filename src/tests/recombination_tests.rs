@@ -1371,6 +1371,9 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 // Component result invariant guard now belongs to component.rs::member_getter_body:
 // "a getter always returns something" retains its exact expect payload and position.
 // No active panic allowance is added; main must qualify normalized production frame keys.
+// Component result invariant guard now belongs to component.rs::member_rest_getter_body:
+// "a rest getter always returns something" retains its exact expect payload and position.
+// No active panic allowance is added; main must qualify normalized production frame keys.
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired when the two anonymous-composite families and the group-choice-arm inline group
     // became graceful rejections) Three classes lived here, and they split by the composite's

@@ -41,7 +41,11 @@ const SOURCE_ROLES: &[SourceRole] = &[
         emitter: false,
         wasm: false,
         reason: "wit-bindgen guest glue; no user field beside fixed local",
-        members: &["component_glue", "member_getter_body"],
+        members: &[
+            "component_glue",
+            "member_rest_getter_body",
+            "member_getter_body",
+        ],
     },
     SourceRole {
         file: "deser_verdicts.rs",

@@ -1698,18 +1698,7 @@ impl Emitter<'_, '_> {
                 field,
                 via_accessor,
             } => {
-                lines.push("let me = self.0.borrow();".to_owned());
-                let ty = member
-                    .result
-                    .as_ref()
-                    .expect("a rest getter always returns something");
-                let source = if *via_accessor {
-                    format!("me.{field}()")
-                } else {
-                    format!("me.{field}")
-                };
-                let conv = self.rust_to_wit(ty, &source, alias, false);
-                lines.push(self.returned(&conv, member.fallible));
+                self.member_rest_getter_body(&mut lines, member, alias, field, *via_accessor);
             }
             // An optional FIXED-value field stores only whether it was present, which is a `bool` on
             // both sides and needs no conversion.
@@ -1932,6 +1921,28 @@ impl Emitter<'_, '_> {
         }
         lines
     }
+    fn member_rest_getter_body(
+        &self,
+        lines: &mut Vec<String>,
+        member: &WitMember,
+        alias: &str,
+        field: &str,
+        via_accessor: bool,
+    ) {
+        lines.push("let me = self.0.borrow();".to_owned());
+        let ty = member
+            .result
+            .as_ref()
+            .expect("a rest getter always returns something");
+        let source = if via_accessor {
+            format!("me.{field}()")
+        } else {
+            format!("me.{field}")
+        };
+        let conv = self.rust_to_wit(ty, &source, alias, false);
+        lines.push(self.returned(&conv, member.fallible));
+    }
+
     fn member_getter_body(
         &self,
         lines: &mut Vec<String>,
