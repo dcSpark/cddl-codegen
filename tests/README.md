@@ -5019,10 +5019,9 @@ component face without building it. On a rustup-managed toolchain, provision it 
 Nix-provided toolchain), provision that external toolchain with `wasm32-wasip2` instead. The
 diagnostic selects only a remedy that applies to the active compiler.
 
-The only gate that **runs** the component face. Its two siblings judge emitted bytes; a `.wit` that
-resolves, encodes and validates over glue that compiles is still silent about every claim the
-boundary actually makes at runtime — so this gate builds a real `wasm32-wasip2` component, loads it
-into a `wasmtime` host and drives it through one `#[test]` per assertion class:
+This gate runs the Wasmtime host behavioral suite over generated components.
+Its byte-validation and API-parity siblings do not execute that component.
+The host suite builds a real `wasm32-wasip2` component and drives it through one `#[test]` per assertion class:
 
 - **construction and accessor read-back**, every field type in the fixture;
 - **byte-equality with the rust crate's own serialization**, both directions — the oracle is a path
@@ -5032,7 +5031,10 @@ into a `wasmtime` host and drives it through one `#[test]` per assertion class:
   pairs, native-byte agreement after construction and re-read, field-qualified snapshot reads, and
   wrong-arm `None`; the cheap WIT/parity sweep repeats that fixture under preserve, canonical, and
   JSON, while one preserve wasip2 build covers its encoding-sidecar arm layout without duplicating
-  the wasmtime execution cell;
+  the default inlined-arm wasmtime execution cell;
+- **interleaved same-type array-segment constructor arguments**, with distinct sentinels in all
+  five compatible list slots, independent segment getter reads, and an authored CBOR vector in
+  both directions;
 - **fallible doors return `Err` and never trap**, and the instance is still usable afterwards. That
   last clause is the real assertion: a trap poisons the whole component instance, so in a composed
   topology one bad call kills a shared dependency for every consumer. The trap TEXT is deliberately
@@ -5049,6 +5051,31 @@ into a `wasmtime` host and drives it through one `#[test]` per assertion class:
   `820102` out — byte-exact against the rust crate, not against what the caller passed), and the
   one-item rule, where trailing data is rejected rather than truncated to the first item.
 
+Four serial runtime cells use explicit `--no-default-features --features <profile> --test <target>`:
+`behavior` for the default fixture, `canonical` with `--preserve-encodings=true --canonical-form=true`,
+`json` with `--json-serde-derives=true`, and `raw` for `tests/component-host-raw/inputs`.
+The default target adds optional-fixed presence set/clear and defaulted plain-storage read/write.
+The canonical target compares preserved nonminimal byte-string framing with independent canonical bytes
+and proves the canonical call leaves retained bytes unchanged.
+The JSON target compares parsed JSON values from both authored JSON and constructor-originated objects,
+then rejects malformed syntax and field types without poisoning the instance.
+The raw target reuses the existing four-byte `RawBytesEncoding` shim, executes exact raw-byte roundtrips,
+rejects lengths three and five, and proves subsequent calls and retained handles remain usable.
+Its shim is appended only to the user-owned native thin root before hashing and copied under `support/`.
+Both host trees and every selected test file are copied inside the hashed output root.
+Explicit targets and required features select the intended profile.
+The gate requires one successful host summary with exactly 20 behavior, 1 canonical, 2 JSON, or 1 raw test and zero failed or ignored tests.
+It refuses zero-test and incomplete reports; the expected count participates in the cache key.
+The cache argv includes the same feature/target arguments the nested host command executes.
+
+
+The component host's default behavior profile also calls the protected map-rest accessor, an
+authored newtype getter name, both native-constructor and boundary-conversion fallible choice
+constructors, resource-payload choice snapshot reads, group-choice kind reporting, and direct
+malformed/trailing CBOR rejection. Each rejection is followed by a valid call on the same instance.
+These cases live in the existing directory input and copied behavior target, so their inputs remain
+inside the same registered fixture and gate-cache closure.
+
 `wasmtime-wasi` in the linker is load-bearing rather than precautionary, and
 `wasi_is_required_in_the_linker` is the negative control that says so: a wasip2 reactor imports
 `wasi:*` interfaces even for a pure codec, so an empty linker fails instantiation before an
@@ -5064,7 +5091,7 @@ path and takes the built `.wasm` from an env var, so the hashed bytes are run-in
 in-process. The cached closure checks more than a cargo exit code, so that verdict logic is
 versioned into the key as an argv marker.
 
-Measured on the delivering machine: **81 s cold** (a fresh scratch root, so wasmtime builds), **3 s
+Historical single-default-cell measurements on the delivering machine: **81 s cold** (a fresh scratch root, so wasmtime builds), **3 s
 warm** (gate-cache hit), **9 s on a cache miss with the scratch root warm**. The scratch root is
 checkout-hash keyed, serialized with `acquire_scratch_lock` and deliberately NOT deleted between
 runs — that last number is why. Per-cell output trees are freed; the shared `target/` (≈3.5 GiB) is
