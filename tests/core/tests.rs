@@ -1346,7 +1346,7 @@ mod tests {
                     vec![MAP_INDEF],
                         match b_out {
                             OOB::Below => panic!(),
-                            OOB::Lower => panic!(),
+                            OOB::Lower => vec![],
                             OOB::Upper => vec![0x00, 0x00, 0x01, 0x01, 0x02, 0x02],
                             OOB::Above => vec![0x00, 0x00, 0x01, 0x01, 0x02, 0x02, 0x03, 0x03],
                         },
@@ -1358,6 +1358,8 @@ mod tests {
         deser_test(&good1);
         let good2 = make_bounds(OOB::Upper, OOB::Upper, OOB::Lower, OOB::Upper, OOB::Upper, OOB::Upper).unwrap();
         deser_test(&good2);
+        let empty_map = make_bounds(OOB::Lower, OOB::Upper, OOB::Lower, OOB::Lower, OOB::Lower, OOB::Lower).unwrap();
+        deser_test(&empty_map);
         // w oob
         assert!(make_bounds(OOB::Below, OOB::Upper, OOB::Lower, OOB::Upper, OOB::Upper, OOB::Upper).is_err());
         assert!(make_bounds(OOB::Above, OOB::Upper, OOB::Lower, OOB::Upper, OOB::Upper, OOB::Upper).is_err());

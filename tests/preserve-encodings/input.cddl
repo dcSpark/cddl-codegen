@@ -159,7 +159,7 @@ bounds = [
     y: nint .ge -5,
     z: text .size (3..14),
     a: [* uint] .size (1..3),
-    b: { * uint => uint } .le 3
+    b: { 0*3 uint => uint }
 ]
 
 ; Signed-int fields whose value window must be partitioned across the two CBOR sign arms. Under
