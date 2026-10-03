@@ -3210,6 +3210,7 @@ fn emitter_overload_lint_sees_its_anchors() {
         ("deserialize.rs", "deser_tagged"),
         ("deserialize.rs", "deser_primitive"),
         ("deserialize.rs", "emit_primitive_read"),
+        ("deserialize.rs", "cbor_payload_trailing_check"),
         ("deserialize.rs", "deser_fixed"),
         ("deserialize.rs", "deser_any"),
         ("deserialize.rs", "make_deser_loop_break_check"),

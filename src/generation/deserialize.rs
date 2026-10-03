@@ -1582,6 +1582,12 @@ fn deser_primitive(
     deser_code
 }
 
+fn cbor_payload_trailing_check(deserializer_name: &str) -> Block {
+    let mut block = Block::new(format!("if !{deserializer_name}.as_slice().is_empty()"));
+    block.line("return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());");
+    block
+}
+
 // joins all config.final_expr together (possibly) with the actual value into a tuple type (if multiple)
 // or otherwise the value just goes through on its own
 fn final_expr(encoding_exprs: Vec<String>, actual_value: Option<String>) -> String {
@@ -3004,14 +3010,6 @@ impl GenerationScope {
                     // consumer matching on trailing data at the top level matches it here too. It
                     // flows through `DeserializeError`, so the enclosing annotation still names the
                     // member the leftover bytes were found in.
-                    let trailing_check = || {
-                        let mut block =
-                            Block::new(format!("if !{name_overload}.as_slice().is_empty()"));
-                        block.line(
-                            "return Err(DeserializeFailure::CBOR(cbor_event::Error::TrailingData).into());",
-                        );
-                        block
-                    };
                     // The check has to run once the payload IS consumed, so it follows the payload's
                     // own code — which is only expressible where that code is a complete STATEMENT.
                     // At a terminal position (a block's tail, a tuple element) the payload value is
@@ -3048,7 +3046,9 @@ impl GenerationScope {
                             cli,
                         )
                         .add_to_code(&mut deser_code);
-                        deser_code.content.push_block(trailing_check());
+                        deser_code
+                            .content
+                            .push_block(cbor_payload_trailing_check(&name_overload));
                         line_unit_value(&mut deser_code, &before_after);
                     } else if before_after.is_statement() {
                         self.generate_deserialize(
@@ -3061,7 +3061,9 @@ impl GenerationScope {
                             cli,
                         )
                         .add_to_code(&mut deser_code);
-                        deser_code.content.push_block(trailing_check());
+                        deser_code
+                            .content
+                            .push_block(cbor_payload_trailing_check(&name_overload));
                     } else {
                         let payload_binding = format!(
                             "{}_{}",
@@ -3082,7 +3084,9 @@ impl GenerationScope {
                             cli,
                         )
                         .add_to_code(&mut deser_code);
-                        deser_code.content.push_block(trailing_check());
+                        deser_code
+                            .content
+                            .push_block(cbor_payload_trailing_check(&name_overload));
                         deser_code.content.line(&format!(
                             "{}{payload_binding}{}",
                             before_after.before_str(false),

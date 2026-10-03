@@ -60,6 +60,7 @@ const SOURCE_ROLES: &[SourceRole] = &[
             "deser_tagged",
             "deser_primitive",
             "emit_primitive_read",
+            "cbor_payload_trailing_check",
             "deser_fixed",
             "deser_any",
             "generate_deserialize",
