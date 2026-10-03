@@ -1016,23 +1016,8 @@ impl GenerationScope {
             }
         }
 
-        // `@used_as_elem`: mint the loose-list wasm wrapper (`<Elem>List`, the `[* elem]` equivalent)
-        // for each tagged element, exactly as an inline `[* elem]` usage would. Runs AFTER the
-        // own-spec wasm walk (so a real inline usage that already minted the wrapper dedups via the
-        // shared `already_generated`) and BEFORE `emit_requested_collections` (so the wrapper is
-        // recorded in the own-spec shape projection, letting a consumer's request for the same shape be
-        // satisfied by this crate's own spec instead of re-emitted into requested_collections). The
-        // mark set is a `BTreeSet`, so this walks idents in sorted order — deterministic output. A
-        // directly-wasm-exposable element has no wrapper and is rejected in `finalize`, so nothing
-        // exposable reaches here. `try_defer_wrapper` inside applies normally: if a workspace dep
-        // owns the element, deferring to the dep is the correct canonical-host semantics.
         if cli.wasm {
-            for ident in types.used_as_elem() {
-                let element_type = types.used_as_elem_element_type(ident);
-                let structural =
-                    RustIdent::new(CDDLIdent::new(element_type.name_as_wasm_array(types)));
-                self.generate_array_type(types, element_type, &structural, false, cli);
-            }
+            self.emit_used_as_elem_wrappers(types, cli);
         }
 
         // `--wrapper-requests` (dependency side): now that the OWN-spec wasm wrapper walk is
@@ -1473,6 +1458,24 @@ impl GenerationScope {
         // the stranded-comment/`unpreserved-comment` trap class. The rows carry their own meaning.
         for root in &cli.json_schema_root {
             self.json_lines.line(&format!("reg.add::<{root}>();"));
+        }
+    }
+
+    fn emit_used_as_elem_wrappers(&mut self, types: &IntermediateTypes, cli: &Cli) {
+        // `@used_as_elem`: mint the loose-list wasm wrapper (`<Elem>List`, the `[* elem]` equivalent)
+        // for each tagged element, exactly as an inline `[* elem]` usage would. Runs AFTER the
+        // own-spec wasm walk (so a real inline usage that already minted the wrapper dedups via the
+        // shared `already_generated`) and BEFORE `emit_requested_collections` (so the wrapper is
+        // recorded in the own-spec shape projection, letting a consumer's request for the same shape be
+        // satisfied by this crate's own spec instead of re-emitted into requested_collections). The
+        // mark set is a `BTreeSet`, so this walks idents in sorted order — deterministic output. A
+        // directly-wasm-exposable element has no wrapper and is rejected in `finalize`, so nothing
+        // exposable reaches here. `try_defer_wrapper` inside applies normally: if a workspace dep
+        // owns the element, deferring to the dep is the correct canonical-host semantics.
+        for ident in types.used_as_elem() {
+            let element_type = types.used_as_elem_element_type(ident);
+            let structural = RustIdent::new(CDDLIdent::new(element_type.name_as_wasm_array(types)));
+            self.generate_array_type(types, element_type, &structural, false, cli);
         }
     }
 
