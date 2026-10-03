@@ -1600,198 +1600,7 @@ impl GenerationScope {
 
         // wasm
         if cli.wasm {
-            let extern_wasm_crate_map = cli.extern_wasm_crate_map();
-            // Validate mapping keys BEFORE emitting: a key that names no accepted crate is almost
-            // certainly a typo, and a silent no-op would leave the generated wasm crate pointing at
-            // the (non-wasm) rust crate and failing to compile with no hint why.
-            //
-            // Two key kinds are legitimate:
-            //   1. a declared extern dependency (`extern_dep_names()`) — the deferred collection
-            //      wrappers route the dep's element/key/value types through the mapped wasm crate;
-            //   2. the `--common-import-override` crate — the documented pairing
-            //      (`--common-import-override=cml_core --extern-wasm-crate=cml_core=cml_core_wasm`)
-            //      routes the built-in `Int`'s WASM face through the mapped wasm crate. That override
-            //      crate is common scaffolding, NOT a declared extern dep, so a pure consumer (no
-            //      `_CDDL_CODEGEN_EXTERN_DEPS_DIR_`) has an EMPTY `extern_dep_names()` and this is the
-            //      only key. `generate_int` is the sole consumer of the override-keyed mapping
-            //      (`extern_wasm_crate_map().get(cli.common_import_rust())`); the rust-side
-            //      `common_import_wasm()` call sites (serialization / ordered_hash_map / non_empty in
-            //      this module and requests.rs) never consult the map, so accepting this key here does
-            //      not change any of them.
-            if !extern_wasm_crate_map.is_empty() {
-                let extern_dep_names = types.extern_dep_names();
-                let common_override = cli.common_import_override.as_deref();
-                for dep in extern_wasm_crate_map.keys() {
-                    let names_extern_dep = extern_dep_names.contains(dep);
-                    let names_common_override = common_override == Some(dep.as_str());
-                    if !names_extern_dep && !names_common_override {
-                        return Err(format!(
-                            "--extern-wasm-crate names crate {dep:?}, which is not an extern \
-                             dependency in this spec and is not the --common-import-override crate \
-                             ({:?}). Accepted keys are the declared extern dependencies {:?} plus \
-                             the --common-import-override crate (which routes the built-in Int's \
-                             wasm face).",
-                            common_override, extern_dep_names
-                        ));
-                    }
-                }
-            }
-            self
-            .wasm_lib()
-            .raw("#![allow(clippy::len_without_is_empty, clippy::too_many_arguments, clippy::new_without_default)]");
-            // wasm imports
-            // The registry's deferred-provider map was fully populated during the wasm struct walk above (every
-            // deferred wrapper's mint point recorded it), so referencing modules now get a plain
-            // `use <dep_wasm>::collections::<Name>;` for each instead of a local class.
-            // The `requested_collections` host module (`--wrapper-requests`) hosts wrappers that are not
-            // in the IR; hand `scope_references` the hosted set + its scope so their element/key/value
-            // wasm classes are imported at that scope (a bare `use super::*;` reaches only the root).
-            let requested_scope = ModuleScope::from(vec!["requested_collections".to_owned()]);
-            // This is the actual home set, not the requested candidate set: recursive support mints
-            // (a NonEmpty wrapper's loose try_from source and a map keys-list) share this file too.
-            // Same-file references to any of them must stay bare rather than importing a nonexistent
-            // crate-root class. `record_collection_wrapper` is the shared actual-mint seam.
-            let requested_hosted: BTreeSet<RustIdent> = self
-                .wasm_collection_wrapper_registry
-                .local_classes()
-                .iter()
-                .filter(|(_, definition)| definition.scope == requested_scope)
-                .map(|(ident, _)| ident.clone())
-                .collect();
-            let wasm_scope_references = types.scope_references(
-                true,
-                self.wasm_collection_wrapper_registry.deferred(),
-                &self.requested_wrapper_types,
-                &requested_hosted,
-                Some(&requested_scope),
-            );
-            let wasm_imports = &wasm_scope_references.imports;
-            let wasm_boundary_idents = &wasm_scope_references.wasm_boundary_idents;
-            for per_scope in wasm_imports.values() {
-                for idents in per_scope.values() {
-                    self.scope_ref_import_idents
-                        .extend(idents.iter().map(|i| i.to_string()));
-                }
-            }
-            for (scope, content) in self.wasm_scopes.iter_mut() {
-                // imports from other struct modules; the wasm generated tree nests one level under
-                // `crate::generated` (same as the rust crate)
-                add_imports_from_scope_refs(
-                    scope,
-                    content,
-                    wasm_imports,
-                    "crate::generated",
-                    Some(&extern_wasm_crate_map),
-                    types.rust_name_pins(),
-                );
-                // common imports. The collection-type imports below (`BTreeMap`/`OrderedHashMap`
-                // and the two NonEmpty types) are pushed on spec-global gates even into wasm files
-                // that never reference them; the prune pass (`import_prune::prune_generated_files`,
-                // in `generated_files`) removes the ones the file's module family doesn't name.
-                // Dumb-push + central prune.
-                content
-                    .push_import("wasm_bindgen::prelude", "wasm_bindgen", None)
-                    .push_import("wasm_bindgen::prelude", "JsError", None);
-                if cli.json_serde_derives && cli.wasm_cbor_json_api_macro.is_none() {
-                    content.push_import("wasm_bindgen::prelude", "JsValue", None);
-                }
-                if cli.preserve_encodings {
-                    content.push_import(
-                        format!("{}::ordered_hash_map", cli.common_import_wasm()),
-                        "OrderedHashMap",
-                        None,
-                    );
-                } else {
-                    content.push_import("std::collections", "BTreeMap", None);
-                }
-                push_runtime_type_imports(content, &cli.common_import_wasm(), &runtime_usage);
-                // external macros
-                if let Some(cbor_json_macro) = &cli.wasm_cbor_json_api_macro
-                    && let Some((path, m)) = cbor_json_macro.rsplit_once("::")
-                {
-                    content.push_import(path, m, None);
-                }
-                if let Some(conversion_macro) = &cli.wasm_conversions_macro
-                    && let Some((path, m)) = conversion_macro.rsplit_once("::")
-                {
-                    content.push_import(path, m, None);
-                }
-                if let Some(list_macro) = &cli.wasm_list_macro
-                    && let Some((path, m)) = list_macro.rsplit_once("::")
-                {
-                    content.push_import(path, m, None);
-                }
-            }
-            // Extern-type re-export glue (wasm crate). The wasm generated code names each REACHABLE
-            // in-crate extern by its bare WRAPPER ident within the declaring scope (`req: ExternalFoo`,
-            // and via `use super::*;` in nested modules), exactly as the rust crate names the native type
-            // — same E0433 shape under the thin-root split, since a crate-root name isn't visible inside
-            // `mod generated`. The contract mirrors rust: DEFINE the wasm wrapper in a hand-written
-            // wasm-crate module and RE-EXPORT it at the wasm crate root (`pub use utils::Name;`); the tool
-            // re-exports it from crate root INTO the declaring scope's generated module only when the IR's
-            // wasm boundary-reference walk says generated wasm code names that wrapper. The walk records
-            // same-scope references too, while preserving the existing cross-scope import map. Covers BOTH
-            // user-supplied extern flavors — `Extern` and `RawBytesType` — exactly like the rust-side glue.
-            // Skipped:
-            //   - the built-in `Int` extern (the tool generates its own wasm wrapper when referenced, so
-            //     `pub use crate::Int;` would collide),
-            //   - generic-extern instances that already emit a wasm `pub type` alias here (`gen_wasm_alias`
-            //     — the wrapper the alias points at carries the glue instead),
-            //   - generic-extern BASES (`Foo` of `Foo<Bar>`): a plain `Extern` rust struct, but wasm never
-            //     names it (wasm-bindgen has no generics; the instance collapses to the argument wrapper),
-            //     so there is no wasm-crate-root definition to re-export — emitting glue would be an
-            //     unresolved import. The rust side keeps the base because its `pub type` alias names it.
-            //   - externs under `EXTERN_DEPS_DIR` (non-exported scopes) resolve through their dep crate via
-            //     `common_import_wasm()` already — `ModuleScope::export()` is the discriminator.
-            let wasm_aliased: BTreeSet<&RustIdent> = types
-                .type_aliases()
-                .iter()
-                .filter_map(|(alias_ident, info)| match alias_ident {
-                    AliasIdent::Rust(ident) if info.emits_wasm_alias() => Some(ident),
-                    _ => None,
-                })
-                .collect();
-            let generic_bases = types.generic_instance_bases();
-            let wasm_externs_by_scope = extern_reexports_by_scope(types, |rust_ident| {
-                !wasm_aliased.contains(rust_ident)
-                    && !generic_bases.contains(rust_ident)
-                    && wasm_boundary_idents.contains(rust_ident)
-            });
-            for (scope, idents) in &wasm_externs_by_scope {
-                let content = self.wasm_scopes.entry(scope.clone()).or_default();
-                content.raw(EXTERN_REEXPORT_CONTRACT_COMMENT);
-                for ident in idents {
-                    content.raw(format!("pub use crate::{ident};"));
-                    // Collected at the emission site (single source of truth), like the rust set.
-                    self.required_wasm_reexports.insert(ident.to_string());
-                }
-            }
-            // wasm module declarations. Emitted AFTER the live extern re-export glue above, for the
-            // same reason as the rust crate: a scope whose only emitted wasm content is reachable
-            // extern glue is created solely by `wasm_scopes.entry(..).or_default()`, so a scope list
-            // snapshotted before the glue would materialize that scope's `generated/<scope>/mod.rs` yet
-            // never declare `pub mod <scope>;` in the root (E0432). `wasm_lib` ordering is unchanged:
-            // nothing between the old and new positions writes `wasm_lib`.
-            let wasm_scope_names =
-                declare_top_level_scope_mods(&mut self.wasm_lib_scope, &self.wasm_scopes);
-            // The collection-wrapper index module (materialized as `generated/collections.rs` in
-            // `generated_files`). Declared unconditionally for every wasm run — even one that mints
-            // zero wrappers — from the always-regenerated generated root, never the seed-once
-            // crate-root lib.rs.
-            self.wasm_lib().raw("pub mod collections;");
-            // The borrowed-collections sidecar module (materialized as `generated/borrowed_collections.rs`
-            // in `generated_files`). PRIVATE (`mod`, never `pub mod`) — its `use` lines only
-            // existence-check the borrowed wrapper names; borrowed wrappers are never re-exported (the
-            // consumer's own `collections.rs` lists only wrappers it defines). Declared whenever
-            // `--workspace-dep` is present (stable presence, stable diffs), even when nothing is
-            // borrowed.
-            if !self.workspace_deps.is_empty() {
-                self.wasm_lib().raw("mod borrowed_collections;");
-            }
-            // declare submodules
-            // we do this after the rest to avoid declaring serialization mod/cbor encodings/etc
-            // for these modules when they only exist to support modules nested deeper
-            declare_modules(&mut self.wasm_scopes, &wasm_scope_names);
+            self.emit_wasm_imports_and_reexports(types, cli, &runtime_usage)?;
         }
 
         if cli.component {
@@ -1799,6 +1608,207 @@ impl GenerationScope {
         }
 
         self.emit_optional_tests(types, cli);
+        Ok(())
+    }
+
+    fn emit_wasm_imports_and_reexports(
+        &mut self,
+        types: &IntermediateTypes,
+        cli: &Cli,
+        runtime_usage: &RuntimeUsage,
+    ) -> Result<(), String> {
+        let extern_wasm_crate_map = cli.extern_wasm_crate_map();
+        // Validate mapping keys BEFORE emitting: a key that names no accepted crate is almost
+        // certainly a typo, and a silent no-op would leave the generated wasm crate pointing at
+        // the (non-wasm) rust crate and failing to compile with no hint why.
+        //
+        // Two key kinds are legitimate:
+        //   1. a declared extern dependency (`extern_dep_names()`) — the deferred collection
+        //      wrappers route the dep's element/key/value types through the mapped wasm crate;
+        //   2. the `--common-import-override` crate — the documented pairing
+        //      (`--common-import-override=cml_core --extern-wasm-crate=cml_core=cml_core_wasm`)
+        //      routes the built-in `Int`'s WASM face through the mapped wasm crate. That override
+        //      crate is common scaffolding, NOT a declared extern dep, so a pure consumer (no
+        //      `_CDDL_CODEGEN_EXTERN_DEPS_DIR_`) has an EMPTY `extern_dep_names()` and this is the
+        //      only key. `generate_int` is the sole consumer of the override-keyed mapping
+        //      (`extern_wasm_crate_map().get(cli.common_import_rust())`); the rust-side
+        //      `common_import_wasm()` call sites (serialization / ordered_hash_map / non_empty in
+        //      this module and requests.rs) never consult the map, so accepting this key here does
+        //      not change any of them.
+        if !extern_wasm_crate_map.is_empty() {
+            let extern_dep_names = types.extern_dep_names();
+            let common_override = cli.common_import_override.as_deref();
+            for dep in extern_wasm_crate_map.keys() {
+                let names_extern_dep = extern_dep_names.contains(dep);
+                let names_common_override = common_override == Some(dep.as_str());
+                if !names_extern_dep && !names_common_override {
+                    return Err(format!(
+                        "--extern-wasm-crate names crate {dep:?}, which is not an extern \
+                         dependency in this spec and is not the --common-import-override crate \
+                         ({:?}). Accepted keys are the declared extern dependencies {:?} plus \
+                         the --common-import-override crate (which routes the built-in Int's \
+                         wasm face).",
+                        common_override, extern_dep_names
+                    ));
+                }
+            }
+        }
+        self
+        .wasm_lib()
+        .raw("#![allow(clippy::len_without_is_empty, clippy::too_many_arguments, clippy::new_without_default)]");
+        // wasm imports
+        // The registry's deferred-provider map was fully populated during the wasm struct walk above (every
+        // deferred wrapper's mint point recorded it), so referencing modules now get a plain
+        // `use <dep_wasm>::collections::<Name>;` for each instead of a local class.
+        // The `requested_collections` host module (`--wrapper-requests`) hosts wrappers that are not
+        // in the IR; hand `scope_references` the hosted set + its scope so their element/key/value
+        // wasm classes are imported at that scope (a bare `use super::*;` reaches only the root).
+        let requested_scope = ModuleScope::from(vec!["requested_collections".to_owned()]);
+        // This is the actual home set, not the requested candidate set: recursive support mints
+        // (a NonEmpty wrapper's loose try_from source and a map keys-list) share this file too.
+        // Same-file references to any of them must stay bare rather than importing a nonexistent
+        // crate-root class. `record_collection_wrapper` is the shared actual-mint seam.
+        let requested_hosted: BTreeSet<RustIdent> = self
+            .wasm_collection_wrapper_registry
+            .local_classes()
+            .iter()
+            .filter(|(_, definition)| definition.scope == requested_scope)
+            .map(|(ident, _)| ident.clone())
+            .collect();
+        let wasm_scope_references = types.scope_references(
+            true,
+            self.wasm_collection_wrapper_registry.deferred(),
+            &self.requested_wrapper_types,
+            &requested_hosted,
+            Some(&requested_scope),
+        );
+        let wasm_imports = &wasm_scope_references.imports;
+        let wasm_boundary_idents = &wasm_scope_references.wasm_boundary_idents;
+        for per_scope in wasm_imports.values() {
+            for idents in per_scope.values() {
+                self.scope_ref_import_idents
+                    .extend(idents.iter().map(|i| i.to_string()));
+            }
+        }
+        for (scope, content) in self.wasm_scopes.iter_mut() {
+            // imports from other struct modules; the wasm generated tree nests one level under
+            // `crate::generated` (same as the rust crate)
+            add_imports_from_scope_refs(
+                scope,
+                content,
+                wasm_imports,
+                "crate::generated",
+                Some(&extern_wasm_crate_map),
+                types.rust_name_pins(),
+            );
+            // common imports. The collection-type imports below (`BTreeMap`/`OrderedHashMap`
+            // and the two NonEmpty types) are pushed on spec-global gates even into wasm files
+            // that never reference them; the prune pass (`import_prune::prune_generated_files`,
+            // in `generated_files`) removes the ones the file's module family doesn't name.
+            // Dumb-push + central prune.
+            content
+                .push_import("wasm_bindgen::prelude", "wasm_bindgen", None)
+                .push_import("wasm_bindgen::prelude", "JsError", None);
+            if cli.json_serde_derives && cli.wasm_cbor_json_api_macro.is_none() {
+                content.push_import("wasm_bindgen::prelude", "JsValue", None);
+            }
+            if cli.preserve_encodings {
+                content.push_import(
+                    format!("{}::ordered_hash_map", cli.common_import_wasm()),
+                    "OrderedHashMap",
+                    None,
+                );
+            } else {
+                content.push_import("std::collections", "BTreeMap", None);
+            }
+            push_runtime_type_imports(content, &cli.common_import_wasm(), runtime_usage);
+            // external macros
+            if let Some(cbor_json_macro) = &cli.wasm_cbor_json_api_macro
+                && let Some((path, m)) = cbor_json_macro.rsplit_once("::")
+            {
+                content.push_import(path, m, None);
+            }
+            if let Some(conversion_macro) = &cli.wasm_conversions_macro
+                && let Some((path, m)) = conversion_macro.rsplit_once("::")
+            {
+                content.push_import(path, m, None);
+            }
+            if let Some(list_macro) = &cli.wasm_list_macro
+                && let Some((path, m)) = list_macro.rsplit_once("::")
+            {
+                content.push_import(path, m, None);
+            }
+        }
+        // Extern-type re-export glue (wasm crate). The wasm generated code names each REACHABLE
+        // in-crate extern by its bare WRAPPER ident within the declaring scope (`req: ExternalFoo`,
+        // and via `use super::*;` in nested modules), exactly as the rust crate names the native type
+        // — same E0433 shape under the thin-root split, since a crate-root name isn't visible inside
+        // `mod generated`. The contract mirrors rust: DEFINE the wasm wrapper in a hand-written
+        // wasm-crate module and RE-EXPORT it at the wasm crate root (`pub use utils::Name;`); the tool
+        // re-exports it from crate root INTO the declaring scope's generated module only when the IR's
+        // wasm boundary-reference walk says generated wasm code names that wrapper. The walk records
+        // same-scope references too, while preserving the existing cross-scope import map. Covers BOTH
+        // user-supplied extern flavors — `Extern` and `RawBytesType` — exactly like the rust-side glue.
+        // Skipped:
+        //   - the built-in `Int` extern (the tool generates its own wasm wrapper when referenced, so
+        //     `pub use crate::Int;` would collide),
+        //   - generic-extern instances that already emit a wasm `pub type` alias here (`gen_wasm_alias`
+        //     — the wrapper the alias points at carries the glue instead),
+        //   - generic-extern BASES (`Foo` of `Foo<Bar>`): a plain `Extern` rust struct, but wasm never
+        //     names it (wasm-bindgen has no generics; the instance collapses to the argument wrapper),
+        //     so there is no wasm-crate-root definition to re-export — emitting glue would be an
+        //     unresolved import. The rust side keeps the base because its `pub type` alias names it.
+        //   - externs under `EXTERN_DEPS_DIR` (non-exported scopes) resolve through their dep crate via
+        //     `common_import_wasm()` already — `ModuleScope::export()` is the discriminator.
+        let wasm_aliased: BTreeSet<&RustIdent> = types
+            .type_aliases()
+            .iter()
+            .filter_map(|(alias_ident, info)| match alias_ident {
+                AliasIdent::Rust(ident) if info.emits_wasm_alias() => Some(ident),
+                _ => None,
+            })
+            .collect();
+        let generic_bases = types.generic_instance_bases();
+        let wasm_externs_by_scope = extern_reexports_by_scope(types, |rust_ident| {
+            !wasm_aliased.contains(rust_ident)
+                && !generic_bases.contains(rust_ident)
+                && wasm_boundary_idents.contains(rust_ident)
+        });
+        for (scope, idents) in &wasm_externs_by_scope {
+            let content = self.wasm_scopes.entry(scope.clone()).or_default();
+            content.raw(EXTERN_REEXPORT_CONTRACT_COMMENT);
+            for ident in idents {
+                content.raw(format!("pub use crate::{ident};"));
+                // Collected at the emission site (single source of truth), like the rust set.
+                self.required_wasm_reexports.insert(ident.to_string());
+            }
+        }
+        // wasm module declarations. Emitted AFTER the live extern re-export glue above, for the
+        // same reason as the rust crate: a scope whose only emitted wasm content is reachable
+        // extern glue is created solely by `wasm_scopes.entry(..).or_default()`, so a scope list
+        // snapshotted before the glue would materialize that scope's `generated/<scope>/mod.rs` yet
+        // never declare `pub mod <scope>;` in the root (E0432). `wasm_lib` ordering is unchanged:
+        // nothing between the old and new positions writes `wasm_lib`.
+        let wasm_scope_names =
+            declare_top_level_scope_mods(&mut self.wasm_lib_scope, &self.wasm_scopes);
+        // The collection-wrapper index module (materialized as `generated/collections.rs` in
+        // `generated_files`). Declared unconditionally for every wasm run — even one that mints
+        // zero wrappers — from the always-regenerated generated root, never the seed-once
+        // crate-root lib.rs.
+        self.wasm_lib().raw("pub mod collections;");
+        // The borrowed-collections sidecar module (materialized as `generated/borrowed_collections.rs`
+        // in `generated_files`). PRIVATE (`mod`, never `pub mod`) — its `use` lines only
+        // existence-check the borrowed wrapper names; borrowed wrappers are never re-exported (the
+        // consumer's own `collections.rs` lists only wrappers it defines). Declared whenever
+        // `--workspace-dep` is present (stable presence, stable diffs), even when nothing is
+        // borrowed.
+        if !self.workspace_deps.is_empty() {
+            self.wasm_lib().raw("mod borrowed_collections;");
+        }
+        // declare submodules
+        // we do this after the rest to avoid declaring serialization mod/cbor encodings/etc
+        // for these modules when they only exist to support modules nested deeper
+        declare_modules(&mut self.wasm_scopes, &wasm_scope_names);
         Ok(())
     }
 
