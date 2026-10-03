@@ -1365,6 +1365,9 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 // a mandatory member's `.default` must be stripped at field construction before it
 // reaches the WIT projection: exact debug_assert condition and payload retained.
 // No active panic allowance is added; main must qualify normalized production frame keys.
+// WIT package scope invariant guard now belongs to wit.rs::assemble_interfaces:
+// "every staged scope was ensured above" retains its exact expect payload and lookup order.
+// No active panic allowance is added; main must qualify normalized production frame keys.
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired when the two anonymous-composite families and the group-choice-arm inline group
     // became graceful rejections) Three classes lived here, and they split by the composite's

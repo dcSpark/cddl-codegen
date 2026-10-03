@@ -903,56 +903,7 @@ pub(crate) fn project(
         },
     );
 
-    // Assemble the interfaces. Every exported scope carrying a staged OR excluded type gets one; an
-    // interface with nothing in it is still legal WIT and is still emitted.
-    let mut interfaces: BTreeMap<ModuleScope, WitInterface> = BTreeMap::new();
-    for st in staged.values() {
-        ensure_interface(&mut interfaces, &st.scope);
-    }
-    for exc in excluded.values() {
-        ensure_interface(&mut interfaces, &exc.scope);
-    }
-    for st in staged.values() {
-        let iface = interfaces
-            .get_mut(&st.scope)
-            .expect("every staged scope was ensured above");
-        iface.types.extend(st.defs.iter().cloned());
-        if st.uses_int {
-            iface.types.push(WitTypeDef::IntVariant);
-        }
-        if st.uses_any_cbor {
-            iface.types.push(WitTypeDef::AnyCborAlias);
-            iface.types.push(WitTypeDef::AnyCborKind);
-            iface.funcs.push(any_cbor_kind_func());
-            // The JSON door onto the same transparent alias. It belongs HERE and not on a resource
-            // because `any-cbor` IS the alias — there is no resource to hang a method on — and it
-            // exists per interface for the same reason the `cbor-kind` introspection door does.
-            iface.funcs.extend(any_cbor_json_funcs(cli));
-        }
-        // Cross-interface `use`: a type defined in ANOTHER exported scope must be imported by name,
-        // and one defined in an imported DEPENDENCY package by its fully-qualified path. Both are
-        // the same edge — a name this interface uses and does not declare — which is why one loop
-        // produces both and the target type carries the difference.
-        for referenced in &st.refs {
-            if let Some(dep_type) = imported.get(referenced) {
-                iface
-                    .uses
-                    .entry(WitUseTarget::Foreign(dep_type.use_path.clone()))
-                    .or_default()
-                    .insert(dep_type.wit_name.clone());
-                continue;
-            }
-            let target = types.scope(referenced);
-            if target == &st.scope {
-                continue;
-            }
-            iface
-                .uses
-                .entry(WitUseTarget::Local(interface_name(target)))
-                .or_default()
-                .insert(wit_type_name(referenced));
-        }
-    }
+    let mut interfaces = assemble_interfaces(types, cli, &staged, &excluded, &imported);
     // The per-interface `int` / `any-cbor` definitions are pushed once per USING type above, so
     // deduplicate them (and give every interface a stable render order) here.
     for iface in interfaces.values_mut() {
@@ -1115,6 +1066,66 @@ fn stage_exported_types(
             }
         }
     }
+}
+
+fn assemble_interfaces(
+    types: &IntermediateTypes,
+    cli: &Cli,
+    staged: &BTreeMap<RustIdent, StagedType>,
+    excluded: &BTreeMap<RustIdent, WitExclusion>,
+    imported: &BTreeMap<RustIdent, ImportedDepType>,
+) -> BTreeMap<ModuleScope, WitInterface> {
+    // Assemble the interfaces. Every exported scope carrying a staged OR excluded type gets one; an
+    // interface with nothing in it is still legal WIT and is still emitted.
+    let mut interfaces: BTreeMap<ModuleScope, WitInterface> = BTreeMap::new();
+    for st in staged.values() {
+        ensure_interface(&mut interfaces, &st.scope);
+    }
+    for exc in excluded.values() {
+        ensure_interface(&mut interfaces, &exc.scope);
+    }
+    for st in staged.values() {
+        let iface = interfaces
+            .get_mut(&st.scope)
+            .expect("every staged scope was ensured above");
+        iface.types.extend(st.defs.iter().cloned());
+        if st.uses_int {
+            iface.types.push(WitTypeDef::IntVariant);
+        }
+        if st.uses_any_cbor {
+            iface.types.push(WitTypeDef::AnyCborAlias);
+            iface.types.push(WitTypeDef::AnyCborKind);
+            iface.funcs.push(any_cbor_kind_func());
+            // The JSON door onto the same transparent alias. It belongs HERE and not on a resource
+            // because `any-cbor` IS the alias — there is no resource to hang a method on — and it
+            // exists per interface for the same reason the `cbor-kind` introspection door does.
+            iface.funcs.extend(any_cbor_json_funcs(cli));
+        }
+        // Cross-interface `use`: a type defined in ANOTHER exported scope must be imported by name,
+        // and one defined in an imported DEPENDENCY package by its fully-qualified path. Both are
+        // the same edge — a name this interface uses and does not declare — which is why one loop
+        // produces both and the target type carries the difference.
+        for referenced in &st.refs {
+            if let Some(dep_type) = imported.get(referenced) {
+                iface
+                    .uses
+                    .entry(WitUseTarget::Foreign(dep_type.use_path.clone()))
+                    .or_default()
+                    .insert(dep_type.wit_name.clone());
+                continue;
+            }
+            let target = types.scope(referenced);
+            if target == &st.scope {
+                continue;
+            }
+            iface
+                .uses
+                .entry(WitUseTarget::Local(interface_name(target)))
+                .or_default()
+                .insert(wit_type_name(referenced));
+        }
+    }
+    interfaces
 }
 
 /// Mark every constructor, member and free function whose signature touches an imported type as
