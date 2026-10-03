@@ -1727,11 +1727,7 @@ impl Emitter<'_, '_> {
                 self.member_wrapper_getter_body(&mut lines, member, alias, getter);
             }
             WitMemberOp::ToCborBytes => {
-                lines.push(format!(
-                    "<{rust} as {rt}::serialization::{tr}>::to_cbor_bytes(&self.0.borrow())",
-                    rt = self.runtime(),
-                    tr = self.to_bytes_trait()
-                ));
+                self.member_to_cbor_body(&mut lines, rust);
             }
             // The canonical re-encoding door. `Serialize` is named LITERALLY rather than through
             // `to_bytes_trait()`: `to_canonical_cbor_bytes` is declared on that trait and on no
@@ -1758,12 +1754,7 @@ impl Emitter<'_, '_> {
                 mint_from(&mut lines, own, rep);
             }
             WitMemberOp::FromCborBytes => {
-                let arg = kebab_to_snake(&member.params[0].name);
-                lines.push(format!(
-                    "<{rust} as {rt}::serialization::Deserialize>::from_cbor_bytes(&{arg})",
-                    rt = self.runtime()
-                ));
-                mint_from(&mut lines, own, rep);
+                self.member_from_cbor_body(&mut lines, member, rust, own, rep);
             }
             // The RAW-bytes seam, and deliberately not the cbor one: the contract a
             // `_CDDL_CODEGEN_RAW_BYTES_TYPE_` imposes on the user's type is `RawBytesEncoding`, and
@@ -1897,6 +1888,30 @@ impl Emitter<'_, '_> {
         }
         lines
     }
+    fn member_from_cbor_body(
+        &self,
+        lines: &mut Vec<String>,
+        member: &WitMember,
+        rust: &str,
+        own: &str,
+        rep: &str,
+    ) {
+        let arg = kebab_to_snake(&member.params[0].name);
+        lines.push(format!(
+            "<{rust} as {rt}::serialization::Deserialize>::from_cbor_bytes(&{arg})",
+            rt = self.runtime()
+        ));
+        mint_from(lines, own, rep);
+    }
+
+    fn member_to_cbor_body(&self, lines: &mut Vec<String>, rust: &str) {
+        lines.push(format!(
+            "<{rust} as {rt}::serialization::{tr}>::to_cbor_bytes(&self.0.borrow())",
+            rt = self.runtime(),
+            tr = self.to_bytes_trait()
+        ));
+    }
+
     fn member_wrapper_getter_body(
         &self,
         lines: &mut Vec<String>,

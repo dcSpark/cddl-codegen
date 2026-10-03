@@ -1384,6 +1384,11 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 // Actual bounds-panic production-frame attribution remains main qualification; valid
 // projection/materialization cardinality is a source premise, not a reachability proof.
 // No active panic key, array entry or allowance is added or widened.
+// Component CBOR decoder parameter index invariant now belongs to
+// component.rs::member_from_cbor_body: member.params[0] selects the sole bytes input.
+// The original index expression and bounds-panic behavior remain unchanged.
+// Actual production-frame attribution and projected cardinality require main qualification.
+// No active panic key, array entry or allowance is added or widened.
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired when the two anonymous-composite families and the group-choice-arm inline group
     // became graceful rejections) Three classes lived here, and they split by the composite's
