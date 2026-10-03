@@ -871,93 +871,17 @@ pub(crate) fn project(
     // narrower call site is not a model to copy.)
     let generic_extern_bases = types.generic_extern_base_idents();
 
-    for (ident, rust_struct) in types.rust_structs() {
-        let scope = types.scope(ident);
-        if !scope.export() {
-            continue;
-        }
-        // The reserved `int` prelude extern is not a type of its own here: it projects to the `int`
-        // VARIANT at each use site, so listing it as an unexported extern would be a false
-        // record of a type the WIT actually carries.
-        if ident.as_ref() == RESERVED_INT_IDENT {
-            continue;
-        }
-        // A named collection (`names = [+ text]`, `attrs = {* text => uint}`) is RESOLVED THROUGH at
-        // its use sites rather than surfaced — the same rule the CDDL alias row takes, and what
-        // keeps the wasm-posture purity invariant reachable. It is neither included nor excluded:
-        // the WIT is complete without it.
-        if matches!(
-            rust_struct.variant(),
-            RustStructType::Array { .. } | RustStructType::Table { .. }
-        ) {
-            continue;
-        }
-        // A generic extern BASE (`Foo` of `Foo<Bar>`) is skipped for the same reason: it names no
-        // concrete type, so a bridging resource over it would be a resource over nothing. Only its
-        // INSTANCES are bridged, each under the instance ident. Neither included nor excluded — the
-        // WIT is complete without it — and a rule that references the base BARE is excluded at the
-        // reference instead, where the reason can name the shape.
-        if generic_extern_bases.contains(ident) {
-            continue;
-        }
-        let name = wit_type_name(ident);
-        let mut refs = BTreeSet::new();
-        let mut errors = BTreeSet::new();
-        let mut ctx = TypeCtx {
-            types,
-            cli,
-            refs: &mut refs,
-            uses_int: false,
-            uses_any_cbor: false,
-            resolving: BTreeSet::new(),
-            generic_extern_bases: &generic_extern_bases,
-            imported: &imported,
-            unresolvable: &unresolvable,
-            errors: &mut errors,
-        };
-        let projected = project_struct(
-            &name,
-            ident,
-            rust_struct,
-            !no_deserialize.contains(ident),
-            &mut ctx,
-        );
-        let (uses_int, uses_any_cbor) = (ctx.uses_int, ctx.uses_any_cbor);
-        import_errors.extend(errors);
-        // A resource named `t` is valid WIT that the guest macro cannot expand, so it is refused
-        // HERE, through the projection's own refusal channel, rather than in the user's build.
-        let projected =
-            projected.and_then(
-                |defs| match wit_bindgen_resource_ident_hazard(ident, &defs) {
-                    Some(reason) => Err(WitError::IdentHazard { reason }),
-                    None => Ok(defs),
-                },
-            );
-        match projected {
-            Ok(defs) => {
-                staged.insert(
-                    ident.clone(),
-                    StagedType {
-                        scope: scope.clone(),
-                        defs,
-                        refs,
-                        uses_int,
-                        uses_any_cbor,
-                    },
-                );
-            }
-            Err(e) => {
-                excluded.insert(
-                    ident.clone(),
-                    WitExclusion {
-                        scope: scope.clone(),
-                        reason: e.to_string(),
-                        root: ident.to_string(),
-                    },
-                );
-            }
-        }
-    }
+    stage_exported_types(
+        types,
+        cli,
+        no_deserialize,
+        &generic_extern_bases,
+        &imported,
+        &unresolvable,
+        &mut staged,
+        &mut excluded,
+        &mut import_errors,
+    );
 
     // Reference closure to fixpoint (shared with `extern_interface`, see `reference_closure`): a
     // resource whose signature names an excluded type would dangle, so it is excluded too, naming
@@ -1089,6 +1013,107 @@ pub(crate) fn project(
             .map(|(dep, package)| (dep.clone(), package.clone()))
             .collect(),
         import_errors: import_errors.into_iter().collect(),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn stage_exported_types(
+    types: &IntermediateTypes,
+    cli: &Cli,
+    no_deserialize: &BTreeSet<RustIdent>,
+    generic_extern_bases: &BTreeSet<RustIdent>,
+    imported: &BTreeMap<RustIdent, ImportedDepType>,
+    unresolvable: &BTreeMap<RustIdent, String>,
+    staged: &mut BTreeMap<RustIdent, StagedType>,
+    excluded: &mut BTreeMap<RustIdent, WitExclusion>,
+    import_errors: &mut BTreeSet<String>,
+) {
+    for (ident, rust_struct) in types.rust_structs() {
+        let scope = types.scope(ident);
+        if !scope.export() {
+            continue;
+        }
+        // The reserved `int` prelude extern is not a type of its own here: it projects to the `int`
+        // VARIANT at each use site, so listing it as an unexported extern would be a false
+        // record of a type the WIT actually carries.
+        if ident.as_ref() == RESERVED_INT_IDENT {
+            continue;
+        }
+        // A named collection (`names = [+ text]`, `attrs = {* text => uint}`) is RESOLVED THROUGH at
+        // its use sites rather than surfaced — the same rule the CDDL alias row takes, and what
+        // keeps the wasm-posture purity invariant reachable. It is neither included nor excluded:
+        // the WIT is complete without it.
+        if matches!(
+            rust_struct.variant(),
+            RustStructType::Array { .. } | RustStructType::Table { .. }
+        ) {
+            continue;
+        }
+        // A generic extern BASE (`Foo` of `Foo<Bar>`) is skipped for the same reason: it names no
+        // concrete type, so a bridging resource over it would be a resource over nothing. Only its
+        // INSTANCES are bridged, each under the instance ident. Neither included nor excluded — the
+        // WIT is complete without it — and a rule that references the base BARE is excluded at the
+        // reference instead, where the reason can name the shape.
+        if generic_extern_bases.contains(ident) {
+            continue;
+        }
+        let name = wit_type_name(ident);
+        let mut refs = BTreeSet::new();
+        let mut errors = BTreeSet::new();
+        let mut ctx = TypeCtx {
+            types,
+            cli,
+            refs: &mut refs,
+            uses_int: false,
+            uses_any_cbor: false,
+            resolving: BTreeSet::new(),
+            generic_extern_bases,
+            imported,
+            unresolvable,
+            errors: &mut errors,
+        };
+        let projected = project_struct(
+            &name,
+            ident,
+            rust_struct,
+            !no_deserialize.contains(ident),
+            &mut ctx,
+        );
+        let (uses_int, uses_any_cbor) = (ctx.uses_int, ctx.uses_any_cbor);
+        import_errors.extend(errors);
+        // A resource named `t` is valid WIT that the guest macro cannot expand, so it is refused
+        // HERE, through the projection's own refusal channel, rather than in the user's build.
+        let projected =
+            projected.and_then(
+                |defs| match wit_bindgen_resource_ident_hazard(ident, &defs) {
+                    Some(reason) => Err(WitError::IdentHazard { reason }),
+                    None => Ok(defs),
+                },
+            );
+        match projected {
+            Ok(defs) => {
+                staged.insert(
+                    ident.clone(),
+                    StagedType {
+                        scope: scope.clone(),
+                        defs,
+                        refs,
+                        uses_int,
+                        uses_any_cbor,
+                    },
+                );
+            }
+            Err(e) => {
+                excluded.insert(
+                    ident.clone(),
+                    WitExclusion {
+                        scope: scope.clone(),
+                        reason: e.to_string(),
+                        root: ident.to_string(),
+                    },
+                );
+            }
+        }
     }
 }
 
