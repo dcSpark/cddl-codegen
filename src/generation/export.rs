@@ -1489,7 +1489,7 @@ impl GenerationScope {
             // TRUE path (`{dep}::{scope…}::{Ident}`) — the same path the consumer's own generated
             // `use` lines take. A dep-ROOT type's scope is just the dep crate name, so its path
             // column equals `{dep}` and root-only sidecars stay byte-identical.
-            let mut rows: Vec<(String, String, String, DemandSet)> = Vec::new();
+            let mut rows: Vec<super::sidecars::BorrowedKeyRow> = Vec::new();
             let int_ident = RustIdent::new(CDDLIdent::new("int"));
             for ident in types.used_as_key_idents() {
                 // The built-in `Int` extern lives in ROOT (export) scope, so the scope-attribution
@@ -1507,12 +1507,12 @@ impl GenerationScope {
                             let demand = types.key_demand(ident).unwrap_or_default();
                             // `Int` is root-visible in the common crate, so its self-check path is
                             // just the crate name — `{common}::Int`.
-                            rows.push((
-                                common.to_owned(),
-                                "int".to_owned(),
-                                common.to_owned(),
+                            rows.push(super::sidecars::BorrowedKeyRow {
+                                dep: common.to_owned(),
+                                cddl_ident: "int".to_owned(),
+                                scope_path: common.to_owned(),
                                 demand,
-                            ));
+                            });
                         }
                     }
                     continue;
@@ -1532,12 +1532,12 @@ impl GenerationScope {
                 // on — the dep's thin root does not re-export scope contents, so a bare `{dep}::Ident`
                 // would be E0412 for a scoped type. For a dep-ROOT type this is just `{dep}`.
                 let scope_path = scope.components().join("::");
-                rows.push((
-                    dep.clone(),
-                    convert_to_snake_case(ident.as_ref()),
+                rows.push(super::sidecars::BorrowedKeyRow {
+                    dep: dep.clone(),
+                    cddl_ident: convert_to_snake_case(ident.as_ref()),
                     scope_path,
                     demand,
-                ));
+                });
             }
             rows.sort();
             rows.dedup();

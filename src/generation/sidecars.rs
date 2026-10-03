@@ -288,15 +288,21 @@ pub(super) fn render_extern_interface_check(
     file
 }
 
-pub(super) fn render_borrowed_key_types(
-    rows: &[(String, String, String, DemandSet)],
-    cli: &Cli,
-) -> String {
+/// Field order preserves the former four-tuple sort and full-row deduplication.
+#[derive(Eq, Ord, PartialEq, PartialOrd)]
+pub(super) struct BorrowedKeyRow {
+    pub(super) dep: String,
+    pub(super) cddl_ident: String,
+    pub(super) scope_path: String,
+    pub(super) demand: DemandSet,
+}
+
+pub(super) fn render_borrowed_key_types(rows: &[BorrowedKeyRow], cli: &Cli) -> String {
     // A borrowed key whose demand carries a `hash`/`ord` FLAVOR (a consumer keyed the dep type
     // through a `@used_as_key hash`/`ord` root) needs the flavored 3-column format + per-flavor
     // self-check bound. When every borrowed key is `bare` (the universal pre-flavor case), the
     // legacy 2-column form is emitted BYTE-IDENTICALLY — no banner/type/self-check churn.
-    let any_flavored = rows.iter().any(|(_, _, _, d)| d.hash || d.ord);
+    let any_flavored = rows.iter().any(|row| row.demand.hash || row.demand.ord);
     if any_flavored {
         let mut s = String::from(
             "// This file records every map-key type this crate borrows from workspace deps.\n\
@@ -307,7 +313,7 @@ pub(super) fn render_borrowed_key_types(
         );
         // One bound-carrier per distinct demand (the flavor decides the bound), then a
         // per-row self-check call routed to its flavor's carrier.
-        let mut demands: Vec<DemandSet> = rows.iter().map(|(_, _, _, d)| *d).collect();
+        let mut demands: Vec<DemandSet> = rows.iter().map(|row| row.demand).collect();
         demands.sort();
         demands.dedup();
         let assert_fn = |d: DemandSet| {
@@ -324,7 +330,13 @@ pub(super) fn render_borrowed_key_types(
             ));
         }
         s.push_str("#[allow(dead_code)]\nfn _borrowed_key_types_self_check() {\n");
-        for (_dep, ident, scope_path, d) in rows {
+        for BorrowedKeyRow {
+            cddl_ident: ident,
+            scope_path,
+            demand: d,
+            ..
+        } in rows
+        {
             let ty = RustIdent::new(CDDLIdent::new(ident.clone()));
             s.push_str(&format!("    {}::<{scope_path}::{ty}>();\n", assert_fn(*d)));
         }
@@ -332,7 +344,13 @@ pub(super) fn render_borrowed_key_types(
         s.push_str(
         "#[allow(dead_code)]\npub(crate) const BORROWED_KEY_TYPES: &[(&str, &str, &str)] = &[\n",
     );
-        for (dep, ident, _scope_path, d) in rows {
+        for BorrowedKeyRow {
+            dep,
+            cddl_ident: ident,
+            demand: d,
+            ..
+        } in rows
+        {
             let flavor = key_flavor_token(*d);
             s.push_str(&format!("    ({dep:?}, {ident:?}, {flavor:?}),\n"));
         }
@@ -356,7 +374,12 @@ pub(super) fn render_borrowed_key_types(
         ));
         if !rows.is_empty() {
             s.push_str("#[allow(dead_code)]\nfn _borrowed_key_types_self_check() {\n");
-            for (_dep, ident, scope_path, _) in rows {
+            for BorrowedKeyRow {
+                cddl_ident: ident,
+                scope_path,
+                ..
+            } in rows
+            {
                 let ty = RustIdent::new(CDDLIdent::new(ident.clone()));
                 s.push_str(&format!(
                     "    _assert_key_traits::<{scope_path}::{ty}>();\n"
@@ -367,7 +390,12 @@ pub(super) fn render_borrowed_key_types(
         s.push_str(
             "#[allow(dead_code)]\npub(crate) const BORROWED_KEY_TYPES: &[(&str, &str)] = &[\n",
         );
-        for (dep, ident, _scope_path, _) in rows {
+        for BorrowedKeyRow {
+            dep,
+            cddl_ident: ident,
+            ..
+        } in rows
+        {
             s.push_str(&format!("    ({dep:?}, {ident:?}),\n"));
         }
         s.push_str("];\n");
