@@ -4871,62 +4871,13 @@ fn attach_record_encodings(
     }
 }
 
-pub(super) fn codegen_struct(
-    gen_scope: &mut GenerationScope,
+/// Emit protected-rest validation, immutable getters and checked insertion after constructor joining.
+fn emit_record_protected_rest(
     types: &IntermediateTypes,
-    name: &RustIdent,
-    tag: Option<usize>,
     record: &RustRecord,
-    config: &RustStructConfig,
+    native_impl: &mut codegen::Impl,
     cli: &Cli,
 ) {
-    let new_can_fail = record.native_ctor_can_fail(types);
-    // A bounded typed row stays flattened on the open-table class, so its wasm constructor accepts
-    // the same-flavor *loose* builder and crosses the checked carrier door before calling the
-    // native record constructor. That boundary can fail even though the native constructor itself
-    // just accepts an already-checked BoundedMap. This applies at minimum zero too: seeding an
-    // empty carrier would lose the native door's complete checked-construction contract.
-    let typed_bounded_wasm_builder = record.typed_row().filter(|row| {
-        !row.is_array_tail() && row.container_type().bounded_map_u64_bounds().is_some()
-    });
-    let wasm_new_can_fail = new_can_fail || typed_bounded_wasm_builder.is_some();
-    // wasm wrapper
-    if cli.wasm {
-        emit_record_wasm(
-            gen_scope,
-            types,
-            name,
-            record,
-            config,
-            cli,
-            new_can_fail,
-            wasm_new_can_fail,
-        );
-    }
-
-    // Rust-only for the rest of this function
-
-    let RecordNativeParts {
-        mut native_struct,
-        mut native_impl,
-        mut native_new,
-        mut native_new_block,
-        new_arg_count,
-        manual_json,
-    } = prepare_record_native(gen_scope, types, name, record, config, cli, new_can_fail);
-    let len_encoding_var = attach_record_encodings(
-        gen_scope,
-        types,
-        name,
-        tag,
-        record,
-        manual_json,
-        &mut native_struct,
-        &mut native_new_block,
-        cli,
-    );
-    native_new.push_block(native_new_block);
-    native_impl.push_fn(native_new);
     // A possible fixed/rest key collision makes the captured map private: callers may observe
     // validated content, but cannot insert directly around the declared/exact-zero invariant. The
     // wasm getter uses this same immutable native view.
@@ -5098,6 +5049,65 @@ pub(super) fn codegen_struct(
             native_impl.push_fn(insert);
         }
     }
+}
+
+pub(super) fn codegen_struct(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    name: &RustIdent,
+    tag: Option<usize>,
+    record: &RustRecord,
+    config: &RustStructConfig,
+    cli: &Cli,
+) {
+    let new_can_fail = record.native_ctor_can_fail(types);
+    // A bounded typed row stays flattened on the open-table class, so its wasm constructor accepts
+    // the same-flavor *loose* builder and crosses the checked carrier door before calling the
+    // native record constructor. That boundary can fail even though the native constructor itself
+    // just accepts an already-checked BoundedMap. This applies at minimum zero too: seeding an
+    // empty carrier would lose the native door's complete checked-construction contract.
+    let typed_bounded_wasm_builder = record.typed_row().filter(|row| {
+        !row.is_array_tail() && row.container_type().bounded_map_u64_bounds().is_some()
+    });
+    let wasm_new_can_fail = new_can_fail || typed_bounded_wasm_builder.is_some();
+    // wasm wrapper
+    if cli.wasm {
+        emit_record_wasm(
+            gen_scope,
+            types,
+            name,
+            record,
+            config,
+            cli,
+            new_can_fail,
+            wasm_new_can_fail,
+        );
+    }
+
+    // Rust-only for the rest of this function
+
+    let RecordNativeParts {
+        mut native_struct,
+        mut native_impl,
+        mut native_new,
+        mut native_new_block,
+        new_arg_count,
+        manual_json,
+    } = prepare_record_native(gen_scope, types, name, record, config, cli, new_can_fail);
+    let len_encoding_var = attach_record_encodings(
+        gen_scope,
+        types,
+        name,
+        tag,
+        record,
+        manual_json,
+        &mut native_struct,
+        &mut native_new_block,
+        cli,
+    );
+    native_new.push_block(native_new_block);
+    native_impl.push_fn(native_new);
+    emit_record_protected_rest(types, record, &mut native_impl, cli);
 
     // A whole-record custom pair owns the complete CBOR item. Generate only the shared-contract
     // trait shells: root references dispatch to the same free functions before their kind-specific
