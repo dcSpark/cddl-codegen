@@ -556,3 +556,69 @@ pub(super) fn render_json_gen_main(cli: &Cli) -> String {
     ));
     main_scope.to_string()
 }
+
+pub(super) fn collect_borrowed_key_rows(
+    types: &IntermediateTypes,
+    workspace_deps: &BTreeSet<String>,
+    cli: &Cli,
+) -> Vec<BorrowedKeyRow> {
+    // Each row carries `(dep-crate name, cddl ident, self-check module path, demand)`. The
+    // machine TABLE only emits `(dep, ident[, flavor])`; the module-path column feeds the
+    // compiled self-check ONLY, so a dep type living in a non-root scope is asserted at its
+    // TRUE path (`{dep}::{scope…}::{Ident}`) — the same path the consumer's own generated
+    // `use` lines take. A dep-ROOT type's scope is just the dep crate name, so its path
+    // column equals `{dep}` and root-only sidecars stay byte-identical.
+    let mut rows: Vec<BorrowedKeyRow> = Vec::new();
+    let int_ident = RustIdent::new(CDDLIdent::new("int"));
+    for ident in types.used_as_key_idents() {
+        // The built-in `Int` extern lives in ROOT (export) scope, so the scope-attribution
+        // skip below never sees it — but under `--common-import-override` this crate re-exports
+        // the COMMON crate's `Int` (Phase 1), so a key-demanded `Int` is morally a borrowed key
+        // of that crate. Record the row `(<override>, "int", demand)` IFF the override names a
+        // configured `--workspace-dep` (the dep column is a crate name, which also excludes a
+        // path-form override like `crate::common`). When it does not, no row and no error: the
+        // consumer's own map sites fail E0277 naming `Int`, the documented degraded path — the
+        // flavor channel requires the common crate to also be a `--workspace-dep`.
+        if *ident == int_ident {
+            if !cli.export_static_files() {
+                let common = cli.common_import_rust();
+                if workspace_deps.contains(common) {
+                    let demand = types.key_demand(ident).unwrap_or_default();
+                    // `Int` is root-visible in the common crate, so its self-check path is
+                    // just the crate name — `{common}::Int`.
+                    rows.push(BorrowedKeyRow {
+                        dep: common.to_owned(),
+                        cddl_ident: "int".to_owned(),
+                        scope_path: common.to_owned(),
+                        demand,
+                    });
+                }
+            }
+            continue;
+        }
+        let scope = types.scope(ident);
+        if scope.export() {
+            continue;
+        }
+        let Some(dep) = scope.components().first() else {
+            continue;
+        };
+        if !workspace_deps.contains(dep) {
+            continue;
+        }
+        let demand = types.key_demand(ident).unwrap_or_default();
+        // The full non-export scope path (`{dep}::{scope…}`) is what the self-check asserts
+        // on — the dep's thin root does not re-export scope contents, so a bare `{dep}::Ident`
+        // would be E0412 for a scoped type. For a dep-ROOT type this is just `{dep}`.
+        let scope_path = scope.components().join("::");
+        rows.push(BorrowedKeyRow {
+            dep: dep.clone(),
+            cddl_ident: convert_to_snake_case(ident.as_ref()),
+            scope_path,
+            demand,
+        });
+    }
+    rows.sort();
+    rows.dedup();
+    rows
+}
