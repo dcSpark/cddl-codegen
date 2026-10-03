@@ -1024,6 +1024,40 @@ fn ser_primitive(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn ser_tagged(
+    tag: &usize,
+    child: SerializingRustType<'_>,
+    types: &IntermediateTypes,
+    body: &mut dyn CodeBlock,
+    config: SerializeConfig,
+    cli: &Cli,
+    serializer_use: &str,
+    encoding_deref: &str,
+    encoding_var_is_copy: bool,
+) {
+    // level (tag_depth + 1) counted outside-in; the infix keeps the member name in
+    // lockstep with `encoding_fields_impl`, and the child recurses one level deeper.
+    let tag_level = config.tag_depth + 1;
+    let tag_infix = tag_encoding_infix(tag_level);
+    let expr = format!("{tag}u64");
+    write_using_sz(
+        body,
+        "write_tag",
+        serializer_use,
+        &expr,
+        &expr,
+        "?;",
+        &format!(
+            "{}{}",
+            encoding_deref,
+            config.encoding_var(Some(&tag_infix), encoding_var_is_copy)
+        ),
+        cli,
+    );
+    generate_serialize(types, child, body, config.tag_depth(tag_level), cli);
+}
+
 /// Write code for serializing {serializing_rust_type} directly into {body}
 pub(super) fn generate_serialize(
     types: &IntermediateTypes,
@@ -1119,26 +1153,17 @@ pub(super) fn generate_serialize(
     } else {
         match serializing_rust_type {
             SerializingRustType::EncodingOperation(CBOREncodingOperation::Tagged(tag), child) => {
-                // level (tag_depth + 1) counted outside-in; the infix keeps the member name in
-                // lockstep with `encoding_fields_impl`, and the child recurses one level deeper.
-                let tag_level = config.tag_depth + 1;
-                let tag_infix = tag_encoding_infix(tag_level);
-                let expr = format!("{tag}u64");
-                write_using_sz(
+                ser_tagged(
+                    tag,
+                    *child,
+                    types,
                     body,
-                    "write_tag",
-                    serializer_use,
-                    &expr,
-                    &expr,
-                    "?;",
-                    &format!(
-                        "{}{}",
-                        encoding_deref,
-                        config.encoding_var(Some(&tag_infix), encoding_var_is_copy)
-                    ),
+                    config,
                     cli,
+                    serializer_use,
+                    encoding_deref,
+                    encoding_var_is_copy,
                 );
-                generate_serialize(types, *child, body, config.tag_depth(tag_level), cli);
             }
             SerializingRustType::EncodingOperation(
                 CBOREncodingOperation::OptionallyTagged(tag),
