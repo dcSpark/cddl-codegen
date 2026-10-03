@@ -261,7 +261,7 @@ const SOURCE_ROLES: &[SourceRole] = &[
         emitter: false,
         wasm: false,
         reason: "pure sidecar and schema crate rendering; no record field locals or WASM signatures",
-        members: &["render_collections_index"],
+        members: &["render_borrowed_collections", "render_collections_index"],
     },
     SourceRole {
         file: "serialize.rs",

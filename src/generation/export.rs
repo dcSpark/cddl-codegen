@@ -1935,42 +1935,8 @@ impl GenerationScope {
             // RUST crate name (the extern-deps directory name / `--extern-wasm-crate` left side), not
             // the wasm crate name.
             if !self.workspace_deps.is_empty() {
-                let extern_wasm_crate_map = cli.extern_wasm_crate_map();
-                let mut entries: Vec<(&str, &str, &str)> = self
-                    .borrowed_wrappers
-                    .iter()
-                    .map(|(name, (dep, shape))| (dep.as_str(), name.as_ref(), shape.as_str()))
-                    .collect();
-                entries.sort_unstable();
-                // The column legend lives in the banner (anchored to the file, which always exists),
-                // NEVER inside the const body: an in-const comment is anchored to a row by the
-                // preservation overlay, so deleting that row on an in-place regen (a consumer
-                // dropping its last borrow of a shape) trapped the legend in a `compile_error!`
-                // block — which the dep-side strict parser then (correctly) refused to consume.
-                let mut sidecar = String::from(
-                    "// This file records every collection wrapper this crate borrows from workspace deps.\n\
-                     // It is machine-read by those deps' generation runs (--wrapper-requests) and compiled\n\
-                     // here, so a wrapper a dep stops providing fails THIS crate's build, naming the type.\n\
-                     // Rows are (dep rust-crate name, wrapper name, shape in CDDL syntax with the dep's idents).\n\
-                     #[allow(unused_imports)]\n\
-                     mod borrowed {\n",
-                );
-                for (dep, name, _) in &entries {
-                    let dep_wasm = extern_wasm_crate_map
-                        .get(*dep)
-                        .map(String::as_str)
-                        .unwrap_or(dep);
-                    sidecar.push_str(&format!("    use {dep_wasm}::collections::{name};\n"));
-                }
-                sidecar.push_str(
-                    "}\n\
-                     #[allow(dead_code)]\n\
-                     pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[\n",
-                );
-                for (dep, name, shape) in &entries {
-                    sidecar.push_str(&format!("    ({dep:?}, {name:?}, {shape:?}),\n"));
-                }
-                sidecar.push_str("];\n");
+                let sidecar =
+                    super::sidecars::render_borrowed_collections(&self.borrowed_wrappers, cli);
                 out.insert(
                     crate::generation::layout::WASM_BORROWED_COLLECTIONS.to_owned(),
                     rustfmt_generated_string(&sidecar)?.into_owned(),
