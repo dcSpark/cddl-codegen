@@ -1456,6 +1456,220 @@ fn ser_array(
     end_len(body, serializer_pass, encoding_var, config.is_end, cli);
 }
 
+#[allow(clippy::too_many_arguments)]
+fn ser_map(
+    key: &RustType,
+    value: &RustType,
+    cfg: Cow<'_, RustTypeSerializeConfig>,
+    types: &IntermediateTypes,
+    body: &mut dyn CodeBlock,
+    config: SerializeConfig,
+    cli: &Cli,
+    serializer_use: &str,
+    serializer_pass: &str,
+    encoding_var: &str,
+) {
+    // `@duplicates preserve` (the pair-map twin): the encoding sidecar is POSITIONAL
+    // (a `Vec` parallel to the entries), so the serialize loop reads encodings by
+    // INDEX (`.get(i)`) via `.enumerate()`, exactly like the array `_elem_encodings`
+    // path — a keyed lookup would be structurally wrong (two same-key entries share
+    // one map slot). The non-preserve-encodings loop and the value serialize are
+    // shared; only the encoding-lookup key (`i` vs `key`) differs.
+    let preserve_pair_map = cfg.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve);
+    let enc_lookup_var = if preserve_pair_map { "i" } else { "key" };
+    start_len(
+        body,
+        Representation::Map,
+        serializer_use,
+        encoding_var,
+        &format!("{}.len() as u64", config.expr),
+        cli,
+    );
+    let ser_loop = if cli.preserve_encodings {
+        let key_enc_fields =
+            encoding_fields(types, &format!("{}_key", config.var_name), key, false, cli);
+        let value_enc_fields = encoding_fields(
+            types,
+            &format!("{}_value", config.var_name),
+            value,
+            false,
+            cli,
+        );
+        let mut ser_loop = if cli.canonical_form {
+            // `@duplicates preserve` under canonical: RFC 8949 deterministic encoding
+            // requires unique keys, so duplicate-carrying data has NO canonical form.
+            // The flag is crate-wide, so we do the deterministic best-effort — a STABLE
+            // sort by encoded key bytes (duplicates stay adjacent in first-appearance
+            // order) — rather than a generation-time refusal or a runtime error (which
+            // would make `to_canonical_cbor_bytes` partial over every enclosing type).
+            // Canonicalizing metadata is moot anyway: its consensus hash is over the
+            // original bytes, which non-canonical round-trip preserves. The positional
+            // encoding sidecar means the index `i` must ride through the sorted tuple so
+            // the value lookup stays aligned after the sort.
+            let map_head = if preserve_pair_map {
+                format!(
+                    "let mut key_order = {}.iter().enumerate().map(|(i, (k, v))|",
+                    config.expr
+                )
+            } else {
+                format!("let mut key_order = {}.iter().map(|(k, v)|", config.expr)
+            };
+            let mut key_order = Block::new(map_head);
+            key_order.line("let mut buf = cbor_event::se::Serializer::new_vec();");
+            if !key_enc_fields.is_empty() {
+                key_order.line(config.container_encoding_lookup(
+                    "key",
+                    &key_enc_fields,
+                    if preserve_pair_map { "i" } else { "k" },
+                ));
+            }
+            let key_config = SerializeConfig::new("k", format!("{}_key", config.var_name))
+                .expr_is_ref(true)
+                .end(false)
+                .serializer_name_overload(("buf", true))
+                .encoding_var_is_ref(false);
+            generate_serialize(types, key.into(), &mut key_order, key_config, cli);
+            if preserve_pair_map {
+                key_order.line("Ok((buf.finalize(), i, k, v))").after(
+                    ").collect::<Result<Vec<(Vec<u8>, usize, &_, &_)>, cbor_event::Error>>()?;",
+                );
+            } else {
+                key_order
+                    .line("Ok((buf.finalize(), k, v))")
+                    .after(").collect::<Result<Vec<(Vec<u8>, &_, &_)>, cbor_event::Error>>()?;");
+            }
+            body.push_block(key_order);
+            let mut key_order_if = Block::new("if force_canonical");
+            // `sort_by` is a STABLE sort, so equal-keyed (duplicate) entries keep their
+            // first-appearance order — the property the preserve tuple carries `i` for.
+            // The length-first-then-bytewise comparison is the ONE shared runtime helper
+            // (`cbor_canonical_key_cmp`, static preserve runtime), so this sort agrees
+            // by construction with `AnyCbor`'s own canonical map sort and generated open
+            // struct-maps' runtime key merge.
+            let sort_call = if preserve_pair_map {
+                "key_order.sort_by(|(lhs_bytes, _, _, _), (rhs_bytes, _, _, _)| cbor_canonical_key_cmp(lhs_bytes, rhs_bytes));"
+            } else {
+                "key_order.sort_by(|(lhs_bytes, _, _), (rhs_bytes, _, _)| cbor_canonical_key_cmp(lhs_bytes, rhs_bytes));"
+            };
+            key_order_if.line(sort_call);
+            body.push_block(key_order_if);
+            let key_loop_var = if value_enc_fields.is_empty() {
+                "_key"
+            } else {
+                "key"
+            };
+            let mut ser_loop = if preserve_pair_map {
+                // `i` is the positional index into the value encoding sidecar; the key
+                // value is not re-serialized (its bytes were written above).
+                let idx_var = if value_enc_fields.is_empty() {
+                    "_i"
+                } else {
+                    "i"
+                };
+                Block::new(format!(
+                    "for (key_bytes, {idx_var}, _key, value) in key_order"
+                ))
+            } else {
+                Block::new(format!(
+                    "for (key_bytes, {key_loop_var}, value) in key_order"
+                ))
+            };
+            ser_loop.line(format!("{serializer_use}.write_raw_bytes(&key_bytes)?;"));
+            ser_loop
+        } else {
+            let mut ser_loop = if preserve_pair_map {
+                // positional: enumerate so the encoding sidecar is read by index.
+                // The index's only readers are the key and value encoding lookups
+                // below, so bind `_i` when NEITHER is emitted — otherwise the
+                // generated crate warns `unused variable: i` on every build. Both
+                // sides participate here, unlike the canonical sibling above, whose
+                // key was already serialized (and its lookup already done) inside
+                // `key_order`.
+                let idx_var = if key_enc_fields.is_empty() && value_enc_fields.is_empty() {
+                    "_i"
+                } else {
+                    "i"
+                };
+                Block::new(format!(
+                    "for ({idx_var}, (key, value)) in {}.iter().enumerate()",
+                    config.expr
+                ))
+            } else {
+                Block::new(format!("for (key, value) in {}.iter()", config.expr))
+            };
+            if !key_enc_fields.is_empty() {
+                ser_loop.line(config.container_encoding_lookup(
+                    "key",
+                    &key_enc_fields,
+                    enc_lookup_var,
+                ));
+            }
+            let key_config = config
+                .clone()
+                .expr("key")
+                .expr_is_ref(true)
+                .var_name(format!("{}_key", config.var_name))
+                .end(false)
+                .encoding_var_no_option_struct()
+                .encoding_var_is_ref(false)
+                // fresh `{name}_key` namespace: reset both depths to match
+                // `encoding_fields_impl`'s map-key reset.
+                .tag_depth(0)
+                .cbor_depth(0);
+            generate_serialize(types, key.into(), &mut ser_loop, key_config, cli);
+            ser_loop
+        };
+        if !value_enc_fields.is_empty() {
+            ser_loop.line(config.container_encoding_lookup(
+                "value",
+                &value_enc_fields,
+                enc_lookup_var,
+            ));
+        }
+        let value_config = config
+            .clone()
+            .expr("value")
+            .expr_is_ref(true)
+            .var_name(format!("{}_value", config.var_name))
+            .end(false)
+            .encoding_var_no_option_struct()
+            .encoding_var_is_ref(false)
+            // fresh `{name}_value` namespace: reset both depths to match
+            // `encoding_fields_impl`'s map-value reset.
+            .tag_depth(0)
+            .cbor_depth(0);
+        generate_serialize(types, value.into(), &mut ser_loop, value_config, cli);
+        ser_loop
+    } else {
+        let mut ser_loop = Block::new(format!("for (key, value) in {}.iter()", config.expr));
+        let key_config = config
+            .clone()
+            .expr("key")
+            .expr_is_ref(true)
+            .var_name(format!("{}_key", config.var_name))
+            .end(false)
+            .encoding_var_no_option_struct()
+            .encoding_var_is_ref(false)
+            // fresh `{name}_key` namespace: reset both depths (as above).
+            .tag_depth(0)
+            .cbor_depth(0);
+        let value_config = key_config
+            .clone()
+            .expr("value")
+            // `{name}_value` namespace; key_config already reset, kept explicit.
+            .var_name(format!("{}_value", config.var_name))
+            .tag_depth(0)
+            .cbor_depth(0);
+        generate_serialize(types, key.into(), &mut ser_loop, key_config, cli);
+        generate_serialize(types, value.into(), &mut ser_loop, value_config, cli);
+        ser_loop
+    };
+    body.push_block(ser_loop);
+    // Argument to `.end()`: use the pass form (`&mut <name>` for a `.cbor`-payload
+    // local serializer) — see the Array arm above for the rationale.
+    end_len(body, serializer_pass, encoding_var, config.is_end, cli);
+}
+
 /// Write code for serializing {serializing_rust_type} directly into {body}
 pub(super) fn generate_serialize(
     types: &IntermediateTypes,
@@ -1650,214 +1864,18 @@ pub(super) fn generate_serialize(
                 );
             }
             SerializingRustType::Root(ConceptualRustType::Map(key, value), cfg) => {
-                // `@duplicates preserve` (the pair-map twin): the encoding sidecar is POSITIONAL
-                // (a `Vec` parallel to the entries), so the serialize loop reads encodings by
-                // INDEX (`.get(i)`) via `.enumerate()`, exactly like the array `_elem_encodings`
-                // path — a keyed lookup would be structurally wrong (two same-key entries share
-                // one map slot). The non-preserve-encodings loop and the value serialize are
-                // shared; only the encoding-lookup key (`i` vs `key`) differs.
-                let preserve_pair_map =
-                    cfg.duplicates == Some(crate::comment_ast::DuplicatesPolicy::Preserve);
-                let enc_lookup_var = if preserve_pair_map { "i" } else { "key" };
-                start_len(
+                ser_map(
+                    key,
+                    value,
+                    cfg,
+                    types,
                     body,
-                    Representation::Map,
-                    serializer_use,
-                    &encoding_var,
-                    &format!("{}.len() as u64", config.expr),
+                    config,
                     cli,
+                    serializer_use,
+                    &serializer_pass,
+                    &encoding_var,
                 );
-                let ser_loop = if cli.preserve_encodings {
-                    let key_enc_fields = encoding_fields(
-                        types,
-                        &format!("{}_key", config.var_name),
-                        key,
-                        false,
-                        cli,
-                    );
-                    let value_enc_fields = encoding_fields(
-                        types,
-                        &format!("{}_value", config.var_name),
-                        value,
-                        false,
-                        cli,
-                    );
-                    let mut ser_loop = if cli.canonical_form {
-                        // `@duplicates preserve` under canonical: RFC 8949 deterministic encoding
-                        // requires unique keys, so duplicate-carrying data has NO canonical form.
-                        // The flag is crate-wide, so we do the deterministic best-effort — a STABLE
-                        // sort by encoded key bytes (duplicates stay adjacent in first-appearance
-                        // order) — rather than a generation-time refusal or a runtime error (which
-                        // would make `to_canonical_cbor_bytes` partial over every enclosing type).
-                        // Canonicalizing metadata is moot anyway: its consensus hash is over the
-                        // original bytes, which non-canonical round-trip preserves. The positional
-                        // encoding sidecar means the index `i` must ride through the sorted tuple so
-                        // the value lookup stays aligned after the sort.
-                        let map_head = if preserve_pair_map {
-                            format!(
-                                "let mut key_order = {}.iter().enumerate().map(|(i, (k, v))|",
-                                config.expr
-                            )
-                        } else {
-                            format!("let mut key_order = {}.iter().map(|(k, v)|", config.expr)
-                        };
-                        let mut key_order = Block::new(map_head);
-                        key_order.line("let mut buf = cbor_event::se::Serializer::new_vec();");
-                        if !key_enc_fields.is_empty() {
-                            key_order.line(config.container_encoding_lookup(
-                                "key",
-                                &key_enc_fields,
-                                if preserve_pair_map { "i" } else { "k" },
-                            ));
-                        }
-                        let key_config =
-                            SerializeConfig::new("k", format!("{}_key", config.var_name))
-                                .expr_is_ref(true)
-                                .end(false)
-                                .serializer_name_overload(("buf", true))
-                                .encoding_var_is_ref(false);
-                        generate_serialize(types, (&**key).into(), &mut key_order, key_config, cli);
-                        if preserve_pair_map {
-                            key_order.line("Ok((buf.finalize(), i, k, v))").after(
-                                ").collect::<Result<Vec<(Vec<u8>, usize, &_, &_)>, cbor_event::Error>>()?;",
-                            );
-                        } else {
-                            key_order.line("Ok((buf.finalize(), k, v))").after(
-                                ").collect::<Result<Vec<(Vec<u8>, &_, &_)>, cbor_event::Error>>()?;",
-                            );
-                        }
-                        body.push_block(key_order);
-                        let mut key_order_if = Block::new("if force_canonical");
-                        // `sort_by` is a STABLE sort, so equal-keyed (duplicate) entries keep their
-                        // first-appearance order — the property the preserve tuple carries `i` for.
-                        // The length-first-then-bytewise comparison is the ONE shared runtime helper
-                        // (`cbor_canonical_key_cmp`, static preserve runtime), so this sort agrees
-                        // by construction with `AnyCbor`'s own canonical map sort and generated open
-                        // struct-maps' runtime key merge.
-                        let sort_call = if preserve_pair_map {
-                            "key_order.sort_by(|(lhs_bytes, _, _, _), (rhs_bytes, _, _, _)| cbor_canonical_key_cmp(lhs_bytes, rhs_bytes));"
-                        } else {
-                            "key_order.sort_by(|(lhs_bytes, _, _), (rhs_bytes, _, _)| cbor_canonical_key_cmp(lhs_bytes, rhs_bytes));"
-                        };
-                        key_order_if.line(sort_call);
-                        body.push_block(key_order_if);
-                        let key_loop_var = if value_enc_fields.is_empty() {
-                            "_key"
-                        } else {
-                            "key"
-                        };
-                        let mut ser_loop = if preserve_pair_map {
-                            // `i` is the positional index into the value encoding sidecar; the key
-                            // value is not re-serialized (its bytes were written above).
-                            let idx_var = if value_enc_fields.is_empty() {
-                                "_i"
-                            } else {
-                                "i"
-                            };
-                            Block::new(format!(
-                                "for (key_bytes, {idx_var}, _key, value) in key_order"
-                            ))
-                        } else {
-                            Block::new(format!(
-                                "for (key_bytes, {key_loop_var}, value) in key_order"
-                            ))
-                        };
-                        ser_loop.line(format!("{serializer_use}.write_raw_bytes(&key_bytes)?;"));
-                        ser_loop
-                    } else {
-                        let mut ser_loop = if preserve_pair_map {
-                            // positional: enumerate so the encoding sidecar is read by index.
-                            // The index's only readers are the key and value encoding lookups
-                            // below, so bind `_i` when NEITHER is emitted — otherwise the
-                            // generated crate warns `unused variable: i` on every build. Both
-                            // sides participate here, unlike the canonical sibling above, whose
-                            // key was already serialized (and its lookup already done) inside
-                            // `key_order`.
-                            let idx_var =
-                                if key_enc_fields.is_empty() && value_enc_fields.is_empty() {
-                                    "_i"
-                                } else {
-                                    "i"
-                                };
-                            Block::new(format!(
-                                "for ({idx_var}, (key, value)) in {}.iter().enumerate()",
-                                config.expr
-                            ))
-                        } else {
-                            Block::new(format!("for (key, value) in {}.iter()", config.expr))
-                        };
-                        if !key_enc_fields.is_empty() {
-                            ser_loop.line(config.container_encoding_lookup(
-                                "key",
-                                &key_enc_fields,
-                                enc_lookup_var,
-                            ));
-                        }
-                        let key_config = config
-                            .clone()
-                            .expr("key")
-                            .expr_is_ref(true)
-                            .var_name(format!("{}_key", config.var_name))
-                            .end(false)
-                            .encoding_var_no_option_struct()
-                            .encoding_var_is_ref(false)
-                            // fresh `{name}_key` namespace: reset both depths to match
-                            // `encoding_fields_impl`'s map-key reset.
-                            .tag_depth(0)
-                            .cbor_depth(0);
-                        generate_serialize(types, (&**key).into(), &mut ser_loop, key_config, cli);
-                        ser_loop
-                    };
-                    if !value_enc_fields.is_empty() {
-                        ser_loop.line(config.container_encoding_lookup(
-                            "value",
-                            &value_enc_fields,
-                            enc_lookup_var,
-                        ));
-                    }
-                    let value_config = config
-                        .clone()
-                        .expr("value")
-                        .expr_is_ref(true)
-                        .var_name(format!("{}_value", config.var_name))
-                        .end(false)
-                        .encoding_var_no_option_struct()
-                        .encoding_var_is_ref(false)
-                        // fresh `{name}_value` namespace: reset both depths to match
-                        // `encoding_fields_impl`'s map-value reset.
-                        .tag_depth(0)
-                        .cbor_depth(0);
-                    generate_serialize(types, (&**value).into(), &mut ser_loop, value_config, cli);
-                    ser_loop
-                } else {
-                    let mut ser_loop =
-                        Block::new(format!("for (key, value) in {}.iter()", config.expr));
-                    let key_config = config
-                        .clone()
-                        .expr("key")
-                        .expr_is_ref(true)
-                        .var_name(format!("{}_key", config.var_name))
-                        .end(false)
-                        .encoding_var_no_option_struct()
-                        .encoding_var_is_ref(false)
-                        // fresh `{name}_key` namespace: reset both depths (as above).
-                        .tag_depth(0)
-                        .cbor_depth(0);
-                    let value_config = key_config
-                        .clone()
-                        .expr("value")
-                        // `{name}_value` namespace; key_config already reset, kept explicit.
-                        .var_name(format!("{}_value", config.var_name))
-                        .tag_depth(0)
-                        .cbor_depth(0);
-                    generate_serialize(types, (&**key).into(), &mut ser_loop, key_config, cli);
-                    generate_serialize(types, (&**value).into(), &mut ser_loop, value_config, cli);
-                    ser_loop
-                };
-                body.push_block(ser_loop);
-                // Argument to `.end()`: use the pass form (`&mut <name>` for a `.cbor`-payload
-                // local serializer) — see the Array arm above for the rationale.
-                end_len(body, &serializer_pass, &encoding_var, config.is_end, cli);
             }
             SerializingRustType::Root(ConceptualRustType::Optional(ty), _cfg) => {
                 ser_optional(ty, types, body, config, cli, &expr_ref, serializer_use);
