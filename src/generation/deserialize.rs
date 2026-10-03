@@ -1917,6 +1917,284 @@ impl GenerationScope {
         deser_code
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn deser_rust_ident(
+        &mut self,
+        ident: &RustIdent,
+        type_cfg: Cow<'_, RustTypeSerializeConfig>,
+        types: &IntermediateTypes,
+        mut deser_code: DeserializationCode,
+        mut config: DeserializeConfig,
+        before_after: DeserializeBeforeAfter,
+        cli: &Cli,
+        deserializer_name: &str,
+    ) -> DeserializationCode {
+        // check for type-level @custom_deserialize
+        if let Some(custom_deserialize) = &types
+            .rust_struct(ident)
+            .unwrap()
+            .config()
+            .custom_deserialize
+        {
+            // because this is type-level we must handle final_exprs as it could be wrapped in a tag, etc
+            deser_code.content.line(&final_result_expr_complete(
+                &before_after,
+                &mut deser_code.throws,
+                config.final_exprs,
+                &format!("{}({})", custom_deserialize, deserializer_name),
+            ));
+        } else {
+            match &types.rust_struct(ident).unwrap().variant() {
+                RustStructType::CStyleEnum { variants } => {
+                    if config.optional_field {
+                        deser_code.content.line("read_len.read_elems(1)?;");
+                        deser_code.throws = true;
+                        deser_code.read_len_used = true;
+                    }
+                    // iflet Some(common) = enum_variants_common_constant_type(variants) {
+                    //     // TODO: potentially simplified deserialization some day
+                    //     // issue: https://github.com/dcSpark/cddl-codegen/issues/145
+                    // } else {
+                    // A c-style enum has no Deserialize impl of its own: its decode is a
+                    // try-each-variant sequence with early `return Ok(Enum::Variant)` + a
+                    // trailing NoVariantMatched Err, which only type-checks as the body of a
+                    // fn/closure returning `Result<Enum, _>`. When the caller places our
+                    // result directly (empty before/after — e.g. a struct field that wraps us
+                    // in its own annotate closure, or a type-choice variant's closure) that
+                    // body composes as-is. When the caller instead splices our value into a
+                    // larger expression (non-empty before/after — the newtype wrapper's
+                    // `Ok(Self(<here>))`) the statement form can't be spliced (the early
+                    // returns would leak out, dropping the wrapper -> E0308), so we first wrap
+                    // it in an immediately-invoked closure to yield a composable
+                    // `Result<Enum, _>` expression and let before_after wrap that.
+                    //
+                    // "Empty before/after composes as-is" holds only while a scaffolding
+                    // closure actually exists to catch the early returns, and that is an
+                    // `--annotate-fields` property: with the flag off there is no
+                    // per-field closure, so a caller wanting a plain value
+                    // (`expects_result == false`) splices the statement form straight
+                    // into `deserialize()` — every `return Ok(Enum::Variant)` then targets
+                    // `deserialize()`'s own return type and the dispatch's `Result` is
+                    // left un-`?`ed at its binding (E0308 per variant, plus one at the
+                    // binding). So the closure the flag removed is re-supplied here: force
+                    // the IIFE for exactly that combination, which leaves every
+                    // annotate=true emission byte-identical.
+                    let force_iife_for_no_annotate =
+                        !cli.annotate_fields && !before_after.expects_result;
+                    let mut enum_body = (!before_after.before.is_empty()
+                        || !before_after.after.is_empty()
+                        || force_iife_for_no_annotate)
+                        .then(|| {
+                            let mut b = Block::new(format!(
+                                "{}(|| -> Result<_, DeserializeError>",
+                                before_after.before_str(true)
+                            ));
+                            b.after(format!(")(){}", before_after.after_str(true)));
+                            b
+                        });
+                    {
+                        let target: &mut dyn CodeBlock = match enum_body.as_mut() {
+                            Some(b) => b,
+                            None => &mut deser_code.content,
+                        };
+                        target.line(&format!(
+                            "let initial_position = {deserializer_name}.position();"
+                        ));
+                        // Two DIFFERENT lists, deliberately kept apart. The per-variant
+                        // probe closure below is generated with a FRESH config
+                        // (`make_enum_variant_return_if_deserialized` ->
+                        // `DeserializeConfig::new(variant.name_as_var())`), so its `Ok`
+                        // value carries ONLY this enum's own encoding fields — never the
+                        // exprs a WRAPPING op already pushed into `config.final_exprs`
+                        // (a `bytes .cbor` payload's `StringEncoding::from(..)`, a tag's
+                        // `Some(tag_enc)`). So:
+                        //   - `enc_names` destructures what the closure returns, and is
+                        //     the match PATTERN: plain identifiers, correct arity;
+                        //   - `variant_final_exprs` (outer exprs THEN names) is the
+                        //     returned VALUE, with the outer exprs referenced from
+                        //     enclosing scope where they are already bound (the
+                        //     `let {var}_bytes_encoding` above, the `(tag, tag_enc) =>`
+                        //     arm around us).
+                        // Prefixing the outer exprs into the pattern too made a call expr
+                        // illegal in pattern position (E0164) and the arity wrong even
+                        // when it was legal (E0308) — every wrapped c-style enum under
+                        // `--preserve-encodings` failed to compile.
+                        let mut enc_names = Vec::new();
+                        if cli.preserve_encodings {
+                            for enc_var in encoding_fields(
+                                types,
+                                config.var_name,
+                                variants[0].rust_type(),
+                                false,
+                                cli,
+                            ) {
+                                enc_names.push(enc_var.field_name);
+                            }
+                        }
+                        let mut variant_final_exprs = config.final_exprs.clone();
+                        variant_final_exprs.extend(enc_names.iter().cloned());
+                        for variant in variants {
+                            let mut return_if_deserialized =
+                                make_enum_variant_return_if_deserialized(
+                                    self,
+                                    types,
+                                    variant,
+                                    // agrees with the CLOSURE's return arity, not the
+                                    // outer list's: this flag makes the closure body end
+                                    // in `Ok(())`, which only the `()` pattern below
+                                    // matches
+                                    enc_names.is_empty(),
+                                    None,
+                                    target,
+                                    deserializer_name,
+                                    cli,
+                                );
+                            // pattern parens only for a real tuple (>1), mirroring the
+                            // expression side's final_expr and the non-value enum
+                            // dispatch's names_without_outer.len() > 1 check
+                            let ok_pattern = if enc_names.len() == 1 {
+                                enc_names[0].clone()
+                            } else {
+                                format!("({})", enc_names.join(", "))
+                            };
+                            return_if_deserialized
+                .line(format!("Ok({}) => return Ok({}),",
+                ok_pattern,
+                final_expr(variant_final_exprs.clone(), Some(format!("{}::{}", ident, variant.name)))))
+                .line(format!("Err(_) => {deserializer_name}.set_position(initial_position).unwrap(),"))
+                .after(";");
+                            target.push_block(return_if_deserialized);
+                        }
+                        target.line(&format!(
+            "Err(DeserializeError::new(\"{ident}\", DeserializeFailure::NoVariantMatched))"
+        ));
+                    }
+                    if let Some(enum_body) = enum_body {
+                        deser_code.content.push_block(enum_body);
+                    }
+                    if force_iife_for_no_annotate {
+                        // `after_str(true)` appended the `?` that turns the IIFE's
+                        // `Result` back into the plain value the caller asked for.
+                        deser_code.throws = true;
+                    }
+                }
+                RustStructType::RawBytesType => {
+                    if config.optional_field {
+                        deser_code.content.line("read_len.read_elems(1)?;");
+                        deser_code.throws = true;
+                        deser_code.read_len_used = true;
+                    }
+                    if cli.preserve_encodings {
+                        // declared spelling BEFORE `final_exprs` is moved out below
+                        let call_target = config.call_target(ident);
+                        config
+                            .final_exprs
+                            .push("StringEncoding::from(enc)".to_owned());
+                        let from_raw_bytes_with_conversions = format!(
+                            "{}::from_raw_bytes(&bytes).map(|bytes| {}).map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into())",
+                            call_target,
+                            final_expr(config.final_exprs, Some("bytes".to_owned()))
+                        );
+                        deser_code.content.line(&format!(
+                            "{}{}.bytes_sz(){}.and_then(|(bytes, enc)| {}){}",
+                            before_after.before_str(true),
+                            deserializer_name,
+                            CONVERT_ERR_TO_OURS,
+                            from_raw_bytes_with_conversions,
+                            before_after.after_str(true)
+                        ));
+                    } else {
+                        let call_target = config.call_target(ident);
+                        let from_raw_bytes_with_conversions = format!(
+                            "{call_target}::from_raw_bytes(&bytes).map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into())"
+                        );
+                        deser_code.content.line(&format!(
+                            "{}{}.bytes(){}.and_then(|bytes| {}){}",
+                            before_after.before_str(true),
+                            deserializer_name,
+                            CONVERT_ERR_TO_OURS,
+                            from_raw_bytes_with_conversions,
+                            before_after.after_str(true)
+                        ));
+                    }
+                }
+                // The decode twin of serialize's collection-typedef arms: a named
+                // table/array rule has no `deserialize` of its own (it is a bare rust
+                // typedef onto a collection), so recurse into the collection's
+                // STRUCTURAL conceptual type — the same code the resolved-alias
+                // reference path emits. Reached only from a NOMINAL reference, which
+                // parse-order makes possible when a rule cycle is entered at the
+                // collection rule. `nominal_collection_cfg` reads the per-rule policy
+                // (`@duplicates`, occurrence bounds) back off the struct, which a
+                // nominal reference does not carry.
+                RustStructType::Table { domain, range, .. } => {
+                    let structural =
+                        ConceptualRustType::Map(Box::new(domain.clone()), Box::new(range.clone()));
+                    let cfg = nominal_collection_cfg(types, ident, &type_cfg);
+                    return self.generate_deserialize(
+                        types,
+                        SerializingRustType::Root(&structural, cfg),
+                        before_after,
+                        config,
+                        cli,
+                    );
+                }
+                RustStructType::Array { element_type, .. } => {
+                    let structural = ConceptualRustType::Array(Box::new(element_type.clone()));
+                    let cfg = nominal_collection_cfg(types, ident, &type_cfg);
+                    return self.generate_deserialize(
+                        types,
+                        SerializingRustType::Root(&structural, cfg),
+                        before_after,
+                        config,
+                        cli,
+                    );
+                }
+                _ => {
+                    if types.is_plain_group(ident) && !type_cfg.basic_override {
+                        // This would mess up with length checks otherwise and is probably not a likely situation if this is even valid in CDDL.
+                        // To have this work (if it's valid) you'd either need to generate 2 embedded deserialize methods or pass
+                        // a parameter whether it was an optional field, and if so, read_len.read_elems(embedded mandatory fields)?;
+                        // since otherwise it'd only length check the optional fields within the type.
+                        assert!(!config.optional_field);
+                        deser_code.read_len_used = true;
+                        deser_code.len_used = true;
+                        let final_expr_value = format!(
+                            "{}::deserialize_as_embedded_group({}, {}, len)",
+                            config.call_target(ident),
+                            deserializer_name,
+                            config.pass_read_len()
+                        );
+
+                        deser_code.content.line(&final_result_expr_complete(
+                            &before_after,
+                            &mut deser_code.throws,
+                            config.final_exprs,
+                            &final_expr_value,
+                        ));
+                    } else {
+                        if config.optional_field {
+                            deser_code.content.line("read_len.read_elems(1)?;");
+                            deser_code.read_len_used = true;
+                            deser_code.throws = true;
+                        }
+                        let final_expr_value = format!(
+                            "{}::deserialize({deserializer_name})",
+                            config.call_target(ident)
+                        );
+                        deser_code.content.line(&final_result_expr_complete(
+                            &before_after,
+                            &mut deser_code.throws,
+                            config.final_exprs,
+                            &final_expr_value,
+                        ));
+                    }
+                }
+            }
+        }
+        deser_code
+    }
+
     /// Generates a DeserializationCode to serialize {serializing_rust_type} using the context in {before_after}
     /// This returned value must be in turn pushed into deserialization code to be used.
     #[must_use]
@@ -2008,272 +2286,16 @@ impl GenerationScope {
                         deser_any(deser_code, config, before_after, cli, deserializer_name);
                 }
                 SerializingRustType::Root(ConceptualRustType::Rust(ident), type_cfg) => {
-                    // check for type-level @custom_deserialize
-                    if let Some(custom_deserialize) = &types
-                        .rust_struct(ident)
-                        .unwrap()
-                        .config()
-                        .custom_deserialize
-                    {
-                        // because this is type-level we must handle final_exprs as it could be wrapped in a tag, etc
-                        deser_code.content.line(&final_result_expr_complete(
-                            &before_after,
-                            &mut deser_code.throws,
-                            config.final_exprs,
-                            &format!("{}({})", custom_deserialize, deserializer_name),
-                        ));
-                    } else {
-                        match &types.rust_struct(ident).unwrap().variant() {
-                            RustStructType::CStyleEnum { variants } => {
-                                if config.optional_field {
-                                    deser_code.content.line("read_len.read_elems(1)?;");
-                                    deser_code.throws = true;
-                                    deser_code.read_len_used = true;
-                                }
-                                // iflet Some(common) = enum_variants_common_constant_type(variants) {
-                                //     // TODO: potentially simplified deserialization some day
-                                //     // issue: https://github.com/dcSpark/cddl-codegen/issues/145
-                                // } else {
-                                // A c-style enum has no Deserialize impl of its own: its decode is a
-                                // try-each-variant sequence with early `return Ok(Enum::Variant)` + a
-                                // trailing NoVariantMatched Err, which only type-checks as the body of a
-                                // fn/closure returning `Result<Enum, _>`. When the caller places our
-                                // result directly (empty before/after — e.g. a struct field that wraps us
-                                // in its own annotate closure, or a type-choice variant's closure) that
-                                // body composes as-is. When the caller instead splices our value into a
-                                // larger expression (non-empty before/after — the newtype wrapper's
-                                // `Ok(Self(<here>))`) the statement form can't be spliced (the early
-                                // returns would leak out, dropping the wrapper -> E0308), so we first wrap
-                                // it in an immediately-invoked closure to yield a composable
-                                // `Result<Enum, _>` expression and let before_after wrap that.
-                                //
-                                // "Empty before/after composes as-is" holds only while a scaffolding
-                                // closure actually exists to catch the early returns, and that is an
-                                // `--annotate-fields` property: with the flag off there is no
-                                // per-field closure, so a caller wanting a plain value
-                                // (`expects_result == false`) splices the statement form straight
-                                // into `deserialize()` — every `return Ok(Enum::Variant)` then targets
-                                // `deserialize()`'s own return type and the dispatch's `Result` is
-                                // left un-`?`ed at its binding (E0308 per variant, plus one at the
-                                // binding). So the closure the flag removed is re-supplied here: force
-                                // the IIFE for exactly that combination, which leaves every
-                                // annotate=true emission byte-identical.
-                                let force_iife_for_no_annotate =
-                                    !cli.annotate_fields && !before_after.expects_result;
-                                let mut enum_body = (!before_after.before.is_empty()
-                                    || !before_after.after.is_empty()
-                                    || force_iife_for_no_annotate)
-                                    .then(|| {
-                                        let mut b = Block::new(format!(
-                                            "{}(|| -> Result<_, DeserializeError>",
-                                            before_after.before_str(true)
-                                        ));
-                                        b.after(format!(")(){}", before_after.after_str(true)));
-                                        b
-                                    });
-                                {
-                                    let target: &mut dyn CodeBlock = match enum_body.as_mut() {
-                                        Some(b) => b,
-                                        None => &mut deser_code.content,
-                                    };
-                                    target.line(&format!(
-                                        "let initial_position = {deserializer_name}.position();"
-                                    ));
-                                    // Two DIFFERENT lists, deliberately kept apart. The per-variant
-                                    // probe closure below is generated with a FRESH config
-                                    // (`make_enum_variant_return_if_deserialized` ->
-                                    // `DeserializeConfig::new(variant.name_as_var())`), so its `Ok`
-                                    // value carries ONLY this enum's own encoding fields — never the
-                                    // exprs a WRAPPING op already pushed into `config.final_exprs`
-                                    // (a `bytes .cbor` payload's `StringEncoding::from(..)`, a tag's
-                                    // `Some(tag_enc)`). So:
-                                    //   - `enc_names` destructures what the closure returns, and is
-                                    //     the match PATTERN: plain identifiers, correct arity;
-                                    //   - `variant_final_exprs` (outer exprs THEN names) is the
-                                    //     returned VALUE, with the outer exprs referenced from
-                                    //     enclosing scope where they are already bound (the
-                                    //     `let {var}_bytes_encoding` above, the `(tag, tag_enc) =>`
-                                    //     arm around us).
-                                    // Prefixing the outer exprs into the pattern too made a call expr
-                                    // illegal in pattern position (E0164) and the arity wrong even
-                                    // when it was legal (E0308) — every wrapped c-style enum under
-                                    // `--preserve-encodings` failed to compile.
-                                    let mut enc_names = Vec::new();
-                                    if cli.preserve_encodings {
-                                        for enc_var in encoding_fields(
-                                            types,
-                                            config.var_name,
-                                            variants[0].rust_type(),
-                                            false,
-                                            cli,
-                                        ) {
-                                            enc_names.push(enc_var.field_name);
-                                        }
-                                    }
-                                    let mut variant_final_exprs = config.final_exprs.clone();
-                                    variant_final_exprs.extend(enc_names.iter().cloned());
-                                    for variant in variants {
-                                        let mut return_if_deserialized =
-                                            make_enum_variant_return_if_deserialized(
-                                                self,
-                                                types,
-                                                variant,
-                                                // agrees with the CLOSURE's return arity, not the
-                                                // outer list's: this flag makes the closure body end
-                                                // in `Ok(())`, which only the `()` pattern below
-                                                // matches
-                                                enc_names.is_empty(),
-                                                None,
-                                                target,
-                                                deserializer_name,
-                                                cli,
-                                            );
-                                        // pattern parens only for a real tuple (>1), mirroring the
-                                        // expression side's final_expr and the non-value enum
-                                        // dispatch's names_without_outer.len() > 1 check
-                                        let ok_pattern = if enc_names.len() == 1 {
-                                            enc_names[0].clone()
-                                        } else {
-                                            format!("({})", enc_names.join(", "))
-                                        };
-                                        return_if_deserialized
-                            .line(format!("Ok({}) => return Ok({}),",
-                            ok_pattern,
-                            final_expr(variant_final_exprs.clone(), Some(format!("{}::{}", ident, variant.name)))))
-                            .line(format!("Err(_) => {deserializer_name}.set_position(initial_position).unwrap(),"))
-                            .after(";");
-                                        target.push_block(return_if_deserialized);
-                                    }
-                                    target.line(&format!(
-                        "Err(DeserializeError::new(\"{ident}\", DeserializeFailure::NoVariantMatched))"
-                    ));
-                                }
-                                if let Some(enum_body) = enum_body {
-                                    deser_code.content.push_block(enum_body);
-                                }
-                                if force_iife_for_no_annotate {
-                                    // `after_str(true)` appended the `?` that turns the IIFE's
-                                    // `Result` back into the plain value the caller asked for.
-                                    deser_code.throws = true;
-                                }
-                            }
-                            RustStructType::RawBytesType => {
-                                if config.optional_field {
-                                    deser_code.content.line("read_len.read_elems(1)?;");
-                                    deser_code.throws = true;
-                                    deser_code.read_len_used = true;
-                                }
-                                if cli.preserve_encodings {
-                                    // declared spelling BEFORE `final_exprs` is moved out below
-                                    let call_target = config.call_target(ident);
-                                    config
-                                        .final_exprs
-                                        .push("StringEncoding::from(enc)".to_owned());
-                                    let from_raw_bytes_with_conversions = format!(
-                                        "{}::from_raw_bytes(&bytes).map(|bytes| {}).map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into())",
-                                        call_target,
-                                        final_expr(config.final_exprs, Some("bytes".to_owned()))
-                                    );
-                                    deser_code.content.line(&format!(
-                                        "{}{}.bytes_sz(){}.and_then(|(bytes, enc)| {}){}",
-                                        before_after.before_str(true),
-                                        deserializer_name,
-                                        CONVERT_ERR_TO_OURS,
-                                        from_raw_bytes_with_conversions,
-                                        before_after.after_str(true)
-                                    ));
-                                } else {
-                                    let call_target = config.call_target(ident);
-                                    let from_raw_bytes_with_conversions = format!(
-                                        "{call_target}::from_raw_bytes(&bytes).map_err(|e| DeserializeFailure::InvalidStructure(Box::new(e)).into())"
-                                    );
-                                    deser_code.content.line(&format!(
-                                        "{}{}.bytes(){}.and_then(|bytes| {}){}",
-                                        before_after.before_str(true),
-                                        deserializer_name,
-                                        CONVERT_ERR_TO_OURS,
-                                        from_raw_bytes_with_conversions,
-                                        before_after.after_str(true)
-                                    ));
-                                }
-                            }
-                            // The decode twin of serialize's collection-typedef arms: a named
-                            // table/array rule has no `deserialize` of its own (it is a bare rust
-                            // typedef onto a collection), so recurse into the collection's
-                            // STRUCTURAL conceptual type — the same code the resolved-alias
-                            // reference path emits. Reached only from a NOMINAL reference, which
-                            // parse-order makes possible when a rule cycle is entered at the
-                            // collection rule. `nominal_collection_cfg` reads the per-rule policy
-                            // (`@duplicates`, occurrence bounds) back off the struct, which a
-                            // nominal reference does not carry.
-                            RustStructType::Table { domain, range, .. } => {
-                                let structural = ConceptualRustType::Map(
-                                    Box::new(domain.clone()),
-                                    Box::new(range.clone()),
-                                );
-                                let cfg = nominal_collection_cfg(types, ident, &type_cfg);
-                                return self.generate_deserialize(
-                                    types,
-                                    SerializingRustType::Root(&structural, cfg),
-                                    before_after,
-                                    config,
-                                    cli,
-                                );
-                            }
-                            RustStructType::Array { element_type, .. } => {
-                                let structural =
-                                    ConceptualRustType::Array(Box::new(element_type.clone()));
-                                let cfg = nominal_collection_cfg(types, ident, &type_cfg);
-                                return self.generate_deserialize(
-                                    types,
-                                    SerializingRustType::Root(&structural, cfg),
-                                    before_after,
-                                    config,
-                                    cli,
-                                );
-                            }
-                            _ => {
-                                if types.is_plain_group(ident) && !type_cfg.basic_override {
-                                    // This would mess up with length checks otherwise and is probably not a likely situation if this is even valid in CDDL.
-                                    // To have this work (if it's valid) you'd either need to generate 2 embedded deserialize methods or pass
-                                    // a parameter whether it was an optional field, and if so, read_len.read_elems(embedded mandatory fields)?;
-                                    // since otherwise it'd only length check the optional fields within the type.
-                                    assert!(!config.optional_field);
-                                    deser_code.read_len_used = true;
-                                    deser_code.len_used = true;
-                                    let final_expr_value = format!(
-                                        "{}::deserialize_as_embedded_group({}, {}, len)",
-                                        config.call_target(ident),
-                                        deserializer_name,
-                                        config.pass_read_len()
-                                    );
-
-                                    deser_code.content.line(&final_result_expr_complete(
-                                        &before_after,
-                                        &mut deser_code.throws,
-                                        config.final_exprs,
-                                        &final_expr_value,
-                                    ));
-                                } else {
-                                    if config.optional_field {
-                                        deser_code.content.line("read_len.read_elems(1)?;");
-                                        deser_code.read_len_used = true;
-                                        deser_code.throws = true;
-                                    }
-                                    let final_expr_value = format!(
-                                        "{}::deserialize({deserializer_name})",
-                                        config.call_target(ident)
-                                    );
-                                    deser_code.content.line(&final_result_expr_complete(
-                                        &before_after,
-                                        &mut deser_code.throws,
-                                        config.final_exprs,
-                                        &final_expr_value,
-                                    ));
-                                }
-                            }
-                        }
-                    }
+                    deser_code = self.deser_rust_ident(
+                        ident,
+                        type_cfg,
+                        types,
+                        deser_code,
+                        config,
+                        before_after,
+                        cli,
+                        deserializer_name,
+                    );
                 }
                 SerializingRustType::Root(ConceptualRustType::Optional(ty), _cfg) => {
                     let read_len_check =
