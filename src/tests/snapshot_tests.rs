@@ -2943,17 +2943,17 @@ const SERIALIZE_NAME_PARAMS: &[&str] = &["serializer_use", "serializer_pass"];
 
 /// One `fn` in an emitter source: its name, the char range its header+body spans, and its parameter
 /// list (masked, so a `(` inside an emitted literal cannot close it early).
-struct EmitterFn {
-    name: String,
-    start: usize,
-    end: usize,
+pub(crate) struct EmitterFn {
+    pub(crate) name: String,
+    pub(crate) start: usize,
+    pub(crate) end: usize,
     params_no_ws: String,
     is_method: bool,
 }
 
 /// Split masked Rust source into `fn` regions (nested fns and closures included — regions nest, and
 /// a literal is attributed to EVERY fn enclosing it).
-fn emitter_fns(masked: &[char]) -> Vec<EmitterFn> {
+pub(crate) fn emitter_fns(masked: &[char]) -> Vec<EmitterFn> {
     fn matching(masked: &[char], open: usize, o: char, c: char) -> usize {
         let mut depth = 0;
         for (k, ch) in masked.iter().enumerate().skip(open) {
@@ -3068,56 +3068,81 @@ fn overload_scoped_literals() -> Vec<(&'static str, String, usize, String, bool,
         let path = format!("{}/src/generation/{file}", env!("CARGO_MANIFEST_DIR"));
         let src = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("cannot read emitter source {path}: {e}"));
-        let scanned = super::identifier_hazard_tests::scan_rust(&src);
-        let masked: Vec<char> = scanned.masked.chars().collect();
-        let fns = emitter_fns(&masked);
-        let impls = config_impl_ranges(&masked);
-        // char index -> 1-based line
-        let mut line_of = Vec::with_capacity(masked.len() + 1);
-        let mut line = 1;
-        for ch in src.chars() {
-            line_of.push(line);
-            if ch == '\n' {
-                line += 1;
-            }
-        }
+        out.extend(overload_scoped_literals_for_source(file, &src));
+    }
+    out
+}
+
+// Shared with local negative controls; the fast gate uses this same scanner predicate.
+pub(crate) fn overload_scoped_literals_for_source(
+    file: &'static str,
+    src: &str,
+) -> Vec<(&'static str, String, usize, String, bool, bool)> {
+    let mut out = Vec::new();
+    let scanned = super::identifier_hazard_tests::scan_rust(src);
+    let masked: Vec<char> = scanned.masked.chars().collect();
+    let fns = emitter_fns(&masked);
+    let impls = config_impl_ranges(&masked);
+    // char index -> 1-based line
+    let mut line_of = Vec::with_capacity(masked.len() + 1);
+    let mut line = 1;
+    for ch in src.chars() {
         line_of.push(line);
-        for (idx, lit) in scanned.literals {
-            let enclosing: Vec<&EmitterFn> = fns
+        if ch == '\n' {
+            line += 1;
+        }
+    }
+    line_of.push(line);
+    for (idx, lit) in scanned.literals {
+        let enclosing: Vec<&EmitterFn> = fns
+            .iter()
+            .filter(|f| f.start <= idx && idx <= f.end)
+            .collect();
+        if enclosing.is_empty() {
+            continue;
+        }
+        let in_config_impl = |ty: &str| {
+            impls
                 .iter()
-                .filter(|f| f.start <= idx && idx <= f.end)
-                .collect();
-            if enclosing.is_empty() {
-                continue;
-            }
-            let in_config_impl = |ty: &str| {
-                impls
-                    .iter()
-                    .any(|(h, s, e)| h.contains(ty) && *s <= idx && idx <= *e)
-            };
-            let scoped = |cfg_ty: &str, params: &[&str]| {
-                enclosing.iter().any(|f| {
-                    f.params_no_ws.contains(cfg_ty)
-                        || params
-                            .iter()
-                            .any(|p| f.params_no_ws.contains(&format!("{p}:")))
-                        || (f.is_method && in_config_impl(cfg_ty))
-                })
-            };
-            let de = scoped("DeserializeConfig", DESERIALIZE_NAME_PARAMS);
-            let se = scoped("SerializeConfig", SERIALIZE_NAME_PARAMS);
-            if de || se {
-                let innermost = enclosing
-                    .iter()
-                    .max_by_key(|f| f.start)
-                    .expect("non-empty")
-                    .name
-                    .clone();
-                out.push((*file, innermost, line_of[idx], lit, de, se));
-            }
+                .any(|(h, s, e)| h.contains(ty) && *s <= idx && idx <= *e)
+        };
+        let scoped = |cfg_ty: &str, params: &[&str]| {
+            enclosing.iter().any(|f| {
+                f.params_no_ws.contains(cfg_ty)
+                    || params
+                        .iter()
+                        .any(|p| f.params_no_ws.contains(&format!("{p}:")))
+                    || (f.is_method && in_config_impl(cfg_ty))
+            })
+        };
+        let de = scoped("DeserializeConfig", DESERIALIZE_NAME_PARAMS);
+        let se = scoped("SerializeConfig", SERIALIZE_NAME_PARAMS);
+        if de || se {
+            let innermost = enclosing
+                .iter()
+                .max_by_key(|f| f.start)
+                .expect("non-empty")
+                .name
+                .clone();
+            out.push((file, innermost, line_of[idx], lit, de, se));
         }
     }
     out
+}
+
+pub(crate) fn overload_default_violation(
+    file: &str,
+    function: &str,
+    literal: &str,
+    de: bool,
+    se: bool,
+    token: &str,
+) -> bool {
+    let on = if token == "raw" { de } else { se };
+    on && contains_bare_token(literal, token)
+        && !OVERLOAD_LINT_ALLOW
+            .iter()
+            .any(|(f, fun, lit, _)| *f == file && *fun == function && *lit == literal)
 }
 
 /// LOCKSTEP source lint (FAST tier — this module IS `snapshot_tests`, which is the only cargo-test
@@ -3149,17 +3174,7 @@ fn emitter_overload_no_bare_default_tokens() {
     let mut failures = Vec::new();
     for (file, func, line, lit, de, se) in overload_scoped_literals() {
         for (axis, token) in OVERLOADED_DEFAULTS {
-            let on = match *token {
-                "raw" => de,
-                _ => se,
-            };
-            if !on || !contains_bare_token(&lit, token) {
-                continue;
-            }
-            if OVERLOAD_LINT_ALLOW
-                .iter()
-                .any(|(f, fun, l, _)| *f == file && *fun == func && *l == lit)
-            {
+            if !overload_default_violation(file, &func, &lit, de, se, token) {
                 continue;
             }
             failures.push(format!(
@@ -3283,6 +3298,20 @@ fn split_params(params_no_ws: &str) -> Vec<(String, String)> {
         .collect()
 }
 
+// None denotes parameters outside the existing name-carrier heuristic.
+// Keep the serializ spelling and finite type filter; arbitrary &str parameters are not carriers.
+pub(crate) fn overload_name_parameter(name: &str, ty: &str) -> Option<bool> {
+    if !name.contains("serializ") || !NAME_PARAM_TYPES.contains(&ty) {
+        return None;
+    }
+    Some(
+        DESERIALIZE_NAME_PARAMS
+            .iter()
+            .chain(SERIALIZE_NAME_PARAMS)
+            .any(|p| name == *p || name == format!("mut{p}")),
+    )
+}
+
 /// Fourth-spelling guard for the scoping rule behind [`emitter_overload_no_bare_default_tokens`]
 /// (FAST tier, same module). The lint only inspects fns it considers overload-SCOPED, and it
 /// recognizes them by the parameter spellings that exist today — so a future helper that receives
@@ -3306,13 +3335,9 @@ fn emitter_overload_lint_scopes_every_name_param() {
         for f in emitter_fns(&masked) {
             let line = 1 + masked[..f.start].iter().filter(|c| **c == '\n').count();
             for (name, ty) in split_params(&f.params_no_ws) {
-                if !name.contains("serializ") || !NAME_PARAM_TYPES.contains(&ty.as_str()) {
+                let Some(known) = overload_name_parameter(&name, &ty) else {
                     continue;
-                }
-                let known = DESERIALIZE_NAME_PARAMS
-                    .iter()
-                    .chain(SERIALIZE_NAME_PARAMS)
-                    .any(|p| name == *p || name == format!("mut{p}"));
+                };
                 if known {
                     seen.push(name);
                 } else {

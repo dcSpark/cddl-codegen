@@ -1,0 +1,488 @@
+//! Local/full custody of finite generator source scanners across module extractions.
+//! Register a destination, its actual members and its role together with the move.
+//! The local/overload roster intentionally differs from the WASM rendering roster.
+use std::collections::{BTreeMap, BTreeSet};
+
+use super::identifier_hazard_tests::{EMITTER_SOURCES, ident_at, is_ident_char, scan_rust};
+use super::snapshot_tests::{EmitterFn, emitter_fns};
+use super::synthesized_name_registry_tests::WASM_RENDERING_EMITTERS;
+
+#[derive(Clone, Copy)]
+struct SourceRole {
+    file: &'static str,
+    emitter: bool,
+    wasm: bool,
+    reason: &'static str,
+    members: &'static [&'static str],
+}
+
+// Every current source is classified, including deliberately unscanned files.
+// Future gen-core-19 moves split the mod.rs member anchors into five destination rows:
+// wasm_wrapper_registry, json_schema_claims, encoding_fields, json_annotations, key_demands.
+// Enroll all five in EMITTER_SOURCES as audited conservative coverage, explaining their
+// body/type/attribute/traversal role here and in the roster comment. Only actual rendering
+// destinations enter WASM_RENDERING_EMITTERS. Do not pretend mod.rs was an emitter row.
+const SOURCE_ROLES: &[SourceRole] = &[
+    SourceRole {
+        file: "bounds.rs",
+        emitter: false,
+        wasm: false,
+        reason: "bound expression fragments; current body scanner excludes this helper",
+        members: &["bounds_check_expr"],
+    },
+    SourceRole {
+        file: "collections.rs",
+        emitter: true,
+        wasm: true,
+        reason: "collection bodies and WASM signatures",
+        members: &["generate_array_type"],
+    },
+    SourceRole {
+        file: "component.rs",
+        emitter: false,
+        wasm: false,
+        reason: "wit-bindgen guest glue; no user field beside fixed local",
+        members: &["component_glue"],
+    },
+    SourceRole {
+        file: "deser_verdicts.rs",
+        emitter: false,
+        wasm: false,
+        reason: "generator verdict bookkeeping",
+        members: &["seed_no_deserialize_verdicts"],
+    },
+    SourceRole {
+        file: "deserialize.rs",
+        emitter: true,
+        wasm: false,
+        reason: "deserialization bodies and overload config",
+        members: &["generate_deserialize", "make_deser_loop_break_check"],
+    },
+    SourceRole {
+        file: "enums.rs",
+        emitter: true,
+        wasm: true,
+        reason: "enum bodies and WASM signatures",
+        members: &["make_enum_variant_return_if_deserialized"],
+    },
+    SourceRole {
+        file: "export.rs",
+        emitter: false,
+        wasm: false,
+        reason: "export/schema generator; no user field beside fixed local",
+        members: &["generated_files"],
+    },
+    SourceRole {
+        file: "extern_interface.rs",
+        emitter: false,
+        wasm: false,
+        reason: "extern interface CDDL rendering; separate annotation scan",
+        members: &["render_rust_type"],
+    },
+    SourceRole {
+        file: "layout.rs",
+        emitter: false,
+        wasm: false,
+        reason: "output paths",
+        members: &["is_under"],
+    },
+    SourceRole {
+        file: "mod.rs",
+        emitter: false,
+        wasm: true,
+        reason: "coordinator/type fragments and registry doors; currently omitted from body roster",
+        members: &[
+            "generate",
+            "wasm_member_type",
+            "wasm_param_type",
+            "wasm_return_type",
+            "record_wasm_type_reference",
+            "json_schema_reachable_claims",
+            "encoding_fields_decls",
+            "type_complexity_score",
+            "type_complexity_score_vectors",
+            "natural_any_position",
+            "natural_any_serde_annotations",
+            "static_array_serde_annotations",
+            "static_array_double_option_serde_annotations",
+            "static_array_sequence_serde_annotations",
+            "double_option_serde_annotations",
+            "key_trait_list",
+            "key_bound",
+            "key_flavor_token",
+            "assertion_roots",
+            "add_struct_derives",
+        ],
+    },
+    SourceRole {
+        file: "no_std_check.rs",
+        emitter: false,
+        wasm: false,
+        reason: "no_std check crate producer",
+        members: &["no_std_check_files"],
+    },
+    SourceRole {
+        file: "records.rs",
+        emitter: true,
+        wasm: true,
+        reason: "record/constructor/codec bodies and WASM signatures",
+        members: &["codegen_struct"],
+    },
+    SourceRole {
+        file: "reference_closure.rs",
+        emitter: false,
+        wasm: false,
+        reason: "generator reference closure",
+        members: &["exclude_dangling_refs"],
+    },
+    SourceRole {
+        file: "requests.rs",
+        emitter: false,
+        wasm: false,
+        reason: "request parsing and mint orchestration",
+        members: &["emit_requested_collections"],
+    },
+    SourceRole {
+        file: "serialize.rs",
+        emitter: true,
+        wasm: false,
+        reason: "serialization bodies and overload config",
+        members: &["generate_serialize", "start_len", "end_len"],
+    },
+    SourceRole {
+        file: "wit.rs",
+        emitter: false,
+        wasm: false,
+        reason: "component WIT projection",
+        members: &["wit_escape"],
+    },
+    SourceRole {
+        file: "wrappers.rs",
+        emitter: true,
+        wasm: true,
+        reason: "wrapper bodies and WASM signatures",
+        members: &["generate_wrapper_struct"],
+    },
+    SourceRole {
+        file: "write_tail.rs",
+        emitter: false,
+        wasm: false,
+        reason: "post-pass/write orchestration",
+        members: &["run"],
+    },
+];
+
+fn inventory_errors(
+    sources: &BTreeMap<String, String>,
+    roles: &[SourceRole],
+    emitters: &[&str],
+    wasm: &[&str],
+) -> Vec<String> {
+    let mut errors = Vec::new();
+    let mut files = BTreeSet::new();
+    for role in roles {
+        if !files.insert(role.file) {
+            errors.push(format!("duplicate role {}", role.file));
+        }
+        if role.reason.is_empty() || role.members.is_empty() {
+            errors.push(format!(
+                "missing role rationale/member anchors {}",
+                role.file
+            ));
+        }
+        let Some(source) = sources.get(role.file) else {
+            errors.push(format!("stale role {}", role.file));
+            continue;
+        };
+        let masked: Vec<char> = scan_rust(source).masked.chars().collect();
+        let functions = emitter_fns(&masked);
+        for member in role.members {
+            if !functions.iter().any(|function| function.name == *member) {
+                errors.push(format!("missing member {}::{member}", role.file));
+            }
+        }
+    }
+    for file in sources.keys() {
+        if !files.contains(file.as_str()) {
+            errors.push(format!("unclassified source {file}"));
+        }
+    }
+    let expected_emitters: BTreeSet<_> =
+        roles.iter().filter(|r| r.emitter).map(|r| r.file).collect();
+    let actual_emitters: BTreeSet<_> = emitters.iter().copied().collect();
+    if expected_emitters != actual_emitters || emitters.len() != actual_emitters.len() {
+        errors.push("emitter roster differs from audited roles".to_owned());
+    }
+    let expected_wasm: BTreeSet<_> = roles
+        .iter()
+        .filter(|r| r.wasm)
+        .map(|r| format!("src/generation/{}", r.file))
+        .collect();
+    let actual_wasm: BTreeSet<_> = wasm.iter().map(|p| (*p).to_owned()).collect();
+    if expected_wasm != actual_wasm || wasm.len() != actual_wasm.len() {
+        errors.push("WASM roster differs from audited roles".to_owned());
+    }
+    errors
+}
+
+fn sources() -> BTreeMap<String, String> {
+    fn collect(root: &std::path::Path, dir: &std::path::Path, out: &mut BTreeMap<String, String>) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                collect(root, &path, out);
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                out.insert(
+                    path.strip_prefix(root)
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .replace('\\', "/"),
+                    std::fs::read_to_string(path).unwrap(),
+                );
+            }
+        }
+    }
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/generation");
+    let mut out = BTreeMap::new();
+    collect(&root, &root, &mut out);
+    out
+}
+
+#[test]
+fn generation_source_scan_inventory_is_complete() {
+    assert_eq!(
+        inventory_errors(
+            &sources(),
+            SOURCE_ROLES,
+            EMITTER_SOURCES,
+            WASM_RENDERING_EMITTERS
+        ),
+        Vec::<String>::new()
+    );
+}
+
+// Calls are found in masked Rust, not strings/comments or the exact current emitted line.
+// Whitespace and receiver spelling cannot disguise the direct rendering operation.
+fn method_calls(masked: &[char], method: &str) -> Vec<usize> {
+    (0..masked.len())
+        .filter(|&at| {
+            (at == 0 || !is_ident_char(masked[at - 1]))
+                && ident_at(masked, at).as_deref() == Some(method)
+                && masked[..at].iter().rev().find(|c| !c.is_whitespace()) == Some(&'.')
+                && masked[at + method.len()..]
+                    .iter()
+                    .find(|c| !c.is_whitespace())
+                    == Some(&'(')
+        })
+        .collect()
+}
+
+fn owner(functions: &[EmitterFn], at: usize) -> Option<&EmitterFn> {
+    functions
+        .iter()
+        .filter(|f| f.start <= at && at <= f.end)
+        .min_by_key(|f| f.end - f.start)
+}
+
+#[derive(Clone, Copy)]
+struct RenderingDoor {
+    file: &'static str,
+    function: &'static str,
+    method: &'static str,
+}
+const RENDERING_DOORS: &[RenderingDoor] = &[
+    RenderingDoor {
+        file: "mod.rs",
+        function: "wasm_member_type",
+        method: "for_wasm_member",
+    },
+    RenderingDoor {
+        file: "mod.rs",
+        function: "wasm_param_type",
+        method: "for_wasm_param",
+    },
+    RenderingDoor {
+        file: "mod.rs",
+        function: "wasm_return_type",
+        method: "for_wasm_return",
+    },
+];
+
+fn rendering_errors(
+    sources: &BTreeMap<String, String>,
+    roster: &[&str],
+    doors: &[RenderingDoor],
+) -> Vec<String> {
+    let mut errors = Vec::new();
+    let mut seen = vec![0; doors.len()];
+    for path in roster {
+        let file = path.strip_prefix("src/generation/").unwrap();
+        let Some(source) = sources.get(file) else {
+            errors.push(format!("missing rendering source {file}"));
+            continue;
+        };
+        let masked: Vec<char> = scan_rust(source).masked.chars().collect();
+        let functions = emitter_fns(&masked);
+        let references = method_calls(&masked, "record_wasm_type_reference");
+        for method in ["for_wasm_member", "for_wasm_param", "for_wasm_return"] {
+            for at in method_calls(&masked, method) {
+                let enclosing = owner(&functions, at);
+                let approved = doors.iter().position(|door| {
+                    door.file == file
+                        && door.method == method
+                        && enclosing.is_some_and(|f| f.name == door.function)
+                });
+                if let Some(index) = approved {
+                    seen[index] += 1;
+                    if !references.iter().any(|&reference| {
+                        owner(&functions, reference)
+                            .is_some_and(|f| enclosing.is_some_and(|door| f.start == door.start))
+                    }) {
+                        errors.push(format!(
+                            "unrecorded rendering door {file}::{}",
+                            doors[index].function
+                        ));
+                    }
+                } else {
+                    errors.push(format!("unauthorized rendering {file}::{method}"));
+                }
+            }
+        }
+    }
+    for (door, count) in doors.iter().zip(seen) {
+        if count != 1 {
+            errors.push(format!(
+                "rendering door {}::{} observed {count} times",
+                door.file, door.function
+            ));
+        }
+    }
+    errors
+}
+
+#[test]
+fn wasm_rendering_doors_have_named_owners_and_reference_recording() {
+    assert_eq!(
+        rendering_errors(&sources(), WASM_RENDERING_EMITTERS, RENDERING_DOORS),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn inventory_predicate_rejects_unclassified_unscanned_and_displaced_members() {
+    let role = SourceRole {
+        file: "body.rs",
+        emitter: true,
+        wasm: false,
+        reason: "synthetic body emitter",
+        members: &["moved"],
+    };
+    let mut source = BTreeMap::from([("body.rs".to_owned(), "fn moved() {}".to_owned())]);
+    assert!(inventory_errors(&source, &[role], &["body.rs"], &[]).is_empty());
+    assert!(
+        inventory_errors(&source, &[role], &[], &[])
+            .iter()
+            .any(|e| e.contains("emitter roster"))
+    );
+    source.insert("new.rs".to_owned(), "fn extra() {}".to_owned());
+    assert!(
+        inventory_errors(&source, &[role], &["body.rs"], &[])
+            .iter()
+            .any(|e| e.contains("unclassified source"))
+    );
+    source.remove("new.rs");
+    source.insert(
+        "body.rs".to_owned(),
+        "// fn moved() {}\nfn renamed() { let text = \"fn moved() {}\"; }".to_owned(),
+    );
+    assert!(
+        inventory_errors(&source, &[role], &["body.rs"], &[])
+            .iter()
+            .any(|e| e.contains("missing member"))
+    );
+    source.clear();
+    assert!(
+        inventory_errors(&source, &[role], &["body.rs"], &[])
+            .iter()
+            .any(|e| e.contains("stale role"))
+    );
+}
+
+#[test]
+fn rendering_predicate_rejects_wrong_owner_nested_bypass_and_unrecorded_calls() {
+    let door = RenderingDoor {
+        file: "door.rs",
+        function: "approved",
+        method: "for_wasm_param",
+    };
+    let roster = ["src/generation/door.rs"];
+    let check = |text: &str| {
+        rendering_errors(
+            &BTreeMap::from([("door.rs".to_owned(), text.to_owned())]),
+            &roster,
+            &[door],
+        )
+    };
+    let allowed = "fn approved() { value . for_wasm_param \n (types); self.record_wasm_type_reference(types); }";
+    assert!(check(allowed).is_empty());
+    assert!(
+        check(&allowed.replace("approved", "bypass"))
+            .iter()
+            .any(|e| e.contains("unauthorized"))
+    );
+    assert!(check("fn approved() { self.record_wasm_type_reference(types); fn nested() { value.for_wasm_param(types); } }").iter().any(|e| e.contains("unauthorized")));
+    assert!(
+        check("fn approved() { value.for_wasm_param(types); }")
+            .iter()
+            .any(|e| e.contains("unrecorded"))
+    );
+    assert!(check("fn approved() { self.record_wasm_type_reference(types); /* value.for_wasm_param(types); */ let fake = \"value.for_wasm_param(types)\"; }").iter().any(|e| e.contains("observed 0")));
+    assert!(
+        rendering_errors(
+            &BTreeMap::from([("door.rs".to_owned(), allowed.to_owned())]),
+            &[],
+            &[door]
+        )
+        .iter()
+        .any(|e| e.contains("observed 0"))
+    );
+}
+
+#[test]
+fn overload_predicates_detect_default_leaks_and_unknown_name_carriers() {
+    use super::snapshot_tests::{
+        overload_default_violation, overload_name_parameter, overload_scoped_literals_for_source,
+    };
+    let source = r#"fn moved(deserializer_name: &str, serializer_use: &str) {
+        emit("raw.read()"); emit("serializer.write()"); emit("raw_bytes");
+    }"#;
+    let scoped = overload_scoped_literals_for_source("synthetic.rs", source);
+    assert_eq!(scoped.len(), 3);
+    for token in ["raw", "serializer"] {
+        assert!(scoped.iter().any(|(file, function, _, literal, de, se)| {
+            overload_default_violation(file, function, literal, *de, *se, token)
+        }));
+    }
+    assert!(!scoped.iter().any(|(file, function, _, literal, de, se)| {
+        literal == "raw_bytes"
+            && overload_default_violation(file, function, literal, *de, *se, "raw")
+    }));
+    assert_eq!(
+        overload_name_parameter("serializer_buffer", "Option<(&str,bool)>"),
+        Some(false)
+    );
+    assert_eq!(
+        overload_name_parameter("mutserializer_use", "&str"),
+        Some(true)
+    );
+    assert_eq!(overload_name_parameter("door", "&str"), None);
+    assert_eq!(
+        overload_name_parameter("serializing_rust_type", "SerializingRustType"),
+        None
+    );
+    assert!(
+        overload_scoped_literals_for_source("synthetic.rs", "fn root() { emit(\"raw.read()\"); }")
+            .is_empty()
+    );
+}

@@ -29,6 +29,7 @@ pub(crate) mod extern_companions_tests;
 pub(crate) mod extern_import_tests;
 pub(crate) mod gate_cache;
 pub(crate) mod generated_append_audit_tests;
+pub(crate) mod generation_source_inventory_tests;
 pub(crate) mod generic_collection_tests;
 pub(crate) mod identifier_hazard_tests;
 pub(crate) mod integration_tests;

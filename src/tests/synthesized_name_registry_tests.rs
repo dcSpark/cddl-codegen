@@ -888,18 +888,19 @@ fn named_extern_collection_alias_is_an_exact_dependency_provider() {
     );
 }
 
+pub(crate) const WASM_RENDERING_EMITTERS: &[&str] = &[
+    "src/generation/mod.rs",
+    "src/generation/records.rs",
+    "src/generation/enums.rs",
+    "src/generation/wrappers.rs",
+    "src/generation/collections.rs",
+];
+
 /// The five files are the finite wasm type-rendering emitter registry. The only direct renderer
 /// calls permitted inside it are the three helpers in `generation/mod.rs`; all emission doors must
 /// go through those helpers so they cannot bypass `record_wasm_type_reference`.
 #[test]
 fn wasm_type_rendering_doors_are_lockstep_routed_through_the_registry() {
-    const WASM_RENDERING_EMITTERS: &[&str] = &[
-        "src/generation/mod.rs",
-        "src/generation/records.rs",
-        "src/generation/enums.rs",
-        "src/generation/wrappers.rs",
-        "src/generation/collections.rs",
-    ];
     let mut direct_calls = Vec::new();
     for path in WASM_RENDERING_EMITTERS {
         let contents =
