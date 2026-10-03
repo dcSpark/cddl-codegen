@@ -1735,10 +1735,7 @@ impl Emitter<'_, '_> {
             // that owns the method is the honest spelling, and the projection's gate is what keeps
             // the two in step.
             WitMemberOp::ToCanonicalCborBytes => {
-                lines.push(format!(
-                    "<{rust} as {rt}::serialization::Serialize>::to_canonical_cbor_bytes(&self.0.borrow())",
-                    rt = self.runtime()
-                ));
+                self.member_to_canonical_cbor_body(&mut lines, rust);
             }
             // The JSON seam, over the serde impls the rust face DERIVES under the same flag. The
             // `&*` is load-bearing: `serde_json`'s parameter is generic, so the auto-deref that lets
@@ -1888,6 +1885,13 @@ impl Emitter<'_, '_> {
         }
         lines
     }
+    fn member_to_canonical_cbor_body(&self, lines: &mut Vec<String>, rust: &str) {
+        lines.push(format!(
+            "<{rust} as {rt}::serialization::Serialize>::to_canonical_cbor_bytes(&self.0.borrow())",
+            rt = self.runtime()
+        ));
+    }
+
     fn member_from_cbor_body(
         &self,
         lines: &mut Vec<String>,
