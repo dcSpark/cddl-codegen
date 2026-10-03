@@ -1120,7 +1120,7 @@ enum Outcome {
 ///
 /// COLLAPSE BOUNDARY: the key is per-(message, file, FUNCTION). Two bare sites inside the SAME
 /// function share a key, so another such site is absorbed by that function's entry. The record
-/// bare sites now belong separately to build_map_field_deser_arm and generate_record_map_codecs; distinct
+/// bare sites now belong separately to build_map_field_deser_arm and generate_record_map_deserialization; distinct
 /// functions produce distinct keys. Splitting same-function sites would need excluded line numbers.
 fn production_frame_symbol(bt: &str) -> String {
     for line in bt.lines() {
@@ -1317,7 +1317,8 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 // Record encoding attachment's map field-key unwrap now belongs to attach_record_encodings.
 // It stays in generation/records.rs with unchanged behavior and no active known-panic allowance.
 // Record codec production guards and emitted replay/rewind guards stay in generation/records.rs.
-// Their generator owner is now generate_record_map_codecs; exact payloads/emitted text remain unchanged.
+// Their generator owners are prepare_record_map_fields, generate_record_map_serialization and
+// generate_record_map_deserialization; exact payloads/emitted text remain unchanged.
 // There is no active known-panic allowance for this move; main must qualify production frame keys.
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired when the two anonymous-composite families and the group-choice-arm inline group

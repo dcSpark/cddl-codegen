@@ -5051,20 +5051,29 @@ fn emit_record_protected_rest(
     }
 }
 
-/// Generate the combined Map codec arm before its independently owned shared epilogue.
-#[allow(clippy::too_many_arguments)]
-fn generate_record_map_codecs(
+/// One canonical preparation owns emitted arms/content and record-borrowed field identities.
+struct MapFieldCode<'record> {
+    uint_field_deserializers: Vec<Block>,
+    text_field_deserializers: Vec<Block>,
+    ser_content: Vec<(usize, &'record RustField, BlocksOrLines)>,
+    deser_code: DeserializationCode,
+}
+
+struct MapCodecParts {
+    ctor_block: Block,
+    deser_code: DeserializationCode,
+}
+
+/// Prepare each field once: deserializer arm, key serialization, then value serialization.
+fn prepare_record_map_fields<'record>(
     gen_scope: &mut GenerationScope,
     types: &IntermediateTypes,
     name: &RustIdent,
-    tag: Option<usize>,
-    record: &RustRecord,
+    record: &'record RustRecord,
     in_embedded: bool,
-    manual_json: bool,
-    ser_func: &mut codegen::Function,
-    deser_code: &mut DeserializationCode,
+    mut deser_code: DeserializationCode,
     cli: &Cli,
-) -> Block {
+) -> MapFieldCode<'record> {
     let mut uint_field_deserializers = Vec::new();
     let mut text_field_deserializers = Vec::new();
     // (field_index, field, content) -- this is ordered by canonical order
@@ -5128,7 +5137,7 @@ fn generate_record_map_codecs(
             field_index,
             &key,
             in_embedded,
-            deser_code,
+            &mut deser_code,
             cli,
         );
 
@@ -5222,6 +5231,22 @@ fn generate_record_map_codecs(
             _ => unreachable!("parser admits only uint/text fixed map keys"),
         }
     }
+    MapFieldCode {
+        uint_field_deserializers,
+        text_field_deserializers,
+        ser_content,
+        deser_code,
+    }
+}
+
+/// Assemble the prepared serializer content without another field preparation traversal.
+fn generate_record_map_serialization(
+    types: &IntermediateTypes,
+    record: &RustRecord,
+    ser_content: Vec<(usize, &RustField, BlocksOrLines)>,
+    ser_func: &mut codegen::Function,
+    cli: &Cli,
+) {
     if cli.preserve_encodings {
         let rest_index_base = record.fields.len();
         if record.is_open_table() {
@@ -5461,6 +5486,22 @@ fn generate_record_map_codecs(
         );
         ser_func.push_block(rest_loop);
     }
+}
+
+/// Assemble captures, checked carriers and completion from the prepared deserialization arms.
+#[allow(clippy::too_many_arguments)]
+fn generate_record_map_deserialization(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    name: &RustIdent,
+    tag: Option<usize>,
+    record: &RustRecord,
+    manual_json: bool,
+    uint_field_deserializers: Vec<Block>,
+    text_field_deserializers: Vec<Block>,
+    mut deser_code: DeserializationCode,
+    cli: &Cli,
+) -> MapCodecParts {
     // Open struct-map (loose CBOR): declare the rest capture container (+ preserve
     // encoding sidecars) and fold the unknown-key match arms into captures below.
     // `record.rest` is `None` for every closed struct (byte-identical output).
@@ -6006,6 +6047,57 @@ fn generate_record_map_codecs(
         ctor_block.push_block(encoding_ctor);
     }
     ctor_block.after(")");
+    MapCodecParts {
+        ctor_block,
+        deser_code,
+    }
+}
+
+/// Generate the combined Map codec arm before its independently owned shared epilogue.
+#[allow(clippy::too_many_arguments)]
+fn generate_record_map_codecs(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    name: &RustIdent,
+    tag: Option<usize>,
+    record: &RustRecord,
+    in_embedded: bool,
+    manual_json: bool,
+    ser_func: &mut codegen::Function,
+    deser_code: &mut DeserializationCode,
+    cli: &Cli,
+) -> Block {
+    let MapFieldCode {
+        uint_field_deserializers,
+        text_field_deserializers,
+        ser_content,
+        deser_code: prepared_deser_code,
+    } = prepare_record_map_fields(
+        gen_scope,
+        types,
+        name,
+        record,
+        in_embedded,
+        std::mem::take(deser_code),
+        cli,
+    );
+    generate_record_map_serialization(types, record, ser_content, ser_func, cli);
+    let MapCodecParts {
+        ctor_block,
+        deser_code: completed_deser_code,
+    } = generate_record_map_deserialization(
+        gen_scope,
+        types,
+        name,
+        tag,
+        record,
+        manual_json,
+        uint_field_deserializers,
+        text_field_deserializers,
+        prepared_deser_code,
+        cli,
+    );
+    *deser_code = completed_deser_code;
     ctor_block
 }
 

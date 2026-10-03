@@ -217,6 +217,9 @@ const SOURCE_ROLES: &[SourceRole] = &[
             "emit_record_protected_rest",
             "emit_record_codecs",
             "generate_record_map_codecs",
+            "prepare_record_map_fields",
+            "generate_record_map_serialization",
+            "generate_record_map_deserialization",
         ],
     },
     SourceRole {
