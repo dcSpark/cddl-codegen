@@ -215,6 +215,7 @@ const SOURCE_ROLES: &[SourceRole] = &[
             "prepare_record_native",
             "attach_record_encodings",
             "emit_record_protected_rest",
+            "emit_record_codecs",
         ],
     },
     SourceRole {

@@ -1119,11 +1119,9 @@ enum Outcome {
 /// frame is found: `<no production frame>`.
 ///
 /// COLLAPSE BOUNDARY: the key is per-(message, file, FUNCTION). Two bare sites inside the SAME
-/// function still share a key — `codegen_struct` and `generate_wrapper_struct` each host two bare
-/// `unimplemented!()` sites (`generation/records.rs` / `generation/wrappers.rs`), so a composition newly reaching the *other* site in
-/// one of those functions is still absorbed by that function's entry rather than surfacing as a NEW
-/// finding. Splitting those would need line numbers, which are deliberately excluded (refactor
-/// churn).
+/// function share a key, so another such site is absorbed by that function's entry. The record
+/// bare sites now belong separately to build_map_field_deser_arm and emit_record_codecs; distinct
+/// functions produce distinct keys. Splitting same-function sites would need excluded line numbers.
 fn production_frame_symbol(bt: &str) -> String {
     for line in bt.lines() {
         let t = line.trim_start();
@@ -1296,7 +1294,7 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 /// <symbol>` matches only a BARE `unimplemented!()` in that specific function — any detailed
 /// message breaks the contiguity, and a different function yields a different `<symbol>`). The
 /// remaining collapse boundary is per-(message, file, function): two bare sites in the SAME
-/// function share one key (`codegen_struct` / `generate_wrapper_struct` each host two).
+/// function share one key; distinct record helper/coordinator functions retain separate keys.
 // Registry invariant guards live in `src/generation/wasm_wrapper_registry.rs`:
 // `record_dependency_class`/`record_dependency_alias` debug assertions and
 // `raw_collection_dependency_provider_scope` bounded-array/map expects retain their exact payloads.
@@ -1318,6 +1316,9 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 // No active known-panic keys cover these guards; new observed classes require regression vectors.
 // Record encoding attachment's map field-key unwrap now belongs to attach_record_encodings.
 // It stays in generation/records.rs with unchanged behavior and no active known-panic allowance.
+// Record codec production guards and emitted replay/rewind guards stay in generation/records.rs.
+// Their generator owner is now emit_record_codecs; exact payloads/emitted text remain unchanged.
+// There is no active known-panic allowance for this move; main must qualify production frame keys.
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired when the two anonymous-composite families and the group-choice-arm inline group
     // became graceful rejections) Three classes lived here, and they split by the composite's
