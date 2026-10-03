@@ -5051,6 +5051,964 @@ fn emit_record_protected_rest(
     }
 }
 
+/// Generate the combined Map codec arm before its independently owned shared epilogue.
+#[allow(clippy::too_many_arguments)]
+fn generate_record_map_codecs(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    name: &RustIdent,
+    tag: Option<usize>,
+    record: &RustRecord,
+    in_embedded: bool,
+    manual_json: bool,
+    ser_func: &mut codegen::Function,
+    deser_code: &mut DeserializationCode,
+    cli: &Cli,
+) -> Block {
+    let mut uint_field_deserializers = Vec::new();
+    let mut text_field_deserializers = Vec::new();
+    // (field_index, field, content) -- this is ordered by canonical order
+    let mut ser_content: Vec<(usize, &RustField, BlocksOrLines)> = Vec::new();
+    if cli.preserve_encodings {
+        deser_code
+            .content
+            .line("let mut orig_deser_order = Vec::new();");
+    }
+    // we default to canonical ordering here as the default ordering as that should be the most useful
+    // keep in mind this is always overwritten if you have cli.preserve_encodings enabled AND there was
+    // a deserialized encoding, otherwise we still use this by default.
+    for (field_index, field) in record.canonical_ordering() {
+        // (a plain-group field refuses this map record's deserialize — recorded ahead
+        // of the emission walk by `map_record_deser_refusals`, which is where the
+        // reason text and the why live)
+        // declare variables for deser loop
+        if cli.preserve_encodings {
+            for field_enc in field_encoding_fields(
+                types,
+                &field.name,
+                &field.rust_type,
+                Some(&field.rule_metadata),
+                true,
+                cli,
+            ) {
+                deser_code.content.line(&format!(
+                    "let mut {} = {};",
+                    field_enc.field_name, field_enc.default_expr
+                ));
+            }
+            let key_enc = key_encoding_field(&field.name, field.key.as_ref().unwrap());
+            deser_code.content.line(&format!(
+                "let mut {} = {};",
+                key_enc.field_name, key_enc.default_expr
+            ));
+        }
+        if field.rust_type.conceptual_type.is_fixed_value() {
+            deser_code
+                .content
+                .line(&format!("let mut {}_present = false;", field.name));
+        } else {
+            deser_code
+                .content
+                .line(&format!("let mut {} = None;", field.name));
+        }
+        let (data_name, expr_is_ref) = if field.optional && field.rust_type.config.default.is_none()
+        {
+            (String::from("field"), true)
+        } else {
+            (format!("self.{}", field.name), false)
+        };
+
+        let key = field.key.clone().unwrap();
+        // deserialize key + value
+        let deser_block = build_map_field_deser_arm(
+            gen_scope,
+            types,
+            name,
+            field,
+            field_index,
+            &key,
+            in_embedded,
+            deser_code,
+            cli,
+        );
+
+        // serialize key
+        let mut map_ser_content = BlocksOrLines::default();
+        // `for_field`, NOT `new(..)`: this one config serves both the key write (via
+        // `key_encoding_var` just below) and the VALUE serialize further down, and the
+        // value is a record field — so it must carry the field's `@custom_serialize`
+        // exactly like the array-rep sites do, or a map-rep field's custom writer is
+        // silently dropped while `DeserializeConfig::for_field` still honors the custom
+        // READER (a round-trip-breaking asymmetry). `for_field` is `new(..)` plus that
+        // carry and nothing else, so the key side is untouched: `encoding_var` reads only
+        // `var_name`/`encoding_var_in_option_struct`, and the key write never consults
+        // `custom_serialize`.
+        let serialize_config = SerializeConfig::for_field(&data_name, field)
+            .expr_is_ref(expr_is_ref)
+            .encoding_var_in_option_struct("self.encodings");
+        let key_encoding_var =
+            serialize_config.encoding_var(Some("key"), key.encoding_var_is_copy(types));
+        match &key {
+            FixedValue::Uint(x) => {
+                let expr = format!("{x}u64");
+                write_using_sz(
+                    &mut map_ser_content,
+                    "write_unsigned_integer",
+                    "serializer",
+                    &expr,
+                    &expr,
+                    "?;",
+                    &key_encoding_var,
+                    cli,
+                );
+                uint_field_deserializers.push(deser_block);
+            }
+            FixedValue::Text(s) => {
+                write_string_sz(
+                    &mut map_ser_content,
+                    "write_text",
+                    "serializer",
+                    &format!("\"{}\"", escape_rust_str(s)),
+                    true,
+                    "?;",
+                    &key_encoding_var,
+                    cli,
+                );
+                text_field_deserializers.push(deser_block);
+            }
+            _ => panic!(
+                "unsupported map key type for {}.{}: {:?}",
+                name, field.name, key
+            ),
+        };
+
+        // serialize value
+        generate_serialize(
+            types,
+            (&field.rust_type).into(),
+            &mut map_ser_content,
+            serialize_config,
+            cli,
+        );
+        ser_content.push((field_index, field, map_ser_content));
+    }
+    // Exact-zero fixed members have no value field and hence no serialization arm, but
+    // they are still declared map keys.  Match them before the dynamic-rest catch-all:
+    // otherwise an open record would accidentally capture the one key its CDDL forbids.
+    // This compares the decoded CBOR VALUE (`u64`/`String`), not its width spelling.
+    for forbidden in &record.forbidden_fields {
+        match &forbidden.key {
+            FixedValue::Uint(x) => {
+                let mut arm = if cli.preserve_encodings {
+                    Block::new(format!("({x}, _key_enc) =>"))
+                } else {
+                    Block::new(format!("{x} =>"))
+                };
+                arm.line(format!(
+                    "return Err(DeserializeFailure::ForbiddenKey(Key::Uint({x})).into());"
+                ));
+                arm.after(",");
+                uint_field_deserializers.push(arm);
+            }
+            FixedValue::Text(x) => {
+                let mut arm = Block::new(format!("\"{}\" =>", escape_rust_str(x)));
+                arm.line(format!(
+                    "return Err(DeserializeFailure::ForbiddenKey(Key::Str(String::from(\"{}\"))).into());",
+                    escape_rust_str(x)
+                ));
+                arm.after(",");
+                text_field_deserializers.push(arm);
+            }
+            _ => unreachable!("parser admits only uint/text fixed map keys"),
+        }
+    }
+    if cli.preserve_encodings {
+        let rest_index_base = record.fields.len();
+        if record.is_open_table() {
+            emit_open_table_preserve_order(types, record, ser_func, cli);
+        } else if let Some(rest) = &record.rest {
+            // OPEN struct: the wire-position index space is `0..N` (declared fields) then
+            // `N + i` (i-th rest entry). The self-heal replay uses `orig_deser_order` when
+            // its length matches the present-entry count (`definite_info`, which folds
+            // `rest.len()`), else falls back to declaration order + rest appended. Under
+            // --canonical an open struct's canonical order depends on RUNTIME rest keys, so
+            // it cannot be a baked `vec![..]`: build it at runtime by serializing every
+            // present entry's key canonically and sorting length-first via the shared
+            // comparator (declared keys' bytes are codegen-time constants).
+            // `definite_info` is `u64` (the map header wants `u64`, and it folds
+            // `self.rest.len() as u64`), so cast the `usize` order length to compare.
+            let orig_or_fallback = format!(
+                "self.encodings.as_ref().filter(|encs| encs.orig_deser_order.len() as u64 == {}).map(|encs| encs.orig_deser_order.clone()).unwrap_or_else(|| (0..{} + self.{}.len()).collect::<Vec<usize>>())",
+                record.definite_info("self", false, types, cli),
+                rest_index_base,
+                rest.field_name
+            );
+            if cli.canonical_form {
+                let mut merge = Block::new("let deser_order = if force_canonical");
+                merge.line("let mut key_order: Vec<(Vec<u8>, usize)> = Vec::new();");
+                for (decl_index, field) in record.fields.iter().enumerate() {
+                    let key_bytes = field.key.as_ref().unwrap().to_bytes();
+                    let push = format!(
+                        "key_order.push(({}, {}));",
+                        byte_vec_literal(&key_bytes),
+                        decl_index
+                    );
+                    match rest_merge_present_condition(field) {
+                        Some(cond) => {
+                            let mut b = Block::new(format!("if {cond}"));
+                            b.line(push);
+                            merge.push_block(b);
+                        }
+                        None => {
+                            merge.line(push);
+                        }
+                    }
+                }
+                let mut rest_key_loop = Block::new(format!(
+                    "for (i, (rest_key, _)) in self.{}.iter().enumerate()",
+                    rest.field_name
+                ));
+                rest_key_loop.line("let mut buf = cbor_event::se::Serializer::new_vec();");
+                // A concrete key's serialize references its encoding var; under
+                // force_canonical the write is minimal regardless, so bind the defaults
+                // (self-carried `any` keys need none).
+                let (merge_key_encs, _) = rest_encoding_fields(types, rest, cli);
+                for enc in &merge_key_encs {
+                    rest_key_loop.line(format!("let {} = {};", enc.field_name, enc.default_expr));
+                }
+                let merge_key_config =
+                    SerializeConfig::new("rest_key", format!("{}_key", rest.field_name))
+                        .expr_is_ref(true)
+                        .end(false)
+                        .serializer_name_overload(("buf", true))
+                        .encoding_var_is_ref(false);
+                // No sidecar lookup here: under force_canonical the key is written minimal
+                // regardless, so the merge's sort key matches the bytes the rest arm writes.
+                generate_serialize(
+                    types,
+                    (rest.domain()).into(),
+                    &mut rest_key_loop,
+                    merge_key_config,
+                    cli,
+                );
+                rest_key_loop.line(format!(
+                    "key_order.push((buf.finalize(), {rest_index_base} + i));"
+                ));
+                merge.push_block(rest_key_loop);
+                merge.line(
+                    "key_order.sort_by(|(lhs, _), (rhs, _)| cbor_canonical_key_cmp(lhs, rhs));",
+                );
+                merge.line("key_order.into_iter().map(|(_, idx)| idx).collect::<Vec<usize>>()");
+                merge.after(format!(" else {{ {orig_or_fallback} }};"));
+                ser_func.push_block(merge);
+            } else {
+                ser_func.line(format!("let deser_order = {orig_or_fallback};"));
+            }
+            // `OrderedHashMap`/`PairMap` deref to backing types with no positional `get`,
+            // so materialize the entries once for the `N + i` index lookup in the replay.
+            ser_func.line(format!(
+                "let rest_entries: Vec<_> = self.{}.iter().collect();",
+                rest.field_name
+            ));
+        } else {
+            let (check_canonical, serialization_order) = if cli.canonical_form {
+                let indices_str = record
+                    .canonical_ordering()
+                    .iter()
+                    .map(|(i, _)| i.to_string())
+                    .collect::<Vec<String>>()
+                    .join(",");
+                ("!force_canonical && ", format!("vec![{indices_str}]"))
+            } else {
+                ("", format!("(0..{}).collect()", ser_content.len()))
+            };
+            ser_func.line(format!(
+            "let deser_order = self.encodings.as_ref().filter(|encs| {}encs.orig_deser_order.len() == {}).map(|encs| encs.orig_deser_order.clone()).unwrap_or_else(|| {});",
+            check_canonical,
+            record.definite_info("self", false, types, cli),
+            serialization_order));
+        }
+        let mut ser_loop = Block::new("for field_index in deser_order");
+        // An OPEN TABLE's slots are TAGGED by source sequence (low bit), not a flat
+        // index space, so its replay scrutinizes the tag rather than the raw index.
+        let mut ser_loop_match = if record.is_open_table() {
+            Block::new("match field_index % 2")
+        } else {
+            Block::new("match field_index")
+        };
+        for (field_index, field, content) in ser_content.into_iter() {
+            // TODO: while this would be nice we would need to either:
+            // 1) know this before we call generate_serialize() OR
+            // 2) strip that !is_end (?;) field from it which seems brittle
+            //if let Some(single_line) = content.as_single_line() {
+            //    ser_loop_match.line(format!("{} => {},"));
+            //} else {
+            //}
+            let mut field_ser_block = if field.optional
+                && field.rust_type.conceptual_type.is_fixed_value()
+            {
+                // optional fixed value: the `bool` presence field guards the write
+                Block::new(format!("{} => if self.{}", field_index, field.name))
+            } else if field.optional && field.rust_type.config.default.is_none() {
+                Block::new(format!(
+                    "{} => if let Some(field) = &self.{}",
+                    field_index, field.name
+                ))
+            } else if field.optional {
+                // defaulted optional: the map HEADER (definite_info) counts this field
+                // only when it differs from its default (or was explicitly present on
+                // deserialize) — the write arm must apply the IDENTICAL condition or a
+                // freshly-constructed default-valued field serializes a body entry the
+                // header didn't count (corrupt CBOR: length mismatch / trailing data)
+                let default_value = field.rust_type.config.default.as_ref().unwrap();
+                Block::new(format!(
+                    "{} => if self.{} != {} || self.encodings.as_ref().map(|encs| encs.{}_default_present).unwrap_or(false)",
+                    field_index,
+                    field.name,
+                    default_value.to_primitive_str_compare(),
+                    field.name
+                ))
+            } else {
+                Block::new(format!("{field_index} =>"))
+            };
+            field_ser_block.push_all(content);
+            ser_loop_match.push_block(field_ser_block);
+        }
+        if record.is_open_table() {
+            emit_open_table_replay(types, record, &mut ser_loop_match, cli);
+        } else if let Some(rest) = &record.rest {
+            // OPEN struct rest arm: index `>= N` selects the (index - N)-th rest entry.
+            // `.get()` returns `Option`, so a stale `orig_deser_order` (a user mutated
+            // `rest` after deserialize, shifting the count) SKIPS rather than panics —
+            // serialize's never-panic philosophy. `rest_i` is that positional index — the
+            // `Vec` sidecar lookup key for the `@duplicates preserve` twin (whose keys
+            // repeat); the loose container keys its sidecar by the key VALUE (`"key"`).
+            let mut rest_arm = Block::new("_ =>");
+            rest_arm.line(format!("let rest_i = field_index - {rest_index_base};"));
+            let mut got = Block::new("if let Some(&(key, value)) = rest_entries.get(rest_i)");
+            let enc_lookup_var = if rest_is_pair_map(rest) {
+                "rest_i"
+            } else {
+                "key"
+            };
+            emit_rest_entry_serialize(types, rest, enc_lookup_var, &mut got, cli);
+            rest_arm.push_block(got);
+            ser_loop_match.push_block(rest_arm);
+            ser_loop_match.after(";");
+        } else {
+            ser_loop_match.line("_ => unreachable!()").after(";");
+        }
+        ser_loop.push_block(ser_loop_match);
+        ser_func.push_block(ser_loop);
+    } else {
+        for (_field_index, field, content) in ser_content.into_iter() {
+            if field.optional {
+                let optional_ser_field_check = if field.rust_type.conceptual_type.is_fixed_value() {
+                    // optional fixed value: the `bool` presence field guards the write
+                    format!("if self.{}", field.name)
+                } else if let Some(default_value) = &field.rust_type.config.default {
+                    format!(
+                        "if self.{} != {}",
+                        field.name,
+                        default_value.to_primitive_str_compare()
+                    )
+                } else {
+                    format!("if let Some(field) = &self.{}", field.name)
+                };
+                let mut optional_ser_field = Block::new(optional_ser_field_check);
+                optional_ser_field.push_all(content);
+                ser_func.push_block(optional_ser_field);
+            } else {
+                ser_func.push_all(content);
+            }
+        }
+    }
+    // Open struct-map rest row, NON-preserve: after the declared fields, write each
+    // captured entry as a bare key/value pair into the owner's map (the map header
+    // already counted them via `definite_info`'s `+ self.rest.len()`). `BTreeMap`
+    // iteration order (by key) drives the order; no encoding sidecars. The PRESERVE
+    // flavor interleaves the rest entries into the `orig_deser_order` replay above (wire
+    // position fidelity + per-entry sidecars), so it does NOT take this appended-loop path.
+    // Capture-only: an `@ignore` struct re-serializes ONLY its declared members (the whole
+    // point of the tolerate-and-drop flavor), and it has no `rest` field to iterate.
+    for rest in record
+        .captured_dynamic_rows()
+        .filter(|_| !cli.preserve_encodings)
+    {
+        let mut rest_loop = Block::new(format!(
+            "for (key, value) in self.{}.iter()",
+            rest.field_name
+        ));
+        let key_config = SerializeConfig::new("key", "rest_key")
+            .expr_is_ref(true)
+            .end(false);
+        generate_serialize(
+            types,
+            (rest.domain()).into(),
+            &mut rest_loop,
+            key_config,
+            cli,
+        );
+        let value_config = SerializeConfig::new("value", "rest_value")
+            .expr_is_ref(true)
+            .end(false);
+        generate_serialize(
+            types,
+            (rest.range()).into(),
+            &mut rest_loop,
+            value_config,
+            cli,
+        );
+        ser_func.push_block(rest_loop);
+    }
+    // Open struct-map (loose CBOR): declare the rest capture container (+ preserve
+    // encoding sidecars) and fold the unknown-key match arms into captures below.
+    // `record.rest` is `None` for every closed struct (byte-identical output).
+    // An OPEN TABLE's two dynamic rows tag their slots by source sequence; every other
+    // shape has one dynamic sequence after the `0..N` declared fields.
+    let slots = if record.is_open_table() {
+        OrderSlots::Tagged { odd: true }
+    } else {
+        OrderSlots::AfterDeclared(record.fields.len())
+    };
+    let rest_domain = record.rest.as_ref().map(|r| RestKeyDomain::of(types, r));
+    let rest_is_typed = rest_domain == Some(RestKeyDomain::Typed);
+    let any_cbor = format!("{}::any_cbor::AnyCbor", cli.common_import_rust());
+    // BOTH flavors run unknown-key arms that account each entry via `read_len.read_elems`
+    // and use `?`, so the loop needs the real (not `_`-prefixed) `read_len` and a
+    // Result-returning closure — mark them used regardless of capture/ignore.
+    if record.rest.is_some() || record.typed_row.is_some() {
+        deser_code.read_len_used = true;
+        deser_code.throws = true;
+    }
+    // CAPTURE only: declare the capture container (+ preserve encoding sidecar locals) the
+    // arms insert into. An `@ignore` row deserializes-and-DROPS each unknown entry in
+    // place, so there is no container and nothing to declare here.
+    for rest in record.captured_dynamic_rows() {
+        if cli.preserve_encodings {
+            // Annotate the container type under preserve: for an `any`-domain rest the
+            // value-`Eq` dup scan (`.iter().any(|(k, _)| k.value_eq(..))`) runs BEFORE the
+            // first `insert`, so inference has nothing to pin `K`/`V` from otherwise. The
+            // non-preserve path (below) infers from its `insert`-based dup check, so it
+            // keeps the un-annotated form (byte-identical to the non-preserve output).
+            deser_code.content.line(&format!(
+                "let mut {}: {} = {}::new();",
+                rest.field_name,
+                rest_staging_type(rest).for_rust_member(types, false, cli),
+                rest_container_ctor(rest, cli)
+            ));
+        } else {
+            deser_code.content.line(&format!(
+                "let mut {} = {}::new();",
+                rest.field_name,
+                rest_container_ctor(rest, cli)
+            ));
+        }
+        if cli.preserve_encodings {
+            // Sidecar locals mirror the encoding-struct shape: `Vec` for the pair-map
+            // twin (positional), `BTreeMap` for the loose container (keyed by key value).
+            let sidecar_ctor = if rest_is_pair_map(rest) {
+                "Vec::new()"
+            } else {
+                "BTreeMap::new()"
+            };
+            let (key_encs, value_encs) = rest_encoding_fields(types, rest, cli);
+            if !key_encs.is_empty() {
+                deser_code.content.line(&format!(
+                    "let mut {}_key_encodings = {sidecar_ctor};",
+                    rest.field_name
+                ));
+            }
+            if !value_encs.is_empty() {
+                deser_code.content.line(&format!(
+                    "let mut {}_value_encodings = {sidecar_ctor};",
+                    rest.field_name
+                ));
+            }
+        }
+    }
+    // needs to be in one line rather than a block because Block::after() only takes a string
+    deser_code.content.line("let mut read = 0;");
+    // the loop condition and the Special-key arm below both read the bare `len`,
+    // which in a plain group is the embedded-group param
+    deser_code.len_used = true;
+    let mut deser_loop = make_deser_loop("len", "read", cli);
+    // TYPED rest key, seek anchor. A declared-key match arm reads the key to dispatch on
+    // it; when the value falls through to the catch-all the key belongs to the REST row
+    // and must be re-read by `K::deserialize`, so the arm rewinds to here first. One
+    // hoisted line serves every arm (the alternative — bracing each arm's scrutinee —
+    // would restructure four match headers), and the `cbor_event` `Deserializer` is
+    // `(data, offset)` with no buffered lookahead, so `set_position` restores it exactly.
+    //
+    // Emitted only when a declared arm could consume the key: with no declared uint/text
+    // keys nothing is ever read before the capture, and an unused binding would warn in
+    // the generated crate.
+    let rest_needs_seek_anchor = rest_is_typed
+        && (!uint_field_deserializers.is_empty() || !text_field_deserializers.is_empty());
+    if rest_needs_seek_anchor {
+        deser_loop.line("let initial_position = raw.position();");
+    }
+    let mut type_match = Block::new("match raw.cbor_type()?");
+    // An OPEN TABLE dispatches the two rows by wire major: the typed row claims exactly
+    // its key's single statically-known major, the catch-all sees the complement. With
+    // zero declared fields there is no declared-key arm to compose with, so the whole
+    // match is purpose-built rather than threaded through the open-struct-map arms.
+    if record.is_open_table() {
+        append_open_table_dispatch(gen_scope, types, record, &mut type_match, cli);
+    } else {
+        // The uint key the record loop already read (`unknown_key`, a u64) is the capture key
+        // for a `uint`-domain rest (used directly, its `key_enc` going to the key sidecar) or
+        // reconstructed into `AnyCbor` for an `any`-domain rest — under preserve carrying the
+        // peeked wire width `Sz` so byte-exactness holds. A `text`-domain rest does not accept
+        // a uint key (stays an error).
+        let uint_rest_key: Option<String> = match rest_domain {
+            Some(RestKeyDomain::Uint) => Some("unknown_key".to_owned()),
+            Some(RestKeyDomain::Any) if cli.preserve_encodings => {
+                Some(format!("{any_cbor}::UInt(unknown_key, Some(key_enc))"))
+            }
+            Some(RestKeyDomain::Any) => Some(format!("{any_cbor}::new_uint(unknown_key)")),
+            _ => None,
+        };
+        // The concrete uint key's peeked encoding var, threaded to the key sidecar (None for a
+        // self-carried `any` key).
+        let uint_key_enc: Option<String> =
+            if cli.preserve_encodings && rest_domain == Some(RestKeyDomain::Uint) {
+                Some("key_enc".to_owned())
+            } else {
+                None
+            };
+        if uint_field_deserializers.is_empty() {
+            if let (Some(rest), true) = (&record.rest, rest_is_typed) {
+                // TYPED key, no declared uint keys: nothing has been read, so there is nothing
+                // to reconstruct AND nothing to rewind — `K::deserialize` starts on the key's
+                // first byte.
+                let mut arm = Block::new("cbor_event::Type::UnsignedInteger =>");
+                append_rest_capture(gen_scope, types, rest, slots, None, None, &mut arm, cli);
+                arm.after(",");
+                type_match.push_block(arm);
+            } else if let (Some(rest), Some(key_expr)) = (&record.rest, uint_rest_key.clone()) {
+                let mut arm = Block::new("cbor_event::Type::UnsignedInteger =>");
+                if cli.preserve_encodings {
+                    arm.line("let (unknown_key, key_enc) = raw.unsigned_integer_sz()?;");
+                } else {
+                    arm.line("let unknown_key = raw.unsigned_integer()?;");
+                }
+                append_rest_capture(
+                    gen_scope,
+                    types,
+                    rest,
+                    slots,
+                    Some(key_expr),
+                    uint_key_enc.clone(),
+                    &mut arm,
+                    cli,
+                );
+                arm.after(",");
+                type_match.push_block(arm);
+            } else {
+                type_match.line("cbor_event::Type::UnsignedInteger => return Err(DeserializeFailure::UnknownKey(Key::Uint(raw.unsigned_integer()?)).into()),");
+            }
+        } else {
+            let mut uint_match = if cli.preserve_encodings {
+                Block::new("cbor_event::Type::UnsignedInteger => match raw.unsigned_integer_sz()?")
+            } else {
+                Block::new("cbor_event::Type::UnsignedInteger => match raw.unsigned_integer()?")
+            };
+            for case in uint_field_deserializers {
+                uint_match.push_block(case);
+            }
+            if let (Some(rest), true) = (&record.rest, rest_is_typed) {
+                // TYPED key past the declared arms: the scrutinee read consumed the key's
+                // bytes, so rewind to the loop-body anchor and let `K::deserialize` read them
+                // for itself. A wildcard binds nothing, so neither the u64 nor its `Sz` is
+                // left dead.
+                let mut arm = Block::new("_ =>");
+                arm.line("raw.set_position(initial_position).unwrap();");
+                append_rest_capture(gen_scope, types, rest, slots, None, None, &mut arm, cli);
+                arm.after(",");
+                uint_match.push_block(arm);
+            } else if let (Some(rest), Some(key_expr)) = (&record.rest, uint_rest_key.clone()) {
+                // Under preserve the scrutinee is `(u64, Sz)`, so bind both; else just the u64.
+                let mut arm = if cli.preserve_encodings {
+                    Block::new("(unknown_key, key_enc) =>")
+                } else {
+                    Block::new("unknown_key =>")
+                };
+                append_rest_capture(
+                    gen_scope,
+                    types,
+                    rest,
+                    slots,
+                    Some(key_expr),
+                    uint_key_enc.clone(),
+                    &mut arm,
+                    cli,
+                );
+                arm.after(",");
+                uint_match.push_block(arm);
+            } else {
+                let unknown_key_decl = if cli.preserve_encodings {
+                    "(unknown_key, _enc)"
+                } else {
+                    "unknown_key"
+                };
+                uint_match.line(format!("{unknown_key_decl} => return Err(DeserializeFailure::UnknownKey(Key::Uint(unknown_key)).into()),"));
+            }
+            uint_match.after(",");
+            type_match.push_block(uint_match);
+        }
+        // we can't map text_sz() with String::as_str() to match it since that would return a reference to a temporary
+        // so we need to store it in a local and have an extra block to declare it
+        // `text_rest_key_ref`: `unknown_key`/`text_key` is `&str` (the non-empty match-arm form);
+        // `text_rest_key_owned`: `unknown_key` is `String` (the empty-arm form).
+        let text_key_enc: Option<String> =
+            if cli.preserve_encodings && rest_domain == Some(RestKeyDomain::Text) {
+                Some("key_enc".to_owned())
+            } else {
+                None
+            };
+        // For the non-empty match arm the matched binding is `&str` — `.to_owned()` it.
+        let text_rest_key_ref: Option<String> = match rest_domain {
+            Some(RestKeyDomain::Text) => Some("unknown_key.to_owned()".to_owned()),
+            Some(RestKeyDomain::Any) if cli.preserve_encodings => Some(format!(
+                "{any_cbor}::Text(unknown_key.to_owned(), StringEncoding::from(key_enc))"
+            )),
+            Some(RestKeyDomain::Any) => {
+                Some(format!("{any_cbor}::new_text(unknown_key.to_owned())"))
+            }
+            _ => None,
+        };
+        // For the empty arm the binding `unknown_key` is an owned `String`.
+        let text_rest_key_owned: Option<String> = match rest_domain {
+            Some(RestKeyDomain::Text) => Some("unknown_key".to_owned()),
+            Some(RestKeyDomain::Any) if cli.preserve_encodings => Some(format!(
+                "{any_cbor}::Text(unknown_key, StringEncoding::from(key_enc))"
+            )),
+            Some(RestKeyDomain::Any) => Some(format!("{any_cbor}::new_text(unknown_key)")),
+            _ => None,
+        };
+        if text_field_deserializers.is_empty() {
+            if let (Some(rest), true) = (&record.rest, rest_is_typed) {
+                // TYPED key, no declared text keys — the uint-arm twin: nothing read, nothing
+                // to rewind.
+                let mut arm = Block::new("cbor_event::Type::Text =>");
+                append_rest_capture(gen_scope, types, rest, slots, None, None, &mut arm, cli);
+                arm.after(",");
+                type_match.push_block(arm);
+            } else if let (Some(rest), Some(key_expr)) = (&record.rest, text_rest_key_owned.clone())
+            {
+                let mut arm = Block::new("cbor_event::Type::Text =>");
+                if cli.preserve_encodings {
+                    arm.line("let (unknown_key, key_enc) = raw.text_sz()?;");
+                } else {
+                    arm.line("let unknown_key = raw.text()?;");
+                }
+                append_rest_capture(
+                    gen_scope,
+                    types,
+                    rest,
+                    slots,
+                    Some(key_expr),
+                    text_key_enc.clone(),
+                    &mut arm,
+                    cli,
+                );
+                arm.after(",");
+                type_match.push_block(arm);
+            } else {
+                type_match.line("cbor_event::Type::Text => return Err(DeserializeFailure::UnknownKey(Key::Str(raw.text()?)).into()),");
+            }
+        } else if cli.preserve_encodings {
+            let mut outer_match = Block::new("cbor_event::Type::Text =>");
+            outer_match.line("let (text_key, key_enc) = raw.text_sz()?;");
+            let mut text_match = Block::new("match text_key.as_str()");
+            for case in text_field_deserializers {
+                text_match.push_block(case);
+            }
+            if let (Some(rest), true) = (&record.rest, rest_is_typed) {
+                // TYPED key past the declared arms: rewind and re-read. `text_key`/`key_enc`
+                // stay live (the declared arms use them), so only this arm's own binding is
+                // dropped.
+                let mut arm = Block::new("_ =>");
+                arm.line("raw.set_position(initial_position).unwrap();");
+                append_rest_capture(gen_scope, types, rest, slots, None, None, &mut arm, cli);
+                arm.after(",");
+                text_match.push_block(arm);
+            } else if let (Some(rest), Some(key_expr)) = (&record.rest, text_rest_key_ref.clone()) {
+                // capture arm: `unknown_key` (`&str`) shadows via the match binding; `key_enc`
+                // and `text_key` (owned) are the outer `text_sz()` reads.
+                let mut arm = Block::new("unknown_key =>");
+                append_rest_capture(
+                    gen_scope,
+                    types,
+                    rest,
+                    slots,
+                    Some(key_expr),
+                    text_key_enc.clone(),
+                    &mut arm,
+                    cli,
+                );
+                arm.after(",");
+                text_match.push_block(arm);
+            } else {
+                text_match.line("unknown_key => return Err(DeserializeFailure::UnknownKey(Key::Str(unknown_key.to_owned())).into()),");
+            }
+            outer_match.after(",");
+            outer_match.push_block(text_match);
+            type_match.push_block(outer_match);
+        } else if let (Some(rest), true) = (&record.rest, rest_is_typed) {
+            // TYPED key, plain flavor, declared text keys present. This is the ONE arm that
+            // also restructures its header: `match raw.text()?.as_str()` extends the `String`
+            // temporary — and the `&mut raw` autoref that produced it — across the whole
+            // match, so a `raw.set_position(..)` inside an arm would contend with it. Lifting
+            // the read into a `let` (the shape the preserve flavor already emits) ends that
+            // borrow before the arms run. Gated on the typed path, so the plain form stays
+            // byte-identical everywhere else.
+            let mut outer_match = Block::new("cbor_event::Type::Text =>");
+            outer_match.line("let text_key = raw.text()?;");
+            let mut text_match = Block::new("match text_key.as_str()");
+            for case in text_field_deserializers {
+                text_match.push_block(case);
+            }
+            let mut arm = Block::new("_ =>");
+            arm.line("raw.set_position(initial_position).unwrap();");
+            append_rest_capture(gen_scope, types, rest, slots, None, None, &mut arm, cli);
+            arm.after(",");
+            text_match.push_block(arm);
+            outer_match.after(",");
+            outer_match.push_block(text_match);
+            type_match.push_block(outer_match);
+        } else {
+            let mut text_match = Block::new("cbor_event::Type::Text => match raw.text()?.as_str()");
+            for case in text_field_deserializers {
+                text_match.push_block(case);
+            }
+            if let (Some(rest), Some(key_expr)) = (&record.rest, text_rest_key_ref.clone()) {
+                let mut arm = Block::new("unknown_key =>");
+                append_rest_capture(
+                    gen_scope,
+                    types,
+                    rest,
+                    slots,
+                    Some(key_expr),
+                    None,
+                    &mut arm,
+                    cli,
+                );
+                arm.after(",");
+                text_match.push_block(arm);
+            } else {
+                text_match.line("unknown_key => return Err(DeserializeFailure::UnknownKey(Key::Str(unknown_key.to_owned())).into()),");
+            }
+            text_match.after(",");
+            type_match.push_block(text_match);
+        }
+        if let (Some(rest), true) = (
+            &record.rest,
+            matches!(rest_domain, Some(RestKeyDomain::Any | RestKeyDomain::Typed)),
+        ) {
+            // any-domain or TYPED rest: a Special is either the break ending an indefinite map
+            // or a special-typed KEY (bool/null/undefined/float/unassigned) to capture.
+            // `special_break()` advances ONLY on a true break, so a non-break special is left
+            // intact for the key deserialize; both break match arms diverge (return/break), so
+            // control only falls through to the capture when it was NOT a break. A typed `K`
+            // that admits no special value simply errors out of its own deserialize — that is
+            // refinement, not a case to special-case (and a null-admitting `K`, the one shape
+            // where the two readings genuinely collide, is rejected at recognition).
+            let mut special_arm = Block::new("cbor_event::Type::Special =>");
+            let mut is_break = Block::new("if raw.special_break()?");
+            let mut break_len = Block::new("match len");
+            break_len.line(format!(
+                "{} => return Err(DeserializeFailure::BreakInDefiniteLen.into()),",
+                cbor_event_len_n("_", cli)
+            ));
+            break_len.line(format!("{} => break,", cbor_event_len_indef(cli)));
+            is_break.push_block(break_len);
+            special_arm.push_block(is_break);
+            append_rest_capture(
+                gen_scope,
+                types,
+                rest,
+                slots,
+                None,
+                None,
+                &mut special_arm,
+                cli,
+            );
+            special_arm.after(",");
+            type_match.push_block(special_arm);
+        } else {
+            let mut special_match = Block::new("cbor_event::Type::Special => match len");
+            special_match.line(format!(
+                "{} => return Err(DeserializeFailure::BreakInDefiniteLen.into()),",
+                cbor_event_len_n("_", cli)
+            ));
+            // TODO: this will need to change if we support Special values as keys (e.g. true / false)
+            let mut break_check = Block::new(format!(
+                "{} => match raw.special()?",
+                cbor_event_len_indef(cli)
+            ));
+            break_check.line("cbor_event::Special::Break => break,");
+            break_check.line("_ => return Err(DeserializeFailure::EndingBreakMissing.into()),");
+            break_check.after(",");
+            special_match.push_block(break_check);
+            special_match.after(",");
+            type_match.push_block(special_match);
+        }
+        if let (Some(rest), true) = (
+            &record.rest,
+            matches!(rest_domain, Some(RestKeyDomain::Any | RestKeyDomain::Typed)),
+        ) {
+            // any-domain or TYPED rest: bytes/negative-int/array/map/tag keys land here;
+            // deserialize the key straight from `raw` (uint/text/special are handled by the
+            // arms above). Nothing was consumed to reach this arm, so no rewind is needed.
+            let mut arm = Block::new("_ =>");
+            append_rest_capture(gen_scope, types, rest, slots, None, None, &mut arm, cli);
+            arm.after(",");
+            type_match.push_block(arm);
+        } else {
+            type_match.line("other_type => return Err(DeserializeFailure::UnexpectedKeyType(other_type).into()),");
+        }
+    }
+    deser_loop.push_block(type_match);
+    deser_loop.line("read += 1;");
+    deser_code.content.push_block(deser_loop);
+    // Every restricted dynamic MAP row stages loose while the loop is consuming
+    // entries, then crosses exactly ONE checked carrier door after it. This is per row:
+    // the open table's typed and catch-all windows count independently, and a preserve
+    // pair-map counts every retained pair rather than distinct keys.
+    for rest in record.captured_dynamic_rows() {
+        if let Some(conversion) = rest_checked_conversion(rest, types, cli) {
+            deser_code.content.line(&conversion);
+        }
+    }
+    let mut ctor_block = Block::new("Ok(Self");
+    // make sure the field is present, and unwrap the Option<T>
+    for field in &record.fields {
+        if !field.optional {
+            let key = match &field.key {
+                Some(FixedValue::Uint(x)) => format!("Key::Uint({x})"),
+                Some(FixedValue::Text(x)) => {
+                    format!("Key::Str(String::from(\"{}\"))", escape_rust_str(x))
+                }
+                None => unreachable!(),
+                _ => unimplemented!(),
+            };
+            if field.rust_type.conceptual_type.is_fixed_value() {
+                let mut mandatory_field_check = Block::new(format!("if !{}_present", field.name));
+                mandatory_field_check.line(format!(
+                    "return Err(DeserializeFailure::MandatoryFieldMissing({key}).into());"
+                ));
+                deser_code.content.push_block(mandatory_field_check);
+            } else {
+                let mut mandatory_field_check =
+                    Block::new(format!("let {} = match {}", field.name, field.name));
+                mandatory_field_check.line("Some(x) => x,");
+
+                mandatory_field_check.line(format!(
+                    "None => return Err(DeserializeFailure::MandatoryFieldMissing({key}).into()),"
+                ));
+                mandatory_field_check.after(";");
+                deser_code.content.push_block(mandatory_field_check);
+            }
+        } else if let Some(default_value) = &field.rust_type.config.default {
+            if cli.preserve_encodings {
+                let mut default_present_check = Block::new(format!(
+                    "if {} == Some({})",
+                    field.name,
+                    default_value.to_primitive_str_assign()
+                ));
+                default_present_check.line(format!("{}_default_present = true;", field.name));
+                deser_code.content.push_block(default_present_check);
+            }
+            match default_value {
+                FixedValue::Text(_) | FixedValue::Bytes(_) => {
+                    // to avoid clippy::or_fun_call
+                    deser_code.content.line(&format!(
+                        "let {} = {}.unwrap_or_else(|| {});",
+                        field.name,
+                        field.name,
+                        default_value.to_primitive_str_assign()
+                    ));
+                }
+                FixedValue::Bool(_)
+                | FixedValue::Nint(_)
+                | FixedValue::Null
+                | FixedValue::Undefined
+                | FixedValue::Float(_)
+                | FixedValue::Uint(_) => {
+                    deser_code.content.line(&format!(
+                        "let {} = {}.unwrap_or({});",
+                        field.name,
+                        field.name,
+                        default_value.to_primitive_str_assign()
+                    ));
+                }
+            }
+        }
+        if !field.rust_type.conceptual_type.is_fixed_value() {
+            ctor_block.line(format!("{},", field.name));
+        } else if field.optional && field.rust_type.conceptual_type.is_fixed_value() {
+            // optional fixed value -> the struct's `bool` presence field is the
+            // `{field}_present` flag (true iff the key was seen during the map loop)
+            ctor_block.line(format!("{}: {}_present,", field.name, field.name));
+        }
+    }
+    // Open struct-map rest row (CAPTURE only): the capture container local (declared
+    // before the loop, named by the rest field) moves into the constructed struct. An
+    // `@ignore` row declared no container and adds no field, so nothing moves in.
+    for rest in record.captured_dynamic_rows() {
+        ctor_block.line(format!("{},", rest.field_name));
+    }
+    // Private serde sentinels are ordinary Rust fields too, so direct CBOR decoding
+    // must initialize them just as the public constructor does. They carry no wire
+    // state and never participate in CBOR serialization.
+    if record.captured_rest().is_none() && !manual_json && cli.json_serde_derives {
+        for sentinel in exact_zero_json_sentinel_names(record) {
+            ctor_block.line(format!("{sentinel}: (),"));
+        }
+    }
+    if cli.preserve_encodings {
+        let mut encoding_ctor = Block::new(format!("encodings: Some({name}Encoding"));
+        if tag.is_some() {
+            encoding_ctor.line("tag_encoding: Some(tag_encoding),");
+        }
+        encoding_ctor
+            .line("len_encoding,")
+            .line("orig_deser_order,");
+        for field in record.fields.iter() {
+            let key_enc = key_encoding_field(&field.name, field.key.as_ref().unwrap());
+            encoding_ctor.line(format!("{},", key_enc.field_name));
+            for field_enc in field_encoding_fields(
+                types,
+                &field.name,
+                &field.rust_type,
+                Some(&field.rule_metadata),
+                true,
+                cli,
+            ) {
+                encoding_ctor.line(format!("{},", field_enc.field_name));
+            }
+        }
+        // Open struct-map rest row: the per-entry encoding sidecar locals (declared before
+        // the loop and populated at each concrete-domain capture) move into the encoding
+        // struct. Absent for a fully self-carried `any` rest. Capture-only (preserve).
+        for rest in record.captured_dynamic_rows() {
+            let (key_encs, value_encs) = rest_encoding_fields(types, rest, cli);
+            if !key_encs.is_empty() {
+                encoding_ctor.line(format!("{}_key_encodings,", rest.field_name));
+            }
+            if !value_encs.is_empty() {
+                encoding_ctor.line(format!("{}_value_encodings,", rest.field_name));
+            }
+        }
+        encoding_ctor.after("),");
+        ctor_block.push_block(encoding_ctor);
+    }
+    ctor_block.after(")");
+    ctor_block
+}
+
 /// Emit custom-pair or ordinary record codecs before publishing native builders.
 #[allow(clippy::too_many_arguments)] // Explicit record/config/encoding inputs preserve the codec handoff.
 fn emit_record_codecs(
@@ -5160,997 +6118,18 @@ fn emit_record_codecs(
                 deser_ctor.after(")");
                 deser_ctor
             }
-            Representation::Map => {
-                let mut uint_field_deserializers = Vec::new();
-                let mut text_field_deserializers = Vec::new();
-                // (field_index, field, content) -- this is ordered by canonical order
-                let mut ser_content: Vec<(usize, &RustField, BlocksOrLines)> = Vec::new();
-                if cli.preserve_encodings {
-                    deser_code
-                        .content
-                        .line("let mut orig_deser_order = Vec::new();");
-                }
-                // we default to canonical ordering here as the default ordering as that should be the most useful
-                // keep in mind this is always overwritten if you have cli.preserve_encodings enabled AND there was
-                // a deserialized encoding, otherwise we still use this by default.
-                for (field_index, field) in record.canonical_ordering() {
-                    // (a plain-group field refuses this map record's deserialize — recorded ahead
-                    // of the emission walk by `map_record_deser_refusals`, which is where the
-                    // reason text and the why live)
-                    // declare variables for deser loop
-                    if cli.preserve_encodings {
-                        for field_enc in field_encoding_fields(
-                            types,
-                            &field.name,
-                            &field.rust_type,
-                            Some(&field.rule_metadata),
-                            true,
-                            cli,
-                        ) {
-                            deser_code.content.line(&format!(
-                                "let mut {} = {};",
-                                field_enc.field_name, field_enc.default_expr
-                            ));
-                        }
-                        let key_enc = key_encoding_field(&field.name, field.key.as_ref().unwrap());
-                        deser_code.content.line(&format!(
-                            "let mut {} = {};",
-                            key_enc.field_name, key_enc.default_expr
-                        ));
-                    }
-                    if field.rust_type.conceptual_type.is_fixed_value() {
-                        deser_code
-                            .content
-                            .line(&format!("let mut {}_present = false;", field.name));
-                    } else {
-                        deser_code
-                            .content
-                            .line(&format!("let mut {} = None;", field.name));
-                    }
-                    let (data_name, expr_is_ref) =
-                        if field.optional && field.rust_type.config.default.is_none() {
-                            (String::from("field"), true)
-                        } else {
-                            (format!("self.{}", field.name), false)
-                        };
-
-                    let key = field.key.clone().unwrap();
-                    // deserialize key + value
-                    let deser_block = build_map_field_deser_arm(
-                        gen_scope,
-                        types,
-                        name,
-                        field,
-                        field_index,
-                        &key,
-                        in_embedded,
-                        &mut deser_code,
-                        cli,
-                    );
-
-                    // serialize key
-                    let mut map_ser_content = BlocksOrLines::default();
-                    // `for_field`, NOT `new(..)`: this one config serves both the key write (via
-                    // `key_encoding_var` just below) and the VALUE serialize further down, and the
-                    // value is a record field — so it must carry the field's `@custom_serialize`
-                    // exactly like the array-rep sites do, or a map-rep field's custom writer is
-                    // silently dropped while `DeserializeConfig::for_field` still honors the custom
-                    // READER (a round-trip-breaking asymmetry). `for_field` is `new(..)` plus that
-                    // carry and nothing else, so the key side is untouched: `encoding_var` reads only
-                    // `var_name`/`encoding_var_in_option_struct`, and the key write never consults
-                    // `custom_serialize`.
-                    let serialize_config = SerializeConfig::for_field(&data_name, field)
-                        .expr_is_ref(expr_is_ref)
-                        .encoding_var_in_option_struct("self.encodings");
-                    let key_encoding_var =
-                        serialize_config.encoding_var(Some("key"), key.encoding_var_is_copy(types));
-                    match &key {
-                        FixedValue::Uint(x) => {
-                            let expr = format!("{x}u64");
-                            write_using_sz(
-                                &mut map_ser_content,
-                                "write_unsigned_integer",
-                                "serializer",
-                                &expr,
-                                &expr,
-                                "?;",
-                                &key_encoding_var,
-                                cli,
-                            );
-                            uint_field_deserializers.push(deser_block);
-                        }
-                        FixedValue::Text(s) => {
-                            write_string_sz(
-                                &mut map_ser_content,
-                                "write_text",
-                                "serializer",
-                                &format!("\"{}\"", escape_rust_str(s)),
-                                true,
-                                "?;",
-                                &key_encoding_var,
-                                cli,
-                            );
-                            text_field_deserializers.push(deser_block);
-                        }
-                        _ => panic!(
-                            "unsupported map key type for {}.{}: {:?}",
-                            name, field.name, key
-                        ),
-                    };
-
-                    // serialize value
-                    generate_serialize(
-                        types,
-                        (&field.rust_type).into(),
-                        &mut map_ser_content,
-                        serialize_config,
-                        cli,
-                    );
-                    ser_content.push((field_index, field, map_ser_content));
-                }
-                // Exact-zero fixed members have no value field and hence no serialization arm, but
-                // they are still declared map keys.  Match them before the dynamic-rest catch-all:
-                // otherwise an open record would accidentally capture the one key its CDDL forbids.
-                // This compares the decoded CBOR VALUE (`u64`/`String`), not its width spelling.
-                for forbidden in &record.forbidden_fields {
-                    match &forbidden.key {
-                        FixedValue::Uint(x) => {
-                            let mut arm = if cli.preserve_encodings {
-                                Block::new(format!("({x}, _key_enc) =>"))
-                            } else {
-                                Block::new(format!("{x} =>"))
-                            };
-                            arm.line(format!(
-                                "return Err(DeserializeFailure::ForbiddenKey(Key::Uint({x})).into());"
-                            ));
-                            arm.after(",");
-                            uint_field_deserializers.push(arm);
-                        }
-                        FixedValue::Text(x) => {
-                            let mut arm = Block::new(format!("\"{}\" =>", escape_rust_str(x)));
-                            arm.line(format!(
-                                "return Err(DeserializeFailure::ForbiddenKey(Key::Str(String::from(\"{}\"))).into());",
-                                escape_rust_str(x)
-                            ));
-                            arm.after(",");
-                            text_field_deserializers.push(arm);
-                        }
-                        _ => unreachable!("parser admits only uint/text fixed map keys"),
-                    }
-                }
-                if cli.preserve_encodings {
-                    let rest_index_base = record.fields.len();
-                    if record.is_open_table() {
-                        emit_open_table_preserve_order(types, record, &mut ser_func, cli);
-                    } else if let Some(rest) = &record.rest {
-                        // OPEN struct: the wire-position index space is `0..N` (declared fields) then
-                        // `N + i` (i-th rest entry). The self-heal replay uses `orig_deser_order` when
-                        // its length matches the present-entry count (`definite_info`, which folds
-                        // `rest.len()`), else falls back to declaration order + rest appended. Under
-                        // --canonical an open struct's canonical order depends on RUNTIME rest keys, so
-                        // it cannot be a baked `vec![..]`: build it at runtime by serializing every
-                        // present entry's key canonically and sorting length-first via the shared
-                        // comparator (declared keys' bytes are codegen-time constants).
-                        // `definite_info` is `u64` (the map header wants `u64`, and it folds
-                        // `self.rest.len() as u64`), so cast the `usize` order length to compare.
-                        let orig_or_fallback = format!(
-                            "self.encodings.as_ref().filter(|encs| encs.orig_deser_order.len() as u64 == {}).map(|encs| encs.orig_deser_order.clone()).unwrap_or_else(|| (0..{} + self.{}.len()).collect::<Vec<usize>>())",
-                            record.definite_info("self", false, types, cli),
-                            rest_index_base,
-                            rest.field_name
-                        );
-                        if cli.canonical_form {
-                            let mut merge = Block::new("let deser_order = if force_canonical");
-                            merge.line("let mut key_order: Vec<(Vec<u8>, usize)> = Vec::new();");
-                            for (decl_index, field) in record.fields.iter().enumerate() {
-                                let key_bytes = field.key.as_ref().unwrap().to_bytes();
-                                let push = format!(
-                                    "key_order.push(({}, {}));",
-                                    byte_vec_literal(&key_bytes),
-                                    decl_index
-                                );
-                                match rest_merge_present_condition(field) {
-                                    Some(cond) => {
-                                        let mut b = Block::new(format!("if {cond}"));
-                                        b.line(push);
-                                        merge.push_block(b);
-                                    }
-                                    None => {
-                                        merge.line(push);
-                                    }
-                                }
-                            }
-                            let mut rest_key_loop = Block::new(format!(
-                                "for (i, (rest_key, _)) in self.{}.iter().enumerate()",
-                                rest.field_name
-                            ));
-                            rest_key_loop
-                                .line("let mut buf = cbor_event::se::Serializer::new_vec();");
-                            // A concrete key's serialize references its encoding var; under
-                            // force_canonical the write is minimal regardless, so bind the defaults
-                            // (self-carried `any` keys need none).
-                            let (merge_key_encs, _) = rest_encoding_fields(types, rest, cli);
-                            for enc in &merge_key_encs {
-                                rest_key_loop.line(format!(
-                                    "let {} = {};",
-                                    enc.field_name, enc.default_expr
-                                ));
-                            }
-                            let merge_key_config = SerializeConfig::new(
-                                "rest_key",
-                                format!("{}_key", rest.field_name),
-                            )
-                            .expr_is_ref(true)
-                            .end(false)
-                            .serializer_name_overload(("buf", true))
-                            .encoding_var_is_ref(false);
-                            // No sidecar lookup here: under force_canonical the key is written minimal
-                            // regardless, so the merge's sort key matches the bytes the rest arm writes.
-                            generate_serialize(
-                                types,
-                                (rest.domain()).into(),
-                                &mut rest_key_loop,
-                                merge_key_config,
-                                cli,
-                            );
-                            rest_key_loop.line(format!(
-                                "key_order.push((buf.finalize(), {rest_index_base} + i));"
-                            ));
-                            merge.push_block(rest_key_loop);
-                            merge.line(
-                                "key_order.sort_by(|(lhs, _), (rhs, _)| cbor_canonical_key_cmp(lhs, rhs));",
-                            );
-                            merge.line(
-                                "key_order.into_iter().map(|(_, idx)| idx).collect::<Vec<usize>>()",
-                            );
-                            merge.after(format!(" else {{ {orig_or_fallback} }};"));
-                            ser_func.push_block(merge);
-                        } else {
-                            ser_func.line(format!("let deser_order = {orig_or_fallback};"));
-                        }
-                        // `OrderedHashMap`/`PairMap` deref to backing types with no positional `get`,
-                        // so materialize the entries once for the `N + i` index lookup in the replay.
-                        ser_func.line(format!(
-                            "let rest_entries: Vec<_> = self.{}.iter().collect();",
-                            rest.field_name
-                        ));
-                    } else {
-                        let (check_canonical, serialization_order) = if cli.canonical_form {
-                            let indices_str = record
-                                .canonical_ordering()
-                                .iter()
-                                .map(|(i, _)| i.to_string())
-                                .collect::<Vec<String>>()
-                                .join(",");
-                            ("!force_canonical && ", format!("vec![{indices_str}]"))
-                        } else {
-                            ("", format!("(0..{}).collect()", ser_content.len()))
-                        };
-                        ser_func.line(format!(
-                        "let deser_order = self.encodings.as_ref().filter(|encs| {}encs.orig_deser_order.len() == {}).map(|encs| encs.orig_deser_order.clone()).unwrap_or_else(|| {});",
-                        check_canonical,
-                        record.definite_info("self", false, types, cli),
-                        serialization_order));
-                    }
-                    let mut ser_loop = Block::new("for field_index in deser_order");
-                    // An OPEN TABLE's slots are TAGGED by source sequence (low bit), not a flat
-                    // index space, so its replay scrutinizes the tag rather than the raw index.
-                    let mut ser_loop_match = if record.is_open_table() {
-                        Block::new("match field_index % 2")
-                    } else {
-                        Block::new("match field_index")
-                    };
-                    for (field_index, field, content) in ser_content.into_iter() {
-                        // TODO: while this would be nice we would need to either:
-                        // 1) know this before we call generate_serialize() OR
-                        // 2) strip that !is_end (?;) field from it which seems brittle
-                        //if let Some(single_line) = content.as_single_line() {
-                        //    ser_loop_match.line(format!("{} => {},"));
-                        //} else {
-                        //}
-                        let mut field_ser_block = if field.optional
-                            && field.rust_type.conceptual_type.is_fixed_value()
-                        {
-                            // optional fixed value: the `bool` presence field guards the write
-                            Block::new(format!("{} => if self.{}", field_index, field.name))
-                        } else if field.optional && field.rust_type.config.default.is_none() {
-                            Block::new(format!(
-                                "{} => if let Some(field) = &self.{}",
-                                field_index, field.name
-                            ))
-                        } else if field.optional {
-                            // defaulted optional: the map HEADER (definite_info) counts this field
-                            // only when it differs from its default (or was explicitly present on
-                            // deserialize) — the write arm must apply the IDENTICAL condition or a
-                            // freshly-constructed default-valued field serializes a body entry the
-                            // header didn't count (corrupt CBOR: length mismatch / trailing data)
-                            let default_value = field.rust_type.config.default.as_ref().unwrap();
-                            Block::new(format!(
-                                "{} => if self.{} != {} || self.encodings.as_ref().map(|encs| encs.{}_default_present).unwrap_or(false)",
-                                field_index,
-                                field.name,
-                                default_value.to_primitive_str_compare(),
-                                field.name
-                            ))
-                        } else {
-                            Block::new(format!("{field_index} =>"))
-                        };
-                        field_ser_block.push_all(content);
-                        ser_loop_match.push_block(field_ser_block);
-                    }
-                    if record.is_open_table() {
-                        emit_open_table_replay(types, record, &mut ser_loop_match, cli);
-                    } else if let Some(rest) = &record.rest {
-                        // OPEN struct rest arm: index `>= N` selects the (index - N)-th rest entry.
-                        // `.get()` returns `Option`, so a stale `orig_deser_order` (a user mutated
-                        // `rest` after deserialize, shifting the count) SKIPS rather than panics —
-                        // serialize's never-panic philosophy. `rest_i` is that positional index — the
-                        // `Vec` sidecar lookup key for the `@duplicates preserve` twin (whose keys
-                        // repeat); the loose container keys its sidecar by the key VALUE (`"key"`).
-                        let mut rest_arm = Block::new("_ =>");
-                        rest_arm.line(format!("let rest_i = field_index - {rest_index_base};"));
-                        let mut got =
-                            Block::new("if let Some(&(key, value)) = rest_entries.get(rest_i)");
-                        let enc_lookup_var = if rest_is_pair_map(rest) {
-                            "rest_i"
-                        } else {
-                            "key"
-                        };
-                        emit_rest_entry_serialize(types, rest, enc_lookup_var, &mut got, cli);
-                        rest_arm.push_block(got);
-                        ser_loop_match.push_block(rest_arm);
-                        ser_loop_match.after(";");
-                    } else {
-                        ser_loop_match.line("_ => unreachable!()").after(";");
-                    }
-                    ser_loop.push_block(ser_loop_match);
-                    ser_func.push_block(ser_loop);
-                } else {
-                    for (_field_index, field, content) in ser_content.into_iter() {
-                        if field.optional {
-                            let optional_ser_field_check =
-                                if field.rust_type.conceptual_type.is_fixed_value() {
-                                    // optional fixed value: the `bool` presence field guards the write
-                                    format!("if self.{}", field.name)
-                                } else if let Some(default_value) = &field.rust_type.config.default
-                                {
-                                    format!(
-                                        "if self.{} != {}",
-                                        field.name,
-                                        default_value.to_primitive_str_compare()
-                                    )
-                                } else {
-                                    format!("if let Some(field) = &self.{}", field.name)
-                                };
-                            let mut optional_ser_field = Block::new(optional_ser_field_check);
-                            optional_ser_field.push_all(content);
-                            ser_func.push_block(optional_ser_field);
-                        } else {
-                            ser_func.push_all(content);
-                        }
-                    }
-                }
-                // Open struct-map rest row, NON-preserve: after the declared fields, write each
-                // captured entry as a bare key/value pair into the owner's map (the map header
-                // already counted them via `definite_info`'s `+ self.rest.len()`). `BTreeMap`
-                // iteration order (by key) drives the order; no encoding sidecars. The PRESERVE
-                // flavor interleaves the rest entries into the `orig_deser_order` replay above (wire
-                // position fidelity + per-entry sidecars), so it does NOT take this appended-loop path.
-                // Capture-only: an `@ignore` struct re-serializes ONLY its declared members (the whole
-                // point of the tolerate-and-drop flavor), and it has no `rest` field to iterate.
-                for rest in record
-                    .captured_dynamic_rows()
-                    .filter(|_| !cli.preserve_encodings)
-                {
-                    let mut rest_loop = Block::new(format!(
-                        "for (key, value) in self.{}.iter()",
-                        rest.field_name
-                    ));
-                    let key_config = SerializeConfig::new("key", "rest_key")
-                        .expr_is_ref(true)
-                        .end(false);
-                    generate_serialize(
-                        types,
-                        (rest.domain()).into(),
-                        &mut rest_loop,
-                        key_config,
-                        cli,
-                    );
-                    let value_config = SerializeConfig::new("value", "rest_value")
-                        .expr_is_ref(true)
-                        .end(false);
-                    generate_serialize(
-                        types,
-                        (rest.range()).into(),
-                        &mut rest_loop,
-                        value_config,
-                        cli,
-                    );
-                    ser_func.push_block(rest_loop);
-                }
-                // Open struct-map (loose CBOR): declare the rest capture container (+ preserve
-                // encoding sidecars) and fold the unknown-key match arms into captures below.
-                // `record.rest` is `None` for every closed struct (byte-identical output).
-                // An OPEN TABLE's two dynamic rows tag their slots by source sequence; every other
-                // shape has one dynamic sequence after the `0..N` declared fields.
-                let slots = if record.is_open_table() {
-                    OrderSlots::Tagged { odd: true }
-                } else {
-                    OrderSlots::AfterDeclared(record.fields.len())
-                };
-                let rest_domain = record.rest.as_ref().map(|r| RestKeyDomain::of(types, r));
-                let rest_is_typed = rest_domain == Some(RestKeyDomain::Typed);
-                let any_cbor = format!("{}::any_cbor::AnyCbor", cli.common_import_rust());
-                // BOTH flavors run unknown-key arms that account each entry via `read_len.read_elems`
-                // and use `?`, so the loop needs the real (not `_`-prefixed) `read_len` and a
-                // Result-returning closure — mark them used regardless of capture/ignore.
-                if record.rest.is_some() || record.typed_row.is_some() {
-                    deser_code.read_len_used = true;
-                    deser_code.throws = true;
-                }
-                // CAPTURE only: declare the capture container (+ preserve encoding sidecar locals) the
-                // arms insert into. An `@ignore` row deserializes-and-DROPS each unknown entry in
-                // place, so there is no container and nothing to declare here.
-                for rest in record.captured_dynamic_rows() {
-                    if cli.preserve_encodings {
-                        // Annotate the container type under preserve: for an `any`-domain rest the
-                        // value-`Eq` dup scan (`.iter().any(|(k, _)| k.value_eq(..))`) runs BEFORE the
-                        // first `insert`, so inference has nothing to pin `K`/`V` from otherwise. The
-                        // non-preserve path (below) infers from its `insert`-based dup check, so it
-                        // keeps the un-annotated form (byte-identical to the non-preserve output).
-                        deser_code.content.line(&format!(
-                            "let mut {}: {} = {}::new();",
-                            rest.field_name,
-                            rest_staging_type(rest).for_rust_member(types, false, cli),
-                            rest_container_ctor(rest, cli)
-                        ));
-                    } else {
-                        deser_code.content.line(&format!(
-                            "let mut {} = {}::new();",
-                            rest.field_name,
-                            rest_container_ctor(rest, cli)
-                        ));
-                    }
-                    if cli.preserve_encodings {
-                        // Sidecar locals mirror the encoding-struct shape: `Vec` for the pair-map
-                        // twin (positional), `BTreeMap` for the loose container (keyed by key value).
-                        let sidecar_ctor = if rest_is_pair_map(rest) {
-                            "Vec::new()"
-                        } else {
-                            "BTreeMap::new()"
-                        };
-                        let (key_encs, value_encs) = rest_encoding_fields(types, rest, cli);
-                        if !key_encs.is_empty() {
-                            deser_code.content.line(&format!(
-                                "let mut {}_key_encodings = {sidecar_ctor};",
-                                rest.field_name
-                            ));
-                        }
-                        if !value_encs.is_empty() {
-                            deser_code.content.line(&format!(
-                                "let mut {}_value_encodings = {sidecar_ctor};",
-                                rest.field_name
-                            ));
-                        }
-                    }
-                }
-                // needs to be in one line rather than a block because Block::after() only takes a string
-                deser_code.content.line("let mut read = 0;");
-                // the loop condition and the Special-key arm below both read the bare `len`,
-                // which in a plain group is the embedded-group param
-                deser_code.len_used = true;
-                let mut deser_loop = make_deser_loop("len", "read", cli);
-                // TYPED rest key, seek anchor. A declared-key match arm reads the key to dispatch on
-                // it; when the value falls through to the catch-all the key belongs to the REST row
-                // and must be re-read by `K::deserialize`, so the arm rewinds to here first. One
-                // hoisted line serves every arm (the alternative — bracing each arm's scrutinee —
-                // would restructure four match headers), and the `cbor_event` `Deserializer` is
-                // `(data, offset)` with no buffered lookahead, so `set_position` restores it exactly.
-                //
-                // Emitted only when a declared arm could consume the key: with no declared uint/text
-                // keys nothing is ever read before the capture, and an unused binding would warn in
-                // the generated crate.
-                let rest_needs_seek_anchor = rest_is_typed
-                    && (!uint_field_deserializers.is_empty()
-                        || !text_field_deserializers.is_empty());
-                if rest_needs_seek_anchor {
-                    deser_loop.line("let initial_position = raw.position();");
-                }
-                let mut type_match = Block::new("match raw.cbor_type()?");
-                // An OPEN TABLE dispatches the two rows by wire major: the typed row claims exactly
-                // its key's single statically-known major, the catch-all sees the complement. With
-                // zero declared fields there is no declared-key arm to compose with, so the whole
-                // match is purpose-built rather than threaded through the open-struct-map arms.
-                if record.is_open_table() {
-                    append_open_table_dispatch(gen_scope, types, record, &mut type_match, cli);
-                } else {
-                    // The uint key the record loop already read (`unknown_key`, a u64) is the capture key
-                    // for a `uint`-domain rest (used directly, its `key_enc` going to the key sidecar) or
-                    // reconstructed into `AnyCbor` for an `any`-domain rest — under preserve carrying the
-                    // peeked wire width `Sz` so byte-exactness holds. A `text`-domain rest does not accept
-                    // a uint key (stays an error).
-                    let uint_rest_key: Option<String> = match rest_domain {
-                        Some(RestKeyDomain::Uint) => Some("unknown_key".to_owned()),
-                        Some(RestKeyDomain::Any) if cli.preserve_encodings => {
-                            Some(format!("{any_cbor}::UInt(unknown_key, Some(key_enc))"))
-                        }
-                        Some(RestKeyDomain::Any) => {
-                            Some(format!("{any_cbor}::new_uint(unknown_key)"))
-                        }
-                        _ => None,
-                    };
-                    // The concrete uint key's peeked encoding var, threaded to the key sidecar (None for a
-                    // self-carried `any` key).
-                    let uint_key_enc: Option<String> =
-                        if cli.preserve_encodings && rest_domain == Some(RestKeyDomain::Uint) {
-                            Some("key_enc".to_owned())
-                        } else {
-                            None
-                        };
-                    if uint_field_deserializers.is_empty() {
-                        if let (Some(rest), true) = (&record.rest, rest_is_typed) {
-                            // TYPED key, no declared uint keys: nothing has been read, so there is nothing
-                            // to reconstruct AND nothing to rewind — `K::deserialize` starts on the key's
-                            // first byte.
-                            let mut arm = Block::new("cbor_event::Type::UnsignedInteger =>");
-                            append_rest_capture(
-                                gen_scope, types, rest, slots, None, None, &mut arm, cli,
-                            );
-                            arm.after(",");
-                            type_match.push_block(arm);
-                        } else if let (Some(rest), Some(key_expr)) =
-                            (&record.rest, uint_rest_key.clone())
-                        {
-                            let mut arm = Block::new("cbor_event::Type::UnsignedInteger =>");
-                            if cli.preserve_encodings {
-                                arm.line(
-                                    "let (unknown_key, key_enc) = raw.unsigned_integer_sz()?;",
-                                );
-                            } else {
-                                arm.line("let unknown_key = raw.unsigned_integer()?;");
-                            }
-                            append_rest_capture(
-                                gen_scope,
-                                types,
-                                rest,
-                                slots,
-                                Some(key_expr),
-                                uint_key_enc.clone(),
-                                &mut arm,
-                                cli,
-                            );
-                            arm.after(",");
-                            type_match.push_block(arm);
-                        } else {
-                            type_match.line("cbor_event::Type::UnsignedInteger => return Err(DeserializeFailure::UnknownKey(Key::Uint(raw.unsigned_integer()?)).into()),");
-                        }
-                    } else {
-                        let mut uint_match = if cli.preserve_encodings {
-                            Block::new(
-                                "cbor_event::Type::UnsignedInteger => match raw.unsigned_integer_sz()?",
-                            )
-                        } else {
-                            Block::new(
-                                "cbor_event::Type::UnsignedInteger => match raw.unsigned_integer()?",
-                            )
-                        };
-                        for case in uint_field_deserializers {
-                            uint_match.push_block(case);
-                        }
-                        if let (Some(rest), true) = (&record.rest, rest_is_typed) {
-                            // TYPED key past the declared arms: the scrutinee read consumed the key's
-                            // bytes, so rewind to the loop-body anchor and let `K::deserialize` read them
-                            // for itself. A wildcard binds nothing, so neither the u64 nor its `Sz` is
-                            // left dead.
-                            let mut arm = Block::new("_ =>");
-                            arm.line("raw.set_position(initial_position).unwrap();");
-                            append_rest_capture(
-                                gen_scope, types, rest, slots, None, None, &mut arm, cli,
-                            );
-                            arm.after(",");
-                            uint_match.push_block(arm);
-                        } else if let (Some(rest), Some(key_expr)) =
-                            (&record.rest, uint_rest_key.clone())
-                        {
-                            // Under preserve the scrutinee is `(u64, Sz)`, so bind both; else just the u64.
-                            let mut arm = if cli.preserve_encodings {
-                                Block::new("(unknown_key, key_enc) =>")
-                            } else {
-                                Block::new("unknown_key =>")
-                            };
-                            append_rest_capture(
-                                gen_scope,
-                                types,
-                                rest,
-                                slots,
-                                Some(key_expr),
-                                uint_key_enc.clone(),
-                                &mut arm,
-                                cli,
-                            );
-                            arm.after(",");
-                            uint_match.push_block(arm);
-                        } else {
-                            let unknown_key_decl = if cli.preserve_encodings {
-                                "(unknown_key, _enc)"
-                            } else {
-                                "unknown_key"
-                            };
-                            uint_match.line(format!("{unknown_key_decl} => return Err(DeserializeFailure::UnknownKey(Key::Uint(unknown_key)).into()),"));
-                        }
-                        uint_match.after(",");
-                        type_match.push_block(uint_match);
-                    }
-                    // we can't map text_sz() with String::as_str() to match it since that would return a reference to a temporary
-                    // so we need to store it in a local and have an extra block to declare it
-                    // `text_rest_key_ref`: `unknown_key`/`text_key` is `&str` (the non-empty match-arm form);
-                    // `text_rest_key_owned`: `unknown_key` is `String` (the empty-arm form).
-                    let text_key_enc: Option<String> =
-                        if cli.preserve_encodings && rest_domain == Some(RestKeyDomain::Text) {
-                            Some("key_enc".to_owned())
-                        } else {
-                            None
-                        };
-                    // For the non-empty match arm the matched binding is `&str` — `.to_owned()` it.
-                    let text_rest_key_ref: Option<String> = match rest_domain {
-                        Some(RestKeyDomain::Text) => Some("unknown_key.to_owned()".to_owned()),
-                        Some(RestKeyDomain::Any) if cli.preserve_encodings => Some(format!(
-                            "{any_cbor}::Text(unknown_key.to_owned(), StringEncoding::from(key_enc))"
-                        )),
-                        Some(RestKeyDomain::Any) => {
-                            Some(format!("{any_cbor}::new_text(unknown_key.to_owned())"))
-                        }
-                        _ => None,
-                    };
-                    // For the empty arm the binding `unknown_key` is an owned `String`.
-                    let text_rest_key_owned: Option<String> = match rest_domain {
-                        Some(RestKeyDomain::Text) => Some("unknown_key".to_owned()),
-                        Some(RestKeyDomain::Any) if cli.preserve_encodings => Some(format!(
-                            "{any_cbor}::Text(unknown_key, StringEncoding::from(key_enc))"
-                        )),
-                        Some(RestKeyDomain::Any) => {
-                            Some(format!("{any_cbor}::new_text(unknown_key)"))
-                        }
-                        _ => None,
-                    };
-                    if text_field_deserializers.is_empty() {
-                        if let (Some(rest), true) = (&record.rest, rest_is_typed) {
-                            // TYPED key, no declared text keys — the uint-arm twin: nothing read, nothing
-                            // to rewind.
-                            let mut arm = Block::new("cbor_event::Type::Text =>");
-                            append_rest_capture(
-                                gen_scope, types, rest, slots, None, None, &mut arm, cli,
-                            );
-                            arm.after(",");
-                            type_match.push_block(arm);
-                        } else if let (Some(rest), Some(key_expr)) =
-                            (&record.rest, text_rest_key_owned.clone())
-                        {
-                            let mut arm = Block::new("cbor_event::Type::Text =>");
-                            if cli.preserve_encodings {
-                                arm.line("let (unknown_key, key_enc) = raw.text_sz()?;");
-                            } else {
-                                arm.line("let unknown_key = raw.text()?;");
-                            }
-                            append_rest_capture(
-                                gen_scope,
-                                types,
-                                rest,
-                                slots,
-                                Some(key_expr),
-                                text_key_enc.clone(),
-                                &mut arm,
-                                cli,
-                            );
-                            arm.after(",");
-                            type_match.push_block(arm);
-                        } else {
-                            type_match.line("cbor_event::Type::Text => return Err(DeserializeFailure::UnknownKey(Key::Str(raw.text()?)).into()),");
-                        }
-                    } else if cli.preserve_encodings {
-                        let mut outer_match = Block::new("cbor_event::Type::Text =>");
-                        outer_match.line("let (text_key, key_enc) = raw.text_sz()?;");
-                        let mut text_match = Block::new("match text_key.as_str()");
-                        for case in text_field_deserializers {
-                            text_match.push_block(case);
-                        }
-                        if let (Some(rest), true) = (&record.rest, rest_is_typed) {
-                            // TYPED key past the declared arms: rewind and re-read. `text_key`/`key_enc`
-                            // stay live (the declared arms use them), so only this arm's own binding is
-                            // dropped.
-                            let mut arm = Block::new("_ =>");
-                            arm.line("raw.set_position(initial_position).unwrap();");
-                            append_rest_capture(
-                                gen_scope, types, rest, slots, None, None, &mut arm, cli,
-                            );
-                            arm.after(",");
-                            text_match.push_block(arm);
-                        } else if let (Some(rest), Some(key_expr)) =
-                            (&record.rest, text_rest_key_ref.clone())
-                        {
-                            // capture arm: `unknown_key` (`&str`) shadows via the match binding; `key_enc`
-                            // and `text_key` (owned) are the outer `text_sz()` reads.
-                            let mut arm = Block::new("unknown_key =>");
-                            append_rest_capture(
-                                gen_scope,
-                                types,
-                                rest,
-                                slots,
-                                Some(key_expr),
-                                text_key_enc.clone(),
-                                &mut arm,
-                                cli,
-                            );
-                            arm.after(",");
-                            text_match.push_block(arm);
-                        } else {
-                            text_match.line("unknown_key => return Err(DeserializeFailure::UnknownKey(Key::Str(unknown_key.to_owned())).into()),");
-                        }
-                        outer_match.after(",");
-                        outer_match.push_block(text_match);
-                        type_match.push_block(outer_match);
-                    } else if let (Some(rest), true) = (&record.rest, rest_is_typed) {
-                        // TYPED key, plain flavor, declared text keys present. This is the ONE arm that
-                        // also restructures its header: `match raw.text()?.as_str()` extends the `String`
-                        // temporary — and the `&mut raw` autoref that produced it — across the whole
-                        // match, so a `raw.set_position(..)` inside an arm would contend with it. Lifting
-                        // the read into a `let` (the shape the preserve flavor already emits) ends that
-                        // borrow before the arms run. Gated on the typed path, so the plain form stays
-                        // byte-identical everywhere else.
-                        let mut outer_match = Block::new("cbor_event::Type::Text =>");
-                        outer_match.line("let text_key = raw.text()?;");
-                        let mut text_match = Block::new("match text_key.as_str()");
-                        for case in text_field_deserializers {
-                            text_match.push_block(case);
-                        }
-                        let mut arm = Block::new("_ =>");
-                        arm.line("raw.set_position(initial_position).unwrap();");
-                        append_rest_capture(
-                            gen_scope, types, rest, slots, None, None, &mut arm, cli,
-                        );
-                        arm.after(",");
-                        text_match.push_block(arm);
-                        outer_match.after(",");
-                        outer_match.push_block(text_match);
-                        type_match.push_block(outer_match);
-                    } else {
-                        let mut text_match =
-                            Block::new("cbor_event::Type::Text => match raw.text()?.as_str()");
-                        for case in text_field_deserializers {
-                            text_match.push_block(case);
-                        }
-                        if let (Some(rest), Some(key_expr)) =
-                            (&record.rest, text_rest_key_ref.clone())
-                        {
-                            let mut arm = Block::new("unknown_key =>");
-                            append_rest_capture(
-                                gen_scope,
-                                types,
-                                rest,
-                                slots,
-                                Some(key_expr),
-                                None,
-                                &mut arm,
-                                cli,
-                            );
-                            arm.after(",");
-                            text_match.push_block(arm);
-                        } else {
-                            text_match.line("unknown_key => return Err(DeserializeFailure::UnknownKey(Key::Str(unknown_key.to_owned())).into()),");
-                        }
-                        text_match.after(",");
-                        type_match.push_block(text_match);
-                    }
-                    if let (Some(rest), true) = (
-                        &record.rest,
-                        matches!(rest_domain, Some(RestKeyDomain::Any | RestKeyDomain::Typed)),
-                    ) {
-                        // any-domain or TYPED rest: a Special is either the break ending an indefinite map
-                        // or a special-typed KEY (bool/null/undefined/float/unassigned) to capture.
-                        // `special_break()` advances ONLY on a true break, so a non-break special is left
-                        // intact for the key deserialize; both break match arms diverge (return/break), so
-                        // control only falls through to the capture when it was NOT a break. A typed `K`
-                        // that admits no special value simply errors out of its own deserialize — that is
-                        // refinement, not a case to special-case (and a null-admitting `K`, the one shape
-                        // where the two readings genuinely collide, is rejected at recognition).
-                        let mut special_arm = Block::new("cbor_event::Type::Special =>");
-                        let mut is_break = Block::new("if raw.special_break()?");
-                        let mut break_len = Block::new("match len");
-                        break_len.line(format!(
-                            "{} => return Err(DeserializeFailure::BreakInDefiniteLen.into()),",
-                            cbor_event_len_n("_", cli)
-                        ));
-                        break_len.line(format!("{} => break,", cbor_event_len_indef(cli)));
-                        is_break.push_block(break_len);
-                        special_arm.push_block(is_break);
-                        append_rest_capture(
-                            gen_scope,
-                            types,
-                            rest,
-                            slots,
-                            None,
-                            None,
-                            &mut special_arm,
-                            cli,
-                        );
-                        special_arm.after(",");
-                        type_match.push_block(special_arm);
-                    } else {
-                        let mut special_match =
-                            Block::new("cbor_event::Type::Special => match len");
-                        special_match.line(format!(
-                            "{} => return Err(DeserializeFailure::BreakInDefiniteLen.into()),",
-                            cbor_event_len_n("_", cli)
-                        ));
-                        // TODO: this will need to change if we support Special values as keys (e.g. true / false)
-                        let mut break_check = Block::new(format!(
-                            "{} => match raw.special()?",
-                            cbor_event_len_indef(cli)
-                        ));
-                        break_check.line("cbor_event::Special::Break => break,");
-                        break_check.line(
-                            "_ => return Err(DeserializeFailure::EndingBreakMissing.into()),",
-                        );
-                        break_check.after(",");
-                        special_match.push_block(break_check);
-                        special_match.after(",");
-                        type_match.push_block(special_match);
-                    }
-                    if let (Some(rest), true) = (
-                        &record.rest,
-                        matches!(rest_domain, Some(RestKeyDomain::Any | RestKeyDomain::Typed)),
-                    ) {
-                        // any-domain or TYPED rest: bytes/negative-int/array/map/tag keys land here;
-                        // deserialize the key straight from `raw` (uint/text/special are handled by the
-                        // arms above). Nothing was consumed to reach this arm, so no rewind is needed.
-                        let mut arm = Block::new("_ =>");
-                        append_rest_capture(
-                            gen_scope, types, rest, slots, None, None, &mut arm, cli,
-                        );
-                        arm.after(",");
-                        type_match.push_block(arm);
-                    } else {
-                        type_match.line("other_type => return Err(DeserializeFailure::UnexpectedKeyType(other_type).into()),");
-                    }
-                }
-                deser_loop.push_block(type_match);
-                deser_loop.line("read += 1;");
-                deser_code.content.push_block(deser_loop);
-                // Every restricted dynamic MAP row stages loose while the loop is consuming
-                // entries, then crosses exactly ONE checked carrier door after it. This is per row:
-                // the open table's typed and catch-all windows count independently, and a preserve
-                // pair-map counts every retained pair rather than distinct keys.
-                for rest in record.captured_dynamic_rows() {
-                    if let Some(conversion) = rest_checked_conversion(rest, types, cli) {
-                        deser_code.content.line(&conversion);
-                    }
-                }
-                let mut ctor_block = Block::new("Ok(Self");
-                // make sure the field is present, and unwrap the Option<T>
-                for field in &record.fields {
-                    if !field.optional {
-                        let key = match &field.key {
-                            Some(FixedValue::Uint(x)) => format!("Key::Uint({x})"),
-                            Some(FixedValue::Text(x)) => {
-                                format!("Key::Str(String::from(\"{}\"))", escape_rust_str(x))
-                            }
-                            None => unreachable!(),
-                            _ => unimplemented!(),
-                        };
-                        if field.rust_type.conceptual_type.is_fixed_value() {
-                            let mut mandatory_field_check =
-                                Block::new(format!("if !{}_present", field.name));
-                            mandatory_field_check.line(format!(
-                            "return Err(DeserializeFailure::MandatoryFieldMissing({key}).into());"
-                        ));
-                            deser_code.content.push_block(mandatory_field_check);
-                        } else {
-                            let mut mandatory_field_check =
-                                Block::new(format!("let {} = match {}", field.name, field.name));
-                            mandatory_field_check.line("Some(x) => x,");
-
-                            mandatory_field_check.line(format!("None => return Err(DeserializeFailure::MandatoryFieldMissing({key}).into()),"));
-                            mandatory_field_check.after(";");
-                            deser_code.content.push_block(mandatory_field_check);
-                        }
-                    } else if let Some(default_value) = &field.rust_type.config.default {
-                        if cli.preserve_encodings {
-                            let mut default_present_check = Block::new(format!(
-                                "if {} == Some({})",
-                                field.name,
-                                default_value.to_primitive_str_assign()
-                            ));
-                            default_present_check
-                                .line(format!("{}_default_present = true;", field.name));
-                            deser_code.content.push_block(default_present_check);
-                        }
-                        match default_value {
-                            FixedValue::Text(_) | FixedValue::Bytes(_) => {
-                                // to avoid clippy::or_fun_call
-                                deser_code.content.line(&format!(
-                                    "let {} = {}.unwrap_or_else(|| {});",
-                                    field.name,
-                                    field.name,
-                                    default_value.to_primitive_str_assign()
-                                ));
-                            }
-                            FixedValue::Bool(_)
-                            | FixedValue::Nint(_)
-                            | FixedValue::Null
-                            | FixedValue::Undefined
-                            | FixedValue::Float(_)
-                            | FixedValue::Uint(_) => {
-                                deser_code.content.line(&format!(
-                                    "let {} = {}.unwrap_or({});",
-                                    field.name,
-                                    field.name,
-                                    default_value.to_primitive_str_assign()
-                                ));
-                            }
-                        }
-                    }
-                    if !field.rust_type.conceptual_type.is_fixed_value() {
-                        ctor_block.line(format!("{},", field.name));
-                    } else if field.optional && field.rust_type.conceptual_type.is_fixed_value() {
-                        // optional fixed value -> the struct's `bool` presence field is the
-                        // `{field}_present` flag (true iff the key was seen during the map loop)
-                        ctor_block.line(format!("{}: {}_present,", field.name, field.name));
-                    }
-                }
-                // Open struct-map rest row (CAPTURE only): the capture container local (declared
-                // before the loop, named by the rest field) moves into the constructed struct. An
-                // `@ignore` row declared no container and adds no field, so nothing moves in.
-                for rest in record.captured_dynamic_rows() {
-                    ctor_block.line(format!("{},", rest.field_name));
-                }
-                // Private serde sentinels are ordinary Rust fields too, so direct CBOR decoding
-                // must initialize them just as the public constructor does. They carry no wire
-                // state and never participate in CBOR serialization.
-                if record.captured_rest().is_none() && !manual_json && cli.json_serde_derives {
-                    for sentinel in exact_zero_json_sentinel_names(record) {
-                        ctor_block.line(format!("{sentinel}: (),"));
-                    }
-                }
-                if cli.preserve_encodings {
-                    let mut encoding_ctor = Block::new(format!("encodings: Some({name}Encoding"));
-                    if tag.is_some() {
-                        encoding_ctor.line("tag_encoding: Some(tag_encoding),");
-                    }
-                    encoding_ctor
-                        .line("len_encoding,")
-                        .line("orig_deser_order,");
-                    for field in record.fields.iter() {
-                        let key_enc = key_encoding_field(&field.name, field.key.as_ref().unwrap());
-                        encoding_ctor.line(format!("{},", key_enc.field_name));
-                        for field_enc in field_encoding_fields(
-                            types,
-                            &field.name,
-                            &field.rust_type,
-                            Some(&field.rule_metadata),
-                            true,
-                            cli,
-                        ) {
-                            encoding_ctor.line(format!("{},", field_enc.field_name));
-                        }
-                    }
-                    // Open struct-map rest row: the per-entry encoding sidecar locals (declared before
-                    // the loop and populated at each concrete-domain capture) move into the encoding
-                    // struct. Absent for a fully self-carried `any` rest. Capture-only (preserve).
-                    for rest in record.captured_dynamic_rows() {
-                        let (key_encs, value_encs) = rest_encoding_fields(types, rest, cli);
-                        if !key_encs.is_empty() {
-                            encoding_ctor.line(format!("{}_key_encodings,", rest.field_name));
-                        }
-                        if !value_encs.is_empty() {
-                            encoding_ctor.line(format!("{}_value_encodings,", rest.field_name));
-                        }
-                    }
-                    encoding_ctor.after("),");
-                    ctor_block.push_block(encoding_ctor);
-                }
-                ctor_block.after(")");
-                ctor_block
-            }
+            Representation::Map => generate_record_map_codecs(
+                gen_scope,
+                types,
+                name,
+                tag,
+                record,
+                in_embedded,
+                manual_json,
+                &mut ser_func,
+                &mut deser_code,
+                cli,
+            ),
         };
         let len_enc_var = len_encoding_var
             .map(|var| {

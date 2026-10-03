@@ -216,6 +216,7 @@ const SOURCE_ROLES: &[SourceRole] = &[
             "attach_record_encodings",
             "emit_record_protected_rest",
             "emit_record_codecs",
+            "generate_record_map_codecs",
         ],
     },
     SourceRole {
