@@ -1162,6 +1162,131 @@ fn ser_cbor_bytes(
     );
 }
 
+#[allow(clippy::too_many_arguments)]
+fn ser_rust_ident(
+    t: &RustIdent,
+    type_cfg: Cow<'_, RustTypeSerializeConfig>,
+    types: &IntermediateTypes,
+    body: &mut dyn CodeBlock,
+    config: SerializeConfig,
+    cli: &Cli,
+    line_ender: &str,
+    expr_ref: &str,
+    serializer_use: &str,
+    serializer_pass: &str,
+) {
+    // A named record or self-nominalized table with a whole-item custom pair owns
+    // its complete CBOR item.
+    // Dispatch before the kind walk so an embed site calls the same free writer as
+    // the record's thin Serialize impl; in particular, do not route a plain group
+    // through SerializeEmbeddedGroup or fall back to the ordinary record fields.
+    if matches!(
+        types.rust_struct(t).unwrap().variant(),
+        RustStructType::Record(_) | RustStructType::Wrapper { .. }
+    ) && let Some(custom_serialize) = &types.rust_struct(t).unwrap().config().custom_serialize
+    {
+        body.line(&format!(
+            "{}({}, {}{}){}",
+            custom_serialize,
+            serializer_pass,
+            expr_ref,
+            canonical_param(cli),
+            line_ender
+        ));
+        return;
+    }
+    match &types.rust_struct(t).unwrap().variant() {
+        RustStructType::CStyleEnum { variants } => {
+            let mut enum_body = Block::new(format!("match {expr_ref}"));
+            for variant in variants {
+                let mut variant_match = Block::new(format!("{}::{} =>", t, variant.name));
+                generate_serialize(
+                    types,
+                    (variant.rust_type()).into(),
+                    &mut variant_match,
+                    // the CStyleEnum variant hand-off resets BOTH depths to 0 to
+                    // match `encoding_fields_impl` (which recurses the variant
+                    // through the `encoding_fields` wrapper, i.e. reset).
+                    config.clone().end(true).tag_depth(0).cbor_depth(0),
+                    cli,
+                );
+                enum_body.push_block(variant_match);
+            }
+            if !config.is_end {
+                enum_body.after("?;");
+            }
+            body.push_block(enum_body);
+        }
+        RustStructType::RawBytesType => {
+            write_string_sz(
+                body,
+                "write_bytes",
+                serializer_use,
+                &format!("{}.to_raw_bytes()", config.expr),
+                true,
+                line_ender,
+                &config.encoding_var(None, false),
+                cli,
+            );
+        }
+        // A named table/array rule emits NO impls of its own — it is a bare rust
+        // typedef onto a collection (`pub type Mdmap = BTreeMap<..>`), so the
+        // `.serialize()` the fallback below emits names a method the target type
+        // does not have. Recurse into the collection's STRUCTURAL conceptual type
+        // instead: that is the same code the resolved-alias reference path emits,
+        // and it is the only code that exists for these shapes. Reached only from a
+        // NOMINAL reference to such a rule, which parse-order makes possible when a
+        // rule cycle is entered at the collection rule (its referrer is handled
+        // first, so the reference never resolves through the alias table).
+        // The struct's OWN per-rule config carries the policy the reference cannot
+        // (`@duplicates`) — thread it in exactly as the Alias arm keeps its outer
+        // config for the same reason, so a `preserve` table still picks the
+        // positional pair-map path.
+        RustStructType::Table { domain, range, .. } => {
+            let structural =
+                ConceptualRustType::Map(Box::new(domain.clone()), Box::new(range.clone()));
+            let cfg = nominal_collection_cfg(types, t, &type_cfg);
+            generate_serialize(
+                types,
+                SerializingRustType::Root(&structural, cfg),
+                body,
+                config,
+                cli,
+            );
+        }
+        RustStructType::Array { element_type, .. } => {
+            let structural = ConceptualRustType::Array(Box::new(element_type.clone()));
+            let cfg = nominal_collection_cfg(types, t, &type_cfg);
+            generate_serialize(
+                types,
+                SerializingRustType::Root(&structural, cfg),
+                body,
+                config,
+                cli,
+            );
+        }
+        _ => {
+            if types.is_plain_group(t) && !type_cfg.basic_override {
+                body.line(&format!(
+                    "{}.serialize_as_embedded_group({}{}){}",
+                    config.expr,
+                    serializer_pass,
+                    canonical_param(cli),
+                    line_ender
+                ));
+            } else {
+                body.line(&format!(
+                    "{}.serialize({}{}){}",
+                    config.expr,
+                    serializer_pass,
+                    canonical_param(cli),
+                    line_ender
+                ));
+            }
+        }
+    }
+}
+
 /// Write code for serializing {serializing_rust_type} directly into {body}
 pub(super) fn generate_serialize(
     types: &IntermediateTypes,
@@ -1330,120 +1455,18 @@ pub(super) fn generate_serialize(
                 ser_any(body, config, cli, &serializer_pass, line_ender);
             }
             SerializingRustType::Root(ConceptualRustType::Rust(t), type_cfg) => {
-                // A named record or self-nominalized table with a whole-item custom pair owns
-                // its complete CBOR item.
-                // Dispatch before the kind walk so an embed site calls the same free writer as
-                // the record's thin Serialize impl; in particular, do not route a plain group
-                // through SerializeEmbeddedGroup or fall back to the ordinary record fields.
-                if matches!(
-                    types.rust_struct(t).unwrap().variant(),
-                    RustStructType::Record(_) | RustStructType::Wrapper { .. }
-                ) && let Some(custom_serialize) =
-                    &types.rust_struct(t).unwrap().config().custom_serialize
-                {
-                    body.line(&format!(
-                        "{}({}, {}{}){}",
-                        custom_serialize,
-                        serializer_pass,
-                        expr_ref,
-                        canonical_param(cli),
-                        line_ender
-                    ));
-                    return;
-                }
-                match &types.rust_struct(t).unwrap().variant() {
-                    RustStructType::CStyleEnum { variants } => {
-                        let mut enum_body = Block::new(format!("match {expr_ref}"));
-                        for variant in variants {
-                            let mut variant_match =
-                                Block::new(format!("{}::{} =>", t, variant.name));
-                            generate_serialize(
-                                types,
-                                (variant.rust_type()).into(),
-                                &mut variant_match,
-                                // the CStyleEnum variant hand-off resets BOTH depths to 0 to
-                                // match `encoding_fields_impl` (which recurses the variant
-                                // through the `encoding_fields` wrapper, i.e. reset).
-                                config.clone().end(true).tag_depth(0).cbor_depth(0),
-                                cli,
-                            );
-                            enum_body.push_block(variant_match);
-                        }
-                        if !config.is_end {
-                            enum_body.after("?;");
-                        }
-                        body.push_block(enum_body);
-                    }
-                    RustStructType::RawBytesType => {
-                        write_string_sz(
-                            body,
-                            "write_bytes",
-                            serializer_use,
-                            &format!("{}.to_raw_bytes()", config.expr),
-                            true,
-                            line_ender,
-                            &config.encoding_var(None, false),
-                            cli,
-                        );
-                    }
-                    // A named table/array rule emits NO impls of its own — it is a bare rust
-                    // typedef onto a collection (`pub type Mdmap = BTreeMap<..>`), so the
-                    // `.serialize()` the fallback below emits names a method the target type
-                    // does not have. Recurse into the collection's STRUCTURAL conceptual type
-                    // instead: that is the same code the resolved-alias reference path emits,
-                    // and it is the only code that exists for these shapes. Reached only from a
-                    // NOMINAL reference to such a rule, which parse-order makes possible when a
-                    // rule cycle is entered at the collection rule (its referrer is handled
-                    // first, so the reference never resolves through the alias table).
-                    // The struct's OWN per-rule config carries the policy the reference cannot
-                    // (`@duplicates`) — thread it in exactly as the Alias arm keeps its outer
-                    // config for the same reason, so a `preserve` table still picks the
-                    // positional pair-map path.
-                    RustStructType::Table { domain, range, .. } => {
-                        let structural = ConceptualRustType::Map(
-                            Box::new(domain.clone()),
-                            Box::new(range.clone()),
-                        );
-                        let cfg = nominal_collection_cfg(types, t, &type_cfg);
-                        generate_serialize(
-                            types,
-                            SerializingRustType::Root(&structural, cfg),
-                            body,
-                            config,
-                            cli,
-                        );
-                    }
-                    RustStructType::Array { element_type, .. } => {
-                        let structural = ConceptualRustType::Array(Box::new(element_type.clone()));
-                        let cfg = nominal_collection_cfg(types, t, &type_cfg);
-                        generate_serialize(
-                            types,
-                            SerializingRustType::Root(&structural, cfg),
-                            body,
-                            config,
-                            cli,
-                        );
-                    }
-                    _ => {
-                        if types.is_plain_group(t) && !type_cfg.basic_override {
-                            body.line(&format!(
-                                "{}.serialize_as_embedded_group({}{}){}",
-                                config.expr,
-                                serializer_pass,
-                                canonical_param(cli),
-                                line_ender
-                            ));
-                        } else {
-                            body.line(&format!(
-                                "{}.serialize({}{}){}",
-                                config.expr,
-                                serializer_pass,
-                                canonical_param(cli),
-                                line_ender
-                            ));
-                        }
-                    }
-                }
+                ser_rust_ident(
+                    t,
+                    type_cfg,
+                    types,
+                    body,
+                    config,
+                    cli,
+                    line_ender,
+                    &expr_ref,
+                    serializer_use,
+                    &serializer_pass,
+                );
             }
             SerializingRustType::Root(ConceptualRustType::Array(ty), _cfg) => {
                 // Resolve the element's aliases before classifying it: an alias is transparent,
