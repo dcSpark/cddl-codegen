@@ -1320,6 +1320,8 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 // Their generator owners are prepare_record_map_fields, generate_record_map_serialization and
 // generate_record_map_deserialization; exact payloads/emitted text remain unchanged.
 // There is no active known-panic allowance for this move; main must qualify production frame keys.
+// Codec arm invariant guards now belong to serialize.rs::ser_fixed.
+// Exact guard payloads/control flow stay unchanged; no active panic allowance is added.
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired when the two anonymous-composite families and the group-choice-arm inline group
     // became graceful rejections) Three classes lived here, and they split by the composite's

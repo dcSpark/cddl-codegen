@@ -705,6 +705,131 @@ fn ser_any(
     ));
 }
 
+#[allow(clippy::too_many_arguments)]
+fn ser_fixed(
+    value: &FixedValue,
+    body: &mut dyn CodeBlock,
+    cli: &Cli,
+    line_ender: &str,
+    serializer_use: &str,
+    serializer_pass: &str,
+    encoding_var: &str,
+    encoding_var_deref: &str,
+) {
+    match value {
+        FixedValue::Null => {
+            body.line(&format!(
+                "{serializer_use}.write_special(cbor_event::Special::Null){line_ender}"
+            ));
+        }
+        FixedValue::Undefined => {
+            body.line(&format!(
+                "{serializer_use}.write_special(cbor_event::Special::Undefined){line_ender}"
+            ));
+        }
+        FixedValue::Bool(b) => {
+            body.line(&format!(
+                "{serializer_use}.write_special(cbor_event::Special::Bool({b})){line_ender}"
+            ));
+        }
+        FixedValue::Uint(u) => {
+            let expr = format!("{u}u64");
+            write_using_sz(
+                body,
+                "write_unsigned_integer",
+                serializer_use,
+                &expr,
+                &expr,
+                line_ender,
+                encoding_var_deref,
+                cli,
+            );
+        }
+        FixedValue::Nint(i) => {
+            assert!(*i < 0);
+            if !cli.preserve_encodings && *i <= i64::MIN as i128 {
+                // Nint literals are i128: below i64::MIN they don't fit the plain
+                // write_negative_integer endpoint's i64 argument (upstream keeps the
+                // narrow argument by design — the i128-taking _sz endpoint is the
+                // documented full-range form), and the i64::MIN literal itself stays on
+                // the explicit-Sz spelling pinned by
+                // `i64_min_fixed_value_emits_width_correct_nint`.
+                let sz_str = if *i >= -24 {
+                    "cbor_event::Sz::Inline"
+                } else if *i >= -0x1_00 {
+                    "cbor_event::Sz::One"
+                } else if *i >= -0x1_00_00 {
+                    "cbor_event::Sz::Two"
+                } else if *i >= -0x1_00_00_00_00 {
+                    "cbor_event::Sz::Four"
+                } else {
+                    "cbor_event::Sz::Eight"
+                };
+                body.line(&format!(
+                    "{serializer_use}.write_negative_integer_sz({i}i128, {sz_str}){line_ender}"
+                ));
+            } else {
+                write_using_sz(
+                    body,
+                    "write_negative_integer",
+                    serializer_use,
+                    &i.to_string(),
+                    &format!("({i}i128 + 1).unsigned_abs() as u64"),
+                    line_ender,
+                    encoding_var_deref,
+                    cli,
+                );
+            }
+        }
+        FixedValue::Float(f) => {
+            // float_literal, not Display: `{}` on a whole-valued f64 drops the decimal
+            // point (3.0 -> "3"), emitting an integer literal in an f64 position (E0308).
+            let lit = float_fixed_literal(*f);
+            if cli.preserve_encodings {
+                write_float(
+                    body,
+                    serializer_pass,
+                    &lit,
+                    line_ender,
+                    encoding_var_deref,
+                    cli,
+                );
+            } else {
+                // Smallest value-preserving head (RFC 8949 §4.1), like every other
+                // float write. A fixed literal is read back by VALUE comparison at any
+                // head, so the width is free to be the preferred one.
+                body.line(&format!(
+                    "write_float({serializer_pass}, {lit}){line_ender}"
+                ));
+            }
+        }
+        FixedValue::Text(s) => {
+            write_string_sz(
+                body,
+                "write_text",
+                serializer_use,
+                &format!("\"{}\"", escape_rust_str(s)),
+                true,
+                line_ender,
+                encoding_var,
+                cli,
+            );
+        }
+        FixedValue::Bytes(bytes) => {
+            write_string_sz(
+                body,
+                "write_bytes",
+                serializer_use,
+                &FixedValue::bytes_rust_expr(bytes),
+                false,
+                line_ender,
+                encoding_var,
+                cli,
+            );
+        }
+    }
+}
+
 /// Write code for serializing {serializing_rust_type} directly into {body}
 pub(super) fn generate_serialize(
     types: &IntermediateTypes,
@@ -905,118 +1030,18 @@ pub(super) fn generate_serialize(
                     cli,
                 );
             }
-            SerializingRustType::Root(ConceptualRustType::Fixed(value), _cfg) => match value {
-                FixedValue::Null => {
-                    body.line(&format!(
-                        "{serializer_use}.write_special(cbor_event::Special::Null){line_ender}"
-                    ));
-                }
-                FixedValue::Undefined => {
-                    body.line(&format!(
-                        "{serializer_use}.write_special(cbor_event::Special::Undefined){line_ender}"
-                    ));
-                }
-                FixedValue::Bool(b) => {
-                    body.line(&format!(
-                        "{serializer_use}.write_special(cbor_event::Special::Bool({b})){line_ender}"
-                    ));
-                }
-                FixedValue::Uint(u) => {
-                    let expr = format!("{u}u64");
-                    write_using_sz(
-                        body,
-                        "write_unsigned_integer",
-                        serializer_use,
-                        &expr,
-                        &expr,
-                        line_ender,
-                        &encoding_var_deref,
-                        cli,
-                    );
-                }
-                FixedValue::Nint(i) => {
-                    assert!(*i < 0);
-                    if !cli.preserve_encodings && *i <= i64::MIN as i128 {
-                        // Nint literals are i128: below i64::MIN they don't fit the plain
-                        // write_negative_integer endpoint's i64 argument (upstream keeps the
-                        // narrow argument by design — the i128-taking _sz endpoint is the
-                        // documented full-range form), and the i64::MIN literal itself stays on
-                        // the explicit-Sz spelling pinned by
-                        // `i64_min_fixed_value_emits_width_correct_nint`.
-                        let sz_str = if *i >= -24 {
-                            "cbor_event::Sz::Inline"
-                        } else if *i >= -0x1_00 {
-                            "cbor_event::Sz::One"
-                        } else if *i >= -0x1_00_00 {
-                            "cbor_event::Sz::Two"
-                        } else if *i >= -0x1_00_00_00_00 {
-                            "cbor_event::Sz::Four"
-                        } else {
-                            "cbor_event::Sz::Eight"
-                        };
-                        body.line(&format!(
-                            "{serializer_use}.write_negative_integer_sz({i}i128, {sz_str}){line_ender}"
-                        ));
-                    } else {
-                        write_using_sz(
-                            body,
-                            "write_negative_integer",
-                            serializer_use,
-                            &i.to_string(),
-                            &format!("({i}i128 + 1).unsigned_abs() as u64"),
-                            line_ender,
-                            &encoding_var_deref,
-                            cli,
-                        );
-                    }
-                }
-                FixedValue::Float(f) => {
-                    // float_literal, not Display: `{}` on a whole-valued f64 drops the decimal
-                    // point (3.0 -> "3"), emitting an integer literal in an f64 position (E0308).
-                    let lit = float_fixed_literal(*f);
-                    if cli.preserve_encodings {
-                        write_float(
-                            body,
-                            &serializer_pass,
-                            &lit,
-                            line_ender,
-                            &encoding_var_deref,
-                            cli,
-                        );
-                    } else {
-                        // Smallest value-preserving head (RFC 8949 §4.1), like every other
-                        // float write. A fixed literal is read back by VALUE comparison at any
-                        // head, so the width is free to be the preferred one.
-                        body.line(&format!(
-                            "write_float({serializer_pass}, {lit}){line_ender}"
-                        ));
-                    }
-                }
-                FixedValue::Text(s) => {
-                    write_string_sz(
-                        body,
-                        "write_text",
-                        serializer_use,
-                        &format!("\"{}\"", escape_rust_str(s)),
-                        true,
-                        line_ender,
-                        &encoding_var,
-                        cli,
-                    );
-                }
-                FixedValue::Bytes(bytes) => {
-                    write_string_sz(
-                        body,
-                        "write_bytes",
-                        serializer_use,
-                        &FixedValue::bytes_rust_expr(bytes),
-                        false,
-                        line_ender,
-                        &encoding_var,
-                        cli,
-                    );
-                }
-            },
+            SerializingRustType::Root(ConceptualRustType::Fixed(value), _cfg) => {
+                ser_fixed(
+                    value,
+                    body,
+                    cli,
+                    line_ender,
+                    serializer_use,
+                    &serializer_pass,
+                    &encoding_var,
+                    &encoding_var_deref,
+                );
+            }
             SerializingRustType::Root(ConceptualRustType::Primitive(primitive), _cfg) => {
                 match primitive {
                     Primitive::Bool => {

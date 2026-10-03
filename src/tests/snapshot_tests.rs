@@ -3210,6 +3210,7 @@ fn emitter_overload_lint_sees_its_anchors() {
         ("deserialize.rs", "make_deser_loop_break_check"),
         ("enums.rs", "make_enum_variant_return_if_deserialized"),
         ("serialize.rs", "generate_serialize"),
+        ("serialize.rs", "ser_fixed"),
         ("serialize.rs", "ser_any"),
         ("serialize.rs", "start_len"),
         ("serialize.rs", "end_len"),
