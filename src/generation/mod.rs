@@ -54,6 +54,7 @@ pub(crate) const OPEN_TABLE_BOUNDED_TYPED_ROW_DOC: &str = "The open table's rest
 // `pub(crate)` on the same terms as `layout`/`extern_interface`/`no_std_check` below: a pinned
 // message const in here (`DEPTH_LIMIT_REQUIRES_STD`) is read by a test outside `generation/`.
 pub(crate) mod export;
+mod sidecars;
 use export::declare_modules;
 
 // The generated workspace's shared layout facts (the paths and package-name suffixes `config.rs`
