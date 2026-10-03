@@ -2567,11 +2567,11 @@ pub(crate) fn wit_param_despecialized(ty: &RustType, types: &IntermediateTypes) 
             RustStructType::Array {
                 bounds: Some(bounds),
                 ..
-            } => *bounds != (None, None),
+            } => !bounds.is_loose(),
             RustStructType::Table {
-                bounds: Some((Some(1), None)),
+                bounds: Some(bounds),
                 ..
-            } => true,
+            } => bounds.is_non_empty(),
             _ => false,
         }
     {

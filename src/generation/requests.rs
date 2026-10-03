@@ -450,7 +450,7 @@ fn primitive_cddl_name(p: &Primitive) -> &'static str {
 pub(crate) fn render_wrapper_shape(rt: &RustType) -> String {
     match &rt.conceptual_type {
         ConceptualRustType::Array(inner) => {
-            let occ = render_occurrence(rt.config.bounds);
+            let occ = render_occurrence(rt.config.occurrence_bounds());
             // A `@duplicates reject` collection appends its policy marker so the shape column
             // round-trips the uniqueness twin (parsed back by `parse_requested_shape`, and matched as
             // a distinct canonical shape from the same loose/non-empty list). Kept byte-identical to
@@ -463,7 +463,7 @@ pub(crate) fn render_wrapper_shape(rt: &RustType) -> String {
             format!("[{occ} {}]{reject}", render_wrapper_shape(inner))
         }
         ConceptualRustType::Map(key, value) => {
-            let occ = render_occurrence(rt.config.bounds);
+            let occ = render_occurrence(rt.config.occurrence_bounds());
             // The map-side twin of the array arm's reject marker: a `@duplicates preserve` table's
             // backing container (`PairMap`) is part of its structural identity, so the shape column
             // carries the policy and the reconstruction rebuilds the same flavored wrapper.
@@ -762,7 +762,8 @@ impl<'a> ShapeParser<'a> {
             if !self.eat("]") {
                 return Err(self.malformed("expected `]`"));
             }
-            let mut rt = RustType::new(ConceptualRustType::Array(Box::new(inner))).with_bounds(occ);
+            let mut rt = RustType::new(ConceptualRustType::Array(Box::new(inner)))
+                .with_occurrence_bounds(occ);
             self.skip_ws();
             if self.eat(REJECT_MARKER) {
                 rt.config.duplicates = Some(crate::comment_ast::DuplicatesPolicy::Reject);
@@ -788,7 +789,7 @@ impl<'a> ShapeParser<'a> {
             let mut rt = RustType::new(ConceptualRustType::Map(Box::new(key), Box::new(value)));
             rt = match occ {
                 (None, None) => rt,
-                bounds => rt.with_bounds(bounds),
+                bounds => rt.with_occurrence_bounds(bounds),
             };
             self.skip_ws();
             if self.eat(PRESERVE_MARKER) {
@@ -1194,12 +1195,12 @@ mod tests {
         let types = IntermediateTypes::new();
         let u64_type = || RustType::new(ConceptualRustType::Primitive(Primitive::U64));
         let bounded_array = RustType::new(ConceptualRustType::Array(Box::new(u64_type())))
-            .with_bounds((None, Some(5)));
+            .with_occurrence_bounds((None, Some(5)));
         let nested_preserve = RustType::new(ConceptualRustType::Map(
             Box::new(bounded_array),
             Box::new(u64_type()),
         ))
-        .with_bounds((None, Some(3)))
+        .with_occurrence_bounds((None, Some(3)))
         .with_duplicates_policy(Some(DuplicatesPolicy::Preserve));
         let emitted = RustType::new(ConceptualRustType::Map(
             Box::new(u64_type()),

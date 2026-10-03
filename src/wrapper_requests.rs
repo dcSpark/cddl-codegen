@@ -1472,7 +1472,7 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
         let map = |key: RustType, value: RustType, bounds: Option<IntWindow>, preserve: bool| {
             let mut rt = RustType::new(ConceptualRustType::Map(Box::new(key), Box::new(value)));
             if let Some(bounds) = bounds {
-                rt = rt.with_bounds(bounds);
+                rt = rt.with_occurrence_bounds(bounds);
             }
             if preserve {
                 rt.config.duplicates = Some(DuplicatesPolicy::Preserve);
@@ -1482,7 +1482,7 @@ pub(crate) const BORROWED_SHAPES: &[(&str, &str, &str)] = &[
         let list = |inner: RustType, bounds: Option<IntWindow>, reject: bool| {
             let mut rt = RustType::new(ConceptualRustType::Array(Box::new(inner)));
             if let Some(bounds) = bounds {
-                rt = rt.with_bounds(bounds);
+                rt = rt.with_occurrence_bounds(bounds);
             }
             if reject {
                 rt.config.duplicates = Some(DuplicatesPolicy::Reject);

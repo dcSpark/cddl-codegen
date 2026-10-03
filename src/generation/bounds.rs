@@ -320,11 +320,11 @@ pub(super) fn value_bounds_check_line(ty: &RustType, e: &str, return_err: bool) 
             window, cast_f64, e, return_err, None,
         ));
     }
-    let bounds = ty.config.bounds.as_ref()?;
+    let bounds = ty.config.raw_bounds()?;
     let check_expr = bounds_check_expr_rust_type(ty, e)?;
     let non_negative = bounds_check_expr_non_negative(ty);
     Some(bounds_check_if_block(
-        &effective_int_bounds(ty, bounds),
+        &effective_int_bounds(ty, &bounds),
         &check_expr,
         return_err,
         non_negative,
@@ -397,10 +397,10 @@ fn externally_wrapped_bounds_check_line(
             wrap(range_check_float_payload(e, window))
         ));
     }
-    let bounds = ty.config.bounds.as_ref()?;
+    let bounds = ty.config.raw_bounds()?;
     let check_expr = bounds_check_expr_rust_type(ty, e)?;
     let non_negative = bounds_check_expr_non_negative(ty);
-    let bounds = effective_int_bounds(ty, bounds);
+    let bounds = effective_int_bounds(ty, &bounds);
     let check_expr = portable_len_expr(&check_expr, &bounds);
     let (payload_min, payload_max) = canonical_range_check_payload(&bounds, non_negative);
     let opt = |b: Option<i128>| b.map_or_else(|| "None".to_owned(), |b| format!("Some({b})"));
@@ -840,7 +840,9 @@ mod tests {
             let mut ty = RustType::new(ConceptualRustType::Primitive(primitive));
             // Construct this directly so the renderer is tested at its own seam: normal parsing
             // already erases an unsigned redundant zero before it can reach either emitter.
-            ty.config.bounds = Some(bounds);
+            ty.config.bounds = Some(crate::intermediate::TypeBounds::Value(
+                crate::intermediate::ValueWindow::from_raw(bounds),
+            ));
             ty
         };
         let render = |ty: &RustType| {

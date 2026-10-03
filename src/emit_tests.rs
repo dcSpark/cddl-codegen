@@ -484,7 +484,11 @@ pub(crate) fn render_rust_for_named(
             });
             let static_len = rust_struct
                 .filter(|array| array.config().duplicates != Some(DuplicatesPolicy::Reject))
-                .and_then(|_| crate::intermediate::exact_array_len_from_bounds(*bounds))
+                .and_then(|_| {
+                    crate::intermediate::exact_array_len_from_bounds(
+                        bounds.map(crate::intermediate::OccurrenceWindow::raw),
+                    )
+                })
                 .and_then(Result::ok);
             match static_len {
                 Some(len) => static_array_handover(len, &array),
@@ -732,7 +736,7 @@ fn reject_test_fn(
                 .or_else(|| {
                     wrapped
                         .exact_byte_array_len_checked()
-                        .and(wrapped.config.bounds)
+                        .and(wrapped.config.value_bounds())
                 })
                 .and_then(|mm| wrapper_construct_reject(types, ident, name, wrapped, mm, alias)),
         },
@@ -1802,7 +1806,7 @@ fn map_key_run_is_accepted(key: &MapKey, key_ty: &RustType, count: i128, base: i
         };
         key_ty
             .config
-            .bounds
+            .value_bounds()
             .is_none_or(|bounds| !crate::generation::bounds_reject_value(&bounds, numeric_value))
     })
 }
@@ -1833,7 +1837,13 @@ fn record_roundtrip(
     ));
     let declared = record
         .captured_dynamic_rows()
-        .any(|row| !row.is_array_tail() && row.occurrence.is_some_and(|(min, _)| min > 0))
+        .any(|row| {
+            !row.is_array_tail()
+                && row
+                    .occurrence
+                    .map(crate::intermediate::RestOccurrenceWindow::raw)
+                    .is_some_and(|(min, _)| min > 0)
+        })
         .then(|| record.json_reserved_member_names());
     roundtrip_body(name, cases, conf, dump_rule, rt, None, declared.as_deref())
 }
@@ -2468,7 +2478,7 @@ fn type_enforced_bounded_array_ctor_probes(
         if !arg_ty.is_type_enforced_bounded_array() {
             continue;
         }
-        let Some(bounds) = arg_ty.config.bounds else {
+        let Some(bounds) = arg_ty.config.occurrence_bounds() else {
             continue;
         };
         let mut sibling_skip_announced = false;
@@ -2589,7 +2599,7 @@ fn exact_byte_array_ctor_probes(
         } else {
             continue;
         };
-        let Some(bounds) = exact_ty.config.bounds else {
+        let Some(bounds) = exact_ty.config.value_bounds() else {
             continue;
         };
         for (mv, accept, label) in bound_cases(types, exact_ty, bounds, true) {
@@ -2747,7 +2757,7 @@ fn record_deser_reject(
                 bound_cases(
                     types,
                     &target.rust_type,
-                    target.rust_type.config.bounds.unwrap(),
+                    target.rust_type.config.raw_bounds().unwrap(),
                     is_len,
                 ),
                 "RangeCheck",
@@ -2849,7 +2859,7 @@ fn choice_construct_reject(
                 let Some(kind) = measure_kind(arg_ty) else {
                     continue;
                 };
-                let Some(bounds) = arg_ty.config.bounds else {
+                let Some(bounds) = arg_ty.config.raw_bounds() else {
                     continue;
                 };
                 // the `[+ T]` / `{+ k => v}` shapes enforce their bound in the TYPE
@@ -3339,7 +3349,7 @@ fn valid_value_at(types: &IntermediateTypes, ty: &RustType, depth: u8) -> Option
         ConceptualRustType::Primitive(Primitive::N64) => {
             let b = ty
                 .config
-                .bounds
+                .value_bounds()
                 .map(nint_bounds_to_u64)
                 .unwrap_or((None, None));
             Some(MintValue::Int {
@@ -3355,7 +3365,7 @@ fn valid_value_at(types: &IntermediateTypes, ty: &RustType, depth: u8) -> Option
         // bool and the float classes land here too: `materialize_at` mints them without reading
         // the measure.
         _ => {
-            let bounds = ty.config.bounds.unwrap_or((None, None));
+            let bounds = ty.config.raw_bounds().unwrap_or((None, None));
             // A length-measured type (array/map/text/bytes) minted at length 0 never serializes or
             // deserializes its elements, so a type whose every non-empty value is broken passes the
             // round-trip gate vacuously. Mint a single element when unbounded; bounded types already
@@ -3554,7 +3564,7 @@ pub(crate) fn mint_struct(
             range,
             bounds,
         } => {
-            if *bounds == Some((Some(1), None)) {
+            if bounds.is_some_and(crate::intermediate::OccurrenceWindow::is_non_empty) {
                 // a non-empty table: `TableEmpty` (`Foo::new()`) is invalid — the `NonEmptyMap` alias
                 // has no zero-arg ctor. Mint one entry through the Map path (routed through the same
                 // `NonEmptyMap::try_from` door). Named tables are skipped from STANDALONE round-trips
@@ -3562,7 +3572,12 @@ pub(crate) fn mint_struct(
                 let map_ty: RustType =
                     ConceptualRustType::Map(Box::new(domain.clone()), Box::new(range.clone()))
                         .into();
-                materialize_at(types, &map_ty.with_bounds((Some(1), None)), 1, depth + 1)
+                materialize_at(
+                    types,
+                    &map_ty.with_occurrence_bounds((Some(1), None)),
+                    1,
+                    depth + 1,
+                )
             } else {
                 Some(MintValue::TableEmpty { ident: name })
             }
@@ -3573,7 +3588,11 @@ pub(crate) fn mint_struct(
         } => {
             // mint one element so the element serialize/deserialize path runs; fall back to empty
             // (valid for `*`) when the element isn't cheaply mintable.
-            let count = valid_measure(bounds.unwrap_or((None, None)));
+            let count = valid_measure(
+                bounds
+                    .map(crate::intermediate::OccurrenceWindow::raw)
+                    .unwrap_or((None, None)),
+            );
             let reject = rust_struct.config().duplicates == Some(DuplicatesPolicy::Reject);
             let unique_elems = if reject {
                 unique_array_elems(types, element_type, count, depth + 1)?
@@ -3587,13 +3606,15 @@ pub(crate) fn mint_struct(
                     .map(Box::new)
                     .or_else(|| valid_value_at(types, element_type, depth + 1).map(Box::new)),
                 count,
-                non_empty: *bounds == Some((Some(1), None)),
-                bounded: bounds.and_then(|b| {
-                    crate::intermediate::type_enforced_bounded_window(
-                        b,
-                        crate::intermediate::exact_array_len_from_bounds(Some(b)).is_some(),
-                    )
-                }),
+                non_empty: bounds.is_some_and(crate::intermediate::OccurrenceWindow::is_non_empty),
+                bounded: bounds
+                    .map(crate::intermediate::OccurrenceWindow::raw)
+                    .and_then(|b| {
+                        crate::intermediate::type_enforced_bounded_window(
+                            b,
+                            crate::intermediate::exact_array_len_from_bounds(Some(b)).is_some(),
+                        )
+                    }),
                 reject,
                 unique_elems,
             })
@@ -3674,7 +3695,7 @@ fn unique_array_elems(
     if count == 0 {
         return Some(Some(Vec::new()));
     }
-    if let Some(bounds) = elem.config.bounds {
+    if let Some(bounds) = elem.config.raw_bounds() {
         return bounded_unique_array_elems(types, elem, bounds, count, depth).map(Some);
     }
     let mut elems = Vec::new();
@@ -3934,7 +3955,7 @@ fn materialize_at(
 /// `None` means "skip this map loudly" — this module never silently weakens a vector.
 fn map_key_base(key: &MapKey, key_ty: &RustType, count: i128) -> Option<i128> {
     let MapKey::Int(p) = key else {
-        let Some(bounds) = key_ty.config.bounds else {
+        let Some(bounds) = key_ty.config.value_bounds() else {
             return Some(0);
         };
         // A `.size`-bounded tstr/bytes key (or a bounded bool): the window constrains the key's
@@ -3952,7 +3973,7 @@ fn map_key_base(key: &MapKey, key_ty: &RustType, count: i128) -> Option<i128> {
     // `N64` is the one key primitive whose stored coordinate is not the CDDL value. Transform
     // bounds only to choose cheap magnitude candidates; `map_key_run_is_accepted` independently
     // validates each rendered coordinate through its canonical value-space `FixedValue`.
-    let selection_bounds = key_ty.config.bounds.map(|bounds| {
+    let selection_bounds = key_ty.config.value_bounds().map(|bounds| {
         if matches!(p, Primitive::N64) {
             crate::generation::nint_bounds_to_u64(&bounds)
         } else {
@@ -3975,7 +3996,7 @@ fn map_key_base(key: &MapKey, key_ty: &RustType, count: i128) -> Option<i128> {
     }
     crate::warn!(
         "cddl-codegen --emit-tests: map key window {:?} has no run of {count} consecutive accepted {p:?} values — the map's key wire path is unexercised",
-        key_ty.config.bounds
+        key_ty.config.value_bounds()
     );
     None
 }

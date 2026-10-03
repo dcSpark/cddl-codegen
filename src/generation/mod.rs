@@ -591,7 +591,7 @@ impl GenerationScope {
                     types.bounded_array_named_owner(
                         element,
                         ty.config
-                            .bounds
+                            .occurrence_bounds()
                             .expect("bounded array reference carries its bounds"),
                     )?,
                     false,
@@ -605,7 +605,7 @@ impl GenerationScope {
                     key,
                     value,
                     ty.config
-                        .bounds
+                        .occurrence_bounds()
                         .expect("bounded map reference carries its bounds"),
                     ty.is_preserve_pair_map(),
                 )?,
@@ -1235,7 +1235,11 @@ impl GenerationScope {
                         // wrapper (`MapKToV` / `NonEmptyMapKToV`) via its `gen_wasm_alias` passthrough,
                         // exactly as the array arm above does for lists — mint no rule-named class.
                         let anon = types.is_anonymous_collection_instance(rust_ident);
-                        if cli.wasm && !anon && *bounds == Some((Some(1), None)) {
+                        if cli.wasm
+                            && !anon
+                            && bounds
+                                .is_some_and(crate::intermediate::OccurrenceWindow::is_non_empty)
+                        {
                             // named `{+ k => v}` rule: its JS class is the RESTRICTED wrapper
                             // (wrapping core::NonEmptyMap) under the rule ident, not the loose table
                             // wrapper — the map-side twin of the named `[+ T]` array arm.
@@ -1257,7 +1261,9 @@ impl GenerationScope {
                                 )
                                 .into();
                                 bounds.and_then(|bounds| {
-                                    table.with_bounds(bounds).bounded_map_u64_bounds()
+                                    table
+                                        .with_occurrence_bounds(bounds)
+                                        .bounded_map_u64_bounds()
                                 })
                             }
                         {
@@ -1329,7 +1335,8 @@ impl GenerationScope {
                         // `--wrapper-requests` consumer's structural import resolves via own-spec.
                         if cli.wasm && !types.is_anonymous_collection_instance(rust_ident) {
                             let reject = rust_struct.config().duplicates_reject();
-                            let non_empty = *bounds == Some((Some(1), None));
+                            let non_empty = bounds
+                                .is_some_and(crate::intermediate::OccurrenceWindow::is_non_empty);
                             if reject {
                                 // `@duplicates reject` rule: its JS class is the uniqueness-twin
                                 // wrapper (wrapping core::OrderedSet / NonEmptyOrderedSet) so the
@@ -1348,7 +1355,7 @@ impl GenerationScope {
                                         // its occurrence carrier. Without it, an exact `0*0` reject
                                         // set looks like an ordinary static array and disappears
                                         // from the bounded-set branch as a loose OrderedSet.
-                                        ty.with_bounds(bounds)
+                                        ty.with_occurrence_bounds(bounds)
                                             .with_duplicates_policy(Some(
                                                 crate::comment_ast::DuplicatesPolicy::Reject,
                                             ))
@@ -1382,7 +1389,7 @@ impl GenerationScope {
                                     ConceptualRustType::Array(Box::new(element_type.clone()))
                                         .into();
                                 bounds.and_then(|bounds| {
-                                    let ty = ty.with_bounds(bounds);
+                                    let ty = ty.with_occurrence_bounds(bounds);
                                     ty.exact_homogeneous_array_u64_bounds()
                                         .or_else(|| ty.bounded_array_u64_bounds())
                                 })
@@ -3293,7 +3300,7 @@ fn json_schema_reachable_claims(
                     Box::new(range.clone()),
                 ));
                 if let Some(bounds) = bounds {
-                    table = table.with_bounds(*bounds);
+                    table = table.with_occurrence_bounds(*bounds);
                 }
                 table = table.with_duplicates_policy(rust_struct.config().duplicates);
                 walk_schema_body(types, &table, cli, claims, visited, generic_bases);
@@ -5183,7 +5190,7 @@ pub(crate) fn recursive_exact_array_descriptor(
     ) -> bool {
         if field_optional
             || ty.duplicates_reject()
-            || !matches!(ty.config.bounds, None | Some((None, None)))
+            || !matches!(ty.config.occurrence_bounds(), None | Some((None, None)))
         {
             return false;
         }
@@ -5212,7 +5219,8 @@ pub(crate) fn recursive_exact_array_descriptor(
                 let mut configured = alias.clone();
                 configured.config.duplicates = owner.config().duplicates;
                 if let Some(bounds) = bounds {
-                    configured.config.bounds = Some(*bounds);
+                    configured.config.bounds =
+                        Some(crate::intermediate::TypeBounds::Occurrence(*bounds));
                 }
                 return shape(types, &configured, base);
             }
@@ -5231,7 +5239,7 @@ pub(crate) fn recursive_exact_array_descriptor(
                     ))
                 } else if ty.duplicates_reject() {
                     let inner = shape(types, inner, base)?;
-                    match ty.config.bounds {
+                    match ty.config.occurrence_bounds() {
                         None | Some((None, None)) => Some(format!("{base}::RejectSet<{inner}>")),
                         Some((Some(1), None)) => {
                             Some(format!("{base}::RejectSetNonEmpty<{inner}>"))
@@ -5244,7 +5252,7 @@ pub(crate) fn recursive_exact_array_descriptor(
                     }
                 } else {
                     let inner = shape(types, inner, base)?;
-                    match ty.config.bounds {
+                    match ty.config.occurrence_bounds() {
                         None | Some((None, None)) => Some(format!("{base}::Loose<{inner}>")),
                         Some((Some(1), None)) => Some(format!("{base}::NonEmpty<{inner}>")),
                         Some((min, max)) => Some(format!(
@@ -5276,13 +5284,16 @@ pub(crate) fn recursive_exact_array_descriptor(
                         {
                             found = Some((
                                 alias.base_type.config.duplicates,
-                                alias.base_type.config.bounds,
+                                alias.base_type.config.occurrence_bounds(),
                             ));
                         }
                         if let Some(owner) = types.rust_struct(ident)
                             && let RustStructType::Table { bounds, .. } = owner.variant()
                         {
-                            found = Some((owner.config().duplicates, *bounds));
+                            found = Some((
+                                owner.config().duplicates,
+                                bounds.map(crate::intermediate::OccurrenceWindow::raw),
+                            ));
                         }
                         current = inner;
                     }
@@ -5302,7 +5313,7 @@ pub(crate) fn recursive_exact_array_descriptor(
                             )
                         })
                     })
-                    .or(ty.config.bounds);
+                    .or(ty.config.occurrence_bounds());
                 let key = if pair_map {
                     shape(types, key, base)?
                 } else if contains_wide_static_array(types, key)

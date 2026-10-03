@@ -808,7 +808,7 @@ impl<'a> IntermediateTypes<'a> {
             || self.any_struct(|rs| {
                 matches!(
                     rs.variant(),
-                    RustStructType::Array { bounds, .. } if *bounds == Some((Some(1), None))
+                    RustStructType::Array { bounds, .. } if bounds.is_some_and(crate::intermediate::OccurrenceWindow::is_non_empty)
                 )
             })
             // A one-or-more open-array tail stores its inner type flat in `RestRow`; its composite
@@ -825,9 +825,8 @@ impl<'a> IntermediateTypes<'a> {
                 matches!(
                     rs.variant(),
                     RustStructType::Array { bounds: Some(bounds), .. }
-                        if *bounds != (None, None)
-                            && *bounds != (Some(1), None)
-                            && exact_array_len_from_bounds(Some(*bounds)).is_none()
+                        if !bounds.is_loose() && !bounds.is_non_empty()
+                            && bounds.exact_len().is_none()
                             && !rs.config().duplicates_reject()
                 )
             })
@@ -849,7 +848,7 @@ impl<'a> IntermediateTypes<'a> {
         self.any_rust_type(RustType::is_type_enforced_exact_homogeneous_array)
             || self.any_struct(|rs| {
                 matches!(rs.variant(), RustStructType::Array { bounds: Some(bounds), .. }
-                    if exact_array_len_from_bounds(Some(*bounds)).is_some()
+                    if bounds.exact_len().is_some()
                         && !rs.config().duplicates_reject())
             })
             || self.any_dynamic_row(|row| {
@@ -881,7 +880,7 @@ impl<'a> IntermediateTypes<'a> {
             || self.any_struct(|rs| {
                 matches!(
                     rs.variant(),
-                    RustStructType::Table { bounds, .. } if *bounds == Some((Some(1), None))
+                    RustStructType::Table { bounds, .. } if bounds.is_some_and(crate::intermediate::OccurrenceWindow::is_non_empty)
                 )
             })
             // An open table's typed row stores its key/value flat in `RestRow`; its composite
@@ -901,7 +900,7 @@ impl<'a> IntermediateTypes<'a> {
             || self.any_struct(|rs| matches!(
                 rs.variant(),
                 RustStructType::Table { bounds: Some(bounds), .. }
-                    if *bounds != (None, None) && *bounds != (Some(1), None)
+                    if !bounds.is_loose() && !bounds.is_non_empty()
                         && !rs.config().duplicates_preserve()
             ))
             // Dynamic map rows store their K/V types flat, so the generic walker intentionally
@@ -1047,7 +1046,7 @@ impl<'a> IntermediateTypes<'a> {
                     domain,
                     range,
                     bounds,
-                } if *bounds == Some((Some(1), None))
+                } if bounds.is_some_and(crate::intermediate::OccurrenceWindow::is_non_empty)
                     // A `@duplicates preserve` named `{+ …}` rule's wasm class wraps `NonEmptyPairMap`,
                     // but an inline `{+ …}` occurrence carries no directive (inline occurrences are
                     // directive-less), so its rust member is the loose `NonEmptyMap`. Capturing the
@@ -1076,7 +1075,7 @@ impl<'a> IntermediateTypes<'a> {
                 RustStructType::Array {
                     element_type,
                     bounds,
-                } if *bounds == Some((Some(1), None))
+                } if bounds.is_some_and(crate::intermediate::OccurrenceWindow::is_non_empty)
                     // A `@duplicates reject` named rule's wasm class wraps `NonEmptyOrderedSet`, but
                     // an inline `[+ elem]` occurrence carries no directive (inline occurrences are
                     // always preserve-policy) so its rust member is `NonEmptyVec`. Capturing the
@@ -1103,7 +1102,7 @@ impl<'a> IntermediateTypes<'a> {
                 RustStructType::Array {
                     element_type,
                     bounds: Some(candidate),
-                } if Self::normalized_bounded_window(*candidate) == Some(normalized)
+                } if Self::normalized_bounded_window(candidate.raw()) == Some(normalized)
                     // A reject-mode bounded rule owns an `OrderedSet` class, not the ordinary
                     // BoundedVec wasm class an inline preserve-policy occurrence needs. It cannot
                     // be a dedup owner without crossing incompatible core representations.
@@ -1131,7 +1130,7 @@ impl<'a> IntermediateTypes<'a> {
                     domain,
                     range,
                     bounds: Some(candidate),
-                } if Self::normalized_bounded_window(*candidate) == Some(normalized)
+                } if Self::normalized_bounded_window(candidate.raw()) == Some(normalized)
                     && rs.config().duplicates_preserve() == preserve
                     && domain.resolves_equal(&key_resolved)
                     && range.resolves_equal(&value_resolved))
@@ -1222,7 +1221,7 @@ impl<'a> IntermediateTypes<'a> {
         fn legacy_direct_typed_static_array_sequence(ty: &RustType, field_optional: bool) -> bool {
             if field_optional
                 || ty.duplicates_reject()
-                || !matches!(ty.config.bounds, None | Some((None, None)))
+                || !matches!(ty.config.raw_bounds(), None | Some((None, None)))
             {
                 return false;
             }
@@ -1406,7 +1405,7 @@ impl<'a> IntermediateTypes<'a> {
                 RustStructType::Array {
                     element_type,
                     bounds,
-                } if matches!(bounds, None | Some((None, None)))
+                } if bounds.is_none_or(crate::intermediate::OccurrenceWindow::is_loose)
                     && element_type.resolves_equal(element_resolved)
             ) && !rs.config().duplicates_reject()
         })
@@ -1425,7 +1424,7 @@ impl<'a> IntermediateTypes<'a> {
             Some(RustStructType::Array {
                 element_type,
                 bounds,
-            }) if *bounds == Some((Some(1), None))
+            }) if bounds.is_some_and(crate::intermediate::OccurrenceWindow::is_non_empty)
                 && element_type.name_as_wasm_array(self) == name
         )
     }
@@ -1444,7 +1443,7 @@ impl<'a> IntermediateTypes<'a> {
                     domain,
                     range,
                     bounds,
-                } if *bounds == Some((Some(1), None))
+                } if bounds.is_some_and(crate::intermediate::OccurrenceWindow::is_non_empty)
                     && RustType::wasm_structural_map_name_for(domain, range, preserve, self).to_string()
                         == name
             )
@@ -1477,7 +1476,7 @@ impl<'a> IntermediateTypes<'a> {
                     domain,
                     range,
                     bounds,
-                }) if *bounds != Some((Some(1), None))
+                }) if !bounds.is_some_and(crate::intermediate::OccurrenceWindow::is_non_empty)
                     && domain.resolves_equal(key_resolved)
                     && range.resolves_equal(value_resolved)
             )
@@ -1560,7 +1559,7 @@ impl<'a> IntermediateTypes<'a> {
                 // its JS class is the distinct restricted `NonEmptyMapKToV` (or rule-ident) wrapper.
                 // Excluding it keeps anonymous plain `{* k => v}` uses of the same shape from being
                 // (wrongly) folded onto the restricted class.
-                if *bounds == Some((Some(1), None)) {
+                if bounds.is_some_and(crate::intermediate::OccurrenceWindow::is_non_empty) {
                     continue;
                 }
                 // The shape identity is the FLAVORED structural name, so a `@duplicates preserve`
@@ -2233,15 +2232,16 @@ impl<'a> IntermediateTypes<'a> {
                     // reaches this gate, and the two helpers' own guards plus the usage-derived
                     // import prune leave it importing nothing, so the gate stays keyed on the rule's
                     // SHAPE rather than on a placement decision made in the generator.
-                    let exact_static = exact_array_len_from_bounds(*bounds).is_some();
-                    let bounded = matches!(
-                        bounds,
-                        Some(window) if *window != (None, None) && *window != (Some(1), None)
-                    ) && !exact_static;
+                    let exact_static = bounds
+                        .and_then(crate::intermediate::OccurrenceWindow::exact_len)
+                        .is_some();
+                    let bounded = bounds
+                        .is_some_and(|window| !window.is_loose() && !window.is_non_empty())
+                        && !exact_static;
                     let always_needs_loose_source =
                         !rust_struct.config().duplicates_reject() && (bounded || exact_static);
                     if wasm
-                        && (*bounds == Some((Some(1), None))
+                        && (bounds.is_some_and(crate::intermediate::OccurrenceWindow::is_non_empty)
                             || bounded
                             || exact_static
                             || rust_struct.config().duplicates_reject())
@@ -2501,9 +2501,12 @@ impl<'a> IntermediateTypes<'a> {
                     // scope. `{+ …}` uses its native direct key; a bounded table uses the same
                     // top-level-loosened key as `generate_bounded_map_type`.
                     let bounded_source = bounds.is_some_and(|candidate| {
-                        type_enforced_bounded_window(candidate, false).is_some()
+                        type_enforced_bounded_window(candidate.raw(), false).is_some()
                     });
-                    if wasm && (*bounds == Some((Some(1), None)) || bounded_source) {
+                    if wasm
+                        && (bounds.is_some_and(crate::intermediate::OccurrenceWindow::is_non_empty)
+                            || bounded_source)
+                    {
                         // the rule's own `@duplicates` config picks its container flavor, so the
                         // `try_from` source resolved below is the loose wrapper of the SAME flavor
                         let preserve = rust_struct.config().duplicates_preserve();
@@ -3637,7 +3640,7 @@ impl<'a> IntermediateTypes<'a> {
                     // the occurrence-count bounds ride the alias so every embed site of the named
                     // table enforces them (deserialize routes through the NonEmptyMap TryFrom door),
                     // exactly like the `Array` arm below
-                    map_type = map_type.with_bounds(*bounds);
+                    map_type = map_type.with_occurrence_bounds(*bounds);
                 }
                 // `@duplicates` rides the alias too. For tables `reject` is the default (a no-op
                 // recorded for self-documentation) while `preserve` swaps the member to the
@@ -3662,7 +3665,7 @@ impl<'a> IntermediateTypes<'a> {
                 if let Some(bounds) = bounds {
                     // the occurrence-count length bounds ride the alias so every embed site of
                     // the named array enforces them (deserialize + fallible constructor)
-                    array_type = array_type.with_bounds(*bounds);
+                    array_type = array_type.with_occurrence_bounds(*bounds);
                 }
                 // `@duplicates reject` rides the alias so every embed site (and generic use-site
                 // re-resolution) sees the uniqueness twin. Applied POST-arm so the raw arm types the
@@ -4978,7 +4981,10 @@ impl<'a> IntermediateTypes<'a> {
                 for (_, next) in later {
                     match next {
                         PossibleNext::Segment(next) => {
-                            let (minimum, maximum) = next.occurrence.unwrap_or((0, u64::MAX));
+                            let (minimum, maximum) = next
+                                .occurrence
+                                .map(crate::intermediate::RestOccurrenceWindow::raw)
+                                .unwrap_or((0, u64::MAX));
                             if maximum == 0 {
                                 continue;
                             }
@@ -6474,7 +6480,7 @@ impl<'a> IntermediateTypes<'a> {
                 .or_else(|| rt.bounded_array_u64_bounds())
                 .expect("bounded occurrence bounds were validated during parsing");
             if self
-                .bounded_array_named_owner(elem, rt.config.bounds.unwrap())
+                .bounded_array_named_owner(elem, rt.config.occurrence_bounds().unwrap())
                 .is_some()
             {
                 return;
@@ -6509,7 +6515,7 @@ impl<'a> IntermediateTypes<'a> {
             if rs.config().duplicates_reject() {
                 continue;
             }
-            let Some((min, _)) = Self::normalized_bounded_window(*bounds) else {
+            let Some((min, _)) = Self::normalized_bounded_window(bounds.raw()) else {
                 continue;
             };
             check_loose_source(
@@ -6540,7 +6546,10 @@ impl<'a> IntermediateTypes<'a> {
                     .or_else(|| container.bounded_array_u64_bounds())
                     .expect("bounded array-tail occurrence bounds were validated during parsing");
                 if self
-                    .bounded_array_named_owner(element, container.config.bounds.unwrap())
+                    .bounded_array_named_owner(
+                        element,
+                        container.config.occurrence_bounds().unwrap(),
+                    )
                     .is_some()
                 {
                     continue;
@@ -6752,7 +6761,7 @@ impl<'a> IntermediateTypes<'a> {
             else {
                 continue;
             };
-            if *bounds != Some((Some(1), None)) {
+            if !bounds.is_some_and(crate::intermediate::OccurrenceWindow::is_non_empty) {
                 continue;
             }
             if element_type.vec_of_self_directly_wasm_exposable(self)
@@ -6881,10 +6890,10 @@ impl<'a> IntermediateTypes<'a> {
                     range,
                     bounds,
                 } => {
-                    if *bounds != Some((Some(1), None)) {
+                    if !bounds.is_some_and(crate::intermediate::OccurrenceWindow::is_non_empty) {
                         let preserve = rs.config().duplicates_preserve();
                         let bounded_source = bounds.is_some_and(|candidate| {
-                            type_enforced_bounded_window(candidate, false).is_some()
+                            type_enforced_bounded_window(candidate.raw(), false).is_some()
                         });
                         let (name, builder_key, need) = if bounded_source {
                             (
@@ -7058,7 +7067,7 @@ impl<'a> IntermediateTypes<'a> {
             else {
                 continue;
             };
-            if *bounds != Some((Some(1), None)) {
+            if !bounds.is_some_and(crate::intermediate::OccurrenceWindow::is_non_empty) {
                 continue;
             }
             let preserve = rs.config().duplicates_preserve();
@@ -7203,7 +7212,7 @@ impl<'a> IntermediateTypes<'a> {
             }
             let source_bounds = rt
                 .config
-                .bounds
+                .occurrence_bounds()
                 .expect("bounded map occurrence carries bounds");
             if self
                 .bounded_map_named_owner(key, value, source_bounds, rt.is_preserve_pair_map())
@@ -7244,7 +7253,7 @@ impl<'a> IntermediateTypes<'a> {
             let container = rest.container_type();
             let source_bounds = container
                 .config
-                .bounds
+                .occurrence_bounds()
                 .expect("bounded rest map carries occurrence bounds");
             if self
                 .bounded_map_named_owner(rest.domain(), rest.range(), source_bounds, false)
@@ -7293,7 +7302,7 @@ impl<'a> IntermediateTypes<'a> {
             }
             let source_bounds = rt
                 .config
-                .bounds
+                .occurrence_bounds()
                 .expect("bounded pair-map occurrence carries bounds");
             // A same-shape preserve table is the authored owner of this class, just as a bounded
             // unique-key table is for `BoundedMap`; only an unrelated rule is a collision.
@@ -7334,7 +7343,7 @@ impl<'a> IntermediateTypes<'a> {
             let container = rest.container_type();
             let source_bounds = container
                 .config
-                .bounds
+                .occurrence_bounds()
                 .expect("bounded preserve rest map carries occurrence bounds");
             if self
                 .bounded_map_named_owner(rest.domain(), rest.range(), source_bounds, true)
@@ -7401,7 +7410,7 @@ impl<'a> IntermediateTypes<'a> {
                 RustType::new(ConceptualRustType::Array(Box::new(element_type.clone())))
                     .with_duplicates_policy(Some(DuplicatesPolicy::Reject));
             if let Some(bounds) = bounds {
-                reject_array = reject_array.with_bounds(*bounds);
+                reject_array = reject_array.with_occurrence_bounds(*bounds);
             }
             let structural = if reject_array.is_bounded_reject_ordered_set() {
                 reject_array.bounded_reject_ordered_set_wasm_wrapper_name(self)
@@ -7528,7 +7537,7 @@ impl<'a> IntermediateTypes<'a> {
                         continue;
                     }
                     let bounded_source = bounds.is_some_and(|candidate| {
-                        type_enforced_bounded_window(candidate, false).is_some()
+                        type_enforced_bounded_window(candidate.raw(), false).is_some()
                     });
                     let (structural, builder_key, source) = if bounded_source {
                         (
@@ -7542,7 +7551,7 @@ impl<'a> IntermediateTypes<'a> {
                             RustType::wasm_structural_map_name_for(domain, range, true, self)
                                 .to_string(),
                             domain.clone(),
-                            *bounds == Some((Some(1), None)),
+                            bounds.is_some_and(crate::intermediate::OccurrenceWindow::is_non_empty),
                         )
                     };
                     // A self-named loose or `{+}` rule legitimately owns the ident for its own
@@ -7551,7 +7560,9 @@ impl<'a> IntermediateTypes<'a> {
                     if !bounded_source && structural == ident.to_string() {
                         continue;
                     }
-                    let minted_by = if *bounds == Some((Some(1), None)) {
+                    let minted_by = if bounds
+                        .is_some_and(crate::intermediate::OccurrenceWindow::is_non_empty)
+                    {
                         format!(
                             "the `@duplicates preserve` `{{+ …}}` rule '{ident}'s `try_from` source"
                         )
@@ -7754,7 +7765,7 @@ impl<'a> IntermediateTypes<'a> {
                 continue;
             };
             if !rs.config().duplicates_preserve()
-                || *bounds != Some((Some(1), None))
+                || !bounds.is_some_and(crate::intermediate::OccurrenceWindow::is_non_empty)
                 || !self.is_anonymous_collection_instance(ident)
             {
                 continue;
@@ -8500,8 +8511,8 @@ fn rewrite_inline_sets_in_type(rt: &mut RustType, minted: &mut BTreeMap<RustIden
     // The wrapper owns a CLEAN array (the 258 becomes the struct's mandatory `Option<Sz>` tag record);
     // preserve the occurrence-count bound so `[+]` selects the `NonEmptyOrderedSet` twin.
     let mut array_type: RustType = ConceptualRustType::Array(element.clone()).into();
-    if let Some(bounds) = rt.config.bounds {
-        array_type = array_type.with_bounds(bounds);
+    if let Some(bounds) = rt.config.occurrence_bounds() {
+        array_type = array_type.with_occurrence_bounds(bounds);
     }
     // 258 ⇒ `@duplicates reject` (IANA set semantics); `register_rust_struct` reads this off the
     // wrapper config to swap the inner to the `OrderedSet`/`NonEmptyOrderedSet` twin.

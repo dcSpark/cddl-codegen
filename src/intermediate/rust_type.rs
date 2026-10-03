@@ -199,7 +199,7 @@ impl FixedValue {
 impl RustType {
     /// The one semantic recognition of an exact CDDL byte-string length.  `.size N` is parsed as
     /// an equal bounds window, except that the non-negative zero lower endpoint is normalized
-    /// away by `with_bounds`.  A plain upper bound (`bytes .le N`) is deliberately not exact.
+    /// away by `with_value_bounds`.  A plain upper bound (`bytes .le N`) is deliberately not exact.
     ///
     /// Rust array lengths are emitted as `usize` literals.  CDDL's source integer is wider, so a
     /// non-representable value is left for the parser's graceful-rejection owner rather than being
@@ -211,7 +211,7 @@ impl RustType {
         ) {
             return None;
         }
-        exact_array_len_from_bounds(self.config.bounds)
+        exact_array_len_from_bounds(self.config.value_bounds())
     }
 
     /// The checked, already parser-validated exact byte length used by generated type spelling.
@@ -239,7 +239,7 @@ impl RustType {
         {
             return None;
         }
-        exact_array_len_from_bounds(self.config.bounds)
+        exact_array_len_from_bounds(self.config.occurrence_bounds())
     }
 
     /// The checked, parser-validated static-array length used by generated Rust spelling.
@@ -387,7 +387,7 @@ impl RustType {
             Some(value) if value < 0 => format!("Neg{}", value.unsigned_abs()),
             Some(value) => format!("Pos{value}"),
         };
-        if let Some((min, max)) = self.config.bounds {
+        if let Some((min, max)) = self.config.raw_bounds() {
             out.push_str(&format!("__BoundsMin{}Max{}", endpoint(min), endpoint(max)));
         }
         if let Some((min, max)) = self.config.float_bounds {
@@ -445,7 +445,7 @@ impl RustType {
             out.push_str("__Default");
             out.push_str(&default.singleton_name_fragment());
         }
-        if let Some((min, max)) = self.config.bounds {
+        if let Some((min, max)) = self.config.raw_bounds() {
             out.push_str(&format!(
                 "__Bounds{}_{}",
                 min.map_or_else(|| "None".to_owned(), |value| format!("Some{value}")),
@@ -530,10 +530,11 @@ pub(crate) fn occurrence_window_u64((min, max): IntWindow) -> Option<(u64, u64)>
 /// exact occurrences (according to the caller's static-carrier verdict), and invalid windows
 /// have no bounded carrier.
 pub(crate) fn type_enforced_bounded_window(bounds: IntWindow, exact: bool) -> Option<(u64, u64)> {
-    if exact || bounds == (None, None) || bounds == (Some(1), None) {
+    let window = OccurrenceWindow::from_raw(bounds);
+    if exact || window.is_loose() || window.is_non_empty() {
         return None;
     }
-    occurrence_window_u64(bounds)
+    window.checked_u64()
 }
 
 /// The occurrence-window suffix of a structural wasm class name: `{infix}Max{max}` for a zero
@@ -607,9 +608,68 @@ mod exact_byte_array_len_tests {
     }
 
     #[test]
+    fn tagged_bounds_keep_legacy_debug_and_distinct_roles() {
+        for raw in [
+            (None, None),
+            (Some(0), Some(i128::from(u64::MAX))),
+            (Some(1), None),
+            IntBounds::exclusion(-1),
+            (Some(-2), Some(-3)),
+        ] {
+            let value = TypeBounds::Value(ValueWindow::from_raw(raw));
+            let occurrence = TypeBounds::Occurrence(OccurrenceWindow::from_raw(raw));
+            assert_ne!(
+                value, occurrence,
+                "equal endpoints cannot erase their semantic role"
+            );
+            assert_eq!(format!("{:?}", Some(value)), format!("{:?}", Some(raw)));
+            assert_eq!(
+                format!("{:#?}", Some(occurrence)),
+                format!("{:#?}", Some(raw))
+            );
+            let cfg = RustTypeSerializeConfig {
+                bounds: Some(occurrence),
+                ..Default::default()
+            };
+            assert_eq!(cfg.value_bounds(), None);
+            assert_eq!(cfg.occurrence_bounds(), Some(raw));
+        }
+        let row = RestOccurrenceWindow::from_raw((1, u64::MAX));
+        assert_eq!(
+            format!("{:#?}", Some(row)),
+            format!("{:#?}", Some((1_u64, u64::MAX)))
+        );
+    }
+
+    #[test]
+    fn authored_max_and_invalid_windows_keep_carrier_identity() {
+        let inner = || RustType::new(ConceptualRustType::Primitive(Primitive::U64));
+        let array = |window| {
+            RustType::new(ConceptualRustType::Array(Box::new(inner())))
+                .with_occurrence_bounds(window)
+        };
+        assert!(array((Some(1), None)).is_non_empty_array());
+        assert!(array((Some(1), Some(i128::from(u64::MAX)))).is_bounded_array());
+        assert!(array((Some(0), Some(i128::from(u64::MAX)))).is_bounded_array());
+        assert_eq!(
+            OccurrenceWindow::from_raw((Some(-1), Some(2))).checked_u64(),
+            None
+        );
+        assert_eq!(
+            OccurrenceWindow::from_raw((Some(3), Some(2))).checked_u64(),
+            None
+        );
+        // A raw factory does not turn inverted occurrence into the scalar exclusion interpretation.
+        assert_eq!(
+            OccurrenceWindow::from_raw(IntBounds::exclusion(-1)).raw(),
+            (Some(0), Some(-2))
+        );
+    }
+
+    #[test]
     fn recognizes_only_size_windows_including_normalized_zero_and_wasm_limit() {
         let exact = |bounds| {
-            RustType::new(ConceptualRustType::Primitive(Primitive::Bytes)).with_bounds(bounds)
+            RustType::new(ConceptualRustType::Primitive(Primitive::Bytes)).with_value_bounds(bounds)
         };
         assert_eq!(
             exact((Some(4), Some(4))).exact_byte_array_len(),
@@ -644,7 +704,7 @@ mod exact_byte_array_len_tests {
             RustType::new(ConceptualRustType::Array(Box::new(RustType::new(
                 ConceptualRustType::Primitive(Primitive::U64),
             ))))
-            .with_bounds(bounds)
+            .with_occurrence_bounds(bounds)
         };
         assert_eq!(
             array((Some(3), Some(3))).exact_homogeneous_array_len(),
@@ -667,7 +727,7 @@ mod exact_byte_array_len_tests {
             array((Some(3), Some(3))).with_duplicates_policy(Some(DuplicatesPolicy::Reject));
         assert_eq!(reject.exact_homogeneous_array_len(), None);
         let bytes = RustType::new(ConceptualRustType::Primitive(Primitive::Bytes))
-            .with_bounds((Some(3), Some(3)));
+            .with_value_bounds((Some(3), Some(3)));
         assert_eq!(bytes.exact_homogeneous_array_len(), None);
     }
 }
@@ -912,12 +972,127 @@ impl IntBounds {
     }
 }
 
+/// A scalar integer value or byte/text length window, preserving the emitted raw payload.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct ValueWindow(IntWindow);
+impl ValueWindow {
+    /// Preserve raw endpoints, including the inverted `.ne` encoding, without validation.
+    pub fn from_raw(window: IntWindow) -> Self {
+        Self(window)
+    }
+    pub fn raw(self) -> IntWindow {
+        self.0
+    }
+}
+impl From<IntWindow> for ValueWindow {
+    fn from(window: IntWindow) -> Self {
+        Self::from_raw(window)
+    }
+}
+impl std::fmt::Debug for ValueWindow {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&self.0, f)
+    }
+}
+/// An authored collection occurrence window; explicit upper MAX remains distinct from open.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct OccurrenceWindow(IntWindow);
+impl OccurrenceWindow {
+    /// Preserve raw endpoints; interpretation and malformed-window policy belong to the caller.
+    pub fn from_raw(window: IntWindow) -> Self {
+        Self(window)
+    }
+    pub fn raw(self) -> IntWindow {
+        self.0
+    }
+    /// The authored loose spelling; numeric zero/MAX alone does not imply this identity.
+    pub fn is_loose(self) -> bool {
+        self.0 == (None, None)
+    }
+    /// The authored open minimum-one spelling, distinct from an explicit upper MAX.
+    pub fn is_non_empty(self) -> bool {
+        self.0 == (Some(1), None)
+    }
+    pub fn checked_u64(self) -> Option<(u64, u64)> {
+        occurrence_window_u64(self.0)
+    }
+    pub fn exact_len(self) -> Option<Result<usize, i128>> {
+        exact_array_len_from_bounds(Some(self.0))
+    }
+}
+impl From<IntWindow> for OccurrenceWindow {
+    fn from(window: IntWindow) -> Self {
+        Self::from_raw(window)
+    }
+}
+impl std::fmt::Debug for OccurrenceWindow {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&self.0, f)
+    }
+}
+/// The semantic role of the one integer-bound slot. Float storage remains separate.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TypeBounds {
+    Value(ValueWindow),
+    Occurrence(OccurrenceWindow),
+}
+impl TypeBounds {
+    /// Legacy payload projection for emitters that check either a value or collection length.
+    pub fn raw(self) -> IntWindow {
+        match self {
+            Self::Value(w) => w.raw(),
+            Self::Occurrence(w) => w.raw(),
+        }
+    }
+}
+// Tuple-only formatting preserves IR snapshots and structural registration fingerprints.
+impl std::fmt::Debug for TypeBounds {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&self.raw(), f)
+    }
+}
+/// A dynamic row's already-normalized numeric window, distinct from authored endpoints.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct RestOccurrenceWindow((u64, u64));
+impl RestOccurrenceWindow {
+    /// Keep the existing row representation; normalization occurs at its parser seam.
+    pub fn from_raw(window: (u64, u64)) -> Self {
+        Self(window)
+    }
+    pub fn raw(self) -> (u64, u64) {
+        self.0
+    }
+    pub fn is_exact(self) -> bool {
+        self.0.0 == self.0.1
+    }
+    pub fn is_non_empty(self) -> bool {
+        self.0 == (1, u64::MAX)
+    }
+    /// Preserve the row's established zero/MAX endpoint elision.
+    pub fn rust_bounds(self) -> IntWindow {
+        (
+            (self.0.0 != 0).then_some(i128::from(self.0.0)),
+            (self.0.1 != u64::MAX).then_some(i128::from(self.0.1)),
+        )
+    }
+}
+impl From<(u64, u64)> for RestOccurrenceWindow {
+    fn from(window: (u64, u64)) -> Self {
+        Self::from_raw(window)
+    }
+}
+impl std::fmt::Debug for RestOccurrenceWindow {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&self.0, f)
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RustTypeSerializeConfig {
     /// default value when missing in deserialization
     pub default: Option<FixedValue>,
-    /// Bounds to check. Relevant to primitives + arrays + maps
-    pub bounds: Option<IntWindow>,
+    /// A scalar value/size or collection occurrence constraint, with its stored role explicit.
+    pub bounds: Option<TypeBounds>,
     /// Per-rule `@duplicates` policy for an array or table collection member. On arrays (`[* a]` /
     /// `[+ a]`, including the tag-258 set idiom), `Some(Reject)` swaps to the uniqueness twin
     /// (`OrderedSet`/`NonEmptyOrderedSet`) whose single `TryFrom` door refuses duplicates. On loose
@@ -932,6 +1107,29 @@ pub struct RustTypeSerializeConfig {
     pub float_bounds: Option<FloatWindow>,
     /// Basic group encoding override. If true basic encoding will not be used in (de)serialization
     pub basic_override: bool,
+}
+
+impl RustTypeSerializeConfig {
+    pub fn value_bounds(&self) -> Option<IntWindow> {
+        match self.bounds {
+            Some(TypeBounds::Value(w)) => Some(w.raw()),
+            _ => None,
+        }
+    }
+    pub fn occurrence_window(&self) -> Option<OccurrenceWindow> {
+        match self.bounds {
+            Some(TypeBounds::Occurrence(w)) => Some(w),
+            _ => None,
+        }
+    }
+    /// Tuple projection for explicitly unambiguous emission boundaries.
+    pub fn occurrence_bounds(&self) -> Option<IntWindow> {
+        self.occurrence_window().map(OccurrenceWindow::raw)
+    }
+    /// Payload view for shared value/length check emitters, retaining role in storage.
+    pub fn raw_bounds(&self) -> Option<IntWindow> {
+        self.bounds.map(TypeBounds::raw)
+    }
 }
 
 /// A complete rust type, including serialization options that don't impact other areas
@@ -1093,7 +1291,20 @@ impl RustType {
             && self.generic_param_binding == resolved.generic_param_binding
     }
 
-    pub fn with_bounds(mut self, mut bounds: IntWindow) -> Self {
+    /// Attach a scalar integer value or byte/text length window.
+    pub fn with_value_bounds(self, bounds: impl Into<ValueWindow>) -> Self {
+        self.with_bounds(TypeBounds::Value(bounds.into()))
+    }
+
+    /// Attach a collection occurrence window without changing its invalid-window policy.
+    pub fn with_occurrence_bounds(self, bounds: impl Into<OccurrenceWindow>) -> Self {
+        self.with_bounds(TypeBounds::Occurrence(bounds.into()))
+    }
+
+    // Keep the assertion's production frame and wording at the original attachment seam.
+    // The private tagged input has a known role; no mixed public tuple adapter remains.
+    fn with_bounds(mut self, role: TypeBounds) -> Self {
+        let mut bounds = role.raw();
         assert!(self.config.bounds.is_none());
         // remove redundant 0 for unsigned types — a window's lower endpoint only: an exclusion's
         // stored pair has no endpoint to drop (`.ne -1` is `(0, -2)`)
@@ -1113,7 +1324,12 @@ impl RustType {
             bounds.0 = None;
         }
         if bounds.0.is_some() || bounds.1.is_some() {
-            self.config.bounds = Some(bounds);
+            self.config.bounds = Some(match role {
+                TypeBounds::Value(_) => TypeBounds::Value(ValueWindow::from_raw(bounds)),
+                TypeBounds::Occurrence(_) => {
+                    TypeBounds::Occurrence(OccurrenceWindow::from_raw(bounds))
+                }
+            });
         }
         self
     }
@@ -1388,7 +1604,10 @@ impl RustType {
     /// stay the alias name (whose target is already `NonEmptyVec`), not re-inline the container.
     pub fn is_non_empty_array(&self) -> bool {
         matches!(self.conceptual_type, ConceptualRustType::Array(_))
-            && self.config.bounds == Some((Some(1), None))
+            && self
+                .config
+                .occurrence_window()
+                .is_some_and(OccurrenceWindow::is_non_empty)
     }
 
     /// A finite or non-zero-minimum homogeneous ARRAY occurrence whose window is represented by
@@ -1397,7 +1616,10 @@ impl RustType {
     pub fn is_bounded_array(&self) -> bool {
         matches!(self.conceptual_type, ConceptualRustType::Array(_))
             && self.exact_homogeneous_array_len_checked().is_none()
-            && matches!(self.config.bounds, Some(bounds) if bounds != (None, None) && bounds != (Some(1), None))
+            && self
+                .config
+                .occurrence_window()
+                .is_some_and(|window| !window.is_loose() && !window.is_non_empty())
     }
 
     /// The const arguments used by `BoundedVec`. Occurrence endpoints are non-negative parse
@@ -1407,8 +1629,7 @@ impl RustType {
         if !self.is_bounded_array() {
             return None;
         }
-        let (min, max) = self.config.bounds?;
-        occurrence_window_u64((min, max))
+        self.config.occurrence_window()?.checked_u64()
     }
 
     /// Alias-aware counterpart used only for invariant decisions and minting. Naming retains the
@@ -1420,7 +1641,7 @@ impl RustType {
         )
         .then_some(())?;
         type_enforced_bounded_window(
-            self.config.bounds?,
+            self.config.occurrence_bounds()?,
             self.exact_homogeneous_array_len_checked().is_some(),
         )
     }
@@ -1499,7 +1720,10 @@ impl RustType {
     /// alias name (whose target is already `NonEmptyMap`) rather than re-inlining the container.
     pub fn is_non_empty_map(&self) -> bool {
         matches!(self.conceptual_type, ConceptualRustType::Map(_, _))
-            && self.config.bounds == Some((Some(1), None))
+            && self
+                .config
+                .occurrence_window()
+                .is_some_and(OccurrenceWindow::is_non_empty)
     }
 
     /// A finite, optional, exact-once, or lower-bounded table represented by a type-enforced bounded
@@ -1507,7 +1731,10 @@ impl RustType {
     /// `BoundedMap`. `+` retains the compatibility NonEmpty* representations.
     pub fn is_bounded_map(&self) -> bool {
         matches!(self.conceptual_type, ConceptualRustType::Map(_, _))
-            && matches!(self.config.bounds, Some(bounds) if bounds != (None, None) && bounds != (Some(1), None))
+            && self
+                .config
+                .occurrence_window()
+                .is_some_and(|window| !window.is_loose() && !window.is_non_empty())
     }
 
     pub fn is_bounded_pair_map(&self) -> bool {
@@ -1518,8 +1745,7 @@ impl RustType {
         if !self.is_bounded_map() {
             return None;
         }
-        let (min, max) = self.config.bounds?;
-        occurrence_window_u64((min, max))
+        self.config.occurrence_window()?.checked_u64()
     }
 
     /// Alias-aware counterpart used for invariant decisions. Naming deliberately retains the raw
@@ -1531,7 +1757,7 @@ impl RustType {
             ConceptualRustType::Map(_, _)
         )
         .then_some(())?;
-        type_enforced_bounded_window(self.config.bounds?, false)
+        type_enforced_bounded_window(self.config.occurrence_bounds()?, false)
     }
 
     pub fn is_type_enforced_bounded_map(&self) -> bool {
@@ -1549,7 +1775,10 @@ impl RustType {
         matches!(
             self.conceptual_type.resolve_alias_shallow(),
             ConceptualRustType::Array(_) | ConceptualRustType::Map(_, _)
-        ) && self.config.bounds == Some((Some(1), None))
+        ) && self
+            .config
+            .occurrence_window()
+            .is_some_and(OccurrenceWindow::is_non_empty)
     }
 
     /// Like `is_type_enforced_non_empty`, but for every bounded ARRAY occurrence represented by a
@@ -1699,7 +1928,7 @@ impl RustType {
         };
         let bounds = self
             .config
-            .bounds
+            .occurrence_bounds()
             .expect("bounded array has occurrence bounds");
         types
             .bounded_array_named_owner(inner, bounds)
@@ -1799,7 +2028,7 @@ impl RustType {
         };
         let bounds = self
             .config
-            .bounds
+            .occurrence_bounds()
             .expect("bounded map has occurrence bounds");
         types
             .bounded_map_named_owner(key, value, bounds, self.is_preserve_pair_map())
@@ -3383,7 +3612,7 @@ mod tests {
             alias.clone(),
             array(u64_ty.clone()),
             array(alias.clone()),
-            array(u64_ty.clone()).with_bounds((Some(1), None)),
+            array(u64_ty.clone()).with_occurrence_bounds((Some(1), None)),
             array(u64_ty.clone().tag(5)),
             map(alias.clone(), text.clone()),
             map(u64_ty.clone(), text),
@@ -3515,7 +3744,7 @@ mod tests {
         let bounded = RustType::new(ConceptualRustType::Array(Box::new(RustType::new(
             ConceptualRustType::Primitive(Primitive::U64),
         ))))
-        .with_bounds((None, Some(5)));
+        .with_occurrence_bounds((None, Some(5)));
         let optional = RustType::new(ConceptualRustType::Optional(Box::new(bounded)));
 
         assert_eq!(
@@ -3531,7 +3760,7 @@ mod tests {
         let u64_type = || RustType::new(ConceptualRustType::Primitive(Primitive::U64));
         let bounded_array = || {
             RustType::new(ConceptualRustType::Array(Box::new(u64_type())))
-                .with_bounds((None, Some(5)))
+                .with_occurrence_bounds((None, Some(5)))
         };
         let loose_map = RustType::new(ConceptualRustType::Map(
             Box::new(u64_type()),
@@ -3553,7 +3782,7 @@ mod tests {
             Box::new(u64_type()),
             Box::new(u64_type()),
         ))
-        .with_bounds((Some(1), None))
+        .with_occurrence_bounds((Some(1), None))
         .with_duplicates_policy(Some(DuplicatesPolicy::Preserve));
 
         let names = [
@@ -3577,7 +3806,7 @@ mod tests {
             Box::new(u64_type()),
             Box::new(bounded_array()),
         ))
-        .with_bounds((Some(1), None))
+        .with_occurrence_bounds((Some(1), None))
         .with_duplicates_policy(Some(DuplicatesPolicy::Preserve));
         let loosened = restricted_key.loosened_for_wasm_table_boundary_key();
         assert_eq!(

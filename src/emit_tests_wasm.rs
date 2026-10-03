@@ -1005,7 +1005,7 @@ fn wasm_record_bounds(
         if !bounded_scalar(&f.rust_type) {
             continue;
         }
-        let Some(bounds) = f.rust_type.config.bounds else {
+        let Some(bounds) = f.rust_type.config.value_bounds() else {
             continue;
         };
         let is_len = measure_kind(&f.rust_type) == Some(emit_tests::MeasureKind::Len);
@@ -1041,7 +1041,7 @@ fn wasm_choice_bounds(
             if !bounded_scalar(arg_ty) {
                 continue;
             }
-            let Some(bounds) = arg_ty.config.bounds else {
+            let Some(bounds) = arg_ty.config.value_bounds() else {
                 continue;
             };
             let is_len = measure_kind(arg_ty) == Some(emit_tests::MeasureKind::Len);

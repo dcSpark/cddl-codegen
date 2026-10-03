@@ -243,7 +243,9 @@ pub(super) fn nominal_collection_cfg<'a>(
 ) -> Cow<'a, RustTypeSerializeConfig> {
     let rust_struct = types.rust_struct(ident).unwrap();
     let bounds = match rust_struct.variant() {
-        RustStructType::Table { bounds, .. } | RustStructType::Array { bounds, .. } => *bounds,
+        RustStructType::Table { bounds, .. } | RustStructType::Array { bounds, .. } => {
+            bounds.map(crate::intermediate::TypeBounds::Occurrence)
+        }
         _ => None,
     };
     let duplicates = rust_struct.config().duplicates;

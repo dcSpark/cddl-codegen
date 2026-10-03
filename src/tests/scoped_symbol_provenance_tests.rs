@@ -327,7 +327,7 @@ fn generic_argument_config_survives_and_occurrence_config_rejects_gracefully() {
             panic!("bounded generic instance did not lower to a record")
         };
         assert_eq!(
-            record.fields[0].rust_type.config.bounds,
+            record.fields[0].rust_type.config.value_bounds(),
             Some((Some(4), Some(4))),
             "argument-local configuration must survive substitution"
         );

@@ -456,6 +456,10 @@ pub struct RustStruct {
     pub(crate) variant: RustStructType,
 }
 
+// Keep the public Table domain/range payloads inline as owned RustTypes. The bounds-role tag
+// increases the size gap past Clippy's threshold; retain this representation without adding
+// per-table allocations or changing those public field types solely to satisfy that threshold.
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug)]
 pub enum RustStructType {
     Record(RustRecord),
@@ -467,14 +471,14 @@ pub enum RustStructType {
         /// `NonEmptyMap`, and every other window selects `BoundedMap` (`NonEmptyPairMap` /
         /// `BoundedPairMap` under `@duplicates preserve`). Rides the registered alias's `RustType` so
         /// embed sites enforce it, exactly like `Array` bounds.
-        bounds: Option<IntWindow>,
+        bounds: Option<OccurrenceWindow>,
     },
     Array {
         element_type: RustType,
         /// occurrence-count bounds (`+` / `n*m`) — a LENGTH constraint on the array itself.
         /// Applied to the registered alias RustType's config so embed sites enforce it; kept off
         /// the element_type so it can't be misread as an element VALUE bound.
-        bounds: Option<IntWindow>,
+        bounds: Option<OccurrenceWindow>,
     },
     TypeChoice {
         variants: Vec<EnumVariant>,
@@ -533,7 +537,7 @@ impl RustStruct {
             variant: RustStructType::Table {
                 domain,
                 range,
-                bounds,
+                bounds: bounds.map(OccurrenceWindow::from_raw),
             },
         }
     }
@@ -552,7 +556,7 @@ impl RustStruct {
             config: RustStructConfig::from(rule_metadata),
             variant: RustStructType::Array {
                 element_type,
-                bounds,
+                bounds: bounds.map(OccurrenceWindow::from_raw),
             },
         }
     }
@@ -1145,7 +1149,7 @@ pub struct RestRow {
     /// in an emitter-local flag, so field spelling, decode conversion, JSON, wasm, WIT, and wrapper
     /// ownership all see the SAME invariant. Both array tails and dynamic map rows use the full
     /// loose/NonEmpty/Bounded carrier vocabulary.
-    pub occurrence: Option<(u64, u64)>,
+    pub occurrence: Option<RestOccurrenceWindow>,
 }
 
 /// Whether any alias in `ty`'s alias chain carries a `@custom_serialize`/`@custom_deserialize`
@@ -1302,25 +1306,21 @@ impl RestRow {
     /// is a Bounded carrier and gives a middle array segment a count boundary independent of the
     /// repeated element's wire head.
     pub fn has_exact_occurrence_window(&self) -> bool {
-        self.occurrence.is_some_and(|(min, max)| min == max)
+        self.occurrence.is_some_and(RestOccurrenceWindow::is_exact)
     }
 
     /// The row's established min-one window (`+` / `1*`). This remains its own predicate because
     /// the public constructor ABI for a typed open-table `+` is the shipped first-entry door.
     pub fn is_non_empty(&self) -> bool {
-        self.occurrence == Some((1, u64::MAX))
+        self.occurrence
+            .is_some_and(RestOccurrenceWindow::is_non_empty)
     }
 
     /// The RustType-form window used by the collection carriers: `u64::MAX` is rendered as the
     /// existing unbounded endpoint, and a zero lower endpoint stays absent so `BoundedMap` derives
     /// the conventional `min: None` range payload.
     pub fn rust_bounds(&self) -> Option<IntWindow> {
-        self.occurrence.map(|(min, max)| {
-            (
-                (min != 0).then_some(i128::from(min)),
-                (max != u64::MAX).then_some(i128::from(max)),
-            )
-        })
+        self.occurrence.map(RestOccurrenceWindow::rust_bounds)
     }
 
     /// Whether a map rest row's key domain takes the FAST (peeked-key) deserialize path — the record
@@ -1375,7 +1375,7 @@ impl RestRow {
     pub fn container_type(&self) -> RustType {
         let ty = self.staging_container_type();
         match self.rust_bounds() {
-            Some(bounds) => ty.with_bounds(bounds),
+            Some(bounds) => ty.with_occurrence_bounds(bounds),
             None => ty,
         }
     }

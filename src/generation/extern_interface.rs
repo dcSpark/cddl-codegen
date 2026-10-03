@@ -382,12 +382,12 @@ fn render_conceptual(
             Ok(format!("{inner_s} / null"))
         }
         ConceptualRustType::Array(inner) => {
-            let occ = occurrence_marker(rule, config.float_bounds, config.bounds)?;
+            let occ = occurrence_marker(rule, config.float_bounds, config.occurrence_bounds())?;
             let inner_s = render_rust_type(rule, inner, types)?;
             Ok(format!("[{occ} {inner_s}]"))
         }
         ConceptualRustType::Map(key, value) => {
-            let occ = occurrence_marker(rule, config.float_bounds, config.bounds)?;
+            let occ = occurrence_marker(rule, config.float_bounds, config.occurrence_bounds())?;
             let key_s = render_rust_type(rule, key, types)?;
             let value_s = render_rust_type(rule, value, types)?;
             Ok(format!("{{{occ} {key_s} => {value_s}}}"))
@@ -454,7 +454,7 @@ fn render_primitive(rule: &str, p: Primitive, config: &RustTypeSerializeConfig) 
     if let Some(window) = config.float_bounds {
         return render_float_primitive(rule, p, window);
     }
-    let bounds = config.bounds;
+    let bounds = config.value_bounds();
     match p {
         Primitive::Bool => plain_primitive(rule, "bool", bounds),
         // float windows (the only bound a float carries) are handled above; a float with an INTEGER
@@ -1550,7 +1550,10 @@ mod tests {
         assert_eq!(ok(&int_class, &t), "int");
         // a WINDOWED i64 is unaffected — those forms already round-trip through an `int`-headed op
         assert_eq!(
-            ok(&prim(Primitive::I64).with_bounds((Some(-10), None)), &t),
+            ok(
+                &prim(Primitive::I64).with_value_bounds((Some(-10), None)),
+                &t
+            ),
             "int .ge -10"
         );
         // and the two spellings whose bare prelude names DO round-trip stay bare
@@ -1565,24 +1568,36 @@ mod tests {
         let t = IntermediateTypes::new();
         // one-sided preserves the base typename
         assert_eq!(
-            ok(&prim(Primitive::U64).with_bounds((None, Some(1000))), &t),
+            ok(
+                &prim(Primitive::U64).with_value_bounds((None, Some(1000))),
+                &t
+            ),
             "uint .le 1000"
         );
         assert_eq!(
-            ok(&prim(Primitive::U64).with_bounds((Some(5), None)), &t),
+            ok(&prim(Primitive::U64).with_value_bounds((Some(5), None)), &t),
             "uint .ge 5"
         );
         assert_eq!(
-            ok(&prim(Primitive::I64).with_bounds((Some(-10), None)), &t),
+            ok(
+                &prim(Primitive::I64).with_value_bounds((Some(-10), None)),
+                &t
+            ),
             "int .ge -10"
         );
         // two-sided uint/int → literal range (round-trips via literal sign)
         assert_eq!(
-            ok(&prim(Primitive::U64).with_bounds((Some(5), Some(100))), &t),
+            ok(
+                &prim(Primitive::U64).with_value_bounds((Some(5), Some(100))),
+                &t
+            ),
             "5..100"
         );
         assert_eq!(
-            ok(&prim(Primitive::I64).with_bounds((Some(-5), Some(100))), &t),
+            ok(
+                &prim(Primitive::I64).with_value_bounds((Some(-5), Some(100))),
+                &t
+            ),
             "-5..100"
         );
     }
@@ -1594,18 +1609,24 @@ mod tests {
         let t = IntermediateTypes::new();
         assert_eq!(
             ok(
-                &prim(Primitive::Bytes).with_bounds((Some(32), Some(32))),
+                &prim(Primitive::Bytes).with_value_bounds((Some(32), Some(32))),
                 &t
             ),
             "bytes .size 32"
         );
         assert_eq!(
-            ok(&prim(Primitive::Str).with_bounds((Some(1), Some(64))), &t),
+            ok(
+                &prim(Primitive::Str).with_value_bounds((Some(1), Some(64))),
+                &t
+            ),
             "tstr .size (1..64)"
         );
         // `.size (0..m)` form (parser strips the unsigned min-0, storing (None, Some(m)))
         assert_eq!(
-            ok(&prim(Primitive::Bytes).with_bounds((None, Some(8))), &t),
+            ok(
+                &prim(Primitive::Bytes).with_value_bounds((None, Some(8))),
+                &t
+            ),
             "bytes .size (0..8)"
         );
     }
@@ -1754,7 +1775,7 @@ mod tests {
     fn array_of(inner: RustType, bounds: Option<IntWindow>) -> RustType {
         let mut ty = RustType::new(ConceptualRustType::Array(Box::new(inner)));
         if let Some(b) = bounds {
-            ty = ty.with_bounds(b);
+            ty = ty.with_occurrence_bounds(b);
         }
         ty
     }
@@ -1805,7 +1826,7 @@ mod tests {
             Box::new(prim(Primitive::Str)),
             Box::new(prim(Primitive::U64)),
         ))
-        .with_bounds((Some(1), None));
+        .with_occurrence_bounds((Some(1), None));
         assert_eq!(ok(&ty, &t), "{+ tstr => uint}");
     }
 

@@ -34,7 +34,10 @@ fn array_segment_is_final(record: &RustRecord, rest: &RestRow) -> bool {
                     .all(|other| {
                         other.array_source_index().is_none_or(|other_index| {
                             other_index <= index
-                                || other.occurrence.is_some_and(|(_, maximum)| maximum == 0)
+                                || other
+                                    .occurrence
+                                    .map(crate::intermediate::RestOccurrenceWindow::raw)
+                                    .is_some_and(|(_, maximum)| maximum == 0)
                         })
                     })
         }
@@ -90,7 +93,10 @@ fn array_segment_uses_fixed_domain_retry(
     for (_, next) in later {
         match next {
             PossibleNext::Segment(next) => {
-                let (minimum, maximum) = next.occurrence.unwrap_or((0, u64::MAX));
+                let (minimum, maximum) = next
+                    .occurrence
+                    .map(crate::intermediate::RestOccurrenceWindow::raw)
+                    .unwrap_or((0, u64::MAX));
                 if maximum == 0 {
                     continue;
                 }
@@ -420,7 +426,11 @@ fn generate_array_segment_deserialization(
     // suffix, and the shared checked-carrier conversion below validates the staged empty Vec.
     // Omitting the statically-false loop also avoids emitting an always-false comparison in every
     // generated crate. With no loop nothing pushes, so its staging Vecs are bound immutably.
-    let exact_zero_middle = is_middle && rest.occurrence.is_some_and(|(_, max)| max == 0);
+    let exact_zero_middle = is_middle
+        && rest
+            .occurrence
+            .map(crate::intermediate::RestOccurrenceWindow::raw)
+            .is_some_and(|(_, max)| max == 0);
     let staging_mut = if exact_zero_middle { "" } else { "mut " };
     if rest.semantics == RestSemantics::Capture {
         deser_code.content.line(&format!(
@@ -442,6 +452,7 @@ fn generate_array_segment_deserialization(
     let loop_condition = if is_middle && rest.has_exact_occurrence_window() {
         let exact = rest
             .occurrence
+            .map(crate::intermediate::RestOccurrenceWindow::raw)
             .expect("an exact occurrence predicate requires normalized bounds")
             .0;
         // The count is the whole suffix-boundary proof here. `owner_has_more` preserves the
@@ -456,6 +467,7 @@ fn generate_array_segment_deserialization(
     } else if is_middle && fixed_domain_retry {
         let maximum_clause = rest
             .occurrence
+            .map(crate::intermediate::RestOccurrenceWindow::raw)
             .and_then(|(_, max)| (max != u64::MAX).then_some(max))
             .map(|max| format!(" && ({}.len() as u64) < {max}", rest.field_name))
             .unwrap_or_default();
@@ -491,6 +503,7 @@ fn generate_array_segment_deserialization(
         };
         let maximum_clause = rest
             .occurrence
+            .map(crate::intermediate::RestOccurrenceWindow::raw)
             .and_then(|(_, max)| (max != u64::MAX).then_some(max))
             .map(|max| format!(" && ({}.len() as u64) < {max}", rest.field_name))
             .unwrap_or_default();
@@ -677,7 +690,10 @@ pub(super) fn array_record_deser_refusals(
                 .dynamic_rows()
                 .filter(|row| row.is_array_tail())
                 .any(|segment| {
-                    segment.occurrence.is_some_and(|(min, _)| min > 0)
+                    segment
+                        .occurrence
+                        .map(crate::intermediate::RestOccurrenceWindow::raw)
+                        .is_some_and(|(min, _)| min > 0)
                         && segment.array_source_index().is_some_and(|segment_index| {
                             field.source_index < segment_index
                                 && record.fields[i].source_index > segment_index
@@ -726,7 +742,7 @@ pub(super) fn array_record_deser_refusals(
             // An exact-zero segment contributes no wire item. The fixed-field walk above already
             // compares this optional to the segment's suffix when one exists; if it is final, the
             // optional is owner-length-delimited just like any other terminal optional.
-            if !(rest.occurrence.is_none_or(|(_, max)| max != 0)
+            if !(rest.occurrence.map(crate::intermediate::RestOccurrenceWindow::raw).is_none_or(|(_, max)| max != 0)
                 && rest.array_source_index().is_some_and(|segment_index| {
                     field.source_index < segment_index
                         && record
@@ -744,7 +760,7 @@ pub(super) fn array_record_deser_refusals(
                             .dynamic_rows()
                             .filter(|prior| prior.is_array_tail())
                             .all(|prior| {
-                                prior.occurrence.is_none_or(|(min, _)| min == 0)
+                                prior.occurrence.map(crate::intermediate::RestOccurrenceWindow::raw).is_none_or(|(min, _)| min == 0)
                                     || !prior.array_source_index().is_some_and(|prior_index| {
                                         field.source_index < prior_index
                                             && prior_index < segment_index
@@ -4464,6 +4480,7 @@ pub(super) fn codegen_struct(
                         } else if rest.is_restricted() {
                             let (min, max) = rest
                                 .occurrence
+                                .map(crate::intermediate::RestOccurrenceWindow::raw)
                                 .expect("restricted array tail carries a normalized occurrence");
                             super::NaturalAnyPosition::BoundedSeq(min, max)
                         } else {

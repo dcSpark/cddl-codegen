@@ -20354,10 +20354,11 @@ fn render_wrapper_shape_matches_shape_grammar() {
     };
     let prim = |p: Primitive| RustType::new(ConceptualRustType::Primitive(p));
     let list = |elem: RustType| RustType::new(ConceptualRustType::Array(Box::new(elem)));
-    let non_empty_list = |elem: RustType| list(elem).with_bounds((Some(1), None));
+    let non_empty_list = |elem: RustType| list(elem).with_occurrence_bounds((Some(1), None));
     let map =
         |k: RustType, v: RustType| RustType::new(ConceptualRustType::Map(Box::new(k), Box::new(v)));
-    let non_empty_map = |k: RustType, v: RustType| map(k, v).with_bounds((Some(1), None));
+    let non_empty_map =
+        |k: RustType, v: RustType| map(k, v).with_occurrence_bounds((Some(1), None));
 
     // The element idents render as the dep's spec spelling (snake_case of the rust ident).
     assert_eq!(render_wrapper_shape(&list(named("Foo"))), "[* foo]");

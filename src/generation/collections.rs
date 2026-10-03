@@ -706,8 +706,8 @@ impl GenerationScope {
         // look different to a requesting consumer.
         let bounded_shape_type: RustType =
             ConceptualRustType::Array(Box::new(element_type.clone())).into();
-        let bounded_shape_type =
-            bounded_shape_type.with_bounds(super::requests::bounded_shape_window(min, max));
+        let bounded_shape_type = bounded_shape_type
+            .with_occurrence_bounds(super::requests::bounded_shape_window(min, max));
         let shape = render_wrapper_shape(&bounded_shape_type);
         if self.try_defer_wrapper(
             types,
@@ -912,9 +912,9 @@ impl GenerationScope {
         // the policy marker consumed by the strict dependency-side parser.
         let shape_type: RustType = ConceptualRustType::Array(Box::new(element_type.clone())).into();
         let shape_type = if let Some((min, max)) = bounds {
-            shape_type.with_bounds(super::requests::bounded_shape_window(min, max))
+            shape_type.with_occurrence_bounds(super::requests::bounded_shape_window(min, max))
         } else if non_empty {
-            shape_type.with_bounds((Some(1), None))
+            shape_type.with_occurrence_bounds((Some(1), None))
         } else {
             shape_type
         };
@@ -1146,7 +1146,7 @@ impl GenerationScope {
             ConceptualRustType::Map(Box::new(key_type.clone()), Box::new(value_type.clone()))
                 .into();
         let bounded = bounded
-            .with_bounds(super::requests::bounded_shape_window(min, max))
+            .with_occurrence_bounds(super::requests::bounded_shape_window(min, max))
             .with_duplicates_policy(
                 preserve_pair_map.then_some(crate::comment_ast::DuplicatesPolicy::Preserve),
             );
@@ -1585,7 +1585,7 @@ impl GenerationScope {
                     .or_else(|| rt.bounded_array_u64_bounds())
                 {
                     if types
-                        .bounded_array_named_owner(inner, rt.config.bounds.unwrap())
+                        .bounded_array_named_owner(inner, rt.config.occurrence_bounds().unwrap())
                         .is_none()
                     {
                         let ident =

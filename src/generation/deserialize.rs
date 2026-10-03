@@ -1035,7 +1035,7 @@ impl GenerationScope {
                     // framing (including the `_sz` metadata read).
                     if matches!(p, Primitive::Bytes)
                         && let Some(len) = crate::intermediate::exact_array_len_from_bounds(
-                            type_cfg.bounds,
+                            type_cfg.value_bounds(),
                         )
                         .map(|result| {
                             result.expect(
@@ -1104,7 +1104,7 @@ impl GenerationScope {
                                         )
                                     })
                                     .unwrap_or_default();
-                                let enc_map_fn = match &type_cfg.bounds {
+                                let enc_map_fn = match &type_cfg.value_bounds() {
                                     // Convert the error to DeserializeError so the `.and_then`
                                     // closure's `Err(DeserializeFailure::…into())` sees a consistent
                                     // E — but ONLY when no earlier stage of this chain already did.
@@ -1147,7 +1147,8 @@ impl GenerationScope {
                                     before_after.after_str(true)
                                 ));
                             } else {
-                                let bounds_fn = non_preserve_bounds_fn(*p, x, &type_cfg.bounds);
+                                let bounds_fn =
+                                    non_preserve_bounds_fn(*p, x, &type_cfg.value_bounds());
                                 let width_fn = width
                                     .map(|(wmin, wmax)| {
                                         width_reject(
@@ -1188,8 +1189,8 @@ impl GenerationScope {
                             // The u64 read is wider than the target: width-guard the cast unless
                             // an authored upper bound already caps it.
                             let (wmin, wmax) = prim_window(*p);
-                            let width =
-                                (!upper_caps(&type_cfg.bounds, wmax)).then_some((wmin, wmax));
+                            let width = (!upper_caps(&type_cfg.value_bounds(), wmax))
+                                .then_some((wmin, wmax));
                             deser_primitive(
                                 config.final_exprs,
                                 "unsigned_integer",
@@ -1208,8 +1209,10 @@ impl GenerationScope {
                             // domain (reject unconditionally). The uint arm reads a `u64` and so can
                             // never compare against a negative bound — hence the classification
                             // rather than a raw full-window check.
-                            let uint_arm = classify_sign_arm(&type_cfg.bounds, SignArm::Uint);
-                            let nint_arm = classify_sign_arm(&type_cfg.bounds, SignArm::Nint);
+                            let uint_arm =
+                                classify_sign_arm(&type_cfg.value_bounds(), SignArm::Uint);
+                            let nint_arm =
+                                classify_sign_arm(&type_cfg.value_bounds(), SignArm::Nint);
                             // Width guards for the per-arm narrowing casts: the uint arm reads a
                             // u64 (can exceed the type max — 2^63 would wrap i64 negative) and the
                             // nint readers return i64/i128 (can fall below the type min). Skipped
@@ -1326,7 +1329,7 @@ impl GenerationScope {
                                 // it directly. It yields the real signed value, so the nint arm
                                 // checks the full window directly (no sign partition needed).
                                 if *p == Primitive::I64 {
-                                    let bounds_fn = match &type_cfg.bounds {
+                                    let bounds_fn = match &type_cfg.value_bounds() {
                                         Some(bounds) => Cow::Owned(format!(
                                             "{}.and_then(|(x, _enc)| {} else {{ Ok((x, _enc)) }})",
                                             CONVERT_ERR_TO_OURS,
@@ -1395,7 +1398,7 @@ impl GenerationScope {
                                 // negative_integer() reads into i64 and errors on the bottom half
                                 // of the nint range (below i64::MIN); the _sz reader yields i128
                                 // across the full range, so we use it directly
-                                let bounds_fn = match &type_cfg.bounds {
+                                let bounds_fn = match &type_cfg.value_bounds() {
                                     // Convert the read's error to DeserializeError so the `.and_then`
                                     // closure's `Err(DeserializeFailure::…into())` sees a consistent E
                                     // — but ONLY when the site's `error_convert` did not already (it is
@@ -2188,7 +2191,7 @@ impl GenerationScope {
                         // built through the API report the identical `DuplicateKey(index)` error and
                         // can never drift. The non-empty flavor's door additionally enforces the `[+]`
                         // min-1 bound (same composed door). Encoding vars stay keyed off the field.
-                        if let Some((min, max)) = type_cfg.bounds
+                        if let Some((min, max)) = type_cfg.occurrence_bounds()
                             && (min, max) != (Some(1), None)
                             && (min, max) != (None, None)
                         {
@@ -2206,7 +2209,7 @@ impl GenerationScope {
                                 "let {arr_var_name} = BoundedOrderedSet::<_, {min}, {max}>::try_from({arr_var_name})?;"
                             ));
                         } else {
-                            let twin = if type_cfg.bounds == Some((Some(1), None)) {
+                            let twin = if type_cfg.occurrence_bounds() == Some((Some(1), None)) {
                                 "NonEmptyOrderedSet"
                             } else {
                                 "OrderedSet"
@@ -2215,7 +2218,7 @@ impl GenerationScope {
                                 "let {arr_var_name} = {twin}::try_from({arr_var_name})?;"
                             ));
                         }
-                    } else if type_cfg.bounds == Some((Some(1), None)) {
+                    } else if type_cfg.occurrence_bounds() == Some((Some(1), None)) {
                         // `[+ T]`: route the collected Vec through the SAME `TryFrom` door the API
                         // uses, so the wire side and API side report the identical RangeCheck error
                         // ("0 not at least 1") and can never drift. The encoding vars stay keyed off
@@ -2223,16 +2226,16 @@ impl GenerationScope {
                         deser_code.content.line(&format!(
                             "let {arr_var_name} = NonEmptyVec::try_from({arr_var_name})?;"
                         ));
-                    } else if let Some(Ok(len)) =
-                        crate::intermediate::exact_array_len_from_bounds(type_cfg.bounds)
-                    {
+                    } else if let Some(Ok(len)) = crate::intermediate::exact_array_len_from_bounds(
+                        type_cfg.occurrence_bounds(),
+                    ) {
                         // Exact ordinary/preserve homogeneous arrays stage on the wire as a Vec
                         // and cross one static handover. Map the standard conversion error back
                         // to the generator's established RangeCheck rather than leaking it.
                         deser_code.content.line(&format!(
                             "let {arr_var_name}: [_; {len}] = {arr_var_name}.try_into().map_err(|elements: Vec<_>| DeserializeFailure::RangeCheck{{ found: elements.len() as i128, min: Some({len}), max: Some({len}) }})?;"
                         ));
-                    } else if let Some((min, max)) = type_cfg.bounds
+                    } else if let Some((min, max)) = type_cfg.occurrence_bounds()
                         && (min, max) != (None, None)
                         && (min, max) != (Some(1), None)
                     {
@@ -2249,7 +2252,7 @@ impl GenerationScope {
                         deser_code.content.line(&format!(
                             "let {arr_var_name} = BoundedVec::<_, {min}, {max}>::try_from({arr_var_name})?;"
                         ));
-                    } else if let Some(bounds) = &type_cfg.bounds {
+                    } else if let Some(bounds) = &type_cfg.occurrence_bounds() {
                         // we use cargo fmt after so it's okay if we just use .line() here
                         deser_code.content.line(&bounds_check_if_block(
                             bounds,
@@ -2433,7 +2436,7 @@ impl GenerationScope {
                             }
                         }
                         deser_code.content.push_block(deser_loop);
-                        if type_cfg.bounds == Some((Some(1), None)) {
+                        if type_cfg.occurrence_bounds() == Some((Some(1), None)) {
                             // `{+ k => v}` preserve: the min-1 door composes non-emptiness with the
                             // vec-of-pairs, routed through the SAME `TryFrom` the API uses so the
                             // wire/API RangeCheck errors are identical.
@@ -2444,7 +2447,9 @@ impl GenerationScope {
                             Box::new((**key_type).clone()),
                             Box::new((**value_type).clone()),
                         ))
-                        .with_bounds(type_cfg.bounds.unwrap_or((None, None)))
+                        .with_occurrence_bounds(
+                            type_cfg.occurrence_bounds().unwrap_or((None, None)),
+                        )
                         .with_duplicates_policy(Some(
                             crate::comment_ast::DuplicatesPolicy::Preserve,
                         ))
@@ -2559,7 +2564,7 @@ impl GenerationScope {
                         }
                     }
                     deser_code.content.push_block(deser_loop);
-                    if type_cfg.bounds == Some((Some(1), None)) {
+                    if type_cfg.occurrence_bounds() == Some((Some(1), None)) {
                         // `{+ k => v}`: route the collected map through the SAME `TryFrom` door the
                         // API uses, so the wire side and API side report the identical RangeCheck
                         // error ("0 not at least 1") and can never drift. The encoding vars stay
@@ -2567,7 +2572,7 @@ impl GenerationScope {
                         deser_code.content.line(&format!(
                             "let {table_var} = NonEmptyMap::try_from({table_var})?;"
                         ));
-                    } else if let Some((min, max)) = type_cfg.bounds
+                    } else if let Some((min, max)) = type_cfg.occurrence_bounds()
                         && (min, max) != (None, None)
                     {
                         let min = u64::try_from(min.unwrap_or(0))
@@ -2583,7 +2588,7 @@ impl GenerationScope {
                         deser_code.content.line(&format!(
                             "let {table_var} = BoundedMap::<_, _, {min}, {max}>::try_from({table_var})?;"
                         ));
-                    } else if let Some(bounds) = &type_cfg.bounds {
+                    } else if let Some(bounds) = &type_cfg.occurrence_bounds() {
                         // we use cargo fmt after so it's okay if we just use .line() here
                         deser_code.content.line(&bounds_check_if_block(
                             bounds,

@@ -2579,7 +2579,7 @@ fn parse_type_choices(
             }
             let effective_metadata =
                 with_well_known_tag_default(&rule_metadata, set_tag, is_array, None);
-            let bounds = base.config.bounds;
+            let bounds = base.config.occurrence_bounds();
             // Every flavor WRAPS: the tag is a wire-affecting property, and a transparent
             // `pub type Foo = Vec<u64>;` (or `BTreeMap<..>`) carrying `OptionallyTagged(n)` mints no
             // type to hang the tag on, so `Foo::from_cbor_bytes` would REFUSE the tagged half of the
@@ -3368,7 +3368,7 @@ fn uint_size_max(bytes: i128) -> i128 {
 /// `ty` with occurrence `bounds` attached when there are any.
 fn with_optional_bounds(ty: RustType, bounds: Option<IntWindow>) -> RustType {
     match bounds {
-        Some(bounds) => ty.with_bounds(bounds),
+        Some(bounds) => ty.with_occurrence_bounds(bounds),
         None => ty,
     }
 }
@@ -3393,7 +3393,7 @@ fn range_to_primitive(low: Option<i128>, high: Option<i128>, primitive: Primitiv
     );
     if !integer_head {
         return RustType::from(ConceptualRustType::Primitive(primitive))
-            .with_bounds(length_window(primitive, (low, high)));
+            .with_value_bounds(length_window(primitive, (low, high)));
     }
     match (low, high) {
         (Some(l), Some(h)) if l == u8::MIN as i128 && h == u8::MAX as i128 => {
@@ -3421,7 +3421,9 @@ fn range_to_primitive(low: Option<i128>, high: Option<i128>, primitive: Primitiv
             ConceptualRustType::Primitive(Primitive::I64).into()
         }
         // TODO: use minimal primitive or check here? e.g. uint .le 8 -> U8 instead of U64
-        bounds => RustType::from(ConceptualRustType::Primitive(primitive)).with_bounds(bounds),
+        bounds => {
+            RustType::from(ConceptualRustType::Primitive(primitive)).with_value_bounds(bounds)
+        }
     }
 }
 
@@ -6879,7 +6881,12 @@ fn with_resolved_head_window(base_type: RustType, window: IntWindow) -> RustType
         }
         _ => window,
     };
-    base_type.with_bounds(window)
+    match base_type.conceptual_type.resolve_alias_shallow() {
+        ConceptualRustType::Array(_) | ConceptualRustType::Map(_, _) => {
+            base_type.with_occurrence_bounds(window)
+        }
+        _ => base_type.with_value_bounds(window),
+    }
 }
 
 /// The window a byte/text `.size` checks. A CBOR length never exceeds `u64::MAX`, so an upper
@@ -8876,7 +8883,7 @@ fn recognize_array_rest_segments(
             semantics: RestSemantics::Capture,
             field_name,
             dispatch_major: None,
-            occurrence,
+            occurrence: occurrence.map(crate::intermediate::RestOccurrenceWindow::from_raw),
         });
     }
     (rows, candidates)
@@ -9115,7 +9122,7 @@ fn open_table_row(
         field_name,
         // Derived in `finalize` for the typed row (see the field doc); the catch-all never has one.
         dispatch_major: None,
-        occurrence,
+        occurrence: occurrence.map(crate::intermediate::RestOccurrenceWindow::from_raw),
     })
 }
 
@@ -9583,7 +9590,7 @@ fn recognize_rest_row(
         field_name,
         // Only an open table's TYPED row claims a single major; a catch-all sees the complement.
         dispatch_major: None,
-        occurrence,
+        occurrence: occurrence.map(crate::intermediate::RestOccurrenceWindow::from_raw),
     };
     (Some(Box::new(rest_row)), Some(candidate))
 }
@@ -9750,7 +9757,7 @@ fn recognize_array_rest_tail(
         field_name,
         // An array tail has no keys, so no major-type dispatch and no claimed major.
         dispatch_major: None,
-        occurrence,
+        occurrence: occurrence.map(crate::intermediate::RestOccurrenceWindow::from_raw),
     };
     (Some(Box::new(rest_row)), Some(candidate))
 }
@@ -9865,7 +9872,7 @@ fn parse_group_choice(
             let effective_metadata = single_arm_array_effective_metadata(&rule_metadata, tag, name);
             let array_type =
                 RustType::new(ConceptualRustType::Array(Box::new(element_type.clone())))
-                    .with_bounds(bounds.unwrap_or((None, None)))
+                    .with_occurrence_bounds(bounds.unwrap_or((None, None)))
                     .with_duplicates_policy(effective_metadata.duplicates);
             if let Some(Err(length)) = array_type.exact_homogeneous_array_len() {
                 types.record_rejection(exact_homogeneous_array_length_rejection(length));
