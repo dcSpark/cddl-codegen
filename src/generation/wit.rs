@@ -1659,25 +1659,7 @@ fn project_record(
     let mut ctor_fallible = false;
     project_record_field_rows(record, ctx, &mut params, &mut members, &mut ctor_fallible)?;
     project_record_dynamic_constructor_rows(record, ctx, &mut params, &mut ctor_fallible)?;
-    // The native multi-occurrence constructor is positional in authored array order. This projection
-    // otherwise appends every dynamic row after fixed fields, which type-checks only when adjacent
-    // members happen to share a type and silently feeds the wrong values across the component ABI.
-    if record.rep == Representation::Array && !record.array_segments.is_empty() {
-        params.sort_by_key(|param| {
-            record
-                .fields
-                .iter()
-                .find(|field| field.name == param.rust_name)
-                .map(|field| field.source_index)
-                .or_else(|| {
-                    record
-                        .dynamic_rows()
-                        .find(|row| row.field_name == param.rust_name)
-                        .and_then(|row| row.array_source_index())
-                })
-                .unwrap_or(usize::MAX)
-        });
-    }
+    order_record_constructor_params(record, &mut params);
     // An open struct's rest row: a getter over the captured content, mirroring the wasm face. An
     // `@ignore` row stores nothing, so it has no accessor at all.
     // BOTH dynamic rows: an open table's TYPED row is a second captured container with its own
@@ -1939,6 +1921,28 @@ fn project_record_dynamic_constructor_rows(
         *ctor_fallible |= validates;
     }
     Ok(())
+}
+
+fn order_record_constructor_params(record: &RustRecord, params: &mut [WitParam]) {
+    // The native multi-occurrence constructor is positional in authored array order. This projection
+    // otherwise appends every dynamic row after fixed fields, which type-checks only when adjacent
+    // members happen to share a type and silently feeds the wrong values across the component ABI.
+    if record.rep == Representation::Array && !record.array_segments.is_empty() {
+        params.sort_by_key(|param| {
+            record
+                .fields
+                .iter()
+                .find(|field| field.name == param.rust_name)
+                .map(|field| field.source_index)
+                .or_else(|| {
+                    record
+                        .dynamic_rows()
+                        .find(|row| row.field_name == param.rust_name)
+                        .and_then(|row| row.array_source_index())
+                })
+                .unwrap_or(usize::MAX)
+        });
+    }
 }
 
 /// A `@newtype` wrapper → a `resource` with a constructor and the inner-value getter. The getter's
