@@ -3357,6 +3357,24 @@ fn build_map_field_deser_arm(
     deser_block
 }
 
+/// Shared constructor documentation buffering; argument rendering and projections stay explicit.
+#[derive(Default)]
+struct ConstructorDocs {
+    entries: Vec<String>,
+}
+
+impl ConstructorDocs {
+    fn push(&mut self, entry: String) {
+        self.entries.push(entry);
+    }
+
+    fn apply_to(self, constructor: &mut codegen::Function) {
+        if !self.entries.is_empty() {
+            constructor.doc(self.entries.join("\n"));
+        }
+    }
+}
+
 /// Emit the complete WASM record face; the coordinator owns the WASM gate and fallibility flags.
 /// Keep parameter projections, renderer/conversion batches and inline bounded handovers in order.
 #[allow(clippy::too_many_arguments)] // Explicit phase inputs preserve borrow splitting and evaluation order.
@@ -3379,7 +3397,7 @@ fn emit_record_wasm(
     }
     wasm_new.vis("pub");
     let mut wasm_new_args = Vec::new();
-    let mut wasm_new_comments = Vec::new();
+    let mut wasm_new_comments = ConstructorDocs::default();
     let multi_array_segments =
         record.rep == Representation::Array && !record.array_segments.is_empty();
     for field in &record.fields {
@@ -4104,9 +4122,7 @@ fn emit_record_wasm(
             wasm_native_new_args.join(", ")
         ));
     }
-    if !wasm_new_comments.is_empty() {
-        wasm_new.doc(wasm_new_comments.join("\n"));
-    }
+    wasm_new_comments.apply_to(&mut wasm_new);
     if let Some(doc) = ignore_aware_doc(config.doc.as_deref(), record, record.ignored_rest()) {
         wrapper.s.doc(&doc);
     }
@@ -4163,7 +4179,7 @@ fn prepare_record_native(
     if new_can_fail {
         native_new_block.after(")");
     }
-    let mut native_new_comments = Vec::new();
+    let mut native_new_comments = ConstructorDocs::default();
     // for clippy we generate a Default impl if new has no args
     let mut new_arg_count = 0;
     // The one-segment ABI historically groups fixed fields before its tail argument. A multiple
@@ -4726,9 +4742,7 @@ fn prepare_record_native(
     if hand_written_open_table_json {
         emit_open_table_json(gen_scope, types, name, record, cli);
     }
-    if !native_new_comments.is_empty() {
-        native_new.doc(native_new_comments.join("\n"));
-    }
+    native_new_comments.apply_to(&mut native_new);
     RecordNativeParts {
         native_struct,
         native_impl,

@@ -220,6 +220,8 @@ const SOURCE_ROLES: &[SourceRole] = &[
             "prepare_record_map_fields",
             "generate_record_map_serialization",
             "generate_record_map_deserialization",
+            "push",
+            "apply_to",
         ],
     },
     SourceRole {
