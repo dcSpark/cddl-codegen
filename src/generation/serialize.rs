@@ -830,6 +830,200 @@ fn ser_fixed(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn ser_primitive(
+    primitive: &Primitive,
+    body: &mut dyn CodeBlock,
+    config: SerializeConfig,
+    cli: &Cli,
+    line_ender: &str,
+    expr_deref: &str,
+    serializer_use: &str,
+    serializer_pass: &str,
+    encoding_var: &str,
+    encoding_var_deref: &str,
+) {
+    match primitive {
+        Primitive::Bool => {
+            body.line(&format!(
+                "{serializer_use}.write_special(cbor_event::Special::Bool({expr_deref})){line_ender}"
+            ));
+        }
+        p @ (Primitive::Float
+        | Primitive::F16
+        | Primitive::F32
+        | Primitive::F64
+        | Primitive::F16To32
+        | Primitive::F32To64) => {
+            // The CBOR float domain is f64, so an f32-CARRIED class (`float16`,
+            // `float32`, `float16-32`) widens here. Through the crate's exact
+            // widening, never `as`/`From`: those may quiet a signaling NaN or drop
+            // its payload, and LLVM const-folds the conversion to a canonical quiet
+            // NaN, so `as` can differ between the const-evaluated and runtime paths
+            // of one binary. A float round-trips byte-exactly, payload included.
+            let value = if p.float_carrier_is_f32() {
+                Cow::Owned(format!("cbor_event::se::f32_to_f64_exact({expr_deref})"))
+            } else {
+                Cow::Borrowed(expr_deref)
+            };
+            // Every class writes the smallest head that preserves the value (RFC
+            // 8949 §4.1), uniformly in both profiles — the same rule the integer
+            // writes follow. For a MEMBER of a constrained class that head IS its
+            // declared width, because membership means the value's shortest lossless
+            // form lands in the class's window; a non-member fails loudly inside the
+            // helper rather than being written at a head the class admits.
+            //
+            // Width-unconstrained `float` admits every value, so it needs no window
+            // and no membership check — only the smallest-head rule.
+            let class_window = (*p != Primitive::Float).then(|| {
+                let (min, max) = p.float_class_window().unwrap();
+                format!(
+                    "cbor_event::Sz::{}, cbor_event::Sz::{}",
+                    crate::intermediate::float_head_name(min),
+                    crate::intermediate::float_head_name(max)
+                )
+            });
+            match (cli.preserve_encodings, class_window) {
+                (true, None) => write_float(
+                    body,
+                    serializer_pass,
+                    &value,
+                    line_ender,
+                    encoding_var_deref,
+                    cli,
+                ),
+                (true, Some(class_window)) => {
+                    body.line(&format!(
+                        "write_float_width({serializer_pass}, {value}, {encoding_var_deref}, {class_window}{}){line_ender}",
+                        canonical_param(cli)
+                    ));
+                }
+                (false, None) => {
+                    body.line(&format!(
+                        "write_float({serializer_pass}, {value}){line_ender}"
+                    ));
+                }
+                (false, Some(class_window)) => {
+                    body.line(&format!(
+                        "write_float_width({serializer_pass}, {value}, {class_window}){line_ender}"
+                    ));
+                }
+            }
+        }
+        Primitive::Bytes => {
+            write_string_sz(
+                body,
+                "write_bytes",
+                serializer_use,
+                &config.expr,
+                config.expr_is_ref,
+                line_ender,
+                encoding_var,
+                cli,
+            );
+        }
+        Primitive::Str => {
+            write_string_sz(
+                body,
+                "write_text",
+                serializer_use,
+                &config.expr,
+                config.expr_is_ref,
+                line_ender,
+                encoding_var,
+                cli,
+            );
+        }
+        Primitive::I8 | Primitive::I16 | Primitive::I32 | Primitive::I64 => {
+            let mut pos = Block::new(format!("if {expr_deref} >= 0"));
+            let expr_pos = format!("{expr_deref} as u64");
+            write_using_sz(
+                &mut pos,
+                "write_unsigned_integer",
+                serializer_use,
+                &expr_pos,
+                &expr_pos,
+                line_ender,
+                encoding_var_deref,
+                cli,
+            );
+            body.push_block(pos);
+            let mut neg = Block::new("else");
+            // only the _sz variants support i128, the plain endpoint takes i64
+            // (and negates internally in i128, so i64::MIN needs no special-casing)
+            let expr = if cli.preserve_encodings {
+                format!("{expr_deref} as i128")
+            } else {
+                format!("{expr_deref} as i64")
+            };
+            // unsigned_abs() on i8/i16/i32 yields the same-width unsigned type;
+            // widen to u64 for Sz::canonical (a bare `as u64` on the i64 case
+            // would be a no-op cast)
+            let sz_expr = if *primitive == Primitive::I64 {
+                format!("({expr_deref} + 1).unsigned_abs()")
+            } else {
+                format!("({expr_deref} + 1).unsigned_abs() as u64")
+            };
+            write_using_sz(
+                &mut neg,
+                "write_negative_integer",
+                serializer_use,
+                &expr,
+                &sz_expr,
+                line_ender,
+                encoding_var_deref,
+                cli,
+            );
+            body.push_block(neg);
+        }
+        Primitive::U8 | Primitive::U16 | Primitive::U32 => {
+            let expr = format!("{expr_deref} as u64");
+            write_using_sz(
+                body,
+                "write_unsigned_integer",
+                serializer_use,
+                &expr,
+                &expr,
+                line_ender,
+                encoding_var_deref,
+                cli,
+            );
+        }
+        Primitive::U64 => {
+            write_using_sz(
+                body,
+                "write_unsigned_integer",
+                serializer_use,
+                expr_deref,
+                expr_deref,
+                line_ender,
+                encoding_var_deref,
+                cli,
+            );
+        }
+        Primitive::N64 => {
+            if cli.preserve_encodings {
+                write_using_sz(
+                    body,
+                    "write_negative_integer",
+                    serializer_use,
+                    &format!("-({expr_deref} as i128 + 1)"),
+                    expr_deref,
+                    line_ender,
+                    encoding_var_deref,
+                    cli,
+                );
+            } else {
+                // N64 covers the full CBOR nint range down to -2^64, whose bottom
+                // half doesn't fit the plain write_negative_integer endpoint's i64
+                // argument — only the i128 _sz endpoint reaches it. Sz::canonical
+                // keeps the bytes identical to the plain endpoint's derived width.
+                body.line(&format!("{serializer_use}.write_negative_integer_sz(-({expr_deref} as i128 + 1), cbor_event::Sz::canonical({expr_deref})){line_ender}"));
+            }
+        }
+    }
+}
+
 /// Write code for serializing {serializing_rust_type} directly into {body}
 pub(super) fn generate_serialize(
     types: &IntermediateTypes,
@@ -1043,185 +1237,18 @@ pub(super) fn generate_serialize(
                 );
             }
             SerializingRustType::Root(ConceptualRustType::Primitive(primitive), _cfg) => {
-                match primitive {
-                    Primitive::Bool => {
-                        body.line(&format!(
-                            "{serializer_use}.write_special(cbor_event::Special::Bool({expr_deref})){line_ender}"
-                        ));
-                    }
-                    p @ (Primitive::Float
-                    | Primitive::F16
-                    | Primitive::F32
-                    | Primitive::F64
-                    | Primitive::F16To32
-                    | Primitive::F32To64) => {
-                        // The CBOR float domain is f64, so an f32-CARRIED class (`float16`,
-                        // `float32`, `float16-32`) widens here. Through the crate's exact
-                        // widening, never `as`/`From`: those may quiet a signaling NaN or drop
-                        // its payload, and LLVM const-folds the conversion to a canonical quiet
-                        // NaN, so `as` can differ between the const-evaluated and runtime paths
-                        // of one binary. A float round-trips byte-exactly, payload included.
-                        let value = if p.float_carrier_is_f32() {
-                            Cow::Owned(format!("cbor_event::se::f32_to_f64_exact({expr_deref})"))
-                        } else {
-                            Cow::Borrowed(expr_deref.as_str())
-                        };
-                        // Every class writes the smallest head that preserves the value (RFC
-                        // 8949 §4.1), uniformly in both profiles — the same rule the integer
-                        // writes follow. For a MEMBER of a constrained class that head IS its
-                        // declared width, because membership means the value's shortest lossless
-                        // form lands in the class's window; a non-member fails loudly inside the
-                        // helper rather than being written at a head the class admits.
-                        //
-                        // Width-unconstrained `float` admits every value, so it needs no window
-                        // and no membership check — only the smallest-head rule.
-                        let class_window = (*p != Primitive::Float).then(|| {
-                            let (min, max) = p.float_class_window().unwrap();
-                            format!(
-                                "cbor_event::Sz::{}, cbor_event::Sz::{}",
-                                crate::intermediate::float_head_name(min),
-                                crate::intermediate::float_head_name(max)
-                            )
-                        });
-                        match (cli.preserve_encodings, class_window) {
-                            (true, None) => write_float(
-                                body,
-                                &serializer_pass,
-                                &value,
-                                line_ender,
-                                &encoding_var_deref,
-                                cli,
-                            ),
-                            (true, Some(class_window)) => {
-                                body.line(&format!(
-                                    "write_float_width({serializer_pass}, {value}, {encoding_var_deref}, {class_window}{}){line_ender}",
-                                    canonical_param(cli)
-                                ));
-                            }
-                            (false, None) => {
-                                body.line(&format!(
-                                    "write_float({serializer_pass}, {value}){line_ender}"
-                                ));
-                            }
-                            (false, Some(class_window)) => {
-                                body.line(&format!(
-                                    "write_float_width({serializer_pass}, {value}, {class_window}){line_ender}"
-                                ));
-                            }
-                        }
-                    }
-                    Primitive::Bytes => {
-                        write_string_sz(
-                            body,
-                            "write_bytes",
-                            serializer_use,
-                            &config.expr,
-                            config.expr_is_ref,
-                            line_ender,
-                            &encoding_var,
-                            cli,
-                        );
-                    }
-                    Primitive::Str => {
-                        write_string_sz(
-                            body,
-                            "write_text",
-                            serializer_use,
-                            &config.expr,
-                            config.expr_is_ref,
-                            line_ender,
-                            &encoding_var,
-                            cli,
-                        );
-                    }
-                    Primitive::I8 | Primitive::I16 | Primitive::I32 | Primitive::I64 => {
-                        let mut pos = Block::new(format!("if {expr_deref} >= 0"));
-                        let expr_pos = format!("{expr_deref} as u64");
-                        write_using_sz(
-                            &mut pos,
-                            "write_unsigned_integer",
-                            serializer_use,
-                            &expr_pos,
-                            &expr_pos,
-                            line_ender,
-                            &encoding_var_deref,
-                            cli,
-                        );
-                        body.push_block(pos);
-                        let mut neg = Block::new("else");
-                        // only the _sz variants support i128, the plain endpoint takes i64
-                        // (and negates internally in i128, so i64::MIN needs no special-casing)
-                        let expr = if cli.preserve_encodings {
-                            format!("{expr_deref} as i128")
-                        } else {
-                            format!("{expr_deref} as i64")
-                        };
-                        // unsigned_abs() on i8/i16/i32 yields the same-width unsigned type;
-                        // widen to u64 for Sz::canonical (a bare `as u64` on the i64 case
-                        // would be a no-op cast)
-                        let sz_expr = if *primitive == Primitive::I64 {
-                            format!("({expr_deref} + 1).unsigned_abs()")
-                        } else {
-                            format!("({expr_deref} + 1).unsigned_abs() as u64")
-                        };
-                        write_using_sz(
-                            &mut neg,
-                            "write_negative_integer",
-                            serializer_use,
-                            &expr,
-                            &sz_expr,
-                            line_ender,
-                            &encoding_var_deref,
-                            cli,
-                        );
-                        body.push_block(neg);
-                    }
-                    Primitive::U8 | Primitive::U16 | Primitive::U32 => {
-                        let expr = format!("{expr_deref} as u64");
-                        write_using_sz(
-                            body,
-                            "write_unsigned_integer",
-                            serializer_use,
-                            &expr,
-                            &expr,
-                            line_ender,
-                            &encoding_var_deref,
-                            cli,
-                        );
-                    }
-                    Primitive::U64 => {
-                        write_using_sz(
-                            body,
-                            "write_unsigned_integer",
-                            serializer_use,
-                            &expr_deref,
-                            &expr_deref,
-                            line_ender,
-                            &encoding_var_deref,
-                            cli,
-                        );
-                    }
-                    Primitive::N64 => {
-                        if cli.preserve_encodings {
-                            write_using_sz(
-                                body,
-                                "write_negative_integer",
-                                serializer_use,
-                                &format!("-({expr_deref} as i128 + 1)"),
-                                &expr_deref,
-                                line_ender,
-                                &encoding_var_deref,
-                                cli,
-                            );
-                        } else {
-                            // N64 covers the full CBOR nint range down to -2^64, whose bottom
-                            // half doesn't fit the plain write_negative_integer endpoint's i64
-                            // argument — only the i128 _sz endpoint reaches it. Sz::canonical
-                            // keeps the bytes identical to the plain endpoint's derived width.
-                            body.line(&format!("{serializer_use}.write_negative_integer_sz(-({expr_deref} as i128 + 1), cbor_event::Sz::canonical({expr_deref})){line_ender}"));
-                        }
-                    }
-                }
+                ser_primitive(
+                    primitive,
+                    body,
+                    config,
+                    cli,
+                    line_ender,
+                    &expr_deref,
+                    serializer_use,
+                    &serializer_pass,
+                    &encoding_var,
+                    &encoding_var_deref,
+                );
             }
             // `any` serializes via `AnyCbor`'s own `Serialize` impl (self-carried encodings), the
             // same shape as a plain Rust struct reference — mirror the `Rust(_)` fallthrough
