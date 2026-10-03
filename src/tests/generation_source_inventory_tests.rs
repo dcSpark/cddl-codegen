@@ -304,6 +304,7 @@ const SOURCE_ROLES: &[SourceRole] = &[
         members: &[
             "wit_escape",
             "project_record_field_rows",
+            "project_record_dynamic_getter_rows",
             "order_record_constructor_params",
             "project_record_dynamic_constructor_rows",
         ],

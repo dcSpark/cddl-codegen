@@ -1660,35 +1660,7 @@ fn project_record(
     project_record_field_rows(record, ctx, &mut params, &mut members, &mut ctor_fallible)?;
     project_record_dynamic_constructor_rows(record, ctx, &mut params, &mut ctor_fallible)?;
     order_record_constructor_params(record, &mut params);
-    // An open struct's rest row: a getter over the captured content, mirroring the wasm face. An
-    // `@ignore` row stores nothing, so it has no accessor at all.
-    // BOTH dynamic rows: an open table's TYPED row is a second captured container with its own
-    // getter, and a projection that reads only the catch-all would drop it SILENTLY across the
-    // component boundary — the cross-crate loss class this face exists to avoid.
-    for rest in record.captured_dynamic_rows().collect::<Vec<_>>() {
-        let ty = match &rest.kind {
-            RestKind::MapEntries { domain, range, .. } => {
-                WitType::List(Box::new(WitType::Tuple(vec![
-                    map_rust_type(domain, ctx)?,
-                    map_rust_type(range, ctx)?,
-                ])))
-            }
-            RestKind::ArrayTail { element, .. } => {
-                WitType::List(Box::new(map_rust_type(element, ctx)?))
-            }
-        };
-        members.push(WitMember {
-            name: convert_to_kebab_case(&rest.field_name),
-            is_static: false,
-            params: Vec::new(),
-            result: Some(ty),
-            fallible: false,
-            op: WitMemberOp::RestGetter {
-                field: rest.field_name.clone(),
-                via_accessor: record.has_protected_rest_keys(ctx.types) && !rest.is_array_tail(),
-            },
-        });
-    }
+    project_record_dynamic_getter_rows(record, ctx, &mut members)?;
     members.extend(bytes_members(deserializable, ctx.cli));
     members.extend(json_members(ctx.cli));
     Ok(WitResource {
@@ -1943,6 +1915,43 @@ fn order_record_constructor_params(record: &RustRecord, params: &mut [WitParam])
                 .unwrap_or(usize::MAX)
         });
     }
+}
+
+fn project_record_dynamic_getter_rows(
+    record: &RustRecord,
+    ctx: &mut TypeCtx,
+    members: &mut Vec<WitMember>,
+) -> ProjectResult<()> {
+    // An open struct's rest row: a getter over the captured content, mirroring the wasm face. An
+    // `@ignore` row stores nothing, so it has no accessor at all.
+    // BOTH dynamic rows: an open table's TYPED row is a second captured container with its own
+    // getter, and a projection that reads only the catch-all would drop it SILENTLY across the
+    // component boundary — the cross-crate loss class this face exists to avoid.
+    for rest in record.captured_dynamic_rows().collect::<Vec<_>>() {
+        let ty = match &rest.kind {
+            RestKind::MapEntries { domain, range, .. } => {
+                WitType::List(Box::new(WitType::Tuple(vec![
+                    map_rust_type(domain, ctx)?,
+                    map_rust_type(range, ctx)?,
+                ])))
+            }
+            RestKind::ArrayTail { element, .. } => {
+                WitType::List(Box::new(map_rust_type(element, ctx)?))
+            }
+        };
+        members.push(WitMember {
+            name: convert_to_kebab_case(&rest.field_name),
+            is_static: false,
+            params: Vec::new(),
+            result: Some(ty),
+            fallible: false,
+            op: WitMemberOp::RestGetter {
+                field: rest.field_name.clone(),
+                via_accessor: record.has_protected_rest_keys(ctx.types) && !rest.is_array_tail(),
+            },
+        });
+    }
+    Ok(())
 }
 
 /// A `@newtype` wrapper → a `resource` with a constructor and the inner-value getter. The getter's
