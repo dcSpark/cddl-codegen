@@ -1350,6 +1350,13 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 // Alias and Any retain bare unreachable!() guards; FixedValue::Undefined retains
 // unreachable!("fixed undefined is a nominal unit value, never a JSON constructor argument").
 // No active panic key or allowance is added or widened; main qualification remains pending.
+// Wrapper codec guards now belong to wrappers.rs::emit_wrapper_codec_impls:
+// the is_basic branch retains unimplemented!("TODO: make len/read_len variables of appropriate sizes so the generated code compiles").
+// The render_check closure retains min_max.unwrap() (the Option unwrap guard) and
+// the non-primitive range-carrier bare unimplemented!() arm, with operands/order unchanged.
+// production_frame_symbol strips {{closure}} segments; the actual normalized codec
+// closure frame attribution still requires main qualification.
+// No active panic key or allowance is added or widened; main qualification remains pending.
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired when the two anonymous-composite families and the group-choice-arm inline group
     // became graceful rejections) Three classes lived here, and they split by the composite's

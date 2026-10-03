@@ -295,6 +295,7 @@ const SOURCE_ROLES: &[SourceRole] = &[
             "emit_wrapper_wasm_face",
             "emit_wrapper_json_impls",
             "emit_wrapper_struct_and_encodings",
+            "emit_wrapper_codec_impls",
         ],
     },
     SourceRole {

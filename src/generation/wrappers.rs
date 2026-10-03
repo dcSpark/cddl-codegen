@@ -325,11 +325,7 @@ pub(super) fn generate_wrapper_struct(
         &facts,
         self_var,
     );
-    let WrapperStorage {
-        encoding_name,
-        enc_fields,
-        custom_pair,
-    } = emit_wrapper_struct_and_encodings(
+    let storage = emit_wrapper_struct_and_encodings(
         gen_scope,
         types,
         type_name,
@@ -341,344 +337,22 @@ pub(super) fn generate_wrapper_struct(
         &mut s,
         &mut s_impl,
     );
-    // A complete pair on a self-nominalized table owns the COMPLETE item. The wrapper is still a
-    // normal map-wrapper API (`new`/`From`/`get` below), but neither direct bytes APIs nor embedded
-    // references may walk that map structurally: both trait shells call the same free functions.
-    // Like the record precedent, the nominal value itself crosses the custom boundary under
-    // --preserve-encodings; no inferred key/value/length tuple leaks out.
-    let mut ser_body = BlocksOrLines::default();
-    let mut ser_impl = make_serialization_impl(type_name.as_ref(), cli);
-    if let Some((custom_serialize, _)) = custom_pair {
-        ser_body.line(&format!(
-            "{}(serializer, self{})",
-            custom_serialize,
-            canonical_param(cli)
-        ));
-    } else {
-        let serialized_inner = if checked_scalar {
-            format!("self.{getter_name}()")
-        } else {
-            self_var.to_owned()
-        };
-        let mut serialize_config = SerializeConfig::new(&serialized_inner, "inner")
-            .end(true)
-            .encoding_var_in_option_struct("self.encodings");
-        if checked_scalar && !field_type.conceptual_type.is_copy(types) {
-            // String/byte getters already return a reference. Tell the shared serializer so it
-            // neither adds a second borrow nor treats `.len()` as if it belonged under a deref.
-            serialize_config = serialize_config.expr_is_ref(true);
-        }
-        generate_serialize(
-            types,
-            field_type.into(),
-            &mut ser_body,
-            serialize_config,
-            cli,
-        );
-    }
-    ser_impl.push_fn(super::serialize::make_serialization_function_over(
-        "serialize",
-        ser_body,
+    let WrapperCodecImpls {
+        ser_impl,
+        deser_impl,
+        from_impl,
+    } = emit_wrapper_codec_impls(
+        gen_scope,
+        types,
+        type_name,
+        field_type,
+        float_min_max,
         cli,
-    ));
-    let mut deser_func = make_deserialization_function("deserialize", cli);
-    let mut deser_impl = codegen::Impl::new(type_name.to_string());
-    deser_impl.impl_trait("Deserialize");
-    // A wrapper over a genuinely EMBEDDED plain group has no length context to hand the group's
-    // `deserialize_as_embedded_group` — that is what this guard is for. It must ask `is_basic`
-    // rather than `is_plain_group` alone: a plain group reached through its own array framing
-    // (`[coords]`, `bytes .cbor [coords]`) carries `basic_override`, so the emitter calls the
-    // group's STANDALONE `deserialize` (which reads the array header itself) and there is nothing
-    // to be short of. Before the `.cbor` rule body force-wrapped, the coarse spelling was unreachable
-    // for that shape only because the rule registered as a transparent alias instead.
-    if field_type.is_basic(types) {
-        unimplemented!(
-            "TODO: make len/read_len variables of appropriate sizes so the generated code compiles"
-        );
-    }
-    let mut new_func = codegen::Function::new("new");
-    new_func.arg("inner", field_type.for_rust_move(types, cli));
-    if !checked_scalar {
-        new_func.vis("pub");
-    }
-    let exact_byte_array_len = field_type.exact_byte_array_len_checked();
-    let optional_exact_byte_array_len = match field_type.conceptual_type.resolve_alias_shallow() {
-        ConceptualRustType::Optional(inner) => inner.exact_byte_array_len_checked(),
-        _ => None,
-    };
-    let var_names_str = if cli.preserve_encodings {
-        encoding_var_names_str(types, "inner", field_type, cli)
-    } else {
-        "inner".to_owned()
-    };
-    let min_max = effective_min_max;
-    // The whole deserialize() body is accumulated here so it can be wrapped in one
-    // `.annotate(type_name)` error closure when `cli.annotate_fields` (giving the container/
-    // primitive reads a `failed in <T>` location exactly as field-level errors already get). When
-    // annotate_fields is off no closure is emitted and the content is pushed verbatim, byte-identical
-    // to before. `new()` and the `TryFrom`/`From` paths NEVER go through this closure, so any error
-    // they emit must keep the name-carrying form (see `build_check`'s `annotated=false` arm).
-    let mut deser_body = BlocksOrLines::default();
-    let from_impl = if min_max.is_some()
-        || float_min_max.is_some()
-        || exact_byte_array_len.is_some()
-        || optional_exact_byte_array_len.is_some()
-    {
-        let (before, after) = if var_names_str.is_empty() {
-            ("".to_owned(), "")
-        } else {
-            (format!("let {var_names_str} = "), ";")
-        };
-        // Exact byte arrays keep their structural `[u8; N]` storage, but their public loose input
-        // is `Vec<u8>` and the single Vec→array handover belongs to `TryFrom`. Decode the raw Vec
-        // here so CBOR takes that same door instead of performing a sibling conversion.
-        let mut deserialize_type = field_type.clone();
-        if checked_scalar && exact_byte_array_len.is_some() {
-            deserialize_type.config.bounds = None;
-        }
-        gen_scope
-            .generate_deserialize(
-                types,
-                (&deserialize_type).into(),
-                DeserializeBeforeAfter::new(&before, after, false),
-                DeserializeConfig::new("inner"),
-                cli,
-            )
-            .add_to(&mut deser_body);
-
-        // Materialize the range check per-consumer via the shared bounds-check owner, so the wrapper
-        // spells its condition exactly as the member/deserialize sites do. Both copies keep the
-        // ORIGINAL failure payload (min/max unchanged) — only the condition unifies. The deserialize()
-        // copy is locationless (`.into()`) when it lands inside the annotate closure, while the
-        // `new()` copy always carries the name (`DeserializeError::new`) since no closure ever wraps
-        // it, so `annotated` maps directly onto `location` (annotated → None, else Some(type_name)).
-        let render_check = |annotated: bool| -> String {
-            let location = if annotated {
-                None
-            } else {
-                Some(type_name.as_ref())
-            };
-            if let Some(window) = &float_min_max {
-                // NaN-safe float window: accept-form negation, value compared as f64 so the authored
-                // decimal literal is exact. Reports the ORIGINAL window with its per-side exclusivity.
-                let cast_f64 = matches!(
-                    &field_type.conceptual_type,
-                    ConceptualRustType::Primitive(p) if p.float_carrier_is_f32()
-                );
-                bounds_check_if_block_float(window, cast_f64, "inner", true, location)
-            } else {
-                let (min, max) = min_max.unwrap();
-                let against = if field_type
-                    .encodings
-                    .contains(&CBOREncodingOperation::CBORBytes)
-                {
-                    "inner.len()"
-                } else {
-                    match &field_type.conceptual_type {
-                        ConceptualRustType::Primitive(p) => match p {
-                            Primitive::Bytes | Primitive::Str => "inner.len()",
-                            Primitive::Bool
-                            | Primitive::Float
-                            | Primitive::F16
-                            | Primitive::F32
-                            | Primitive::F64
-                            | Primitive::F16To32
-                            | Primitive::F32To64
-                            | Primitive::U8
-                            | Primitive::U16
-                            | Primitive::U32
-                            | Primitive::U64
-                            | Primitive::I8
-                            | Primitive::I16
-                            | Primitive::I32
-                            | Primitive::I64
-                            | Primitive::N64 => "inner",
-                        },
-                        _ => unimplemented!(),
-                    }
-                };
-                bounds_check_if_block(
-                    &(min, max),
-                    against,
-                    true,
-                    bounds_check_expr_non_negative(field_type),
-                    location,
-                    // the wrapper checks its stored `inner` (a member type: i8..i64/u64, or a
-                    // `.len()` usize) — never already i128, so the widening cast is real.
-                    false,
-                )
-            }
-        };
-        if let Some(len) = exact_byte_array_len {
-            new_func.line(format!(
-                "let inner: [u8; {len}] = inner.try_into().map_err(|bytes: Vec<u8>| DeserializeError::new(\"{type_name}\", DeserializeFailure::RangeCheck{{ found: bytes.len() as i128, min: Some({len}), max: Some({len}) }} ))?;"
-            ));
-        } else if let Some(len) = optional_exact_byte_array_len {
-            new_func.line(format!(
-                "let inner: Option<[u8; {len}]> = inner.map(|bytes| bytes.try_into().map_err(|bytes: Vec<u8>| DeserializeError::new(\"{type_name}\", DeserializeFailure::RangeCheck{{ found: bytes.len() as i128, min: Some({len}), max: Some({len}) }} ))).transpose()?;"
-            ));
-        } else if !checked_scalar {
-            deser_body.line(&render_check(cli.annotate_fields));
-        }
-        new_func.ret("Result<Self, DeserializeError>");
-        if exact_byte_array_len.is_none() && optional_exact_byte_array_len.is_none() {
-            new_func.line(render_check(false));
-        }
-        if let Some(enc_fields) = &enc_fields {
-            if checked_scalar {
-                deser_body.line(if cli.annotate_fields {
-                    "let mut value = Self::try_from(inner).map_err(DeserializeError::without_location)?;"
-                } else {
-                    "let mut value = Self::try_from(inner)?;"
-                });
-                if !enc_fields.is_empty() {
-                    let mut encoding_assignment =
-                        Block::new(format!("value.encodings = Some({encoding_name}"));
-                    for field_enc in enc_fields {
-                        encoding_assignment.line(format!("{},", field_enc.field_name));
-                    }
-                    encoding_assignment.after(");");
-                    deser_body.push_block(encoding_assignment);
-                }
-                deser_body.line("Ok(value)");
-
-                // `new` runs in this type's own module, so it alone may materialize the private
-                // carrier. The sibling CBOR module above must use `TryFrom` instead.
-                let mut ctor_block = Block::new("Ok(Self");
-                ctor_block.line("inner,");
-                if !enc_fields.is_empty() {
-                    ctor_block.line("encodings: None,");
-                }
-                ctor_block.after(")");
-                new_func.push_block(ctor_block);
-            } else {
-                let mut deser_ctor = Block::new("Ok(Self");
-                deser_ctor.line("inner,");
-                if !enc_fields.is_empty() {
-                    let mut encoding_ctor = Block::new(format!("encodings: Some({encoding_name}"));
-                    for field_enc in enc_fields {
-                        encoding_ctor.line(format!("{},", field_enc.field_name));
-                    }
-                    encoding_ctor.after("),");
-                    deser_ctor.push_block(encoding_ctor);
-                }
-                deser_ctor.after(")");
-                deser_body.push_block(deser_ctor);
-
-                let mut ctor_block = Block::new("Ok(Self");
-                ctor_block.line("inner,");
-                if !enc_fields.is_empty() {
-                    ctor_block.line("encodings: None,");
-                }
-                ctor_block.after(")");
-                new_func.push_block(ctor_block);
-            }
-        } else {
-            if checked_scalar {
-                deser_body.line(if cli.annotate_fields {
-                    "Self::try_from(inner).map_err(DeserializeError::without_location)"
-                } else {
-                    "Self::try_from(inner)"
-                });
-            } else {
-                deser_body.line("Ok(Self(inner))");
-            }
-            new_func.line("Ok(Self(inner))");
-        }
-        let mut try_from = codegen::Impl::new(type_name.to_string());
-        try_from
-            .associate_type("Error", "DeserializeError")
-            .impl_trait(format!("TryFrom<{}>", field_type.for_rust_move(types, cli)))
-            .new_fn("try_from")
-            .arg("inner", field_type.for_rust_move(types, cli))
-            .ret("Result<Self, Self::Error>")
-            // `inner` is by-value and already `new()`'s loose input type. For exact bytes it is
-            // intentionally `Vec<u8>` while `new()` materializes `[u8; N]`; for every other
-            // wrapper it is the same type as `for_rust_member(false)`. Pass it straight through —
-            // routing it via `from_wasm_boundary_clone` would emit an identity `.clone().into()`
-            // (clippy::useless_conversion + a redundant clone of the owned last-use param). `new()`
-            // returns the `Result` here (the bounded/float/exact-byte branch), so TryFrom keeps its
-            // semantics.
-            .line(format!("{type_name}::new(inner)"));
-        try_from
-    } else {
-        new_func.ret("Self");
-        if let Some(enc_fields) = &enc_fields {
-            let (before, after) = if var_names_str.is_empty() {
-                ("".to_owned(), "")
-            } else {
-                (format!("let {var_names_str} = "), ";")
-            };
-            gen_scope
-                .generate_deserialize(
-                    types,
-                    field_type.into(),
-                    DeserializeBeforeAfter::new(&before, after, false),
-                    DeserializeConfig::new("inner"),
-                    cli,
-                )
-                .add_to(&mut deser_body);
-
-            let mut deser_ctor = Block::new("Ok(Self");
-            deser_ctor.line("inner,");
-            if !enc_fields.is_empty() {
-                let mut encoding_ctor = Block::new(format!("encodings: Some({encoding_name}"));
-                for field_enc in enc_fields {
-                    encoding_ctor.line(format!("{},", field_enc.field_name));
-                }
-                encoding_ctor.after("),");
-                deser_ctor.push_block(encoding_ctor);
-            }
-            deser_ctor.after(")");
-            deser_body.push_block(deser_ctor);
-
-            let mut ctor_block = Block::new("Self");
-            ctor_block.line("inner,");
-            if !enc_fields.is_empty() {
-                ctor_block.line("encodings: None,");
-            }
-            new_func.push_block(ctor_block);
-        } else {
-            gen_scope
-                .generate_deserialize(
-                    types,
-                    field_type.into(),
-                    DeserializeBeforeAfter::new("Ok(Self(", "))", false),
-                    DeserializeConfig::new("inner"),
-                    cli,
-                )
-                .add_to(&mut deser_body);
-            new_func.line("Self(inner)");
-        }
-
-        let mut from = codegen::Impl::new(type_name.to_string());
-        from.impl_trait(format!(
-            "From<{}>",
-            field_type.for_rust_member(types, false, cli)
-        ))
-        .new_fn("from")
-        .arg("inner", field_type.for_rust_member(types, false, cli))
-        .ret("Self")
-        // `inner` is by-value and already exactly `new()`'s param type, so pass it straight
-        // through — see the `try_from` twin above (this unbounded branch's `new()` returns `Self`).
-        .line(format!("{type_name}::new(inner)"));
-        from
-    };
-    // Flush the accumulated deserialize() body: wrap it in a single `.annotate(type_name)` error
-    // closure when annotate_fields is on (giving container/primitive reads a `failed in <T>`
-    // location; the in-body range check is already the locationless form so the closure names it
-    // exactly once), else push it verbatim (byte-identical to the pre-annotation output).
-    if let Some((_, custom_deserialize)) = custom_pair {
-        deser_func.line(format!("{}(raw)", custom_deserialize));
-    } else if cli.annotate_fields {
-        let mut error_annotator = make_err_annotate_block(type_name.as_ref(), "", "");
-        error_annotator.push_all(deser_body);
-        deser_func.push_block(error_annotator);
-    } else {
-        deser_func.push_all(deser_body);
-    }
-    deser_impl.push_fn(deser_func);
-    s_impl.push_fn(new_func);
+        &facts,
+        storage,
+        self_var,
+        &mut s_impl,
+    );
     let mut from_inner_impl = codegen::Impl::new(field_type.for_rust_member(types, false, cli));
     from_inner_impl
         .impl_trait(format!("From<{type_name}>"))
@@ -1434,6 +1108,383 @@ fn emit_wrapper_struct_and_encodings<'a>(
         encoding_name,
         enc_fields,
         custom_pair,
+    }
+}
+
+/// Codec products remain owned until the coordinator publishes the original surfaces in order.
+struct WrapperCodecImpls {
+    ser_impl: codegen::Impl,
+    deser_impl: codegen::Impl,
+    from_impl: codegen::Impl,
+}
+
+/// Assemble the root codec signatures and constructors at their original phase boundary.
+#[allow(clippy::too_many_arguments)] // Explicit staged storage and builders retain ownership boundaries.
+fn emit_wrapper_codec_impls(
+    gen_scope: &mut GenerationScope,
+    types: &IntermediateTypes,
+    type_name: &RustIdent,
+    field_type: &RustType,
+    float_min_max: Option<crate::intermediate::FloatWindow>,
+    cli: &Cli,
+    facts: &WrapperFacts<'_>,
+    storage: WrapperStorage<'_>,
+    self_var: &str,
+    s_impl: &mut codegen::Impl,
+) -> WrapperCodecImpls {
+    let WrapperFacts {
+        checked_scalar,
+        effective_min_max,
+        getter_name,
+        ..
+    } = *facts;
+    let WrapperStorage {
+        encoding_name,
+        enc_fields,
+        custom_pair,
+    } = storage;
+    // A complete pair on a self-nominalized table owns the COMPLETE item. The wrapper is still a
+    // normal map-wrapper API (`new`/`From`/`get` below), but neither direct bytes APIs nor embedded
+    // references may walk that map structurally: both trait shells call the same free functions.
+    // Like the record precedent, the nominal value itself crosses the custom boundary under
+    // --preserve-encodings; no inferred key/value/length tuple leaks out.
+    let mut ser_body = BlocksOrLines::default();
+    let mut ser_impl = make_serialization_impl(type_name.as_ref(), cli);
+    if let Some((custom_serialize, _)) = custom_pair {
+        ser_body.line(&format!(
+            "{}(serializer, self{})",
+            custom_serialize,
+            canonical_param(cli)
+        ));
+    } else {
+        let serialized_inner = if checked_scalar {
+            format!("self.{getter_name}()")
+        } else {
+            self_var.to_owned()
+        };
+        let mut serialize_config = SerializeConfig::new(&serialized_inner, "inner")
+            .end(true)
+            .encoding_var_in_option_struct("self.encodings");
+        if checked_scalar && !field_type.conceptual_type.is_copy(types) {
+            // String/byte getters already return a reference. Tell the shared serializer so it
+            // neither adds a second borrow nor treats `.len()` as if it belonged under a deref.
+            serialize_config = serialize_config.expr_is_ref(true);
+        }
+        generate_serialize(
+            types,
+            field_type.into(),
+            &mut ser_body,
+            serialize_config,
+            cli,
+        );
+    }
+    ser_impl.push_fn(super::serialize::make_serialization_function_over(
+        "serialize",
+        ser_body,
+        cli,
+    ));
+    let mut deser_func = make_deserialization_function("deserialize", cli);
+    let mut deser_impl = codegen::Impl::new(type_name.to_string());
+    deser_impl.impl_trait("Deserialize");
+    // A wrapper over a genuinely EMBEDDED plain group has no length context to hand the group's
+    // `deserialize_as_embedded_group` — that is what this guard is for. It must ask `is_basic`
+    // rather than `is_plain_group` alone: a plain group reached through its own array framing
+    // (`[coords]`, `bytes .cbor [coords]`) carries `basic_override`, so the emitter calls the
+    // group's STANDALONE `deserialize` (which reads the array header itself) and there is nothing
+    // to be short of. Before the `.cbor` rule body force-wrapped, the coarse spelling was unreachable
+    // for that shape only because the rule registered as a transparent alias instead.
+    if field_type.is_basic(types) {
+        unimplemented!(
+            "TODO: make len/read_len variables of appropriate sizes so the generated code compiles"
+        );
+    }
+    let mut new_func = codegen::Function::new("new");
+    new_func.arg("inner", field_type.for_rust_move(types, cli));
+    if !checked_scalar {
+        new_func.vis("pub");
+    }
+    let exact_byte_array_len = field_type.exact_byte_array_len_checked();
+    let optional_exact_byte_array_len = match field_type.conceptual_type.resolve_alias_shallow() {
+        ConceptualRustType::Optional(inner) => inner.exact_byte_array_len_checked(),
+        _ => None,
+    };
+    let var_names_str = if cli.preserve_encodings {
+        encoding_var_names_str(types, "inner", field_type, cli)
+    } else {
+        "inner".to_owned()
+    };
+    let min_max = effective_min_max;
+    // The whole deserialize() body is accumulated here so it can be wrapped in one
+    // `.annotate(type_name)` error closure when `cli.annotate_fields` (giving the container/
+    // primitive reads a `failed in <T>` location exactly as field-level errors already get). When
+    // annotate_fields is off no closure is emitted and the content is pushed verbatim, byte-identical
+    // to before. `new()` and the `TryFrom`/`From` paths NEVER go through this closure, so any error
+    // they emit must keep the name-carrying form (see `build_check`'s `annotated=false` arm).
+    let mut deser_body = BlocksOrLines::default();
+    let from_impl = if min_max.is_some()
+        || float_min_max.is_some()
+        || exact_byte_array_len.is_some()
+        || optional_exact_byte_array_len.is_some()
+    {
+        let (before, after) = if var_names_str.is_empty() {
+            ("".to_owned(), "")
+        } else {
+            (format!("let {var_names_str} = "), ";")
+        };
+        // Exact byte arrays keep their structural `[u8; N]` storage, but their public loose input
+        // is `Vec<u8>` and the single Vec→array handover belongs to `TryFrom`. Decode the raw Vec
+        // here so CBOR takes that same door instead of performing a sibling conversion.
+        let mut deserialize_type = field_type.clone();
+        if checked_scalar && exact_byte_array_len.is_some() {
+            deserialize_type.config.bounds = None;
+        }
+        gen_scope
+            .generate_deserialize(
+                types,
+                (&deserialize_type).into(),
+                DeserializeBeforeAfter::new(&before, after, false),
+                DeserializeConfig::new("inner"),
+                cli,
+            )
+            .add_to(&mut deser_body);
+
+        // Materialize the range check per-consumer via the shared bounds-check owner, so the wrapper
+        // spells its condition exactly as the member/deserialize sites do. Both copies keep the
+        // ORIGINAL failure payload (min/max unchanged) — only the condition unifies. The deserialize()
+        // copy is locationless (`.into()`) when it lands inside the annotate closure, while the
+        // `new()` copy always carries the name (`DeserializeError::new`) since no closure ever wraps
+        // it, so `annotated` maps directly onto `location` (annotated → None, else Some(type_name)).
+        let render_check = |annotated: bool| -> String {
+            let location = if annotated {
+                None
+            } else {
+                Some(type_name.as_ref())
+            };
+            if let Some(window) = &float_min_max {
+                // NaN-safe float window: accept-form negation, value compared as f64 so the authored
+                // decimal literal is exact. Reports the ORIGINAL window with its per-side exclusivity.
+                let cast_f64 = matches!(
+                    &field_type.conceptual_type,
+                    ConceptualRustType::Primitive(p) if p.float_carrier_is_f32()
+                );
+                bounds_check_if_block_float(window, cast_f64, "inner", true, location)
+            } else {
+                let (min, max) = min_max.unwrap();
+                let against = if field_type
+                    .encodings
+                    .contains(&CBOREncodingOperation::CBORBytes)
+                {
+                    "inner.len()"
+                } else {
+                    match &field_type.conceptual_type {
+                        ConceptualRustType::Primitive(p) => match p {
+                            Primitive::Bytes | Primitive::Str => "inner.len()",
+                            Primitive::Bool
+                            | Primitive::Float
+                            | Primitive::F16
+                            | Primitive::F32
+                            | Primitive::F64
+                            | Primitive::F16To32
+                            | Primitive::F32To64
+                            | Primitive::U8
+                            | Primitive::U16
+                            | Primitive::U32
+                            | Primitive::U64
+                            | Primitive::I8
+                            | Primitive::I16
+                            | Primitive::I32
+                            | Primitive::I64
+                            | Primitive::N64 => "inner",
+                        },
+                        _ => unimplemented!(),
+                    }
+                };
+                bounds_check_if_block(
+                    &(min, max),
+                    against,
+                    true,
+                    bounds_check_expr_non_negative(field_type),
+                    location,
+                    // the wrapper checks its stored `inner` (a member type: i8..i64/u64, or a
+                    // `.len()` usize) — never already i128, so the widening cast is real.
+                    false,
+                )
+            }
+        };
+        if let Some(len) = exact_byte_array_len {
+            new_func.line(format!(
+                "let inner: [u8; {len}] = inner.try_into().map_err(|bytes: Vec<u8>| DeserializeError::new(\"{type_name}\", DeserializeFailure::RangeCheck{{ found: bytes.len() as i128, min: Some({len}), max: Some({len}) }} ))?;"
+            ));
+        } else if let Some(len) = optional_exact_byte_array_len {
+            new_func.line(format!(
+                "let inner: Option<[u8; {len}]> = inner.map(|bytes| bytes.try_into().map_err(|bytes: Vec<u8>| DeserializeError::new(\"{type_name}\", DeserializeFailure::RangeCheck{{ found: bytes.len() as i128, min: Some({len}), max: Some({len}) }} ))).transpose()?;"
+            ));
+        } else if !checked_scalar {
+            deser_body.line(&render_check(cli.annotate_fields));
+        }
+        new_func.ret("Result<Self, DeserializeError>");
+        if exact_byte_array_len.is_none() && optional_exact_byte_array_len.is_none() {
+            new_func.line(render_check(false));
+        }
+        if let Some(enc_fields) = &enc_fields {
+            if checked_scalar {
+                deser_body.line(if cli.annotate_fields {
+                    "let mut value = Self::try_from(inner).map_err(DeserializeError::without_location)?;"
+                } else {
+                    "let mut value = Self::try_from(inner)?;"
+                });
+                if !enc_fields.is_empty() {
+                    let mut encoding_assignment =
+                        Block::new(format!("value.encodings = Some({encoding_name}"));
+                    for field_enc in enc_fields {
+                        encoding_assignment.line(format!("{},", field_enc.field_name));
+                    }
+                    encoding_assignment.after(");");
+                    deser_body.push_block(encoding_assignment);
+                }
+                deser_body.line("Ok(value)");
+
+                // `new` runs in this type's own module, so it alone may materialize the private
+                // carrier. The sibling CBOR module above must use `TryFrom` instead.
+                let mut ctor_block = Block::new("Ok(Self");
+                ctor_block.line("inner,");
+                if !enc_fields.is_empty() {
+                    ctor_block.line("encodings: None,");
+                }
+                ctor_block.after(")");
+                new_func.push_block(ctor_block);
+            } else {
+                let mut deser_ctor = Block::new("Ok(Self");
+                deser_ctor.line("inner,");
+                if !enc_fields.is_empty() {
+                    let mut encoding_ctor = Block::new(format!("encodings: Some({encoding_name}"));
+                    for field_enc in enc_fields {
+                        encoding_ctor.line(format!("{},", field_enc.field_name));
+                    }
+                    encoding_ctor.after("),");
+                    deser_ctor.push_block(encoding_ctor);
+                }
+                deser_ctor.after(")");
+                deser_body.push_block(deser_ctor);
+
+                let mut ctor_block = Block::new("Ok(Self");
+                ctor_block.line("inner,");
+                if !enc_fields.is_empty() {
+                    ctor_block.line("encodings: None,");
+                }
+                ctor_block.after(")");
+                new_func.push_block(ctor_block);
+            }
+        } else {
+            if checked_scalar {
+                deser_body.line(if cli.annotate_fields {
+                    "Self::try_from(inner).map_err(DeserializeError::without_location)"
+                } else {
+                    "Self::try_from(inner)"
+                });
+            } else {
+                deser_body.line("Ok(Self(inner))");
+            }
+            new_func.line("Ok(Self(inner))");
+        }
+        let mut try_from = codegen::Impl::new(type_name.to_string());
+        try_from
+            .associate_type("Error", "DeserializeError")
+            .impl_trait(format!("TryFrom<{}>", field_type.for_rust_move(types, cli)))
+            .new_fn("try_from")
+            .arg("inner", field_type.for_rust_move(types, cli))
+            .ret("Result<Self, Self::Error>")
+            // `inner` is by-value and already `new()`'s loose input type. For exact bytes it is
+            // intentionally `Vec<u8>` while `new()` materializes `[u8; N]`; for every other
+            // wrapper it is the same type as `for_rust_member(false)`. Pass it straight through —
+            // routing it via `from_wasm_boundary_clone` would emit an identity `.clone().into()`
+            // (clippy::useless_conversion + a redundant clone of the owned last-use param). `new()`
+            // returns the `Result` here (the bounded/float/exact-byte branch), so TryFrom keeps its
+            // semantics.
+            .line(format!("{type_name}::new(inner)"));
+        try_from
+    } else {
+        new_func.ret("Self");
+        if let Some(enc_fields) = &enc_fields {
+            let (before, after) = if var_names_str.is_empty() {
+                ("".to_owned(), "")
+            } else {
+                (format!("let {var_names_str} = "), ";")
+            };
+            gen_scope
+                .generate_deserialize(
+                    types,
+                    field_type.into(),
+                    DeserializeBeforeAfter::new(&before, after, false),
+                    DeserializeConfig::new("inner"),
+                    cli,
+                )
+                .add_to(&mut deser_body);
+
+            let mut deser_ctor = Block::new("Ok(Self");
+            deser_ctor.line("inner,");
+            if !enc_fields.is_empty() {
+                let mut encoding_ctor = Block::new(format!("encodings: Some({encoding_name}"));
+                for field_enc in enc_fields {
+                    encoding_ctor.line(format!("{},", field_enc.field_name));
+                }
+                encoding_ctor.after("),");
+                deser_ctor.push_block(encoding_ctor);
+            }
+            deser_ctor.after(")");
+            deser_body.push_block(deser_ctor);
+
+            let mut ctor_block = Block::new("Self");
+            ctor_block.line("inner,");
+            if !enc_fields.is_empty() {
+                ctor_block.line("encodings: None,");
+            }
+            new_func.push_block(ctor_block);
+        } else {
+            gen_scope
+                .generate_deserialize(
+                    types,
+                    field_type.into(),
+                    DeserializeBeforeAfter::new("Ok(Self(", "))", false),
+                    DeserializeConfig::new("inner"),
+                    cli,
+                )
+                .add_to(&mut deser_body);
+            new_func.line("Self(inner)");
+        }
+
+        let mut from = codegen::Impl::new(type_name.to_string());
+        from.impl_trait(format!(
+            "From<{}>",
+            field_type.for_rust_member(types, false, cli)
+        ))
+        .new_fn("from")
+        .arg("inner", field_type.for_rust_member(types, false, cli))
+        .ret("Self")
+        // `inner` is by-value and already exactly `new()`'s param type, so pass it straight
+        // through — see the `try_from` twin above (this unbounded branch's `new()` returns `Self`).
+        .line(format!("{type_name}::new(inner)"));
+        from
+    };
+    // Flush the accumulated deserialize() body: wrap it in a single `.annotate(type_name)` error
+    // closure when annotate_fields is on (giving container/primitive reads a `failed in <T>`
+    // location; the in-body range check is already the locationless form so the closure names it
+    // exactly once), else push it verbatim (byte-identical to the pre-annotation output).
+    if let Some((_, custom_deserialize)) = custom_pair {
+        deser_func.line(format!("{}(raw)", custom_deserialize));
+    } else if cli.annotate_fields {
+        let mut error_annotator = make_err_annotate_block(type_name.as_ref(), "", "");
+        error_annotator.push_all(deser_body);
+        deser_func.push_block(error_annotator);
+    } else {
+        deser_func.push_all(deser_body);
+    }
+    deser_impl.push_fn(deser_func);
+    s_impl.push_fn(new_func);
+    WrapperCodecImpls {
+        ser_impl,
+        deser_impl,
+        from_impl,
     }
 }
 
