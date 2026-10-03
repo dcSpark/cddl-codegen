@@ -1539,6 +1539,27 @@ impl GenerationScope {
             push_runtime_type_imports(content, cli.common_import_rust(), &runtime_usage);
         }
 
+        self.emit_serialization_imports(cli);
+
+        // declare submodules
+        // we do this after the rest to avoid declaring serialization mod/cbor encodings/etc
+        // for these modules when they only exist to support modules nested deeper
+        declare_modules(&mut self.rust_scopes, &scope_names);
+
+        // wasm
+        if cli.wasm {
+            self.emit_wasm_imports_and_reexports(types, cli, &runtime_usage)?;
+        }
+
+        if cli.component {
+            self.emit_component_surface(types, cli);
+        }
+
+        self.emit_optional_tests(types, cli);
+        Ok(())
+    }
+
+    fn emit_serialization_imports(&mut self, cli: &Cli) {
         // serialization
         // The imports every generated serialization.rs needs regardless of scope — the static
         // prelude and all generated impls reference these. Shared by the per-scope loop and the
@@ -1592,23 +1613,6 @@ impl GenerationScope {
         if cli.export_static_files() && !self.serialize_scopes.contains_key(&*ROOT_SCOPE) {
             push_base_serialize_imports(self.rust_serialize_lib());
         }
-
-        // declare submodules
-        // we do this after the rest to avoid declaring serialization mod/cbor encodings/etc
-        // for these modules when they only exist to support modules nested deeper
-        declare_modules(&mut self.rust_scopes, &scope_names);
-
-        // wasm
-        if cli.wasm {
-            self.emit_wasm_imports_and_reexports(types, cli, &runtime_usage)?;
-        }
-
-        if cli.component {
-            self.emit_component_surface(types, cli);
-        }
-
-        self.emit_optional_tests(types, cli);
-        Ok(())
     }
 
     fn emit_wasm_imports_and_reexports(
