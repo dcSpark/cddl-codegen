@@ -53,15 +53,6 @@ pub use generated::*;
 // rationale for why both checks run in the CONSUMER's own `cargo run` rather than in this tool's
 // suite, and the note that their panic wordings are pinned test keys.
 
-/// The `add_schemas` body's first line when the spec registers at least one row: the registrar that
-/// owns the published-name ledger every row is threaded through. A LOCAL, never a parameter, because
-/// `add_schemas` keeps its exact published signature (`pub fn add_schemas(generator: &mut
-/// schemars::SchemaGenerator)`) — cycle 2 shipped it as the cross-crate composition point, the tool
-/// emits calls to it under `--json-schema-dep`, and consumers hand-write one for the layouts the flag
-/// does not cover. Emitted AFTER the dep calls: the registrar holds the generator's `&mut` borrow for
-/// the rest of the body, and each dep call passes that same borrow on.
-const REGISTRAR_DECL: &str = "let mut reg = Registrar::new(generator);";
-
 /// The code-generation provenance banner stamped at the top of every generated `.rs` file in the
 /// tool-owned generated trees. Ends with a newline so it prepends cleanly onto rustfmt'd content.
 /// `pub(crate)` so the `generated_files_start_with_header` gate asserts against the same banner
@@ -1739,139 +1730,7 @@ impl GenerationScope {
                 .map_err(std::io::Error::other)?,
             );
 
-            // The json-gen crate writes ONE document per crate — `schemas/<lib>.schema.json`, a pure
-            // `$defs` bundle — built by threading a single `schemars::SchemaGenerator` through every
-            // exported type. One generator per document is what makes every referenced type a
-            // DECLARED entry (a type reached only through another type's schema has no row of its
-            // own, and under a per-type-file design ended up referenced-but-never-declared in the
-            // shipped `.d.ts`), and what makes schemars' collision suffixes (`{base}{i}`, assigned
-            // from a per-generator name set) assigned once from one deterministic row order.
-            let lib_name_code = cli.lib_name_code();
-            let mut lib_str = String::new();
-            // Both helpers come from the common runtime crate's `json_schema_gen` module
-            // (`static/json_schema_gen.rs`, composed in by `composed_runtime_static_files` under the
-            // same flag), so a workspace of N json-gen crates carries ONE copy instead of N. The
-            // prefix is the `--common-import-override` value verbatim when set, else this run's own
-            // rust crate reached by package name through the json-gen crate's path dep — resolving
-            // into `generated` via that crate's seed-once `pub use generated::*;` root.
-            //
-            // No banner comment above the two `use` lines: this file is inside the
-            // comment-preservation overlay's tree, and a comment above a line that vanishes with a
-            // flag is the stranded-comment/`unpreserved-comment` trap class.
-            let common = cli.common_import_json_gen();
-            // The closure check is imported UNCONDITIONALLY, unlike the row helper below: it belongs
-            // to `export_schemas`, which is emitted for every `--json-schema-export` run, and a spec
-            // that registers no rows writes a document too. (With no rows the walk finds no
-            // references and the check is vacuous — the cost of that is nothing, and the alternative
-            // is a check that can be silently absent.)
-            lib_str.push_str(&format!(
-                "use {common}::json_schema_gen::check_schema_ref_closure;\n"
-            ));
-            // The row registrar is imported only when this crate has rows of its own, never for
-            // `--json-schema-dep`: a dep registrar call goes through the DEP's `add_schemas`, so a
-            // crate whose `add_schemas` holds nothing but dep calls constructs no `Registrar` — and
-            // an unused import would be a warning in generated code the consumer is told never to
-            // hand-edit. `add_schema` itself is NOT imported: emitted rows reach the guard through
-            // the registrar, and the helper stays public for hand-written rows only.
-            if !self.json_lines.is_empty() {
-                lib_str.push_str(&format!("use {common}::json_schema_gen::Registrar;\n"));
-            }
-            lib_str.push('\n');
-            let mut lib_scope = codegen::Scope::new();
-            // `add_schemas` is public on purpose: it is the composition point a consumer needs to
-            // thread another generated crate's types into one document.
-            let mut lib_add_fn = codegen::Function::new("add_schemas");
-            lib_add_fn
-                .vis("pub")
-                .arg("generator", "&mut schemars::SchemaGenerator");
-            let json_schema_deps = cli.json_schema_deps();
-            if self.json_lines.is_empty() && json_schema_deps.is_empty() {
-                // A spec whose every rule is skipped (array/table typedefs only, say) registers
-                // nothing, and the parameter would then be an unused-variable warning in generated
-                // code the consumer is told never to hand-edit. An unused `reg` local would be a
-                // NEW warning of the same class, so the registrar is emitted only when there are
-                // rows. A `--json-schema-dep` call USES `generator`, so it suppresses the attribute
-                // on its own: an `allow` over a used parameter is inert snapshot noise.
-                lib_add_fn.attr("allow(unused_variables)");
-            }
-            // `--json-schema-dep` registrar calls, FIRST — before the `Registrar` local and before
-            // every spec-derived row and every `--json-schema-root` row. Read straight off `cli`: the
-            // dep list is a flag, not IR, so it never travels through `json_lines`.
-            //
-            // FIRST is also what makes this compile at all now that the ledger lives in a registrar:
-            // `Registrar::new` takes the generator's `&mut` borrow for the rest of the body, and each
-            // dep call passes that same borrow on to the dependency's `add_schemas`.
-            //
-            // FIRST is the deliberate mirror of why `--json-schema-root` rows come LAST. A dep's
-            // published names are already shipped in the dep's own package, so on a cross-crate name
-            // collision the CONSUMER's row is the one that should be renamed and blamed — the one its
-            // owner can change. A consequence worth stating: with deps registered first, a
-            // cross-crate collision whose `schema_id`s DIFFER is caught by the emitted helper's
-            // kept-its-own-name check (B), because `subschema_for` then hands the consumer's row
-            // `<name>2`. Measured cross-crate rather than inferred from the same-crate reachability
-            // ledger exercised by `integration_tests::json_schema_name_stolen_fails`: the two-crate cell
-            // `config_tests::a_derived_thread_links_and_a_collision_blames_the_consumer`
-            // asserts the panic names the CONSUMER's type.
-            //
-            // FLAG ORDER, never sorted, for the same reason the `--json-schema-root` block gives: the
-            // flag list is an input, so preserving it keeps "same inputs -> same bytes" while staying
-            // readable; sorting would reorder registration, which is observable through the guard's
-            // messages.
-            //
-            // No banner comment above the block, also for the `--json-schema-root` block's reason:
-            // this file is inside the comment-preservation overlay's tree, and a comment above lines
-            // that all vanish when the flag is dropped is the stranded-comment/`unpreserved-comment`
-            // trap class.
-            for (_label, lib) in &json_schema_deps {
-                lib_add_fn.line(format!("{lib}::add_schemas(generator);"));
-            }
-            if !self.json_lines.is_empty() {
-                lib_add_fn.line(REGISTRAR_DECL);
-            }
-            lib_add_fn.push_all(self.json_lines.clone());
-            lib_scope.push_fn(lib_add_fn);
-            let mut lib_export_fn = codegen::Function::new("export_schemas");
-            lib_export_fn
-                .vis("pub")
-                .line("let schema_path = std::path::Path::new(\"schemas\");");
-            let mut path_exists = Block::new("if !schema_path.exists()");
-            path_exists.line("std::fs::create_dir(schema_path).unwrap();");
-            lib_export_fn
-                .push_block(path_exists)
-                .line("let mut generator = schemars::SchemaGenerator::default();")
-                .line("add_schemas(&mut generator);")
-                // The meta-schema is read off the generator's own settings rather than hardcoded, so
-                // the document always declares the draft schemars actually emitted.
-                .line("let meta_schema = generator.settings().meta_schema.clone();")
-                // Captured alongside the meta-schema, and for the same reason: the closure check
-                // below compares against the namespace schemars ACTUALLY used, never a hardcoded
-                // `#/$defs/`.
-                .line("let definitions_path = generator.settings().definitions_path.to_string();")
-                .line("let mut document = serde_json::Map::new();");
-            let mut meta_present = Block::new("if let Some(meta_schema) = meta_schema");
-            meta_present
-                .line("document.insert(\"$schema\".to_owned(), meta_schema.into_owned().into());");
-            lib_export_fn
-                .push_block(meta_present)
-                .line(format!(
-                    "document.insert(\"title\".to_owned(), \"{lib_name_code}\".into());"
-                ))
-                // `take_definitions(true)` applies the generator's transforms, matching what
-                // schemars' own root-schema builders do.
-                .line(
-                    "document.insert(\"$defs\".to_owned(), generator.take_definitions(true).into());",
-                )
-                .line("let document = serde_json::Value::Object(document);")
-                // After `$defs` is materialised and BEFORE anything is written: a document that
-                // cannot resolve its own references must never reach disk, since every cheap
-                // downstream verdict ("it generated", "it compiled", "the `.d.ts` type-checks")
-                // is satisfied by one.
-                .line("check_schema_ref_closure(&document, &definitions_path);")
-                .line(format!(
-                    "std::fs::write(schema_path.join(\"{lib_name_code}.schema.json\"), serde_json::to_string_pretty(&document).unwrap()).unwrap();"
-                ));
-            lib_scope.push_fn(lib_export_fn);
-            lib_str.push_str(&lib_scope.to_string());
+            let lib_str = super::sidecars::render_json_gen_module(&self.json_lines, cli);
             // Same split as the other crate roots: the generated `add_schemas` + `export_schemas`
             // live under `wasm/json-gen/src/generated/mod.rs`, exposed through the seed-once thin
             // root's glob re-export (so `<lib>_json_schema_gen::export_schemas()` in main.rs still
@@ -1885,14 +1744,10 @@ impl GenerationScope {
                 rustfmt_generated_string(SEEDED_CRATE_ROOT)?.into_owned(),
             );
 
-            let mut main_scope = codegen::Scope::new();
-            main_scope.new_fn("main").line(format!(
-                "{}_json_schema_gen::export_schemas();",
-                cli.lib_name_code()
-            ));
+            let main_str = super::sidecars::render_json_gen_main(cli);
             out.insert(
                 "wasm/json-gen/src/main.rs".to_owned(),
-                rustfmt_generated_string(&main_scope.to_string())?.into_owned(),
+                rustfmt_generated_string(&main_str)?.into_owned(),
             );
         }
 
