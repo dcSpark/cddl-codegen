@@ -2462,6 +2462,236 @@ impl GenerationScope {
         deser_code
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn deser_array(
+        &mut self,
+        collection_type: &ConceptualRustType,
+        ty: &RustType,
+        type_cfg: Cow<'_, RustTypeSerializeConfig>,
+        types: &IntermediateTypes,
+        mut deser_code: DeserializationCode,
+        mut config: DeserializeConfig,
+        before_after: DeserializeBeforeAfter,
+        cli: &Cli,
+        deserializer_name: &str,
+    ) -> DeserializationCode {
+        let collection =
+            crate::intermediate::CollectionTypeView::new(collection_type, type_cfg.as_ref());
+        if config.optional_field {
+            deser_code.content.line("read_len.read_elems(1)?;");
+            deser_code.read_len_used = true;
+        }
+        let arr_var_name = format!("{}_arr", config.var_name);
+        deser_code
+            .content
+            .line(&format!("let mut {arr_var_name} = Vec::new();"));
+        let elem_var_name = format!("{}_elem", config.var_name);
+        let elem_encs = if cli.preserve_encodings {
+            encoding_fields(types, &elem_var_name, ty, false, cli)
+        } else {
+            vec![]
+        };
+        if cli.preserve_encodings {
+            deser_code
+                .content
+                .line(&format!("let len = {deserializer_name}.array_sz()?;"))
+                .line(&format!("let {}_encoding = len.into();", config.var_name));
+            if !elem_encs.is_empty() {
+                deser_code.content.line(&format!(
+                    "let mut {}_elem_encodings = Vec::new();",
+                    config.var_name
+                ));
+            }
+        } else {
+            deser_code
+                .content
+                .line(&format!("let len = {deserializer_name}.array()?;"));
+        }
+        // FRESH config, not the outer member's: an array element is a member position of
+        // its own (it spells from its own declaration, via its own `Alias` arm) and must
+        // not inherit the outer member's declared spelling. Same for the map arm's
+        // key/value configs below.
+        let mut elem_config = DeserializeConfig::new(&elem_var_name);
+        // `is_basic` and NOT a bare `is_plain_group`: a plain group SPLICES into this
+        // array only while it is still basic. A wrapper promotes it to a struct that
+        // writes its own array header (`[* [coords]]`), and then the element is ONE
+        // outer item read through the standalone `deserialize` — which is what the two
+        // emitters either side of this one already decide with `is_basic`: the element
+        // READ's embedded-vs-standalone face (the `Rust(ident)` arm's
+        // `is_plain_group(ident) && !type_cfg.basic_override`) and the SERIALIZE
+        // length (`expanded_field_count`, which consults `is_basic` internally and so
+        // writes `1 * n` for the promoted form). Asking the bare predicate here charged
+        // the group's field count against an outer slot the element did not occupy, so
+        // the crate emitted bytes its own decoder rejected with `DefiniteLenMismatch` —
+        // exit 0, compiles, round-trip red. Pinned by
+        // tests/corpus/array_of_wrapped_group.cddl, which spells this array form plus
+        // the map key/value controls (a table counts ENTRIES, so no expansion can be
+        // charged to it). Bare repeated plain groups are rejected earlier because RFC
+        // 8610 gives them flat concatenation semantics this carrier cannot represent.
+        // The scrutinee resolves aliases for the same reason the guard already does: an
+        // alias is transparent, so an element spelled `kv_alias` splices exactly like
+        // `kv`. Matching the bare type left the alias spelling on the non-embedded
+        // branch, whose loop counts ELEMENTS against a header the serializer wrote in
+        // ITEMS — the write/read halves of one crate disagreeing. Same resolution as the
+        // serialize length expression this arm is paired with.
+        let (mut deser_loop, plain_len_check) = match ty.conceptual_type.resolve_alias_shallow() {
+            ConceptualRustType::Rust(_) if ty.is_basic(types) => {
+                // two things that must be done differently for embedded plain groups:
+                // 1) We can't directly read the CBOR len's number of items since it could be >1
+                // 2) We need a different cbor read len var to pass into embedded deserialize
+                let read_len_overload = format!("{}_read_len", config.var_name);
+                deser_code.content.line(&format!(
+                    "let mut {read_len_overload} = {}(len);",
+                    cbor_read_len_ctor(cli)
+                ));
+                // inside of deserialize_as_embedded_group we only modify read_len for things we couldn't
+                // statically know beforehand. This was done for other areas that use plain groups in order
+                // to be able to do static length checks for statically sized groups that contain plain groups
+                // at the start of deserialization instead of many checks for every single field.
+                let plain_len_check = match ty.expanded_mandatory_field_count(types) {
+                    0 => None,
+                    n => Some(format!("{read_len_overload}.read_elems({n})?;")),
+                };
+                elem_config = elem_config.overload_read_len(read_len_overload);
+                let deser_loop =
+                    make_deser_loop("len", &format!("{}_read_len.read()", config.var_name), cli);
+                (deser_loop, plain_len_check)
+            }
+            _ => (
+                make_deser_loop("len", &format!("({arr_var_name}.len() as u64)"), cli),
+                None,
+            ),
+        };
+        deser_loop.push_block(make_deser_loop_break_check("len", deserializer_name, cli));
+        if let Some(plain_len_check) = plain_len_check {
+            deser_loop.line(plain_len_check);
+        }
+        elem_config.deserializer_name_overload = config.deserializer_name_overload;
+        if !elem_encs.is_empty() {
+            let elem_var_names_str = encoding_var_names_str(types, &elem_var_name, ty, cli);
+            self.generate_deserialize(
+                types,
+                ty.into(),
+                DeserializeBeforeAfter::new(&format!("let {elem_var_names_str} = "), ";", false),
+                elem_config,
+                cli,
+            )
+            .add_to(&mut deser_loop);
+            deser_loop
+                .line(format!("{arr_var_name}.push({elem_var_name});"))
+                .line(format!(
+                    "{}_elem_encodings.push({});",
+                    config.var_name,
+                    tuple_str(elem_encs.iter().map(|enc| enc.field_name.clone()).collect())
+                ));
+        } else {
+            self.generate_deserialize(
+                types,
+                ty.into(),
+                DeserializeBeforeAfter::new(&format!("{arr_var_name}.push("), ");", false),
+                elem_config,
+                cli,
+            )
+            .add_to(&mut deser_loop);
+        }
+        deser_code.content.push_block(deser_loop);
+        let reject_dups = collection.is_reject_array();
+        if reject_dups {
+            // `@duplicates reject`: route the collected Vec through the SAME uniqueness
+            // twin `TryFrom` door the API uses, so a duplicate on the wire and a duplicate
+            // built through the API report the identical `DuplicateKey(index)` error and
+            // can never drift. The non-empty flavor's door additionally enforces the `[+]`
+            // min-1 bound (same composed door). Encoding vars stay keyed off the field.
+            if let Some((min, max)) = collection.raw_bounded_window() {
+                let min = u64::try_from(min.unwrap_or(0))
+                    .expect("array occurrence lower bound was validated during parsing");
+                let max = max
+                    .map(|v| {
+                        u64::try_from(v)
+                            .expect("array occurrence upper bound was validated during parsing")
+                            .to_string()
+                    })
+                    .unwrap_or_else(|| "{ u64::MAX }".to_owned());
+                deser_code.content.line(&format!(
+                    "let {arr_var_name} = BoundedOrderedSet::<_, {min}, {max}>::try_from({arr_var_name})?;"
+                ));
+            } else {
+                let twin = if collection.is_non_empty_array() {
+                    "NonEmptyOrderedSet"
+                } else {
+                    "OrderedSet"
+                };
+                deser_code.content.line(&format!(
+                    "let {arr_var_name} = {twin}::try_from({arr_var_name})?;"
+                ));
+            }
+        } else if collection.is_non_empty_array() {
+            // `[+ T]`: route the collected Vec through the SAME `TryFrom` door the API
+            // uses, so the wire side and API side report the identical RangeCheck error
+            // ("0 not at least 1") and can never drift. The encoding vars stay keyed off
+            // the field (untouched below) — only the value var is rebound.
+            deser_code.content.line(&format!(
+                "let {arr_var_name} = NonEmptyVec::try_from({arr_var_name})?;"
+            ));
+        } else if let Some(Ok(len)) = collection.exact_array_len() {
+            // Exact ordinary/preserve homogeneous arrays stage on the wire as a Vec
+            // and cross one static handover. Map the standard conversion error back
+            // to the generator's established RangeCheck rather than leaking it.
+            deser_code.content.line(&format!(
+                "let {arr_var_name}: [_; {len}] = {arr_var_name}.try_into().map_err(|elements: Vec<_>| DeserializeFailure::RangeCheck{{ found: elements.len() as i128, min: Some({len}), max: Some({len}) }})?;"
+            ));
+        } else if let Some((min, max)) = collection.raw_bounded_window() {
+            let min = u64::try_from(min.unwrap_or(0))
+                .expect("array occurrence lower bound was validated during parsing");
+            let max = max
+                .map(|max| {
+                    u64::try_from(max)
+                        .expect("array occurrence upper bound was validated during parsing")
+                })
+                .unwrap_or(u64::MAX);
+            let max = crate::intermediate::bound_const_arg(max);
+            deser_code.content.line(&format!(
+                "let {arr_var_name} = BoundedVec::<_, {min}, {max}>::try_from({arr_var_name})?;"
+            ));
+        } else if let Some(bounds) = &type_cfg.occurrence_bounds() {
+            // we use cargo fmt after so it's okay if we just use .line() here
+            deser_code.content.line(&bounds_check_if_block(
+                bounds,
+                &format!("{arr_var_name}.len()"),
+                true,
+                true,
+                None,
+                // `.len()` is usize — the widening cast is real
+                false,
+            ));
+        }
+        if cli.preserve_encodings {
+            config
+                .final_exprs
+                .push(format!("{}_encoding", config.var_name));
+            if !elem_encs.is_empty() {
+                config
+                    .final_exprs
+                    .push(format!("{}_elem_encodings", config.var_name));
+            }
+            deser_code.content.line(&format!(
+                "{}{}{}",
+                before_after.before_str(false),
+                final_expr(config.final_exprs, Some(arr_var_name)),
+                before_after.after_str(false)
+            ));
+        } else {
+            deser_code.content.line(&format!(
+                "{}{}{}",
+                before_after.before_str(false),
+                arr_var_name,
+                before_after.after_str(false)
+            ));
+        }
+        deser_code.throws = true;
+        deser_code
+    }
+
     /// Generates a DeserializationCode to serialize {serializing_rust_type} using the context in {before_after}
     /// This returned value must be in turn pushed into deserialization code to be used.
     #[must_use]
@@ -2579,245 +2809,17 @@ impl GenerationScope {
                     collection_type @ ConceptualRustType::Array(ty),
                     type_cfg,
                 ) => {
-                    let collection = crate::intermediate::CollectionTypeView::new(
+                    deser_code = self.deser_array(
                         collection_type,
-                        type_cfg.as_ref(),
-                    );
-                    if config.optional_field {
-                        deser_code.content.line("read_len.read_elems(1)?;");
-                        deser_code.read_len_used = true;
-                    }
-                    let arr_var_name = format!("{}_arr", config.var_name);
-                    deser_code
-                        .content
-                        .line(&format!("let mut {arr_var_name} = Vec::new();"));
-                    let elem_var_name = format!("{}_elem", config.var_name);
-                    let elem_encs = if cli.preserve_encodings {
-                        encoding_fields(types, &elem_var_name, ty, false, cli)
-                    } else {
-                        vec![]
-                    };
-                    if cli.preserve_encodings {
-                        deser_code
-                            .content
-                            .line(&format!("let len = {deserializer_name}.array_sz()?;"))
-                            .line(&format!("let {}_encoding = len.into();", config.var_name));
-                        if !elem_encs.is_empty() {
-                            deser_code.content.line(&format!(
-                                "let mut {}_elem_encodings = Vec::new();",
-                                config.var_name
-                            ));
-                        }
-                    } else {
-                        deser_code
-                            .content
-                            .line(&format!("let len = {deserializer_name}.array()?;"));
-                    }
-                    // FRESH config, not the outer member's: an array element is a member position of
-                    // its own (it spells from its own declaration, via its own `Alias` arm) and must
-                    // not inherit the outer member's declared spelling. Same for the map arm's
-                    // key/value configs below.
-                    let mut elem_config = DeserializeConfig::new(&elem_var_name);
-                    // `is_basic` and NOT a bare `is_plain_group`: a plain group SPLICES into this
-                    // array only while it is still basic. A wrapper promotes it to a struct that
-                    // writes its own array header (`[* [coords]]`), and then the element is ONE
-                    // outer item read through the standalone `deserialize` — which is what the two
-                    // emitters either side of this one already decide with `is_basic`: the element
-                    // READ's embedded-vs-standalone face (the `Rust(ident)` arm's
-                    // `is_plain_group(ident) && !type_cfg.basic_override`) and the SERIALIZE
-                    // length (`expanded_field_count`, which consults `is_basic` internally and so
-                    // writes `1 * n` for the promoted form). Asking the bare predicate here charged
-                    // the group's field count against an outer slot the element did not occupy, so
-                    // the crate emitted bytes its own decoder rejected with `DefiniteLenMismatch` —
-                    // exit 0, compiles, round-trip red. Pinned by
-                    // tests/corpus/array_of_wrapped_group.cddl, which spells this array form plus
-                    // the map key/value controls (a table counts ENTRIES, so no expansion can be
-                    // charged to it). Bare repeated plain groups are rejected earlier because RFC
-                    // 8610 gives them flat concatenation semantics this carrier cannot represent.
-                    // The scrutinee resolves aliases for the same reason the guard already does: an
-                    // alias is transparent, so an element spelled `kv_alias` splices exactly like
-                    // `kv`. Matching the bare type left the alias spelling on the non-embedded
-                    // branch, whose loop counts ELEMENTS against a header the serializer wrote in
-                    // ITEMS — the write/read halves of one crate disagreeing. Same resolution as the
-                    // serialize length expression this arm is paired with.
-                    let (mut deser_loop, plain_len_check) = match ty
-                        .conceptual_type
-                        .resolve_alias_shallow()
-                    {
-                        ConceptualRustType::Rust(_) if ty.is_basic(types) => {
-                            // two things that must be done differently for embedded plain groups:
-                            // 1) We can't directly read the CBOR len's number of items since it could be >1
-                            // 2) We need a different cbor read len var to pass into embedded deserialize
-                            let read_len_overload = format!("{}_read_len", config.var_name);
-                            deser_code.content.line(&format!(
-                                "let mut {read_len_overload} = {}(len);",
-                                cbor_read_len_ctor(cli)
-                            ));
-                            // inside of deserialize_as_embedded_group we only modify read_len for things we couldn't
-                            // statically know beforehand. This was done for other areas that use plain groups in order
-                            // to be able to do static length checks for statically sized groups that contain plain groups
-                            // at the start of deserialization instead of many checks for every single field.
-                            let plain_len_check = match ty.expanded_mandatory_field_count(types) {
-                                0 => None,
-                                n => Some(format!("{read_len_overload}.read_elems({n})?;")),
-                            };
-                            elem_config = elem_config.overload_read_len(read_len_overload);
-                            let deser_loop = make_deser_loop(
-                                "len",
-                                &format!("{}_read_len.read()", config.var_name),
-                                cli,
-                            );
-                            (deser_loop, plain_len_check)
-                        }
-                        _ => (
-                            make_deser_loop("len", &format!("({arr_var_name}.len() as u64)"), cli),
-                            None,
-                        ),
-                    };
-                    deser_loop.push_block(make_deser_loop_break_check(
-                        "len",
-                        deserializer_name,
+                        ty,
+                        type_cfg,
+                        types,
+                        deser_code,
+                        config,
+                        before_after,
                         cli,
-                    ));
-                    if let Some(plain_len_check) = plain_len_check {
-                        deser_loop.line(plain_len_check);
-                    }
-                    elem_config.deserializer_name_overload = config.deserializer_name_overload;
-                    if !elem_encs.is_empty() {
-                        let elem_var_names_str =
-                            encoding_var_names_str(types, &elem_var_name, ty, cli);
-                        self.generate_deserialize(
-                            types,
-                            (&**ty).into(),
-                            DeserializeBeforeAfter::new(
-                                &format!("let {elem_var_names_str} = "),
-                                ";",
-                                false,
-                            ),
-                            elem_config,
-                            cli,
-                        )
-                        .add_to(&mut deser_loop);
-                        deser_loop
-                            .line(format!("{arr_var_name}.push({elem_var_name});"))
-                            .line(format!(
-                                "{}_elem_encodings.push({});",
-                                config.var_name,
-                                tuple_str(
-                                    elem_encs.iter().map(|enc| enc.field_name.clone()).collect()
-                                )
-                            ));
-                    } else {
-                        self.generate_deserialize(
-                            types,
-                            (&**ty).into(),
-                            DeserializeBeforeAfter::new(
-                                &format!("{arr_var_name}.push("),
-                                ");",
-                                false,
-                            ),
-                            elem_config,
-                            cli,
-                        )
-                        .add_to(&mut deser_loop);
-                    }
-                    deser_code.content.push_block(deser_loop);
-                    let reject_dups = collection.is_reject_array();
-                    if reject_dups {
-                        // `@duplicates reject`: route the collected Vec through the SAME uniqueness
-                        // twin `TryFrom` door the API uses, so a duplicate on the wire and a duplicate
-                        // built through the API report the identical `DuplicateKey(index)` error and
-                        // can never drift. The non-empty flavor's door additionally enforces the `[+]`
-                        // min-1 bound (same composed door). Encoding vars stay keyed off the field.
-                        if let Some((min, max)) = collection.raw_bounded_window() {
-                            let min = u64::try_from(min.unwrap_or(0)).expect(
-                                "array occurrence lower bound was validated during parsing",
-                            );
-                            let max = max
-                                .map(|v| {
-                                    u64::try_from(v)
-                                        .expect("array occurrence upper bound was validated during parsing")
-                                        .to_string()
-                                })
-                                .unwrap_or_else(|| "{ u64::MAX }".to_owned());
-                            deser_code.content.line(&format!(
-                                "let {arr_var_name} = BoundedOrderedSet::<_, {min}, {max}>::try_from({arr_var_name})?;"
-                            ));
-                        } else {
-                            let twin = if collection.is_non_empty_array() {
-                                "NonEmptyOrderedSet"
-                            } else {
-                                "OrderedSet"
-                            };
-                            deser_code.content.line(&format!(
-                                "let {arr_var_name} = {twin}::try_from({arr_var_name})?;"
-                            ));
-                        }
-                    } else if collection.is_non_empty_array() {
-                        // `[+ T]`: route the collected Vec through the SAME `TryFrom` door the API
-                        // uses, so the wire side and API side report the identical RangeCheck error
-                        // ("0 not at least 1") and can never drift. The encoding vars stay keyed off
-                        // the field (untouched below) — only the value var is rebound.
-                        deser_code.content.line(&format!(
-                            "let {arr_var_name} = NonEmptyVec::try_from({arr_var_name})?;"
-                        ));
-                    } else if let Some(Ok(len)) = collection.exact_array_len() {
-                        // Exact ordinary/preserve homogeneous arrays stage on the wire as a Vec
-                        // and cross one static handover. Map the standard conversion error back
-                        // to the generator's established RangeCheck rather than leaking it.
-                        deser_code.content.line(&format!(
-                            "let {arr_var_name}: [_; {len}] = {arr_var_name}.try_into().map_err(|elements: Vec<_>| DeserializeFailure::RangeCheck{{ found: elements.len() as i128, min: Some({len}), max: Some({len}) }})?;"
-                        ));
-                    } else if let Some((min, max)) = collection.raw_bounded_window() {
-                        let min = u64::try_from(min.unwrap_or(0))
-                            .expect("array occurrence lower bound was validated during parsing");
-                        let max = max
-                            .map(|max| {
-                                u64::try_from(max).expect(
-                                    "array occurrence upper bound was validated during parsing",
-                                )
-                            })
-                            .unwrap_or(u64::MAX);
-                        let max = crate::intermediate::bound_const_arg(max);
-                        deser_code.content.line(&format!(
-                            "let {arr_var_name} = BoundedVec::<_, {min}, {max}>::try_from({arr_var_name})?;"
-                        ));
-                    } else if let Some(bounds) = &type_cfg.occurrence_bounds() {
-                        // we use cargo fmt after so it's okay if we just use .line() here
-                        deser_code.content.line(&bounds_check_if_block(
-                            bounds,
-                            &format!("{arr_var_name}.len()"),
-                            true,
-                            true,
-                            None,
-                            // `.len()` is usize — the widening cast is real
-                            false,
-                        ));
-                    }
-                    if cli.preserve_encodings {
-                        config
-                            .final_exprs
-                            .push(format!("{}_encoding", config.var_name));
-                        if !elem_encs.is_empty() {
-                            config
-                                .final_exprs
-                                .push(format!("{}_elem_encodings", config.var_name));
-                        }
-                        deser_code.content.line(&format!(
-                            "{}{}{}",
-                            before_after.before_str(false),
-                            final_expr(config.final_exprs, Some(arr_var_name)),
-                            before_after.after_str(false)
-                        ));
-                    } else {
-                        deser_code.content.line(&format!(
-                            "{}{}{}",
-                            before_after.before_str(false),
-                            arr_var_name,
-                            before_after.after_str(false)
-                        ));
-                    }
-                    deser_code.throws = true;
+                        deserializer_name,
+                    );
                 }
                 SerializingRustType::Root(
                     collection_type @ ConceptualRustType::Map(key_type, value_type),
