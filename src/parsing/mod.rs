@@ -4407,6 +4407,609 @@ fn lower_parenthesized_rule(
     }
 }
 
+fn lower_extern_marker_rule(
+    types: &mut IntermediateTypes,
+    parent_visitor: &ParentVisitor,
+    type_name: &RustIdent,
+    generic_params: Option<Vec<GenericParamBinding>>,
+    rule_metadata: RuleMetadata,
+    cli: &Cli,
+) {
+    types.register_rust_struct(
+        parent_visitor,
+        RustStruct::new_extern(type_name.clone()),
+        cli,
+    );
+    // A GENERIC extern base (`foo<T> = _CDDL_CODEGEN_EXTERN_TYPE_`) registers above as a
+    // plain `Extern` struct that drops its generic params, so record its generic-ness
+    // here (the only surviving signal) — the bare base names no concrete type and must be
+    // skipped by the json-gen schema-row emitter and the extern-interface self-check even
+    // when no `foo<uint>` instance exists.
+    if generic_params.is_some() {
+        types.mark_generic_extern_base(type_name.clone());
+    }
+    if rule_metadata.raw_bytes_flavor {
+        // Gated on generic-ness for the same reason `mark_generic_extern_base` above is:
+        // the flavor is a property of a generic INSTANCE, not of the base. On a
+        // non-generic extern there are no instances, so the mark can never be read back
+        // — refuse instead of accepting an inert tag.
+        if generic_params.is_some() {
+            types.mark_raw_bytes_flavor(type_name.clone());
+        } else {
+            types.record_rejection(raw_bytes_flavor_non_generic_extern_rejection(type_name));
+        }
+    }
+    if rule_metadata.copy {
+        types.mark_copy_extern(type_name.clone());
+    }
+    // `@extern_companions` defers the wasm companion classes minted for a LOCAL extern's
+    // collection uses. Every such class is named from the ident at the USE site, and for
+    // a generic extern base that ident is the INSTANCE (`i = foo<uint>` used as
+    // `[* i]` mints `IList`, never `FooList`), so a deferral declared on the base is
+    // looked up under a name nothing ever asks for. Gated on generic-ness for the same
+    // reason `@raw_bytes_flavor` above is, in the opposite direction — the flavor is a
+    // property of instances, the deferral of the concrete type.
+    if generic_params.is_some() && rule_metadata.extern_companions.is_some() {
+        types.record_rejection(format!(
+            "@extern_companions on `{type_name}`: a generic extern BASE names no \
+             concrete type, and every wasm companion class is named from the ident at \
+             the USE site — an instance `i = {type_name}<uint>` used as `[* i]` mints \
+             `IList`, never `{type_name}List` — so a deferral declared on the base is \
+             never consulted. Declare the concrete shape as its own non-generic extern \
+             rule and put the deferral there (`i = {EXTERN_MARKER} ; \
+             @extern_companions <prefix>=IList`), or remove the directive."
+        ));
+    } else {
+        handle_extern_companions(types, type_name, &rule_metadata);
+    }
+}
+
+fn lower_raw_bytes_marker_rule(
+    types: &mut IntermediateTypes,
+    parent_visitor: &ParentVisitor,
+    type_name: &RustIdent,
+    generic_params: Option<Vec<GenericParamBinding>>,
+    rule_metadata: RuleMetadata,
+    cli: &Cli,
+) {
+    // A GENERIC raw-bytes base (`foo<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_`) is refused,
+    // where the extern marker above merely RECORDS its generic-ness: an extern names an
+    // arbitrary hand-written type, which can legitimately be parameterized, but a
+    // raw-bytes type IS its own bytes and has no element for a parameter to name. The
+    // registration below drops the params (a `RawBytesType` struct has none), so the
+    // base then emits rows spelling a BARE `Foo` — the extern-interface self-check's
+    // `_assert_raw_bytes::<crate::generated::Foo>()` and, under
+    // `--json-schema-export`, the json-gen `reg.add::<cddl_lib::Foo>()` — each E0107
+    // against the parameterized `Foo<T>` the marker promised, at exit 0 with empty
+    // stderr. Return-early (no registration), following the control-op-on-`any`
+    // rejection below.
+    if generic_params.is_some() {
+        types.record_rejection(format!(
+            "generic rule `{type_name}`: a {RAW_BYTES_MARKER} rule cannot take generic \
+             parameters — a raw-bytes type is exactly its own bytes and carries no \
+             element type for a parameter to name, so `{type_name}<…>` would emit \
+             self-check and schema rows naming a bare `{type_name}` that cannot compile \
+             against the parameterized type the marker declares. Declare it \
+             non-generic (`{type_name} = {RAW_BYTES_MARKER}`)."
+        ));
+        return;
+    }
+    types.register_rust_struct(
+        parent_visitor,
+        RustStruct::new_raw_bytes(type_name.clone()),
+        cli,
+    );
+    if rule_metadata.copy {
+        types.mark_copy_extern(type_name.clone());
+    }
+    // Same recording as the extern-marker arm above, and for the same reason: a
+    // raw-bytes type is user-defined too, and the collection wrappers minted from the
+    // shapes it appears in are named from its ident — so a sibling wasm crate that
+    // already publishes `<Name>List` collides with a local mint exactly as an extern's
+    // does. No generic-ness gate is needed here (unlike the extern arm's): a generic
+    // raw-bytes base returned above.
+    handle_extern_companions(types, type_name, &rule_metadata);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn lower_controlled_typename_rule(
+    types: &mut IntermediateTypes,
+    parent_visitor: &ParentVisitor,
+    type_name: &RustIdent,
+    type1: &Type1,
+    cddl_ident: CDDLIdent,
+    operator: Option<&Operator>,
+    control: ControlOperator,
+    outer_tag: Option<usize>,
+    generic_params: Option<Vec<GenericParamBinding>>,
+    rule_metadata: RuleMetadata,
+    cli: &Cli,
+) {
+    if generic_params.is_some() {
+        types.record_rejection(format!(
+            "generic rule `{type_name}`: a control operator or range (`.size`/`.le`/`.cbor`/`.default`/…) \
+             as the whole body of a generic definition is not supported — such a body registers no \
+             struct for the generic arguments to substitute into. Name the constrained type as its own \
+             non-generic rule and reference it from a supported generic body. \
+             {SUPPORTED_GENERIC_DEF_BODIES}"
+        ));
+        return;
+    }
+    match control {
+        ControlOperator::Range(min_max) => {
+            // when declared top-level we make a new type as the default behavior like before
+            // Only SIZE gains a transparent unsigned-alias route. Other
+            // controls retain their existing named-head refusal.
+            let alias_primitive = operator.and_then(|op| {
+                if !matches!(
+                    op.operator,
+                    RangeCtlOp::CtlOp {
+                        ctrl: token::ControlOperator::SIZE,
+                        ..
+                    }
+                ) {
+                    return None;
+                }
+                let alias = types
+                    .type_aliases()
+                    .get(&AliasIdent::new(cddl_ident.clone()))?;
+                // Custom wire codecs are not transparent primitive contracts.
+                if alias.carries_custom_pair() || !alias.base_type.encodings.is_empty() {
+                    return None;
+                }
+                resolved_head_primitive(types, &type1.type2)
+                    .filter(|primitive| is_uint_primitive(*primitive))
+            });
+            let Some(primitive) = ident_to_primitive(&cddl_ident).or(alias_primitive) else {
+                types.record_rejection(unmapped_control_head_rejection(type_name, &cddl_ident));
+                return;
+            };
+            // A wider size cannot widen an already sized alias.
+            let min_max = match (alias_primitive, integer_primitive_domain(primitive)) {
+                (Some(_), Some((min, max))) => (
+                    Some(min_max.0.unwrap_or(min).max(min)),
+                    Some(min_max.1.unwrap_or(max).min(max)),
+                ),
+                _ => length_window(primitive, min_max),
+            };
+            let ranged_type = range_to_primitive(min_max.0, min_max.1, primitive);
+            // An exact byte `.size` becomes a Rust array length.  Validate at
+            // the parse boundary so generation never truncates an authored
+            // CDDL integer or emits a target-dependent array const.
+            if let Some(Err(length)) = ranged_type.exact_byte_array_len() {
+                types.record_rejection(exact_byte_array_length_rejection(length));
+                return;
+            }
+            register_ranged_type(
+                types,
+                parent_visitor,
+                type_name,
+                ranged_type,
+                min_max,
+                outer_tag,
+                rule_metadata,
+                cli,
+            );
+        }
+        ControlOperator::RangeFloat(window) => {
+            // `float64 .le 10.5` (float typename head): wrap into a float
+            // bounds-enforcing newtype (or tag/alias) — same three-way split.
+            // The same unmapped-head guard as the integer arm above: a float
+            // WINDOW is only built for a head `ident_to_primitive` maps, so
+            // this is the sibling backstop rather than a reachable shape
+            // today — it exists so the next unmapped name class rejects
+            // instead of re-earning the panic.
+            let Some(primitive) = ident_to_primitive(&cddl_ident) else {
+                types.record_rejection(unmapped_control_head_rejection(type_name, &cddl_ident));
+                return;
+            };
+            let ranged_type = float_range_to_primitive(window, primitive);
+            register_float_range(
+                types,
+                parent_visitor,
+                type_name,
+                ranged_type,
+                window,
+                outer_tag,
+                rule_metadata,
+                cli,
+            );
+        }
+        ControlOperator::CBOR(ty) => match ident_to_primitive(&cddl_ident) {
+            Some(Primitive::Bytes) => {
+                // A second `CBORBytes` on this chain (the INLINE spelling
+                // `bytes .cbor (bytes .cbor T)`) is applied like any other: each
+                // `.cbor` level owns its own depth-suffixed staging buffer,
+                // reader and encoding member (`cbor_bytes_infix` and its
+                // siblings), so the levels no longer contend for one name.
+                let cbor_bytes_type = ty.as_bytes().tag_if(outer_tag);
+                // A `.cbor` rule body ALWAYS wraps, `@newtype` or not: the
+                // byte-string framing (and any outer tag riding on
+                // `cbor_bytes_type` via `.tag_if(outer_tag)`) is a wire-affecting
+                // property of the rule, and a transparent `pub type X = T` alias
+                // mints no type to hang it on — `X::to_cbor_bytes` would be `T`'s,
+                // writing the BARE inner form while every embed site of `X`
+                // writes the wrapped one. So the `@newtype` spelling is redundant
+                // here exactly as it is on a single-type tag rule: both spellings
+                // produce the identical wrapper struct, and
+                // `register_type_alias`'s wire-facts assert keeps the alias
+                // spelling unrepresentable rather than merely unused.
+                //
+                // The payload's `Alias` node is KEPT (as a member or arm keeps
+                // it): it is the only thing the emitter's `Alias` arms lift a
+                // wrapped rule's `@custom_serialize`/`@custom_deserialize` pair
+                // from.
+                //
+                // A fixed payload needs the same direct-codec owner as a bare
+                // literal rule.  Keep the complete `.cbor`/tag operation chain
+                // on its one arm, so preserve encoding metadata belongs to this
+                // nominal owner rather than to a non-existent wrapper member.
+                if matches!(
+                    cbor_bytes_type.conceptual_type.resolve_alias_shallow(),
+                    ConceptualRustType::Fixed(_)
+                ) {
+                    register_fixed_singleton(
+                        types,
+                        parent_visitor,
+                        type_name.clone(),
+                        cbor_bytes_type,
+                        None,
+                        Some(&rule_metadata),
+                        generic_params.as_deref(),
+                        cli,
+                        false,
+                    );
+                    return;
+                }
+                types.register_rust_struct(
+                    parent_visitor,
+                    RustStruct::new_wrapper(
+                        type_name.clone(),
+                        None,
+                        Some(&rule_metadata),
+                        cbor_bytes_type,
+                        None,
+                    ),
+                    cli,
+                );
+            }
+            // Not a byte-string head: refuse the shape (RFC 8610 restricts
+            // `.cbor` to byte strings) rather than aborting, and register
+            // nothing — the same return-early shape the unmapped-head guards
+            // above use, with `finalize` draining the rejection before any
+            // reference to the unregistered rule can be emitted.
+            _ => types.record_rejection(non_bytes_cbor_head_rejection(
+                Some(type_name),
+                &cddl_ident.to_string(),
+            )),
+        },
+        ControlOperator::Default(default_value) => {
+            let inner_type = rust_type_from_type2(types, parent_visitor, &type1.type2, cli);
+            // Same reasoning as the primitive tag arm below: a top-level
+            // `#6.n(uint .default 5)` must wrap so its standalone
+            // `to/from_cbor_bytes` writes/checks the tag (a transparent alias drops
+            // it from the wire). The `.default` is dropped inside the wrapper: a
+            // default substitutes for an *absent* value, and a standalone tagged
+            // value is always present, so it has no meaning here (the preserve path's
+            // per-field default-present encoding tracking has no struct field to hang
+            // off either). The tag rides on the inner type (`.tag_if(outer_tag)`).
+            if rule_metadata.newtype.is_some() || outer_tag.is_some() {
+                types.register_rust_struct(
+                    parent_visitor,
+                    RustStruct::new_wrapper(
+                        type_name.clone(),
+                        None,
+                        Some(&rule_metadata),
+                        inner_type.tag_if(outer_tag),
+                        None,
+                    ),
+                    cli,
+                );
+            } else {
+                // The head may be one the default cannot be lowered onto — a
+                // named type with no rust primitive (`tdate`), or the inert
+                // placeholder a refused prelude name already left behind. Refuse
+                // at the APPLICATION, and register the rule as the UNDEFAULTED
+                // type it would otherwise have been, so later references still
+                // resolve while `finalize` drains both this rejection and any
+                // the head's own seam recorded first.
+                let aliased = match inner_type.try_default(default_value.clone()) {
+                    Ok(defaulted) => defaulted,
+                    Err(undefaulted) => {
+                        types.record_rejection(unmappable_default_head_rejection(
+                            Some(type_name),
+                            &type1.type2,
+                            &default_value,
+                        ));
+                        undefaulted
+                    }
+                };
+                types.register_type_alias(
+                    type_name.clone(),
+                    AliasInfo::new_from_metadata(aliased.tag_if(outer_tag), rule_metadata),
+                );
+            }
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn lower_ordinary_typename_rule(
+    types: &mut IntermediateTypes,
+    parent_visitor: &ParentVisitor,
+    type_name: &RustIdent,
+    cddl_ident: CDDLIdent,
+    generic_args: &Option<GenericArgs>,
+    outer_tag: Option<usize>,
+    generic_params: Option<Vec<GenericParamBinding>>,
+    rule_metadata: RuleMetadata,
+    cli: &Cli,
+) {
+    let mut concrete_type = types.new_type(&cddl_ident, cli);
+    // A tag payload is a TYPE and therefore denotes exactly one data item. A
+    // plain group has no type of its own: its only meaning is to splice a
+    // sequence of members into an enclosing array or map. The cddl parser's
+    // intentionally-ambiguous identifier node lets `#6.n(pg)` reach this arm
+    // even when `pg` resolves to a group, so enforce the semantic boundary
+    // after resolution. Keep an inert primitive in the registration path after
+    // recording the rejection; sibling rules may still reference this rule
+    // before `finalize` drains the error, and a missing registration would turn
+    // the graceful refusal back into an order-dependent panic.
+    if let Some(tag) = outer_tag
+        && reject_tagged_plain_group_payload(types, &concrete_type, tag)
+    {
+        concrete_type = ConceptualRustType::Primitive(Primitive::U64).into();
+    }
+    if matches!(
+        concrete_type.conceptual_type.resolve_alias_shallow(),
+        ConceptualRustType::Fixed(_)
+    ) {
+        register_fixed_singleton(
+            types,
+            parent_visitor,
+            type_name.clone(),
+            concrete_type,
+            outer_tag,
+            Some(&rule_metadata),
+            generic_params.as_deref(),
+            cli,
+            false,
+        );
+        return;
+    }
+    let concrete_type = concrete_type.tag_if(outer_tag);
+    // Remember the aliased ident after stripping its `Alias` wrapper. The wasm
+    // alias can point at its wrapper struct if it has one (resolved at emission
+    // via `has_wasm_wrapper`, so forward references work), while the recursive
+    // boundary retains the original source edge instead of only its structural
+    // base. Read-only: the strip itself belongs to the ALIAS branch alone (see
+    // there).
+    let mut stripped_alias_target = None;
+    if let ConceptualRustType::Alias(AliasIdent::Rust(rust_ident), _) =
+        &concrete_type.conceptual_type
+    {
+        stripped_alias_target = Some(rust_ident.clone());
+    }
+    match &generic_params {
+        Some(_params) => {
+            // A generic def whose body is another NAMED type
+            // (`bar<V> = foo<V, uint>`) forwards its parameters into a second
+            // definition; nothing registers a struct here for `bar<…>` to
+            // substitute into, so the parameters would be unbound. Refused at
+            // parse time rather than aborted. (Resolving the target here and
+            // storing the resolved struct as this rule's own `GenericDef` is
+            // the shape that would support it.)
+            types.record_rejection(format!(
+                "generic rule `{type_name}`: a body that is another named type \
+                 (`{type_name}<…> = <other>`) is not supported — it forwards \
+                 the parameters into a second definition and registers no \
+                 struct of its own, so they would be unbound. Spell the \
+                 structure out in this rule's own body. \
+                 {SUPPORTED_GENERIC_DEF_BODIES}"
+            ));
+        }
+        None => {
+            match generic_args {
+                Some(arg) => {
+                    // This is for named generic instances such as:
+                    // foo = bar<text>
+                    let generic_args: Vec<RustType> = arg
+                        .args
+                        .iter()
+                        .map(|a| rust_type_from_type1(types, parent_visitor, &a.arg, cli))
+                        .collect();
+                    // The instantiation nominal a set binding aliases TO
+                    // (`named_set = set<key_hash>` → `SetKeyHash`); identical to
+                    // the anonymous-use spelling so both dedup to one nominal.
+                    let canonical_ident = RustIdent::new(generic_instance_canonical_cddl_ident(
+                        &cddl_ident,
+                        &generic_args,
+                    ));
+                    types.register_generic_instance(GenericInstance::new(
+                        type_name.clone(),
+                        RustIdent::new(cddl_ident.clone()),
+                        generic_args,
+                        // author-declared rule name (`foo = bar<text>`), not
+                        // synthesized — keeps its own wasm class / criterion-8 name.
+                        false,
+                        canonical_ident,
+                    ));
+                }
+                None => {
+                    // A top-level single-type tag rule (`x = #6.n(<primitive|named>)`)
+                    // must emit the tag-writing/tag-checking wrapper, not a transparent
+                    // `pub type` alias whose standalone `to/from_cbor_bytes` would drop
+                    // the tag from the wire (a CBOR conformance bug). `outer_tag` is set
+                    // exactly when we descended through a tag head, so it forces the same
+                    // wrapper `@newtype` opts into — making `@newtype` redundant (not a
+                    // double wrapper) on a tag rule. The tag rides on `concrete_type`
+                    // (`.tag_if(outer_tag)` above), so the wrapper writes it.
+                    // `@newtype` on a bare `any` rule is a graceful rejection:
+                    // the wrapper is unproven through the
+                    // surface machinery and cheap to allow later once a fixture
+                    // proves it. A TAGGED any (`#6.n(any)`, `outer_tag` set) is a
+                    // supported position whose wrapper the tag forces (@newtype
+                    // redundant there), so only the newtype-driven untagged case
+                    // is caught here.
+                    if rule_metadata.newtype.is_some()
+                        && outer_tag.is_none()
+                        && matches!(
+                            concrete_type.conceptual_type.resolve_alias_shallow(),
+                            ConceptualRustType::Any
+                        )
+                    {
+                        types.record_rejection(format!(
+                            "@newtype on `{type_name} = any` is not supported in \
+                             this phase: use a transparent alias \
+                             (`{type_name} = any`, no @newtype) — `any` lowers to \
+                             the AnyCbor runtime type directly. (Newtype-wrapping \
+                             `any` is planned once a fixture proves the surface.)"
+                        ));
+                        return;
+                    }
+                    // A PRELUDE CONSTANT body (`true`/`false`/`null`/`nil`)
+                    // resolves to a bare `Fixed`, which has no member Rust
+                    // representation. The untagged spelling reaches
+                    // `register_type_alias`'s guard below and is rejected there;
+                    // a tag head (or `@newtype`) diverts it to the WRAPPER seam
+                    // instead, which would render the `Fixed` as the wrapper's
+                    // inner member type and panic `for_rust_member` during
+                    // generation. Reject at both seams through the one shared
+                    // message, so `#6.11(true)` is classified exactly like the
+                    // literal-inner sibling `#6.5(5)` the alias seam already
+                    // rejects. Registering the wrapper anyway (rather than
+                    // returning early) matches the alias guard's reasoning: a
+                    // sibling rule may reference this one, and a dropped
+                    // registration would dangle that lookup during the parse
+                    // walk — before `finalize` surfaces the graceful `Err`. The
+                    // wrapper is harmless because generation never runs once a
+                    // rejection is recorded.
+                    if rule_metadata.newtype.is_some() || outer_tag.is_some() {
+                        if let ConceptualRustType::Fixed(fixed) =
+                            concrete_type.conceptual_type.resolve_alias_shallow()
+                        {
+                            let fixed = fixed.clone();
+                            types.record_bare_fixed_rule_rejection(type_name, &fixed);
+                        }
+                        types.register_rust_struct(
+                            parent_visitor,
+                            RustStruct::new_wrapper(
+                                type_name.clone(),
+                                None,
+                                Some(&rule_metadata),
+                                concrete_type,
+                                None,
+                            ),
+                            cli,
+                        );
+                    } else {
+                        // Stripping the alias inlines the type for serialization
+                        // (the rust side stays a transparent `pub type`), and is
+                        // REQUIRED here: `register_type_alias` refuses a base type
+                        // already wrapped in `Alias`. The WRAPPER branch above must
+                        // NOT strip: `generate_serialize`/`generate_deserialize`'s
+                        // `Alias` arms are what lift the aliased rule's
+                        // `@custom_serialize`/`@custom_deserialize` pair (and its
+                        // `@custom_encodings` declaration) into the emitted codec, so
+                        // a stripped wrapper silently re-derives the built-in wire and
+                        // `x = #6.n(annotated_alias)` disagrees with a plain member of
+                        // the same alias about one type's wire form. Where the node
+                        // cannot be kept, the FACTS travel instead — that is what
+                        // makes `re = annotated_alias` agree with the alias it
+                        // re-names rather than silently re-deriving the built-in
+                        // wire for every member declared through it.
+                        let mut alias_metadata = rule_metadata.clone();
+                        let (concrete_type, inherited_from) =
+                            strip_alias_for_registration(types, concrete_type, &mut alias_metadata);
+                        types.register_type_alias(
+                            type_name.clone(),
+                            AliasInfo::new_from_metadata(concrete_type, alias_metadata)
+                                .with_stripped_alias_target(stripped_alias_target)
+                                .with_inherited_wire_metadata(inherited_from),
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn lower_text_literal_rule(
+    types: &mut IntermediateTypes,
+    parent_visitor: &ParentVisitor,
+    type_name: &RustIdent,
+    type1: &Type1,
+    value: &str,
+    outer_tag: Option<usize>,
+    generic_params: Option<Vec<GenericParamBinding>>,
+    rule_metadata: RuleMetadata,
+    cli: &Cli,
+) {
+    // A text literal takes no operator; `parse_control_operator` records the refusal (a
+    // control) or the non-numeric range bound (a range), and the singleton still
+    // registers so a sibling reference resolves until `finalize` drains the error.
+    if let Some(op) = &type1.operator {
+        parse_control_operator(
+            types,
+            parent_visitor,
+            &type1.type2,
+            op,
+            Some(type_name),
+            cli,
+        );
+    }
+    register_fixed_singleton(
+        types,
+        parent_visitor,
+        type_name.clone(),
+        RustType::new(ConceptualRustType::Fixed(FixedValue::Text(
+            value.to_string(),
+        ))),
+        outer_tag,
+        Some(&rule_metadata),
+        generic_params.as_deref(),
+        cli,
+        false,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn lower_bytes_literal_rule(
+    types: &mut IntermediateTypes,
+    parent_visitor: &ParentVisitor,
+    type_name: &RustIdent,
+    type1: &Type1,
+    value: &[u8],
+    outer_tag: Option<usize>,
+    generic_params: Option<Vec<GenericParamBinding>>,
+    rule_metadata: RuleMetadata,
+    cli: &Cli,
+) {
+    // Same as the text literal arm above.
+    if let Some(op) = &type1.operator {
+        parse_control_operator(
+            types,
+            parent_visitor,
+            &type1.type2,
+            op,
+            Some(type_name),
+            cli,
+        );
+    }
+    register_fixed_singleton(
+        types,
+        parent_visitor,
+        type_name.clone(),
+        RustType::new(ConceptualRustType::Fixed(FixedValue::Bytes(value.to_vec()))),
+        outer_tag,
+        Some(&rule_metadata),
+        generic_params.as_deref(),
+        cli,
+        false,
+    );
+}
+
 #[allow(clippy::too_many_arguments)]
 fn parse_type(
     types: &mut IntermediateTypes,
@@ -4522,93 +5125,23 @@ fn parse_type(
             ..
         } => {
             if ident.ident == EXTERN_MARKER {
-                types.register_rust_struct(
+                lower_extern_marker_rule(
+                    types,
                     parent_visitor,
-                    RustStruct::new_extern(type_name.clone()),
+                    type_name,
+                    generic_params,
+                    rule_metadata,
                     cli,
                 );
-                // A GENERIC extern base (`foo<T> = _CDDL_CODEGEN_EXTERN_TYPE_`) registers above as a
-                // plain `Extern` struct that drops its generic params, so record its generic-ness
-                // here (the only surviving signal) — the bare base names no concrete type and must be
-                // skipped by the json-gen schema-row emitter and the extern-interface self-check even
-                // when no `foo<uint>` instance exists.
-                if generic_params.is_some() {
-                    types.mark_generic_extern_base(type_name.clone());
-                }
-                if rule_metadata.raw_bytes_flavor {
-                    // Gated on generic-ness for the same reason `mark_generic_extern_base` above is:
-                    // the flavor is a property of a generic INSTANCE, not of the base. On a
-                    // non-generic extern there are no instances, so the mark can never be read back
-                    // — refuse instead of accepting an inert tag.
-                    if generic_params.is_some() {
-                        types.mark_raw_bytes_flavor(type_name.clone());
-                    } else {
-                        types.record_rejection(raw_bytes_flavor_non_generic_extern_rejection(
-                            type_name,
-                        ));
-                    }
-                }
-                if rule_metadata.copy {
-                    types.mark_copy_extern(type_name.clone());
-                }
-                // `@extern_companions` defers the wasm companion classes minted for a LOCAL extern's
-                // collection uses. Every such class is named from the ident at the USE site, and for
-                // a generic extern base that ident is the INSTANCE (`i = foo<uint>` used as
-                // `[* i]` mints `IList`, never `FooList`), so a deferral declared on the base is
-                // looked up under a name nothing ever asks for. Gated on generic-ness for the same
-                // reason `@raw_bytes_flavor` above is, in the opposite direction — the flavor is a
-                // property of instances, the deferral of the concrete type.
-                if generic_params.is_some() && rule_metadata.extern_companions.is_some() {
-                    types.record_rejection(format!(
-                        "@extern_companions on `{type_name}`: a generic extern BASE names no \
-                         concrete type, and every wasm companion class is named from the ident at \
-                         the USE site — an instance `i = {type_name}<uint>` used as `[* i]` mints \
-                         `IList`, never `{type_name}List` — so a deferral declared on the base is \
-                         never consulted. Declare the concrete shape as its own non-generic extern \
-                         rule and put the deferral there (`i = {EXTERN_MARKER} ; \
-                         @extern_companions <prefix>=IList`), or remove the directive."
-                    ));
-                } else {
-                    handle_extern_companions(types, type_name, &rule_metadata);
-                }
             } else if ident.ident == RAW_BYTES_MARKER {
-                // A GENERIC raw-bytes base (`foo<T> = _CDDL_CODEGEN_RAW_BYTES_TYPE_`) is refused,
-                // where the extern marker above merely RECORDS its generic-ness: an extern names an
-                // arbitrary hand-written type, which can legitimately be parameterized, but a
-                // raw-bytes type IS its own bytes and has no element for a parameter to name. The
-                // registration below drops the params (a `RawBytesType` struct has none), so the
-                // base then emits rows spelling a BARE `Foo` — the extern-interface self-check's
-                // `_assert_raw_bytes::<crate::generated::Foo>()` and, under
-                // `--json-schema-export`, the json-gen `reg.add::<cddl_lib::Foo>()` — each E0107
-                // against the parameterized `Foo<T>` the marker promised, at exit 0 with empty
-                // stderr. Return-early (no registration), following the control-op-on-`any`
-                // rejection below.
-                if generic_params.is_some() {
-                    types.record_rejection(format!(
-                        "generic rule `{type_name}`: a {RAW_BYTES_MARKER} rule cannot take generic \
-                         parameters — a raw-bytes type is exactly its own bytes and carries no \
-                         element type for a parameter to name, so `{type_name}<…>` would emit \
-                         self-check and schema rows naming a bare `{type_name}` that cannot compile \
-                         against the parameterized type the marker declares. Declare it \
-                         non-generic (`{type_name} = {RAW_BYTES_MARKER}`)."
-                    ));
-                    return;
-                }
-                types.register_rust_struct(
+                lower_raw_bytes_marker_rule(
+                    types,
                     parent_visitor,
-                    RustStruct::new_raw_bytes(type_name.clone()),
+                    type_name,
+                    generic_params,
+                    rule_metadata,
                     cli,
                 );
-                if rule_metadata.copy {
-                    types.mark_copy_extern(type_name.clone());
-                }
-                // Same recording as the extern-marker arm above, and for the same reason: a
-                // raw-bytes type is user-defined too, and the collection wrappers minted from the
-                // shapes it appears in are named from its ident — so a sibling wasm crate that
-                // already publishes `<Name>List` collides with a local mint exactly as an extern's
-                // does. No generic-ness gate is needed here (unlike the extern arm's): a generic
-                // raw-bytes base returned above.
-                handle_extern_companions(types, type_name, &rule_metadata);
             } else {
                 // Note: this handles bool constants too, since we apply the type aliases and they resolve
                 // and there's no Type2::BooleanValue
@@ -4638,442 +5171,32 @@ fn parse_type(
                 }
                 match control {
                     Some(control) => {
-                        if generic_params.is_some() {
-                            types.record_rejection(format!(
-                                "generic rule `{type_name}`: a control operator or range (`.size`/`.le`/`.cbor`/`.default`/…) \
-                                 as the whole body of a generic definition is not supported — such a body registers no \
-                                 struct for the generic arguments to substitute into. Name the constrained type as its own \
-                                 non-generic rule and reference it from a supported generic body. \
-                                 {SUPPORTED_GENERIC_DEF_BODIES}"
-                            ));
-                            return;
-                        }
-                        match control {
-                            ControlOperator::Range(min_max) => {
-                                // when declared top-level we make a new type as the default behavior like before
-                                // Only SIZE gains a transparent unsigned-alias route. Other
-                                // controls retain their existing named-head refusal.
-                                let alias_primitive = operator.and_then(|op| {
-                                    if !matches!(
-                                        op.operator,
-                                        RangeCtlOp::CtlOp {
-                                            ctrl: token::ControlOperator::SIZE,
-                                            ..
-                                        }
-                                    ) {
-                                        return None;
-                                    }
-                                    let alias = types
-                                        .type_aliases()
-                                        .get(&AliasIdent::new(cddl_ident.clone()))?;
-                                    // Custom wire codecs are not transparent primitive contracts.
-                                    if alias.carries_custom_pair()
-                                        || !alias.base_type.encodings.is_empty()
-                                    {
-                                        return None;
-                                    }
-                                    resolved_head_primitive(types, &type1.type2)
-                                        .filter(|primitive| is_uint_primitive(*primitive))
-                                });
-                                let Some(primitive) =
-                                    ident_to_primitive(&cddl_ident).or(alias_primitive)
-                                else {
-                                    types.record_rejection(unmapped_control_head_rejection(
-                                        type_name,
-                                        &cddl_ident,
-                                    ));
-                                    return;
-                                };
-                                // A wider size cannot widen an already sized alias.
-                                let min_max =
-                                    match (alias_primitive, integer_primitive_domain(primitive)) {
-                                        (Some(_), Some((min, max))) => (
-                                            Some(min_max.0.unwrap_or(min).max(min)),
-                                            Some(min_max.1.unwrap_or(max).min(max)),
-                                        ),
-                                        _ => length_window(primitive, min_max),
-                                    };
-                                let ranged_type =
-                                    range_to_primitive(min_max.0, min_max.1, primitive);
-                                // An exact byte `.size` becomes a Rust array length.  Validate at
-                                // the parse boundary so generation never truncates an authored
-                                // CDDL integer or emits a target-dependent array const.
-                                if let Some(Err(length)) = ranged_type.exact_byte_array_len() {
-                                    types.record_rejection(exact_byte_array_length_rejection(
-                                        length,
-                                    ));
-                                    return;
-                                }
-                                register_ranged_type(
-                                    types,
-                                    parent_visitor,
-                                    type_name,
-                                    ranged_type,
-                                    min_max,
-                                    outer_tag,
-                                    rule_metadata,
-                                    cli,
-                                );
-                            }
-                            ControlOperator::RangeFloat(window) => {
-                                // `float64 .le 10.5` (float typename head): wrap into a float
-                                // bounds-enforcing newtype (or tag/alias) — same three-way split.
-                                // The same unmapped-head guard as the integer arm above: a float
-                                // WINDOW is only built for a head `ident_to_primitive` maps, so
-                                // this is the sibling backstop rather than a reachable shape
-                                // today — it exists so the next unmapped name class rejects
-                                // instead of re-earning the panic.
-                                let Some(primitive) = ident_to_primitive(&cddl_ident) else {
-                                    types.record_rejection(unmapped_control_head_rejection(
-                                        type_name,
-                                        &cddl_ident,
-                                    ));
-                                    return;
-                                };
-                                let ranged_type = float_range_to_primitive(window, primitive);
-                                register_float_range(
-                                    types,
-                                    parent_visitor,
-                                    type_name,
-                                    ranged_type,
-                                    window,
-                                    outer_tag,
-                                    rule_metadata,
-                                    cli,
-                                );
-                            }
-                            ControlOperator::CBOR(ty) => match ident_to_primitive(&cddl_ident) {
-                                Some(Primitive::Bytes) => {
-                                    // A second `CBORBytes` on this chain (the INLINE spelling
-                                    // `bytes .cbor (bytes .cbor T)`) is applied like any other: each
-                                    // `.cbor` level owns its own depth-suffixed staging buffer,
-                                    // reader and encoding member (`cbor_bytes_infix` and its
-                                    // siblings), so the levels no longer contend for one name.
-                                    let cbor_bytes_type = ty.as_bytes().tag_if(outer_tag);
-                                    // A `.cbor` rule body ALWAYS wraps, `@newtype` or not: the
-                                    // byte-string framing (and any outer tag riding on
-                                    // `cbor_bytes_type` via `.tag_if(outer_tag)`) is a wire-affecting
-                                    // property of the rule, and a transparent `pub type X = T` alias
-                                    // mints no type to hang it on — `X::to_cbor_bytes` would be `T`'s,
-                                    // writing the BARE inner form while every embed site of `X`
-                                    // writes the wrapped one. So the `@newtype` spelling is redundant
-                                    // here exactly as it is on a single-type tag rule: both spellings
-                                    // produce the identical wrapper struct, and
-                                    // `register_type_alias`'s wire-facts assert keeps the alias
-                                    // spelling unrepresentable rather than merely unused.
-                                    //
-                                    // The payload's `Alias` node is KEPT (as a member or arm keeps
-                                    // it): it is the only thing the emitter's `Alias` arms lift a
-                                    // wrapped rule's `@custom_serialize`/`@custom_deserialize` pair
-                                    // from.
-                                    //
-                                    // A fixed payload needs the same direct-codec owner as a bare
-                                    // literal rule.  Keep the complete `.cbor`/tag operation chain
-                                    // on its one arm, so preserve encoding metadata belongs to this
-                                    // nominal owner rather than to a non-existent wrapper member.
-                                    if matches!(
-                                        cbor_bytes_type.conceptual_type.resolve_alias_shallow(),
-                                        ConceptualRustType::Fixed(_)
-                                    ) {
-                                        register_fixed_singleton(
-                                            types,
-                                            parent_visitor,
-                                            type_name.clone(),
-                                            cbor_bytes_type,
-                                            None,
-                                            Some(&rule_metadata),
-                                            generic_params.as_deref(),
-                                            cli,
-                                            false,
-                                        );
-                                        return;
-                                    }
-                                    types.register_rust_struct(
-                                        parent_visitor,
-                                        RustStruct::new_wrapper(
-                                            type_name.clone(),
-                                            None,
-                                            Some(&rule_metadata),
-                                            cbor_bytes_type,
-                                            None,
-                                        ),
-                                        cli,
-                                    );
-                                }
-                                // Not a byte-string head: refuse the shape (RFC 8610 restricts
-                                // `.cbor` to byte strings) rather than aborting, and register
-                                // nothing — the same return-early shape the unmapped-head guards
-                                // above use, with `finalize` draining the rejection before any
-                                // reference to the unregistered rule can be emitted.
-                                _ => types.record_rejection(non_bytes_cbor_head_rejection(
-                                    Some(type_name),
-                                    &cddl_ident.to_string(),
-                                )),
-                            },
-                            ControlOperator::Default(default_value) => {
-                                let inner_type =
-                                    rust_type_from_type2(types, parent_visitor, &type1.type2, cli);
-                                // Same reasoning as the primitive tag arm below: a top-level
-                                // `#6.n(uint .default 5)` must wrap so its standalone
-                                // `to/from_cbor_bytes` writes/checks the tag (a transparent alias drops
-                                // it from the wire). The `.default` is dropped inside the wrapper: a
-                                // default substitutes for an *absent* value, and a standalone tagged
-                                // value is always present, so it has no meaning here (the preserve path's
-                                // per-field default-present encoding tracking has no struct field to hang
-                                // off either). The tag rides on the inner type (`.tag_if(outer_tag)`).
-                                if rule_metadata.newtype.is_some() || outer_tag.is_some() {
-                                    types.register_rust_struct(
-                                        parent_visitor,
-                                        RustStruct::new_wrapper(
-                                            type_name.clone(),
-                                            None,
-                                            Some(&rule_metadata),
-                                            inner_type.tag_if(outer_tag),
-                                            None,
-                                        ),
-                                        cli,
-                                    );
-                                } else {
-                                    // The head may be one the default cannot be lowered onto — a
-                                    // named type with no rust primitive (`tdate`), or the inert
-                                    // placeholder a refused prelude name already left behind. Refuse
-                                    // at the APPLICATION, and register the rule as the UNDEFAULTED
-                                    // type it would otherwise have been, so later references still
-                                    // resolve while `finalize` drains both this rejection and any
-                                    // the head's own seam recorded first.
-                                    let aliased =
-                                        match inner_type.try_default(default_value.clone()) {
-                                            Ok(defaulted) => defaulted,
-                                            Err(undefaulted) => {
-                                                types.record_rejection(
-                                                    unmappable_default_head_rejection(
-                                                        Some(type_name),
-                                                        &type1.type2,
-                                                        &default_value,
-                                                    ),
-                                                );
-                                                undefaulted
-                                            }
-                                        };
-                                    types.register_type_alias(
-                                        type_name.clone(),
-                                        AliasInfo::new_from_metadata(
-                                            aliased.tag_if(outer_tag),
-                                            rule_metadata,
-                                        ),
-                                    );
-                                }
-                            }
-                        }
+                        lower_controlled_typename_rule(
+                            types,
+                            parent_visitor,
+                            type_name,
+                            type1,
+                            cddl_ident,
+                            operator,
+                            control,
+                            outer_tag,
+                            generic_params,
+                            rule_metadata,
+                            cli,
+                        );
                     }
                     None => {
-                        let mut concrete_type = types.new_type(&cddl_ident, cli);
-                        // A tag payload is a TYPE and therefore denotes exactly one data item. A
-                        // plain group has no type of its own: its only meaning is to splice a
-                        // sequence of members into an enclosing array or map. The cddl parser's
-                        // intentionally-ambiguous identifier node lets `#6.n(pg)` reach this arm
-                        // even when `pg` resolves to a group, so enforce the semantic boundary
-                        // after resolution. Keep an inert primitive in the registration path after
-                        // recording the rejection; sibling rules may still reference this rule
-                        // before `finalize` drains the error, and a missing registration would turn
-                        // the graceful refusal back into an order-dependent panic.
-                        if let Some(tag) = outer_tag
-                            && reject_tagged_plain_group_payload(types, &concrete_type, tag)
-                        {
-                            concrete_type = ConceptualRustType::Primitive(Primitive::U64).into();
-                        }
-                        if matches!(
-                            concrete_type.conceptual_type.resolve_alias_shallow(),
-                            ConceptualRustType::Fixed(_)
-                        ) {
-                            register_fixed_singleton(
-                                types,
-                                parent_visitor,
-                                type_name.clone(),
-                                concrete_type,
-                                outer_tag,
-                                Some(&rule_metadata),
-                                generic_params.as_deref(),
-                                cli,
-                                false,
-                            );
-                            return;
-                        }
-                        let concrete_type = concrete_type.tag_if(outer_tag);
-                        // Remember the aliased ident after stripping its `Alias` wrapper. The wasm
-                        // alias can point at its wrapper struct if it has one (resolved at emission
-                        // via `has_wasm_wrapper`, so forward references work), while the recursive
-                        // boundary retains the original source edge instead of only its structural
-                        // base. Read-only: the strip itself belongs to the ALIAS branch alone (see
-                        // there).
-                        let mut stripped_alias_target = None;
-                        if let ConceptualRustType::Alias(AliasIdent::Rust(rust_ident), _) =
-                            &concrete_type.conceptual_type
-                        {
-                            stripped_alias_target = Some(rust_ident.clone());
-                        }
-                        match &generic_params {
-                            Some(_params) => {
-                                // A generic def whose body is another NAMED type
-                                // (`bar<V> = foo<V, uint>`) forwards its parameters into a second
-                                // definition; nothing registers a struct here for `bar<…>` to
-                                // substitute into, so the parameters would be unbound. Refused at
-                                // parse time rather than aborted. (Resolving the target here and
-                                // storing the resolved struct as this rule's own `GenericDef` is
-                                // the shape that would support it.)
-                                types.record_rejection(format!(
-                                    "generic rule `{type_name}`: a body that is another named type \
-                                     (`{type_name}<…> = <other>`) is not supported — it forwards \
-                                     the parameters into a second definition and registers no \
-                                     struct of its own, so they would be unbound. Spell the \
-                                     structure out in this rule's own body. \
-                                     {SUPPORTED_GENERIC_DEF_BODIES}"
-                                ));
-                            }
-                            None => {
-                                match generic_args {
-                                    Some(arg) => {
-                                        // This is for named generic instances such as:
-                                        // foo = bar<text>
-                                        let generic_args: Vec<RustType> = arg
-                                            .args
-                                            .iter()
-                                            .map(|a| {
-                                                rust_type_from_type1(
-                                                    types,
-                                                    parent_visitor,
-                                                    &a.arg,
-                                                    cli,
-                                                )
-                                            })
-                                            .collect();
-                                        // The instantiation nominal a set binding aliases TO
-                                        // (`named_set = set<key_hash>` → `SetKeyHash`); identical to
-                                        // the anonymous-use spelling so both dedup to one nominal.
-                                        let canonical_ident =
-                                            RustIdent::new(generic_instance_canonical_cddl_ident(
-                                                &cddl_ident,
-                                                &generic_args,
-                                            ));
-                                        types.register_generic_instance(GenericInstance::new(
-                                            type_name.clone(),
-                                            RustIdent::new(cddl_ident.clone()),
-                                            generic_args,
-                                            // author-declared rule name (`foo = bar<text>`), not
-                                            // synthesized — keeps its own wasm class / criterion-8 name.
-                                            false,
-                                            canonical_ident,
-                                        ));
-                                    }
-                                    None => {
-                                        // A top-level single-type tag rule (`x = #6.n(<primitive|named>)`)
-                                        // must emit the tag-writing/tag-checking wrapper, not a transparent
-                                        // `pub type` alias whose standalone `to/from_cbor_bytes` would drop
-                                        // the tag from the wire (a CBOR conformance bug). `outer_tag` is set
-                                        // exactly when we descended through a tag head, so it forces the same
-                                        // wrapper `@newtype` opts into — making `@newtype` redundant (not a
-                                        // double wrapper) on a tag rule. The tag rides on `concrete_type`
-                                        // (`.tag_if(outer_tag)` above), so the wrapper writes it.
-                                        // `@newtype` on a bare `any` rule is a graceful rejection:
-                                        // the wrapper is unproven through the
-                                        // surface machinery and cheap to allow later once a fixture
-                                        // proves it. A TAGGED any (`#6.n(any)`, `outer_tag` set) is a
-                                        // supported position whose wrapper the tag forces (@newtype
-                                        // redundant there), so only the newtype-driven untagged case
-                                        // is caught here.
-                                        if rule_metadata.newtype.is_some()
-                                            && outer_tag.is_none()
-                                            && matches!(
-                                                concrete_type
-                                                    .conceptual_type
-                                                    .resolve_alias_shallow(),
-                                                ConceptualRustType::Any
-                                            )
-                                        {
-                                            types.record_rejection(format!(
-                                                "@newtype on `{type_name} = any` is not supported in \
-                                                 this phase: use a transparent alias \
-                                                 (`{type_name} = any`, no @newtype) — `any` lowers to \
-                                                 the AnyCbor runtime type directly. (Newtype-wrapping \
-                                                 `any` is planned once a fixture proves the surface.)"
-                                            ));
-                                            return;
-                                        }
-                                        // A PRELUDE CONSTANT body (`true`/`false`/`null`/`nil`)
-                                        // resolves to a bare `Fixed`, which has no member Rust
-                                        // representation. The untagged spelling reaches
-                                        // `register_type_alias`'s guard below and is rejected there;
-                                        // a tag head (or `@newtype`) diverts it to the WRAPPER seam
-                                        // instead, which would render the `Fixed` as the wrapper's
-                                        // inner member type and panic `for_rust_member` during
-                                        // generation. Reject at both seams through the one shared
-                                        // message, so `#6.11(true)` is classified exactly like the
-                                        // literal-inner sibling `#6.5(5)` the alias seam already
-                                        // rejects. Registering the wrapper anyway (rather than
-                                        // returning early) matches the alias guard's reasoning: a
-                                        // sibling rule may reference this one, and a dropped
-                                        // registration would dangle that lookup during the parse
-                                        // walk — before `finalize` surfaces the graceful `Err`. The
-                                        // wrapper is harmless because generation never runs once a
-                                        // rejection is recorded.
-                                        if rule_metadata.newtype.is_some() || outer_tag.is_some() {
-                                            if let ConceptualRustType::Fixed(fixed) = concrete_type
-                                                .conceptual_type
-                                                .resolve_alias_shallow()
-                                            {
-                                                let fixed = fixed.clone();
-                                                types.record_bare_fixed_rule_rejection(
-                                                    type_name, &fixed,
-                                                );
-                                            }
-                                            types.register_rust_struct(
-                                                parent_visitor,
-                                                RustStruct::new_wrapper(
-                                                    type_name.clone(),
-                                                    None,
-                                                    Some(&rule_metadata),
-                                                    concrete_type,
-                                                    None,
-                                                ),
-                                                cli,
-                                            );
-                                        } else {
-                                            // Stripping the alias inlines the type for serialization
-                                            // (the rust side stays a transparent `pub type`), and is
-                                            // REQUIRED here: `register_type_alias` refuses a base type
-                                            // already wrapped in `Alias`. The WRAPPER branch above must
-                                            // NOT strip: `generate_serialize`/`generate_deserialize`'s
-                                            // `Alias` arms are what lift the aliased rule's
-                                            // `@custom_serialize`/`@custom_deserialize` pair (and its
-                                            // `@custom_encodings` declaration) into the emitted codec, so
-                                            // a stripped wrapper silently re-derives the built-in wire and
-                                            // `x = #6.n(annotated_alias)` disagrees with a plain member of
-                                            // the same alias about one type's wire form. Where the node
-                                            // cannot be kept, the FACTS travel instead — that is what
-                                            // makes `re = annotated_alias` agree with the alias it
-                                            // re-names rather than silently re-deriving the built-in
-                                            // wire for every member declared through it.
-                                            let mut alias_metadata = rule_metadata.clone();
-                                            let (concrete_type, inherited_from) =
-                                                strip_alias_for_registration(
-                                                    types,
-                                                    concrete_type,
-                                                    &mut alias_metadata,
-                                                );
-                                            types.register_type_alias(
-                                                type_name.clone(),
-                                                AliasInfo::new_from_metadata(
-                                                    concrete_type,
-                                                    alias_metadata,
-                                                )
-                                                .with_stripped_alias_target(stripped_alias_target)
-                                                .with_inherited_wire_metadata(inherited_from),
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        lower_ordinary_typename_rule(
+                            types,
+                            parent_visitor,
+                            type_name,
+                            cddl_ident,
+                            generic_args,
+                            outer_tag,
+                            generic_params,
+                            rule_metadata,
+                            cli,
+                        );
                     }
                 }
             }
@@ -5133,57 +5256,31 @@ fn parse_type(
             );
         }
         Type2::TextValue { value, .. } => {
-            // A text literal takes no operator; `parse_control_operator` records the refusal (a
-            // control) or the non-numeric range bound (a range), and the singleton still
-            // registers so a sibling reference resolves until `finalize` drains the error.
-            if let Some(op) = &type1.operator {
-                parse_control_operator(
-                    types,
-                    parent_visitor,
-                    &type1.type2,
-                    op,
-                    Some(type_name),
-                    cli,
-                );
-            }
-            register_fixed_singleton(
+            lower_text_literal_rule(
                 types,
                 parent_visitor,
-                type_name.clone(),
-                RustType::new(ConceptualRustType::Fixed(FixedValue::Text(
-                    value.to_string(),
-                ))),
+                type_name,
+                type1,
+                value.as_ref(),
                 outer_tag,
-                Some(&rule_metadata),
-                generic_params.as_deref(),
+                generic_params,
+                rule_metadata,
                 cli,
-                false,
             );
         }
         Type2::B16ByteString { value, .. }
         | Type2::B64ByteString { value, .. }
         | Type2::UTF8ByteString { value, .. } => {
-            // Same as the text literal arm above.
-            if let Some(op) = &type1.operator {
-                parse_control_operator(
-                    types,
-                    parent_visitor,
-                    &type1.type2,
-                    op,
-                    Some(type_name),
-                    cli,
-                );
-            }
-            register_fixed_singleton(
+            lower_bytes_literal_rule(
                 types,
                 parent_visitor,
-                type_name.clone(),
-                RustType::new(ConceptualRustType::Fixed(FixedValue::Bytes(value.to_vec()))),
+                type_name,
+                type1,
+                value.as_ref(),
                 outer_tag,
-                Some(&rule_metadata),
-                generic_params.as_deref(),
+                generic_params,
+                rule_metadata,
                 cli,
-                false,
             );
         }
         Type2::ParenthesizedType { pt, .. } => {
