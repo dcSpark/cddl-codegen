@@ -8169,6 +8169,413 @@ fn generated_local_field_rejection(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn lower_record_field(
+    types: &mut IntermediateTypes,
+    rep: Representation,
+    parent_visitor: &ParentVisitor,
+    name: &RustIdent,
+    source_name: &str,
+    group_entry: &GroupEntry,
+    optional_comma: &OptionalComma,
+    index: usize,
+    entry_count: usize,
+    tagged: bool,
+    rest_skip: &[usize],
+    generated_fields: &mut BTreeMap<String, u32>,
+    forbidden_fields: &mut Vec<ForbiddenField>,
+    cli: &Cli,
+) -> Option<RustField> {
+    // The dynamic-row entries (recognized, or rejected as a candidate) are handled by
+    // `recognize_dynamic_rows`; never build a fixed field for one. An open table skips
+    // BOTH of its rows, which is why this is an index SET rather than one index.
+    if rest_skip.contains(&index) {
+        return None;
+    }
+    // An unflattened `InlineGroup` reaching the record loop is a parenthesized group whose
+    // own occurrence marker would be silently narrowed to exactly-once (`[* (int, tstr)]`,
+    // `{ * (k: int) }`), or a bare multi-choice group in entry position. All three panic in
+    // `group_entry_to_field_name` / `group_entry_to_type` / `group_entry_optional`; reject
+    // gracefully here BEFORE they run, citing the rule's SOURCE spelling.
+    if let GroupEntry::InlineGroup { occur, .. } = group_entry {
+        if occur.is_some() {
+            // the remedy differs by representation: naming the group only helps arrays —
+            // a plain-group reference inside a map record is itself unsupported (it hits
+            // the "map field has no key" rejection), so don't send map users there.
+            let remedy = match rep {
+                Representation::Array => {
+                    "Name the group instead: `pair = (int, tstr)`, `a = [* pair]` — or \
+                     drop the parentheses for a single-element group (`[* int]`)."
+                }
+                Representation::Map => {
+                    "Use `?` on each field for optionality, or a table `{ * k => v }`."
+                }
+            };
+            types.record_rejection(format!(
+                "rule `{source_name}`: an occurrence marker on an inline group (`* (…)`) \
+                 would be silently narrowed to exactly-once (generated decoders would \
+                 reject valid CBOR with other repetition counts). {remedy}"
+            ));
+        } else {
+            // The remedy names spellings that GENERATE. Lifting the alternatives into a
+            // named group (`g = (a // b)`) is NOT one of them — a group rule's body may
+            // carry only one choice (`multi_choice_group_def_rejection`) — so point at the
+            // container's own group choices, or at one named group per alternative.
+            types.record_rejection(format!(
+                "rule `{source_name}`: an inline group choice (`(a // b)`) in entry \
+                 position is unsupported. Write the alternatives as the container's own \
+                 group choices (`h = [ a: uint // f: bytes ]`), or give each alternative \
+                 its own single-choice group rule and reference those as separate arms \
+                 (`pga = (a: uint)`, `pgf = (f: bytes)`, `h = [ pga // pgf ]`)."
+            ));
+        }
+        return None;
+    }
+    // For a map record, classify the member key BEFORE field naming: only uint/text fixed
+    // keys are implemented (the map-key write path and, under --preserve-encodings,
+    // `key_encoding_field`), and `group_entry_to_field_name` PANICS on a Type1 (arrow)
+    // member key other than uint/text — so an unsupported key must be rejected here,
+    // before naming runs. `group_entry_map_key_kind` never panics.
+    let map_key = if rep == Representation::Map {
+        match group_entry_map_key_kind(group_entry) {
+            // supported: carry the classified key forward (no separate key lookup needed).
+            MapKeyKind::Fixed(key @ (FixedValue::Uint(_) | FixedValue::Text(_))) => Some(key),
+            // cite the rule by its SOURCE spelling (`neg`), not the camel-cased RustIdent —
+            // the user is looking at their CDDL, not our output.
+            MapKeyKind::Fixed(other) => {
+                // The table remedy must not be advertised for a FLOAT key: a float-family
+                // table key domain is itself rejected (floats have no total order, so they
+                // cannot key a BTreeMap) — pointing there would send the user to a second
+                // rejection instead of a fix.
+                let remedy = if matches!(other, FixedValue::Float(_)) {
+                    "Floats cannot key a map in either form (a float table key domain is \
+                     rejected too) — use an integer or text key."
+                } else {
+                    "Use a uint or text key, or a table `{ * k => v }` in its own rule."
+                };
+                types.record_rejection(format!(
+                    "rule `{source_name}`: unsupported fixed map key {other:?} — only uint \
+                     and text fixed keys are implemented on the record path (the map-key \
+                     write path and `{{name}}_key_encoding`). {remedy}"
+                ));
+                return None;
+            }
+            MapKeyKind::NonFixed => {
+                // A non-fixed arrow entry (`* k => v` / `k => v`) in a map record is owned by
+                // `recognize_rest_row` (run before this loop): a supported trailing `* k => v`
+                // becomes the record's rest capture, and every unsupported placement/shape
+                // already recorded a graceful rejection there. Either way the entry never
+                // becomes a fixed field — skip it here without a second (duplicate) rejection.
+                return None;
+            }
+            // keyless: fall through — the existing "map field has no key" rejection below
+            // (which needs the field name) handles it exactly as before.
+            MapKeyKind::Keyless => None,
+        }
+    } else {
+        None
+    };
+    let field_name =
+        group_entry_to_field_name(group_entry, index, generated_fields, optional_comma);
+    // A field whose EMITTED identifier is a Rust keyword (a bareword `if` key, or `If` which
+    // snake_cases to `if`) would emit invalid Rust caught only by the rustfmt gate. Reject it
+    // gracefully at parse time in BOTH representations (the array shape `[if: uint]` is equally
+    // affected). `field_name` is already the snake_cased emitted form, so checking it directly
+    // catches the case-converted hazards too. The remedy renames the field without touching
+    // the CBOR wire key (which stays the bareword text).
+    if RUST_KEYWORDS.contains(&field_name.as_str()) {
+        types.record_rejection(format!(
+            "rule `{source_name}`: field `{field_name}` is a Rust keyword and cannot be a \
+             struct field identifier. Rename the field with a `; @name <other>` comment \
+             directive on that entry — the CBOR wire key is unchanged (it stays the bareword \
+             text)."
+        ));
+        return None;
+    }
+    // A field whose EMITTED identifier is one of the fixed locals the generated
+    // serialization bodies bind (`raw`, `len`, `read`, …) shadows that local: the crate
+    // generates at exit 0 and fails `cargo check` two build steps from this CDDL line.
+    // Checked on the RESOLVED name for the same reason the keyword guard above is — `Raw:`
+    // snake_cases to `raw` and `; @name raw` renames INTO the hazard, while
+    // `raw: bytes ; @name raw2` renames OUT of it and must pass.
+    if let Some(msg) = generated_local_field_rejection(&field_name, source_name, rep, tagged) {
+        types.record_rejection(msg);
+        return None;
+    }
+    let rule_metadata = group_entry_rule_metadata(group_entry, optional_comma);
+    // The RULE-SCOPED directives, refused at this member position by the shared seam the
+    // single-entry group-choice arm also calls — that arm is a member position which mints
+    // no record, so without one shared list the two spellings of "which directives does a
+    // member position refuse" drift apart.
+    // A plain GROUP rule's LAST entry is the one member slot the parser also binds the
+    // RULE's trailing comment to (`pg = (a: uint, b: uint) ; @used_as_key` is the group
+    // rule's documented directive slot, honored at rule level), so the type-scoped half is
+    // suppressed exactly there and nowhere else — including non-last entries of the same
+    // group, which no rule reading reaches.
+    let rule_slot_shared = types.is_plain_group(name) && index + 1 == entry_count;
+    reject_member_scoped_directives(
+        types,
+        &format!("field `{field_name}` of rule `{}`", source_name),
+        "a field",
+        &rule_metadata,
+        rule_slot_shared,
+    );
+    // A wire-facts declaration (`@custom_encodings` / `@custom_wire_major`) is a property OF
+    // the pair, and a field carries its own pair — so a declaration here with one half (or
+    // none) describes no codec.
+    if rule_metadata.custom_encodings.is_some() || rule_metadata.custom_wire_major.is_some() {
+        reject_custom_encodings_without_pair(
+            types,
+            &format!("field `{field_name}` of rule `{source_name}`"),
+            &rule_metadata,
+        );
+        // A field can carry the codec pair and its encoding tuple, but no reader consumes a
+        // declared wire MAJOR there: major dispatch exists only before an open TABLE typed
+        // row's key deserializer runs. Without this refusal the token parsed successfully
+        // and then vanished from emitted code.
+        if rule_metadata.custom_wire_major.is_some()
+            && rule_metadata.custom_serialize.is_some()
+            && rule_metadata.custom_deserialize.is_some()
+        {
+            types.record_rejection(format!(
+                "@custom_wire_major on field `{field_name}` of rule `{source_name}`: nothing consumes the declared major. Only a transparent alias can carry it to an OPEN TABLE typed-row dispatch or a variable middle ARRAY boundary; a field-local codec has no such alias channel. Put the pair and declaration on a named alias (`<wire> = <inner> ; @custom_serialize <fn> @custom_deserialize <fn> @custom_wire_major <major>`) and use it at one of those boundaries, or remove the declaration."
+            ));
+        }
+    }
+    // A LONE half of the pair at a field/member position — the field twin of the record-rule
+    // and transparent-alias single-half rejections, refused for their stated reason: one
+    // position ends up with two wire forms. `generate_serialize`/`generate_deserialize` lift
+    // each half independently, so the declared direction routes the named function while the
+    // opposite direction keeps the FIELD TYPE's own generated codec, and the crate compiles
+    // and ships that asymmetry silently. The complete pair stays accepted — it owns both
+    // directions of this field. (A rule-TRAILING comment on a plain-group rule binds to that
+    // group's last entry, the `@extern_companions` neighbour's seam, so this names the entry
+    // the comment actually reached rather than the rule the author wrote it after.)
+    if let Some((directive, declared, kept, missing)) = match (
+        &rule_metadata.custom_serialize,
+        &rule_metadata.custom_deserialize,
+    ) {
+        (Some(_), None) => Some((
+            "@custom_serialize",
+            "serialize path writes through the named function",
+            "deserialize path keeps",
+            "@custom_deserialize",
+        )),
+        (None, Some(_)) => Some((
+            "@custom_deserialize",
+            "deserialize path reads through the named function",
+            "serialize path keeps",
+            "@custom_serialize",
+        )),
+        _ => None,
+    } {
+        types.record_rejection(format!(
+            "{directive} alone on field `{field_name}` of rule `{source_name}`: the field's \
+             {declared} while its {kept} the field type's own generated codec — so the bytes \
+             this field writes are not the bytes it reads back. Write both halves on this \
+             entry (`; @custom_serialize <fn> @custom_deserialize <fn>`), adding the missing \
+             {missing}, or move the pair to the member's TYPE rule if the format belongs to \
+             the type."
+        ));
+    }
+    // does not exist for fixed values importantly
+    let mut field_type = group_entry_to_type(types, parent_visitor, group_entry, cli);
+    // A field spelled through an alias (`t = [ c: uint, kv_alias ]`) materializes the plain
+    // group exactly like the direct `kv` reference: `is_basic`, which DOES shallow-resolve,
+    // selects the splicing emission downstream.
+    materialize_plain_group_ref(types, parent_visitor, &field_type, rep, cli);
+    let mut optional_field = group_entry_optional(group_entry);
+    // A count-permitting occurrence (`*`, `+`, `n*m` with bounds ≠ 1*1) on an ARRAY-record
+    // field would be silently narrowed to a single mandatory item — a generated decoder
+    // that rejects spec-valid CBOR with any other repetition count (invisible to
+    // round-trip tests; only cross-producer data exposes it — the array analogue of the
+    // map-path guard below). Unlike unique map keys, `+` does not collapse to exactly-one
+    // in an array, so every marker except `?` and the pedantic `1*1` rejects.
+    if rep == Representation::Array {
+        if occurrence_permits_count(group_entry) {
+            types.record_rejection(format!(
+                "rule `{source_name}`: array field `{field_name}` has an occurrence \
+                 (`*` / `+` / `n*m`), which would be silently narrowed to a single \
+                 mandatory item (generated decoders would reject valid CBOR with a \
+                 different repetition count). Use `?` for an optional item, a final-position \
+                 `* t` rest tail after the fixed members, a homogeneous array (`[* t]`), or \
+                 name the repeated part as its own array rule."
+            ));
+            return None;
+        }
+        // An OPTIONAL (`?`) plain-group field in an ARRAY-rep record. A plain group SPLICES
+        // its members flat into the enclosing array, so nothing on the wire marks where the
+        // optional group begins, and the embedded decoder length-checks only the members it
+        // consumed — telling present from absent needs the group's mandatory member count
+        // charged to the ENCLOSING read length before the group is read (either that, or a
+        // second embedded deserialize method). That is the occurrence/bounds program's
+        // territory, not a guard's; until it lands the shape must not reach emission, where
+        // it aborted on `assertion failed: !config.optional_field` naming neither the
+        // construct nor a remedy. The named-array remedy IS verified to generate, which is
+        // what makes a refusal honest here.
+        //
+        // Guarded on `is_basic` over the RESOLVED member type, the same predicate and the
+        // same one-seam placement as the map twin below: that is what makes the bare and
+        // ALIAS (`? kv_alias`) spellings hit ONE message. The formerly silent TAGGED shape
+        // (`? #6.1(kv)`) now reaches the earlier tag-payload semantic refusal instead.
+        // Deliberately blanket over the group's own shape: a group whose members are ALL
+        // optional is reachable and still refused, because the remedy serves it identically
+        // and a narrower guard would buy a special case nothing has asked for. The
+        // array-WRAPPED forms keep their own verdicts — `w = [kv]` is a Record, not a plain
+        // group, and an inline `[kv]` member carries `basic_override` — so both fall outside
+        // `is_basic` untouched.
+        if optional_field
+            && field_type.is_basic(types)
+            && let ConceptualRustType::Rust(group_ident) =
+                field_type.conceptual_type.resolve_alias_shallow()
+        {
+            let group_name = source_rule_name_of(types, group_ident);
+            types.record_rejection(format!(
+                "rule `{source_name}`: array field `{field_name}` is an OPTIONAL (`?`) \
+                 reference to the plain group `{group_name}`, which is unsupported — a plain \
+                 group splices its members flat into the enclosing array, so nothing on the \
+                 wire marks where the optional group starts, and an embedded decoder \
+                 length-checks only the members it consumed. Telling present from absent \
+                 would need the group's mandatory member count charged to the enclosing \
+                 read length before the group is read. Give the group its own array framing \
+                 and reference that, which makes the optional item exactly ONE array element \
+                 the decoder can test for: `w = [{group_name}]`, then `? w` in place of \
+                 `? {group_name}`. (Dropping the `?` — splicing the group as a MANDATORY \
+                 field — is supported as it stands.)"
+            ));
+            return None;
+        }
+    }
+    let key = match rep {
+        Representation::Map => {
+            // `map_key` was classified before field naming (unsupported/non-fixed keys
+            // already returned None); `Some` is a supported uint/text key, `None` is a
+            // keyless entry that falls to the "map field has no key" rejection below.
+            match map_key {
+                Some(key) => {
+                    // A zero-permitting occurrence on a unique fixed map key has exactly
+                    // the wire states `?` has: the entry is absent, or it is present once.
+                    // The unique-key invariant rules out every second occurrence, so even
+                    // `*2` collapses faithfully to the existing Option field carrier.
+                    // Lower bounds >= 1 remain mandatory for the same reason.
+                    //
+                    // `0*0` / `*0` are deliberately different: the key is forbidden, not
+                    // optional. Mapping that to Option would let public Rust callers create
+                    // `Some(value)` which the CDDL forbids. The record instead carries
+                    // forbidden-key metadata and exposes no value member.
+                    let occurrence = match group_entry {
+                        GroupEntry::ValueMemberKey { ge, .. } => {
+                            ge.occur.as_ref().map(|o| &o.occur)
+                        }
+                        _ => None,
+                    };
+                    let exactly_zero = matches!(
+                        occurrence,
+                        Some(Occur::Exact {
+                            lower: Some(0) | None,
+                            upper: Some(0),
+                            ..
+                        })
+                    );
+                    if exactly_zero {
+                        // Exact zero is not an optional value.  Preserve the declaration as
+                        // record-level constraint metadata: emitters omit its value surface,
+                        // while the decoder and every open-rest construction door reject its
+                        // fixed key before it can be captured.
+                        reject_exact_zero_field_only_metadata(
+                            types,
+                            &field_name,
+                            name,
+                            &rule_metadata,
+                            &field_type,
+                        );
+                        forbidden_fields.push(ForbiddenField {
+                            key,
+                            name: field_name,
+                            rust_type: field_type,
+                            source_index: index,
+                        });
+                        return None;
+                    }
+                    let permits_zero = matches!(
+                        occurrence,
+                        Some(Occur::ZeroOrMore { .. })
+                            | Some(Occur::Exact { lower: None, .. })
+                            | Some(Occur::Exact { lower: Some(0), .. })
+                    );
+                    optional_field |= permits_zero;
+                    // A keyed member whose type resolves to a plain group can only be
+                    // emitted as a flat splice, which writes more items than the key's own
+                    // entry promised — refuse every spelling of it here, at the one seam
+                    // the named / tagged / optional / alias / multi-entry-choice-arm
+                    // members all pass through. `is_basic` is the same predicate
+                    // `generate_serialize` uses to pick the splicing emission, so an
+                    // array-WRAPPED group (`c: [kv]`, `basic_override`) keeps its own
+                    // conflicting-representations refusal and the named-array remedy
+                    // (`w = [kv]`, `c: w`) stays green.
+                    if field_type.is_basic(types)
+                        && let ConceptualRustType::Rust(group_ident) =
+                            field_type.conceptual_type.resolve_alias_shallow()
+                    {
+                        let group_name = source_rule_name_of(types, group_ident);
+                        record_plain_group_map_member_rejection(
+                            types,
+                            &format!("rule `{source_name}`"),
+                            &field_name,
+                            &group_name,
+                        );
+                        return None;
+                    }
+                    Some(key)
+                }
+                // A map-representation field without a key is unsupported by design (each
+                // map field needs a key). This also catches a plain-group reference embedded
+                // in a map record, which surfaces here as a keyless `TypeGroupname`. Record a
+                // graceful rejection (drained by `finalize`) and drop the field rather than
+                // `panic!` — nothing downstream runs on this record once a rejection exists.
+                None => {
+                    types.record_rejection(format!(
+                        "rule `{source_name}`: map field `{field_name}` has no key. Each map field \
+                         needs a key: use `k: v` / `k => v`, or a table `{{ * k => v }}`. \
+                         (A plain-group reference embedded in a map-representation record hits \
+                         this too — it is unsupported today.)"
+                    ));
+                    return None;
+                }
+            }
+        }
+        Representation::Array => None,
+    };
+    // RFC 8610 §3.8.2: a `.default` is what a decoder substitutes when the member is
+    // ABSENT, so it is meaningful only for an OPTIONAL occurrence — on a mandatory member
+    // there is no absent case for it to fill. Drop it here, at the one seam where a
+    // field's optionality is known (and the seam a plain group's spliced entries arrive
+    // through), so a mandatory member emits as a PLAIN mandatory field on every face:
+    // the rust `new()` keeps its argument, and the wasm and WIT constructors that mirror
+    // `new()` stay in agreement with it. (Left in place, the inert control moved the field
+    // out of `new()` on the rust face only, and the mirrored constructors called it with
+    // an argument it no longer took.)
+    //
+    // A warning rather than a refusal, because the default may be legitimately CARRIED
+    // rather than spelled: `d = uint .default 0` is well-formed and useful at its optional
+    // use sites (`? y: d`), while a mandatory `x: d` reference picks the same type up. This
+    // seam cannot tell the two apart, and warning on both is the honest reading — the
+    // control is inert either way.
+    if !optional_field && field_type.config.default.is_some() {
+        crate::warn!(
+            "rule `{source_name}`: `.default` on the mandatory member `{field_name}` has \
+             no effect (RFC 8610: a default substitutes for an ABSENT value, which is \
+             meaningful only for an optional occurrence) — ignored. Mark the member \
+             optional (`? {field_name}: …`) if the default was meant to apply."
+        );
+        field_type.config.default = None;
+    }
+    Some(
+        RustField::new(field_name, field_type, optional_field, key, rule_metadata)
+            .with_source_index(index),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
 fn parse_record_from_group_choice(
     types: &mut IntermediateTypes,
     rep: Representation,
@@ -8205,7 +8612,6 @@ fn parse_record_from_group_choice(
         parent_visitor,
         name,
         &flattened,
-        entry_count,
         in_choice_arm,
         cli,
     );
@@ -8215,413 +8621,22 @@ fn parse_record_from_group_choice(
         .into_iter()
         .enumerate()
         .filter_map(|(index, (group_entry, optional_comma))| {
-            // The dynamic-row entries (recognized, or rejected as a candidate) are handled by
-            // `recognize_dynamic_rows`; never build a fixed field for one. An open table skips
-            // BOTH of its rows, which is why this is an index SET rather than one index.
-            if rest_skip.contains(&index) {
-                return None;
-            }
-            // An unflattened `InlineGroup` reaching the record loop is a parenthesized group whose
-            // own occurrence marker would be silently narrowed to exactly-once (`[* (int, tstr)]`,
-            // `{ * (k: int) }`), or a bare multi-choice group in entry position. All three panic in
-            // `group_entry_to_field_name` / `group_entry_to_type` / `group_entry_optional`; reject
-            // gracefully here BEFORE they run, citing the rule's SOURCE spelling.
-            if let GroupEntry::InlineGroup { occur, .. } = group_entry {
-                if occur.is_some() {
-                    // the remedy differs by representation: naming the group only helps arrays —
-                    // a plain-group reference inside a map record is itself unsupported (it hits
-                    // the "map field has no key" rejection), so don't send map users there.
-                    let remedy = match rep {
-                        Representation::Array => {
-                            "Name the group instead: `pair = (int, tstr)`, `a = [* pair]` — or \
-                             drop the parentheses for a single-element group (`[* int]`)."
-                        }
-                        Representation::Map => {
-                            "Use `?` on each field for optionality, or a table `{ * k => v }`."
-                        }
-                    };
-                    types.record_rejection(format!(
-                        "rule `{source_name}`: an occurrence marker on an inline group (`* (…)`) \
-                         would be silently narrowed to exactly-once (generated decoders would \
-                         reject valid CBOR with other repetition counts). {remedy}"
-                    ));
-                } else {
-                    // The remedy names spellings that GENERATE. Lifting the alternatives into a
-                    // named group (`g = (a // b)`) is NOT one of them — a group rule's body may
-                    // carry only one choice (`multi_choice_group_def_rejection`) — so point at the
-                    // container's own group choices, or at one named group per alternative.
-                    types.record_rejection(format!(
-                        "rule `{source_name}`: an inline group choice (`(a // b)`) in entry \
-                         position is unsupported. Write the alternatives as the container's own \
-                         group choices (`h = [ a: uint // f: bytes ]`), or give each alternative \
-                         its own single-choice group rule and reference those as separate arms \
-                         (`pga = (a: uint)`, `pgf = (f: bytes)`, `h = [ pga // pgf ]`)."
-                    ));
-                }
-                return None;
-            }
-            // For a map record, classify the member key BEFORE field naming: only uint/text fixed
-            // keys are implemented (the map-key write path and, under --preserve-encodings,
-            // `key_encoding_field`), and `group_entry_to_field_name` PANICS on a Type1 (arrow)
-            // member key other than uint/text — so an unsupported key must be rejected here,
-            // before naming runs. `group_entry_map_key_kind` never panics.
-            let map_key = if rep == Representation::Map {
-                match group_entry_map_key_kind(group_entry) {
-                    // supported: carry the classified key forward (no separate key lookup needed).
-                    MapKeyKind::Fixed(key @ (FixedValue::Uint(_) | FixedValue::Text(_))) => {
-                        Some(key)
-                    }
-                    // cite the rule by its SOURCE spelling (`neg`), not the camel-cased RustIdent —
-                    // the user is looking at their CDDL, not our output.
-                    MapKeyKind::Fixed(other) => {
-                        // The table remedy must not be advertised for a FLOAT key: a float-family
-                        // table key domain is itself rejected (floats have no total order, so they
-                        // cannot key a BTreeMap) — pointing there would send the user to a second
-                        // rejection instead of a fix.
-                        let remedy = if matches!(other, FixedValue::Float(_)) {
-                            "Floats cannot key a map in either form (a float table key domain is \
-                             rejected too) — use an integer or text key."
-                        } else {
-                            "Use a uint or text key, or a table `{ * k => v }` in its own rule."
-                        };
-                        types.record_rejection(format!(
-                            "rule `{source_name}`: unsupported fixed map key {other:?} — only uint \
-                             and text fixed keys are implemented on the record path (the map-key \
-                             write path and `{{name}}_key_encoding`). {remedy}"
-                        ));
-                        return None;
-                    }
-                    MapKeyKind::NonFixed => {
-                        // A non-fixed arrow entry (`* k => v` / `k => v`) in a map record is owned by
-                        // `recognize_rest_row` (run before this loop): a supported trailing `* k => v`
-                        // becomes the record's rest capture, and every unsupported placement/shape
-                        // already recorded a graceful rejection there. Either way the entry never
-                        // becomes a fixed field — skip it here without a second (duplicate) rejection.
-                        return None;
-                    }
-                    // keyless: fall through — the existing "map field has no key" rejection below
-                    // (which needs the field name) handles it exactly as before.
-                    MapKeyKind::Keyless => None,
-                }
-            } else {
-                None
-            };
-            let field_name = group_entry_to_field_name(
-                group_entry,
-                index,
-                &mut generated_fields,
-                optional_comma,
-            );
-            // A field whose EMITTED identifier is a Rust keyword (a bareword `if` key, or `If` which
-            // snake_cases to `if`) would emit invalid Rust caught only by the rustfmt gate. Reject it
-            // gracefully at parse time in BOTH representations (the array shape `[if: uint]` is equally
-            // affected). `field_name` is already the snake_cased emitted form, so checking it directly
-            // catches the case-converted hazards too. The remedy renames the field without touching
-            // the CBOR wire key (which stays the bareword text).
-            if RUST_KEYWORDS.contains(&field_name.as_str()) {
-                types.record_rejection(format!(
-                    "rule `{source_name}`: field `{field_name}` is a Rust keyword and cannot be a \
-                     struct field identifier. Rename the field with a `; @name <other>` comment \
-                     directive on that entry — the CBOR wire key is unchanged (it stays the bareword \
-                     text)."
-                ));
-                return None;
-            }
-            // A field whose EMITTED identifier is one of the fixed locals the generated
-            // serialization bodies bind (`raw`, `len`, `read`, …) shadows that local: the crate
-            // generates at exit 0 and fails `cargo check` two build steps from this CDDL line.
-            // Checked on the RESOLVED name for the same reason the keyword guard above is — `Raw:`
-            // snake_cases to `raw` and `; @name raw` renames INTO the hazard, while
-            // `raw: bytes ; @name raw2` renames OUT of it and must pass.
-            if let Some(msg) = generated_local_field_rejection(
-                &field_name,
-                &source_name,
-                rep,
-                tagged,
-            ) {
-                types.record_rejection(msg);
-                return None;
-            }
-            let rule_metadata = group_entry_rule_metadata(group_entry, optional_comma);
-            // The RULE-SCOPED directives, refused at this member position by the shared seam the
-            // single-entry group-choice arm also calls — that arm is a member position which mints
-            // no record, so without one shared list the two spellings of "which directives does a
-            // member position refuse" drift apart.
-            // A plain GROUP rule's LAST entry is the one member slot the parser also binds the
-            // RULE's trailing comment to (`pg = (a: uint, b: uint) ; @used_as_key` is the group
-            // rule's documented directive slot, honored at rule level), so the type-scoped half is
-            // suppressed exactly there and nowhere else — including non-last entries of the same
-            // group, which no rule reading reaches.
-            let rule_slot_shared = types.is_plain_group(name) && index + 1 == entry_count;
-            reject_member_scoped_directives(
+            lower_record_field(
                 types,
-                &format!(
-                    "field `{field_name}` of rule `{}`",
-                    source_name
-                ),
-                "a field",
-                &rule_metadata,
-                rule_slot_shared,
-            );
-            // A wire-facts declaration (`@custom_encodings` / `@custom_wire_major`) is a property OF
-            // the pair, and a field carries its own pair — so a declaration here with one half (or
-            // none) describes no codec.
-            if rule_metadata.custom_encodings.is_some() || rule_metadata.custom_wire_major.is_some()
-            {
-                reject_custom_encodings_without_pair(
-                    types,
-                    &format!("field `{field_name}` of rule `{source_name}`"),
-                    &rule_metadata,
-                );
-                // A field can carry the codec pair and its encoding tuple, but no reader consumes a
-                // declared wire MAJOR there: major dispatch exists only before an open TABLE typed
-                // row's key deserializer runs. Without this refusal the token parsed successfully
-                // and then vanished from emitted code.
-                if rule_metadata.custom_wire_major.is_some()
-                    && rule_metadata.custom_serialize.is_some()
-                    && rule_metadata.custom_deserialize.is_some()
-                {
-                    types.record_rejection(format!(
-                        "@custom_wire_major on field `{field_name}` of rule `{source_name}`: nothing consumes the declared major. Only a transparent alias can carry it to an OPEN TABLE typed-row dispatch or a variable middle ARRAY boundary; a field-local codec has no such alias channel. Put the pair and declaration on a named alias (`<wire> = <inner> ; @custom_serialize <fn> @custom_deserialize <fn> @custom_wire_major <major>`) and use it at one of those boundaries, or remove the declaration."
-                    ));
-                }
-            }
-            // A LONE half of the pair at a field/member position — the field twin of the record-rule
-            // and transparent-alias single-half rejections, refused for their stated reason: one
-            // position ends up with two wire forms. `generate_serialize`/`generate_deserialize` lift
-            // each half independently, so the declared direction routes the named function while the
-            // opposite direction keeps the FIELD TYPE's own generated codec, and the crate compiles
-            // and ships that asymmetry silently. The complete pair stays accepted — it owns both
-            // directions of this field. (A rule-TRAILING comment on a plain-group rule binds to that
-            // group's last entry, the `@extern_companions` neighbour's seam, so this names the entry
-            // the comment actually reached rather than the rule the author wrote it after.)
-            if let Some((directive, declared, kept, missing)) = match (
-                &rule_metadata.custom_serialize,
-                &rule_metadata.custom_deserialize,
-            ) {
-                (Some(_), None) => Some((
-                    "@custom_serialize",
-                    "serialize path writes through the named function",
-                    "deserialize path keeps",
-                    "@custom_deserialize",
-                )),
-                (None, Some(_)) => Some((
-                    "@custom_deserialize",
-                    "deserialize path reads through the named function",
-                    "serialize path keeps",
-                    "@custom_serialize",
-                )),
-                _ => None,
-            } {
-                types.record_rejection(format!(
-                    "{directive} alone on field `{field_name}` of rule `{source_name}`: the field's \
-                     {declared} while its {kept} the field type's own generated codec — so the bytes \
-                     this field writes are not the bytes it reads back. Write both halves on this \
-                     entry (`; @custom_serialize <fn> @custom_deserialize <fn>`), adding the missing \
-                     {missing}, or move the pair to the member's TYPE rule if the format belongs to \
-                     the type."
-                ));
-            }
-            // does not exist for fixed values importantly
-            let mut field_type = group_entry_to_type(types, parent_visitor, group_entry, cli);
-            // A field spelled through an alias (`t = [ c: uint, kv_alias ]`) materializes the plain
-            // group exactly like the direct `kv` reference: `is_basic`, which DOES shallow-resolve,
-            // selects the splicing emission downstream.
-            materialize_plain_group_ref(types, parent_visitor, &field_type, rep, cli);
-            let mut optional_field = group_entry_optional(group_entry);
-            // A count-permitting occurrence (`*`, `+`, `n*m` with bounds ≠ 1*1) on an ARRAY-record
-            // field would be silently narrowed to a single mandatory item — a generated decoder
-            // that rejects spec-valid CBOR with any other repetition count (invisible to
-            // round-trip tests; only cross-producer data exposes it — the array analogue of the
-            // map-path guard below). Unlike unique map keys, `+` does not collapse to exactly-one
-            // in an array, so every marker except `?` and the pedantic `1*1` rejects.
-            if rep == Representation::Array {
-                if occurrence_permits_count(group_entry) {
-                    types.record_rejection(format!(
-                        "rule `{source_name}`: array field `{field_name}` has an occurrence \
-                         (`*` / `+` / `n*m`), which would be silently narrowed to a single \
-                         mandatory item (generated decoders would reject valid CBOR with a \
-                         different repetition count). Use `?` for an optional item, a final-position \
-                         `* t` rest tail after the fixed members, a homogeneous array (`[* t]`), or \
-                         name the repeated part as its own array rule."
-                    ));
-                    return None;
-                }
-                // An OPTIONAL (`?`) plain-group field in an ARRAY-rep record. A plain group SPLICES
-                // its members flat into the enclosing array, so nothing on the wire marks where the
-                // optional group begins, and the embedded decoder length-checks only the members it
-                // consumed — telling present from absent needs the group's mandatory member count
-                // charged to the ENCLOSING read length before the group is read (either that, or a
-                // second embedded deserialize method). That is the occurrence/bounds program's
-                // territory, not a guard's; until it lands the shape must not reach emission, where
-                // it aborted on `assertion failed: !config.optional_field` naming neither the
-                // construct nor a remedy. The named-array remedy IS verified to generate, which is
-                // what makes a refusal honest here.
-                //
-                // Guarded on `is_basic` over the RESOLVED member type, the same predicate and the
-                // same one-seam placement as the map twin below: that is what makes the bare and
-                // ALIAS (`? kv_alias`) spellings hit ONE message. The formerly silent TAGGED shape
-                // (`? #6.1(kv)`) now reaches the earlier tag-payload semantic refusal instead.
-                // Deliberately blanket over the group's own shape: a group whose members are ALL
-                // optional is reachable and still refused, because the remedy serves it identically
-                // and a narrower guard would buy a special case nothing has asked for. The
-                // array-WRAPPED forms keep their own verdicts — `w = [kv]` is a Record, not a plain
-                // group, and an inline `[kv]` member carries `basic_override` — so both fall outside
-                // `is_basic` untouched.
-                if optional_field
-                    && field_type.is_basic(types)
-                    && let ConceptualRustType::Rust(group_ident) =
-                        field_type.conceptual_type.resolve_alias_shallow()
-                {
-                    let group_name = source_rule_name_of(types, group_ident);
-                    types.record_rejection(format!(
-                        "rule `{source_name}`: array field `{field_name}` is an OPTIONAL (`?`) \
-                         reference to the plain group `{group_name}`, which is unsupported — a plain \
-                         group splices its members flat into the enclosing array, so nothing on the \
-                         wire marks where the optional group starts, and an embedded decoder \
-                         length-checks only the members it consumed. Telling present from absent \
-                         would need the group's mandatory member count charged to the enclosing \
-                         read length before the group is read. Give the group its own array framing \
-                         and reference that, which makes the optional item exactly ONE array element \
-                         the decoder can test for: `w = [{group_name}]`, then `? w` in place of \
-                         `? {group_name}`. (Dropping the `?` — splicing the group as a MANDATORY \
-                         field — is supported as it stands.)"
-                    ));
-                    return None;
-                }
-            }
-            let key = match rep {
-                Representation::Map => {
-                    // `map_key` was classified before field naming (unsupported/non-fixed keys
-                    // already returned None); `Some` is a supported uint/text key, `None` is a
-                    // keyless entry that falls to the "map field has no key" rejection below.
-                    match map_key {
-                        Some(key) => {
-                            // A zero-permitting occurrence on a unique fixed map key has exactly
-                            // the wire states `?` has: the entry is absent, or it is present once.
-                            // The unique-key invariant rules out every second occurrence, so even
-                            // `*2` collapses faithfully to the existing Option field carrier.
-                            // Lower bounds >= 1 remain mandatory for the same reason.
-                            //
-                            // `0*0` / `*0` are deliberately different: the key is forbidden, not
-                            // optional. Mapping that to Option would let public Rust callers create
-                            // `Some(value)` which the CDDL forbids. The record instead carries
-                            // forbidden-key metadata and exposes no value member.
-                            let occurrence = match group_entry {
-                                GroupEntry::ValueMemberKey { ge, .. } => {
-                                    ge.occur.as_ref().map(|o| &o.occur)
-                                }
-                                _ => None,
-                            };
-                            let exactly_zero = matches!(
-                                occurrence,
-                                Some(Occur::Exact {
-                                    lower: Some(0) | None,
-                                    upper: Some(0),
-                                    ..
-                                })
-                            );
-                            if exactly_zero {
-                                // Exact zero is not an optional value.  Preserve the declaration as
-                                // record-level constraint metadata: emitters omit its value surface,
-                                // while the decoder and every open-rest construction door reject its
-                                // fixed key before it can be captured.
-                                reject_exact_zero_field_only_metadata(
-                                    types,
-                                    &field_name,
-                                    name,
-                                    &rule_metadata,
-                                    &field_type,
-                                );
-                                forbidden_fields.push(ForbiddenField {
-                                    key,
-                                    name: field_name,
-                                    rust_type: field_type,
-                                    source_index: index,
-                                });
-                                return None;
-                            }
-                            let permits_zero = matches!(
-                                occurrence,
-                                Some(Occur::ZeroOrMore { .. })
-                                    | Some(Occur::Exact { lower: None, .. })
-                                    | Some(Occur::Exact { lower: Some(0), .. })
-                            );
-                            optional_field |= permits_zero;
-                            // A keyed member whose type resolves to a plain group can only be
-                            // emitted as a flat splice, which writes more items than the key's own
-                            // entry promised — refuse every spelling of it here, at the one seam
-                            // the named / tagged / optional / alias / multi-entry-choice-arm
-                            // members all pass through. `is_basic` is the same predicate
-                            // `generate_serialize` uses to pick the splicing emission, so an
-                            // array-WRAPPED group (`c: [kv]`, `basic_override`) keeps its own
-                            // conflicting-representations refusal and the named-array remedy
-                            // (`w = [kv]`, `c: w`) stays green.
-                            if field_type.is_basic(types)
-                                && let ConceptualRustType::Rust(group_ident) =
-                                    field_type.conceptual_type.resolve_alias_shallow()
-                            {
-                                let group_name = source_rule_name_of(types, group_ident);
-                                record_plain_group_map_member_rejection(
-                                    types,
-                                    &format!("rule `{source_name}`"),
-                                    &field_name,
-                                    &group_name,
-                                );
-                                return None;
-                            }
-                            Some(key)
-                        }
-                        // A map-representation field without a key is unsupported by design (each
-                        // map field needs a key). This also catches a plain-group reference embedded
-                        // in a map record, which surfaces here as a keyless `TypeGroupname`. Record a
-                        // graceful rejection (drained by `finalize`) and drop the field rather than
-                        // `panic!` — nothing downstream runs on this record once a rejection exists.
-                        None => {
-                            types.record_rejection(format!(
-                                "rule `{source_name}`: map field `{field_name}` has no key. Each map field \
-                                 needs a key: use `k: v` / `k => v`, or a table `{{ * k => v }}`. \
-                                 (A plain-group reference embedded in a map-representation record hits \
-                                 this too — it is unsupported today.)"
-                            ));
-                            return None;
-                        }
-                    }
-                }
-                Representation::Array => None,
-            };
-            // RFC 8610 §3.8.2: a `.default` is what a decoder substitutes when the member is
-            // ABSENT, so it is meaningful only for an OPTIONAL occurrence — on a mandatory member
-            // there is no absent case for it to fill. Drop it here, at the one seam where a
-            // field's optionality is known (and the seam a plain group's spliced entries arrive
-            // through), so a mandatory member emits as a PLAIN mandatory field on every face:
-            // the rust `new()` keeps its argument, and the wasm and WIT constructors that mirror
-            // `new()` stay in agreement with it. (Left in place, the inert control moved the field
-            // out of `new()` on the rust face only, and the mirrored constructors called it with
-            // an argument it no longer took.)
-            //
-            // A warning rather than a refusal, because the default may be legitimately CARRIED
-            // rather than spelled: `d = uint .default 0` is well-formed and useful at its optional
-            // use sites (`? y: d`), while a mandatory `x: d` reference picks the same type up. This
-            // seam cannot tell the two apart, and warning on both is the honest reading — the
-            // control is inert either way.
-            if !optional_field && field_type.config.default.is_some() {
-                crate::warn!(
-                    "rule `{source_name}`: `.default` on the mandatory member `{field_name}` has \
-                     no effect (RFC 8610: a default substitutes for an ABSENT value, which is \
-                     meaningful only for an optional occurrence) — ignored. Mark the member \
-                     optional (`? {field_name}: …`) if the default was meant to apply."
-                );
-                field_type.config.default = None;
-            }
-            Some(RustField::new(
-                field_name,
-                field_type,
-                optional_field,
-                key,
-                rule_metadata,
+                rep,
+                parent_visitor,
+                name,
+                &source_name,
+                group_entry,
+                optional_comma,
+                index,
+                entry_count,
+                tagged,
+                &rest_skip,
+                &mut generated_fields,
+                &mut forbidden_fields,
+                cli,
             )
-            .with_source_index(index))
         })
         .collect();
     reject_encoding_companion_collisions(types, rep, name, &fields, &rest, &array_segments);
@@ -8834,17 +8849,16 @@ fn recognize_dynamic_rows(
     parent_visitor: &ParentVisitor,
     name: &RustIdent,
     flattened: &[&(GroupEntry, OptionalComma)],
-    entry_count: usize,
     in_choice_arm: bool,
     cli: &Cli,
 ) -> DynamicRows {
+    let entry_count = flattened.len();
     if rep == Representation::Array {
         let (mut segments, skip) = recognize_array_rest_segments(
             types,
             parent_visitor,
             name,
             flattened,
-            entry_count,
             in_choice_arm,
             cli,
         );
@@ -8869,15 +8883,8 @@ fn recognize_dynamic_rows(
     {
         return recognize_open_table(types, parent_visitor, name, flattened, in_choice_arm, cli);
     }
-    let (rest, rest_index) = recognize_rest_row(
-        types,
-        parent_visitor,
-        name,
-        flattened,
-        entry_count,
-        in_choice_arm,
-        cli,
-    );
+    let (rest, rest_index) =
+        recognize_rest_row(types, parent_visitor, name, flattened, in_choice_arm, cli);
     DynamicRows {
         typed_row: None,
         rest,
@@ -8896,7 +8903,6 @@ fn recognize_array_rest_segments(
     parent_visitor: &ParentVisitor,
     name: &RustIdent,
     flattened: &[&(GroupEntry, OptionalComma)],
-    entry_count: usize,
     in_choice_arm: bool,
     cli: &Cli,
 ) -> (Vec<RestRow>, Vec<usize>) {
@@ -8907,15 +8913,8 @@ fn recognize_array_rest_segments(
         .map(|(index, _)| index)
         .collect();
     if candidates.len() <= 1 {
-        let (rest, skip) = recognize_array_rest_tail(
-            types,
-            parent_visitor,
-            name,
-            flattened,
-            entry_count,
-            in_choice_arm,
-            cli,
-        );
+        let (rest, skip) =
+            recognize_array_rest_tail(types, parent_visitor, name, flattened, in_choice_arm, cli);
         return (
             rest.into_iter().map(|row| *row).collect(),
             skip.into_iter().collect(),
@@ -8932,15 +8931,8 @@ fn recognize_array_rest_segments(
             if types.directly_defined_plain_group_idents().any(|ident|
                 types.source_rule_name(ident).is_some_and(|source| source == ge.name.to_string())))
     }) {
-        let (rest, skip) = recognize_array_rest_tail(
-            types,
-            parent_visitor,
-            name,
-            flattened,
-            entry_count,
-            in_choice_arm,
-            cli,
-        );
+        let (rest, skip) =
+            recognize_array_rest_tail(types, parent_visitor, name, flattened, in_choice_arm, cli);
         return (
             rest.into_iter().map(|row| *row).collect(),
             skip.into_iter().collect(),
@@ -9535,10 +9527,10 @@ fn recognize_rest_row(
     parent_visitor: &ParentVisitor,
     name: &RustIdent,
     flattened: &[&(GroupEntry, OptionalComma)],
-    entry_count: usize,
     in_choice_arm: bool,
     cli: &Cli,
 ) -> (Option<Box<RestRow>>, Option<usize>) {
+    let entry_count = flattened.len();
     let nonfixed_indices: Vec<usize> = flattened
         .iter()
         .enumerate()
@@ -9757,10 +9749,10 @@ fn recognize_array_rest_tail(
     parent_visitor: &ParentVisitor,
     name: &RustIdent,
     flattened: &[&(GroupEntry, OptionalComma)],
-    entry_count: usize,
     in_choice_arm: bool,
     cli: &Cli,
 ) -> (Option<Box<RestRow>>, Option<usize>) {
+    let entry_count = flattened.len();
     // Count-permitting occurrences are exactly the markers the field-loop narrowing guard matches:
     // anything present that is NOT `?` (optional) or the pedantic `1*1` (exactly-once). `*` / `+` /
     // `n*m` all qualify as tail CANDIDATES here (every final bare-type window is ultimately honored;
@@ -10223,6 +10215,293 @@ fn parse_group_choice(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn lower_single_entry_group_choice_arm(
+    types: &mut IntermediateTypes,
+    parent_visitor: &ParentVisitor,
+    group_choice: &GroupChoice,
+    name: &RustIdent,
+    rep: Representation,
+    rule_metadata: &RuleMetadata,
+    choice_context: &crate::intermediate::VariantMintContext,
+    i: usize,
+    cli: &Cli,
+) -> EnumVariant {
+    let (group_entry, entry_comma) = group_choice.group_entries.first().unwrap();
+    // An occurrence-carrying arm is refused as a SHAPE, so its member's directives
+    // describe a member that will not exist — one message per problem, and the one
+    // to give is the one whose remedy rewrites the arm. In MAP rep a lower-bound-≥1
+    // marker is honored by collapse (the shared `inline_group_occurrence_flattens`
+    // boundary) and refuses nothing, so a directive on `{ x: uint // + kv }` still
+    // reaches the validation below — which is exactly right: that arm generates.
+    let occurrence_refused = reject_occurrence_on_single_entry_arm(types, name, group_entry, rep);
+    let ty = group_entry_to_type(types, parent_visitor, group_entry, cli);
+    // The directive validation runs AFTER the member's type parse, because the
+    // `@name` verdict is the anon-array reader's own effect observed on `ty` rather
+    // than a second derivation of that reader's scope.
+    if !occurrence_refused {
+        reject_field_directives_on_single_entry_arm(types, name, group_entry, entry_comma, &ty);
+    }
+    // Resolve aliases first: an alias is transparent, so an arm spelled
+    // `kv_alias` must materialize and embed the plain group exactly like the
+    // direct `kv` arm. Reading the bare `Rust(ident)` skipped both the
+    // registration and the embedded classification for the alias spelling, which
+    // aborted the ARRAY rep on an unmaterialized struct and pushed the MAP rep's
+    // keyless arm — a supported shape whose referenced struct owns its own keys —
+    // into the no-key rejection.
+    let serialize_as_embedded =
+        match materialize_plain_group_ref(types, parent_visitor, &ty, rep, cli) {
+            // manual match in case we expand operaitons later
+            Some(ident) => {
+                types.is_plain_group(ident)
+                    && !ty.encodings.iter().any(|enc| match enc {
+                        CBOREncodingOperation::Tagged(_) => true,
+                        CBOREncodingOperation::OptionallyTagged(_) => true,
+                        CBOREncodingOperation::CBORBytes => true,
+                    })
+            }
+            None => false,
+        };
+    // A single-entry arm registers no record at all — its type goes straight into
+    // the variant — so the name settled here is the ONLY name it ever claims.
+    let (ident_name, explicit_name) = match rule_metadata.name.clone() {
+        Some(explicit) => (explicit, true),
+        None => match group_entry_to_raw_field_name(group_entry) {
+            Some(field_name) => (field_name, false),
+            // A BARE member has no key to name the variant after, so the shared
+            // fixed-value minter supplies its legacy spelling or canonical fallback.
+            None => (ty.conceptual_type.for_variant().to_string(), false),
+        },
+    };
+    let variant_ident = VariantIdent::new_custom(settle_arm_variant_name(
+        types,
+        choice_context,
+        i + 1,
+        convert_to_camel_case(&ident_name),
+        &ident_name,
+        explicit_name,
+    ));
+    // For a MAP-representation arm the single entry carries a member key that must
+    // be written+verified on the wire (dropping it produces malformed CBOR). Carry
+    // the fixed key on the variant; reject non-fixed/keyless entries gracefully
+    // rather than silently miscompiling.
+    let variant_key = if rep == Representation::Map {
+        match group_entry_map_key_kind(group_entry) {
+            // only uint/text keys are supported (parity with the record map path,
+            // which also rejects other fixed key kinds gracefully at parsing)
+            MapKeyKind::Fixed(key @ (FixedValue::Uint(_) | FixedValue::Text(_)))
+                if !ty.is_basic(types) =>
+            {
+                Some(key)
+            }
+            // A KEYED single-entry arm whose type resolves to a plain group is the
+            // record path's member refusal reached through the enum seam: the key
+            // claims one entry and the group can only splice. (A KEYLESS arm is a
+            // different shape and stays supported — the referenced struct owns its
+            // own keys, so `{ x: uint // kv }` writes a conformant 2-entry map.)
+            MapKeyKind::Fixed(FixedValue::Uint(_) | FixedValue::Text(_)) => {
+                let source_name = source_rule_name_of(types, name);
+                let group_name = match ty.conceptual_type.resolve_alias_shallow() {
+                    ConceptualRustType::Rust(group_ident) => {
+                        source_rule_name_of(types, group_ident)
+                    }
+                    // unreachable while `is_basic` is the guard, which only
+                    // says true for a `Rust` ident — kept total rather than
+                    // asserted, since the message is the whole point here.
+                    _ => ty.conceptual_type.for_variant().to_string(),
+                };
+                record_plain_group_map_member_rejection(
+                    types,
+                    &format!("rule `{source_name}`"),
+                    &ident_name,
+                    &group_name,
+                );
+                None
+            }
+            MapKeyKind::Fixed(other) => {
+                let source_name = source_rule_name_of(types, name);
+                types.record_rejection(format!(
+                    "rule `{source_name}`: unsupported map key kind in a group-choice \
+                     arm (only uint/text keys are supported): {other:?}"
+                ));
+                None
+            }
+            MapKeyKind::Keyless if serialize_as_embedded => {
+                // plain-group reference: the referenced struct owns its own keys.
+                None
+            }
+            MapKeyKind::Keyless => {
+                let source_name = source_rule_name_of(types, name);
+                types.record_rejection(format!(
+                    "rule `{source_name}`: a map group-choice arm has an entry with \
+                     no key. Each map entry needs a key: use `k: v` / `k => v`, or a \
+                     table `{{ * k => v }}`."
+                ));
+                None
+            }
+            MapKeyKind::NonFixed => {
+                let source_name = source_rule_name_of(types, name);
+                types.record_rejection(format!(
+                    "rule `{source_name}`: a map group-choice arm has a non-fixed key \
+                     (`k => v`). Collapsing it into an enum variant would drop the key \
+                     type; this is unsupported. Use a fixed key (`k: v`) or a table \
+                     `{{ * k => v }}` in its own rule."
+                ));
+                None
+            }
+        }
+    } else {
+        None
+    };
+    EnumVariant::new(
+        variant_ident,
+        ty,
+        serialize_as_embedded,
+        rule_metadata.doc.clone(),
+    )
+    .with_key(variant_key)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn lower_record_group_choice_arm(
+    types: &mut IntermediateTypes,
+    parent_visitor: &ParentVisitor,
+    group_choice: &GroupChoice,
+    name: &RustIdent,
+    rep: Representation,
+    generic_params: &Option<Vec<GenericParamBinding>>,
+    rule_metadata: &RuleMetadata,
+    choice_context: &crate::intermediate::VariantMintContext,
+    i: usize,
+    cli: &Cli,
+) -> EnumVariant {
+    let (ident_name, explicit_name) = match rule_metadata.name.clone() {
+        Some(explicit) => (explicit, true),
+        None => (format!("{name}{i}"), false),
+    };
+    // General case, GroupN type identifiers and generate group choice since it's inlined here
+    let arm_ident = RustIdent::new(CDDLIdent::new(ident_name.clone()));
+    // The arm's record is built through the normal registration path, so it must
+    // occupy `arm_ident` in the global maps while `parse_group_choice` runs. If
+    // something else already claims that name, borrowing it would OVERWRITE the real
+    // owner — and for an embeddable arm the `remove_rust_struct` below would then
+    // delete it outright, so a rule referenced elsewhere silently vanishes from the
+    // IR. Test for that up front and, when it fires, build the arm under a
+    // synthesized name instead.
+    //
+    // The test is order-INDEPENDENT, which is the whole point: every rule ident is
+    // scope-marked before the parse loop starts, and the two-arms-one-name case
+    // rejects from whichever arm is parsed second regardless of which that is. An
+    // order-DEPENDENT test would make the same spec pass or fail on the reference
+    // edges that happen to exist elsewhere in it.
+    let collision = arm_ident_collision(types, name, &arm_ident);
+    let register_under = match &collision {
+        // Named after the owning rule AND the arm, not an opaque counter: a
+        // rejection raised deeper in the arm's own parse (a keyword field name, say)
+        // reports the struct it is building, and that name has to lead the author
+        // back to the arm they wrote.
+        Some(_) => types.fresh_synthesized_ident(&format!("{name}_group_choice_arm_{ident_name}")),
+        None => arm_ident.clone(),
+    };
+    types.mark_plain_group(
+        register_under.clone(),
+        PlainGroupInfo::new(None, RuleMetadata::default()),
+    );
+    parse_group_choice(
+        types,
+        parent_visitor,
+        group_choice,
+        &register_under,
+        rep,
+        None,
+        generic_params.clone(),
+        None,
+        // This record IS a multi-arm group-choice arm — reject a rest row in it.
+        true,
+        cli,
+    );
+    // The variant's DISPLAY name always comes from the arm's own ident, never from
+    // whatever the record was registered under: `Credential::Script` is public API of
+    // the generated crate and must survive a synthesized registration. It is settled
+    // against the ENUM's namespace, which is a different namespace from the struct
+    // one `arm_ident_collision` above guards — an embeddable arm registers no struct
+    // at all, and even two arms sharing one struct by structural equality still
+    // declare two variants.
+    let variant_name = settle_arm_variant_name(
+        types,
+        choice_context,
+        i + 1,
+        arm_ident.to_string(),
+        &ident_name,
+        explicit_name,
+    );
+    let variant_display = if variant_name == arm_ident.as_ref() {
+        VariantIdent::new_rust(arm_ident.clone())
+    } else {
+        VariantIdent::new_custom(variant_name)
+    };
+    let variant_ident = ConceptualRustType::Rust(register_under.clone());
+    if EnumVariant::can_embed_fields(types, &variant_ident) {
+        // Embeddable: the record is pulled back out and inlined into the variant, so
+        // it is never emitted under a name of its own and a collision here is
+        // harmless once the registration stopped borrowing the contested one.
+        let embedded_record = match types.remove_rust_struct(&register_under).unwrap().variant {
+            RustStructType::Record(record) => record,
+            _ => unreachable!(),
+        };
+        EnumVariant::new_embedded(variant_display, embedded_record, rule_metadata.doc.clone())
+    } else {
+        // Non-embeddable: the record SURVIVES and is emitted as a real type under
+        // `arm_ident`. Settle what it is finally named.
+        let final_ident = match &collision {
+            None => {
+                types.claim_group_choice_arm_ident(
+                    arm_ident.clone(),
+                    source_rule_name_of(types, name),
+                );
+                register_under.clone()
+            }
+            // Two arms wanting one name is only a CONFLICT if they are actually
+            // different types. Generic arm names (`first`/`second`, `key`/`value`)
+            // recur across rules by nature, and identical arms are one type spelled
+            // twice — they share the single struct the first claimant registered,
+            // which is also what the pre-check generator emitted for them. This stays
+            // order-independent: the shapes match (or don't) regardless of which arm
+            // the rule order reaches first.
+            Some(ArmIdentClaimant::Arm(_))
+                if types
+                    .rust_struct(&arm_ident)
+                    .zip(types.rust_struct(&register_under))
+                    .is_some_and(|(claimed, ours)| claimed.structurally_equivalent(ours)) =>
+            {
+                types.remove_rust_struct(&register_under);
+                arm_ident.clone()
+            }
+            // A real conflict: differing arms, or an arm against a RULE's name. There
+            // is no rename here that isn't a silent change to the generated public
+            // API, so the author picks. (A rule collision is never shared onto, even
+            // for a matching shape: a rule the arm is aliasing onto may not be parsed
+            // yet, so comparing shapes there WOULD depend on rule order.)
+            Some(claimant) => {
+                reject_group_choice_arm_ident_collision(
+                    types,
+                    name,
+                    &ident_name,
+                    &arm_ident,
+                    claimant,
+                );
+                register_under.clone()
+            }
+        };
+        EnumVariant::new(
+            variant_display,
+            ConceptualRustType::Rust(final_ident).into(),
+            true,
+            rule_metadata.doc.clone(),
+        )
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn parse_group(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
@@ -10332,280 +10611,30 @@ pub fn parse_group(
                 // TODO: handle map-based enums? It would require being able to extract the key logic
                 // We might end up doing this anyway to support table-maps in choices though.
                 if group_choice.group_entries.len() == 1 {
-                    let (group_entry, entry_comma) = group_choice.group_entries.first().unwrap();
-                    // An occurrence-carrying arm is refused as a SHAPE, so its member's directives
-                    // describe a member that will not exist — one message per problem, and the one
-                    // to give is the one whose remedy rewrites the arm. In MAP rep a lower-bound-≥1
-                    // marker is honored by collapse (the shared `inline_group_occurrence_flattens`
-                    // boundary) and refuses nothing, so a directive on `{ x: uint // + kv }` still
-                    // reaches the validation below — which is exactly right: that arm generates.
-                    let occurrence_refused =
-                        reject_occurrence_on_single_entry_arm(types, name, group_entry, rep);
-                    let ty = group_entry_to_type(types, parent_visitor, group_entry, cli);
-                    // The directive validation runs AFTER the member's type parse, because the
-                    // `@name` verdict is the anon-array reader's own effect observed on `ty` rather
-                    // than a second derivation of that reader's scope.
-                    if !occurrence_refused {
-                        reject_field_directives_on_single_entry_arm(
-                            types,
-                            name,
-                            group_entry,
-                            entry_comma,
-                            &ty,
-                        );
-                    }
-                    // Resolve aliases first: an alias is transparent, so an arm spelled
-                    // `kv_alias` must materialize and embed the plain group exactly like the
-                    // direct `kv` arm. Reading the bare `Rust(ident)` skipped both the
-                    // registration and the embedded classification for the alias spelling, which
-                    // aborted the ARRAY rep on an unmaterialized struct and pushed the MAP rep's
-                    // keyless arm — a supported shape whose referenced struct owns its own keys —
-                    // into the no-key rejection.
-                    let serialize_as_embedded =
-                        match materialize_plain_group_ref(types, parent_visitor, &ty, rep, cli) {
-                            // manual match in case we expand operaitons later
-                            Some(ident) => {
-                                types.is_plain_group(ident)
-                                    && !ty.encodings.iter().any(|enc| match enc {
-                                        CBOREncodingOperation::Tagged(_) => true,
-                                        CBOREncodingOperation::OptionallyTagged(_) => true,
-                                        CBOREncodingOperation::CBORBytes => true,
-                                    })
-                            }
-                            None => false,
-                        };
-                    // A single-entry arm registers no record at all — its type goes straight into
-                    // the variant — so the name settled here is the ONLY name it ever claims.
-                    let (ident_name, explicit_name) = match rule_metadata.name.clone() {
-                        Some(explicit) => (explicit, true),
-                        None => match group_entry_to_raw_field_name(group_entry) {
-                            Some(field_name) => (field_name, false),
-                            // A BARE member has no key to name the variant after, so the shared
-                            // fixed-value minter supplies its legacy spelling or canonical fallback.
-                            None => (ty.conceptual_type.for_variant().to_string(), false),
-                        },
-                    };
-                    let variant_ident = VariantIdent::new_custom(settle_arm_variant_name(
-                        types,
-                        &choice_context,
-                        i + 1,
-                        convert_to_camel_case(&ident_name),
-                        &ident_name,
-                        explicit_name,
-                    ));
-                    // For a MAP-representation arm the single entry carries a member key that must
-                    // be written+verified on the wire (dropping it produces malformed CBOR). Carry
-                    // the fixed key on the variant; reject non-fixed/keyless entries gracefully
-                    // rather than silently miscompiling.
-                    let variant_key = if rep == Representation::Map {
-                        match group_entry_map_key_kind(group_entry) {
-                            // only uint/text keys are supported (parity with the record map path,
-                            // which also rejects other fixed key kinds gracefully at parsing)
-                            MapKeyKind::Fixed(key @ (FixedValue::Uint(_) | FixedValue::Text(_)))
-                                if !ty.is_basic(types) =>
-                            {
-                                Some(key)
-                            }
-                            // A KEYED single-entry arm whose type resolves to a plain group is the
-                            // record path's member refusal reached through the enum seam: the key
-                            // claims one entry and the group can only splice. (A KEYLESS arm is a
-                            // different shape and stays supported — the referenced struct owns its
-                            // own keys, so `{ x: uint // kv }` writes a conformant 2-entry map.)
-                            MapKeyKind::Fixed(FixedValue::Uint(_) | FixedValue::Text(_)) => {
-                                let source_name = source_rule_name_of(types, name);
-                                let group_name =
-                                    match ty.conceptual_type.resolve_alias_shallow() {
-                                        ConceptualRustType::Rust(group_ident) => source_rule_name_of(types, group_ident),
-                                        // unreachable while `is_basic` is the guard, which only
-                                        // says true for a `Rust` ident — kept total rather than
-                                        // asserted, since the message is the whole point here.
-                                        _ => ty.conceptual_type.for_variant().to_string(),
-                                    };
-                                record_plain_group_map_member_rejection(
-                                    types,
-                                    &format!("rule `{source_name}`"),
-                                    &ident_name,
-                                    &group_name,
-                                );
-                                None
-                            }
-                            MapKeyKind::Fixed(other) => {
-                                let source_name = source_rule_name_of(types, name);
-                                types.record_rejection(format!(
-                                    "rule `{source_name}`: unsupported map key kind in a group-choice \
-                                     arm (only uint/text keys are supported): {other:?}"
-                                ));
-                                None
-                            }
-                            MapKeyKind::Keyless if serialize_as_embedded => {
-                                // plain-group reference: the referenced struct owns its own keys.
-                                None
-                            }
-                            MapKeyKind::Keyless => {
-                                let source_name = source_rule_name_of(types, name);
-                                types.record_rejection(format!(
-                                    "rule `{source_name}`: a map group-choice arm has an entry with \
-                                     no key. Each map entry needs a key: use `k: v` / `k => v`, or a \
-                                     table `{{ * k => v }}`."
-                                ));
-                                None
-                            }
-                            MapKeyKind::NonFixed => {
-                                let source_name = source_rule_name_of(types, name);
-                                types.record_rejection(format!(
-                                    "rule `{source_name}`: a map group-choice arm has a non-fixed key \
-                                     (`k => v`). Collapsing it into an enum variant would drop the key \
-                                     type; this is unsupported. Use a fixed key (`k: v`) or a table \
-                                     `{{ * k => v }}` in its own rule."
-                                ));
-                                None
-                            }
-                        }
-                    } else {
-                        None
-                    };
-                    EnumVariant::new(
-                        variant_ident,
-                        ty,
-                        serialize_as_embedded,
-                        rule_metadata.doc.clone(),
-                    )
-                    .with_key(variant_key)
-                } else {
-                    let (ident_name, explicit_name) = match rule_metadata.name.clone() {
-                        Some(explicit) => (explicit, true),
-                        None => (format!("{name}{i}"), false),
-                    };
-                    // General case, GroupN type identifiers and generate group choice since it's inlined here
-                    let arm_ident = RustIdent::new(CDDLIdent::new(ident_name.clone()));
-                    // The arm's record is built through the normal registration path, so it must
-                    // occupy `arm_ident` in the global maps while `parse_group_choice` runs. If
-                    // something else already claims that name, borrowing it would OVERWRITE the real
-                    // owner — and for an embeddable arm the `remove_rust_struct` below would then
-                    // delete it outright, so a rule referenced elsewhere silently vanishes from the
-                    // IR. Test for that up front and, when it fires, build the arm under a
-                    // synthesized name instead.
-                    //
-                    // The test is order-INDEPENDENT, which is the whole point: every rule ident is
-                    // scope-marked before the parse loop starts, and the two-arms-one-name case
-                    // rejects from whichever arm is parsed second regardless of which that is. An
-                    // order-DEPENDENT test would make the same spec pass or fail on the reference
-                    // edges that happen to exist elsewhere in it.
-                    let collision = arm_ident_collision(types, name, &arm_ident);
-                    let register_under = match &collision {
-                        // Named after the owning rule AND the arm, not an opaque counter: a
-                        // rejection raised deeper in the arm's own parse (a keyword field name, say)
-                        // reports the struct it is building, and that name has to lead the author
-                        // back to the arm they wrote.
-                        Some(_) => types.fresh_synthesized_ident(&format!(
-                            "{name}_group_choice_arm_{ident_name}"
-                        )),
-                        None => arm_ident.clone(),
-                    };
-                    types.mark_plain_group(
-                        register_under.clone(),
-                        PlainGroupInfo::new(None, RuleMetadata::default()),
-                    );
-                    parse_group_choice(
+                    lower_single_entry_group_choice_arm(
                         types,
                         parent_visitor,
                         group_choice,
-                        &register_under,
+                        name,
                         rep,
-                        None,
-                        generic_params.clone(),
-                        None,
-                        // This record IS a multi-arm group-choice arm — reject a rest row in it.
-                        true,
-                        cli,
-                    );
-                    // The variant's DISPLAY name always comes from the arm's own ident, never from
-                    // whatever the record was registered under: `Credential::Script` is public API of
-                    // the generated crate and must survive a synthesized registration. It is settled
-                    // against the ENUM's namespace, which is a different namespace from the struct
-                    // one `arm_ident_collision` above guards — an embeddable arm registers no struct
-                    // at all, and even two arms sharing one struct by structural equality still
-                    // declare two variants.
-                    let variant_name = settle_arm_variant_name(
-                        types,
+                        &rule_metadata,
                         &choice_context,
-                        i + 1,
-                        arm_ident.to_string(),
-                        &ident_name,
-                        explicit_name,
-                    );
-                    let variant_display = if variant_name == arm_ident.as_ref() {
-                        VariantIdent::new_rust(arm_ident.clone())
-                    } else {
-                        VariantIdent::new_custom(variant_name)
-                    };
-                    let variant_ident = ConceptualRustType::Rust(register_under.clone());
-                    if EnumVariant::can_embed_fields(types, &variant_ident) {
-                        // Embeddable: the record is pulled back out and inlined into the variant, so
-                        // it is never emitted under a name of its own and a collision here is
-                        // harmless once the registration stopped borrowing the contested one.
-                        let embedded_record =
-                            match types.remove_rust_struct(&register_under).unwrap().variant {
-                                RustStructType::Record(record) => record,
-                                _ => unreachable!(),
-                            };
-                        EnumVariant::new_embedded(
-                            variant_display,
-                            embedded_record,
-                            rule_metadata.doc.clone(),
-                        )
-                    } else {
-                        // Non-embeddable: the record SURVIVES and is emitted as a real type under
-                        // `arm_ident`. Settle what it is finally named.
-                        let final_ident = match &collision {
-                            None => {
-                                types.claim_group_choice_arm_ident(
-                                    arm_ident.clone(),
-                                    source_rule_name_of(types, name),
-                                );
-                                register_under.clone()
-                            }
-                            // Two arms wanting one name is only a CONFLICT if they are actually
-                            // different types. Generic arm names (`first`/`second`, `key`/`value`)
-                            // recur across rules by nature, and identical arms are one type spelled
-                            // twice — they share the single struct the first claimant registered,
-                            // which is also what the pre-check generator emitted for them. This stays
-                            // order-independent: the shapes match (or don't) regardless of which arm
-                            // the rule order reaches first.
-                            Some(ArmIdentClaimant::Arm(_))
-                                if types
-                                    .rust_struct(&arm_ident)
-                                    .zip(types.rust_struct(&register_under))
-                                    .is_some_and(|(claimed, ours)| {
-                                        claimed.structurally_equivalent(ours)
-                                    }) =>
-                            {
-                                types.remove_rust_struct(&register_under);
-                                arm_ident.clone()
-                            }
-                            // A real conflict: differing arms, or an arm against a RULE's name. There
-                            // is no rename here that isn't a silent change to the generated public
-                            // API, so the author picks. (A rule collision is never shared onto, even
-                            // for a matching shape: a rule the arm is aliasing onto may not be parsed
-                            // yet, so comparing shapes there WOULD depend on rule order.)
-                            Some(claimant) => {
-                                reject_group_choice_arm_ident_collision(
-                                    types,
-                                    name,
-                                    &ident_name,
-                                    &arm_ident,
-                                    claimant,
-                                );
-                                register_under.clone()
-                            }
-                        };
-                        EnumVariant::new(
-                            variant_display,
-                            ConceptualRustType::Rust(final_ident).into(),
-                            true,
-                            rule_metadata.doc.clone(),
-                        )
-                    }
+                        i,
+                        cli,
+                    )
+                } else {
+                    lower_record_group_choice_arm(
+                        types,
+                        parent_visitor,
+                        group_choice,
+                        name,
+                        rep,
+                        &generic_params,
+                        &rule_metadata,
+                        &choice_context,
+                        i,
+                        cli,
+                    )
                 }
             })
             .collect();

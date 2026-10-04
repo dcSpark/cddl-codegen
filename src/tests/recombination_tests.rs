@@ -1421,6 +1421,12 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 // preserves payloads and function symbols, while changing the normalized file coordinate.
 // Active panic/Layer2 entries and allowances remain unchanged; main full qualifies
 // exercised paths, without claiming reachability for every invariant guard.
+// Group-choice first-entry selection now belongs to parsing::lower_single_entry_group_choice_arm.
+// Its first().unwrap() remains guarded by the unchanged single-entry caller branch.
+// Temporary record removal and embedding invariants now belong to
+// parsing::lower_record_group_choice_arm: remove_rust_struct(...).unwrap() and unreachable!().
+// Payloads and control flow remain unchanged; no active panic/Layer2 allowance is added.
+// AST custody and complete current IR equivalence do not claim untriggered frame reachability.
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired when the two anonymous-composite families and the group-choice-arm inline group
     // became graceful rejections) Three classes lived here, and they split by the composite's
@@ -1438,8 +1444,10 @@ const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // `"inline group entries are not implemented"`: an inline group as a group-choice arm's sole
     // entry now rejects the same way
     // (message pinned by `inline_group_choice_arm_rejects_gracefully`), in both the array and map
-    // reps. Its second site (`group_entry_optional`) was left an abort because the record path
-    // rejects every inline group before optionality is read, so no input reaches it; the follow-on
+    // reps. Its second site (`group_entry_optional`) was left an abort because
+    // `lower_record_field` retains the record-path inline-group guard before type/optionality;
+    // the field helper extraction moves this guard without changing its payload or position.
+    // It rejects every inline group before optionality is read, so no input reaches it; the follow-on
     // `"not implemented (define a new struct for this!)"` site that the arm's walk then hit
     // (`group_entry_to_raw_field_name`) now returns `None` — an inline group genuinely has no
     // explicit field name — and its remaining twin (`group_entry_to_field_name`) is unreachable
