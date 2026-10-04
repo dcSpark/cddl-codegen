@@ -1414,6 +1414,9 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 // still refuses mixed-kind ranges before registration. Both unreachable! payloads
 // remain exact. The active panic and Layer2 ledgers gain no entry or allowance.
 // Source ownership is recorded here; untriggered guards are not empirical frame proof.
+// The single-choice tag first().unwrap() guard now belongs to parsing::lower_tagged_rule.
+// The unchanged len()==1 arm guards the same selection. No active panic key or
+// allowance is added; source custody does not claim this guard was triggered.
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired when the two anonymous-composite families and the group-choice-arm inline group
     // became graceful rejections) Three classes lived here, and they split by the composite's

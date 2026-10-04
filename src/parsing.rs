@@ -4323,6 +4323,65 @@ fn lower_numeric_literal_rule(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn lower_tagged_rule(
+    types: &mut IntermediateTypes,
+    parent_visitor: &ParentVisitor,
+    type_name: &RustIdent,
+    tag: &Option<token::TagConstraint<'_>>,
+    t: &Type,
+    outer_tag: Option<usize>,
+    generic_params: Option<Vec<GenericParamBinding>>,
+    rule_metadata: &RuleMetadata,
+    cli: &Cli,
+) {
+    if outer_tag.is_some() {
+        types.record_rejection(format!(
+            "{}a tag directly inside a rule body's tag (`#6.1(#6.2(…))`) is unsupported — the \
+             rule's wrapper owns exactly one tag head. Name the inner tagged value as its own rule \
+             and tag that (`inner = #6.2(uint)`, then `outer = #6.1(inner)`).",
+            reject_rule_prefix(Some(type_name))
+        ));
+        return;
+    }
+    let tag_unwrap = match tag_number(tag, Some(type_name)) {
+        Ok(n) => n,
+        Err(msg) => {
+            types.record_rejection(msg);
+            return;
+        }
+    };
+    match t.type_choices.len() {
+        1 => {
+            let inner_type = &t.type_choices.first().unwrap();
+            parse_type(
+                types,
+                parent_visitor,
+                type_name,
+                inner_type,
+                Some(tag_unwrap),
+                generic_params,
+                // same rule: carry the outer rule's DSL (e.g. `@newtype`) inward
+                rule_metadata,
+                None,
+                cli,
+            );
+        }
+        _ => {
+            parse_type_choices(
+                types,
+                parent_visitor,
+                type_name,
+                &t.type_choices,
+                Some(tag_unwrap),
+                generic_params,
+                rule_metadata,
+                cli,
+            );
+        }
+    };
+}
+
+#[allow(clippy::too_many_arguments)]
 fn parse_type(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
@@ -5022,51 +5081,17 @@ fn parse_type(
             );
         }
         Type2::TaggedData { tag, t, .. } => {
-            if outer_tag.is_some() {
-                types.record_rejection(format!(
-                    "{}a tag directly inside a rule body's tag (`#6.1(#6.2(…))`) is unsupported — the \
-                     rule's wrapper owns exactly one tag head. Name the inner tagged value as its own rule \
-                     and tag that (`inner = #6.2(uint)`, then `outer = #6.1(inner)`).",
-                    reject_rule_prefix(Some(type_name))
-                ));
-                return;
-            }
-            let tag_unwrap = match tag_number(tag, Some(type_name)) {
-                Ok(n) => n,
-                Err(msg) => {
-                    types.record_rejection(msg);
-                    return;
-                }
-            };
-            match t.type_choices.len() {
-                1 => {
-                    let inner_type = &t.type_choices.first().unwrap();
-                    parse_type(
-                        types,
-                        parent_visitor,
-                        type_name,
-                        inner_type,
-                        Some(tag_unwrap),
-                        generic_params,
-                        // same rule: carry the outer rule's DSL (e.g. `@newtype`) inward
-                        &rule_metadata,
-                        None,
-                        cli,
-                    );
-                }
-                _ => {
-                    parse_type_choices(
-                        types,
-                        parent_visitor,
-                        type_name,
-                        &t.type_choices,
-                        Some(tag_unwrap),
-                        generic_params,
-                        &rule_metadata,
-                        cli,
-                    );
-                }
-            };
+            lower_tagged_rule(
+                types,
+                parent_visitor,
+                type_name,
+                tag,
+                t,
+                outer_tag,
+                generic_params,
+                &rule_metadata,
+                cli,
+            );
         }
         // Note: bool constants are handled via Type2::Typename
         Type2::IntValue { .. } | Type2::UintValue { .. } | Type2::FloatValue { .. } => {
