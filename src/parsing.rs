@@ -4235,6 +4235,94 @@ fn reject_unsupported_rule_body(types: &mut IntermediateTypes, type_name: &RustI
 }
 
 #[allow(clippy::too_many_arguments)]
+fn lower_numeric_literal_rule(
+    types: &mut IntermediateTypes,
+    parent_visitor: &ParentVisitor,
+    type_name: &RustIdent,
+    type1: &Type1,
+    outer_tag: Option<usize>,
+    generic_params: Option<Vec<GenericParamBinding>>,
+    rule_metadata: RuleMetadata,
+    cli: &Cli,
+) {
+    // The literal a bare rule body denotes, and the primitive an integer window between
+    // two such literals collapses onto (`foo = 0..255`, `foo = -10..-3`).
+    let (literal, int_primitive) = match &type1.type2 {
+        Type2::IntValue { value, .. } => (FixedValue::Nint(*value as i128), Primitive::I64),
+        Type2::UintValue { value, .. } => (FixedValue::Uint(*value as u64), Primitive::U64),
+        Type2::FloatValue { value, .. } => (FixedValue::Float(*value), Primitive::Float),
+        _ => unreachable!("guarded by the enclosing arm"),
+    };
+    let control = type1.operator.as_ref().map(|op| {
+        parse_control_operator(
+            types,
+            parent_visitor,
+            &type1.type2,
+            op,
+            Some(type_name),
+            cli,
+        )
+    });
+    // We end up here with ranges like foo = 0..5 which is why we're not just reporting a fixed value
+    match control {
+        // A float head only ever gets the inert integer placeholder a refusal leaves
+        // (`try_float_or_reject` builds every float window), so the alias is never emitted.
+        Some(ControlOperator::Range(min_max)) if int_primitive == Primitive::Float => {
+            let base_type = range_to_primitive(min_max.0, min_max.1, Primitive::Float);
+            types.register_type_alias(
+                type_name.clone(),
+                AliasInfo::new_from_metadata(base_type.tag_if(outer_tag), rule_metadata),
+            );
+        }
+        // A literal-headed top-level range rule must WRAP when a residual bound (or
+        // @newtype) survives the primitive collapse, or when it carries a tag, so its
+        // standalone to/from_cbor_bytes enforces the window / writes the tag: the same
+        // registration as the `Type2::Typename` range arm.
+        Some(ControlOperator::Range(min_max)) => register_ranged_type(
+            types,
+            parent_visitor,
+            type_name,
+            range_to_primitive(min_max.0, min_max.1, int_primitive),
+            min_max,
+            outer_tag,
+            rule_metadata,
+            cli,
+        ),
+        // Top-level literal float range (`foo = 0.5..10.5`, `#6.5(0.5..10.5)`): WRAP into a
+        // bounds-enforcing float newtype so its standalone to/from_cbor_bytes enforces the
+        // window (and writes the tag).
+        Some(ControlOperator::RangeFloat(window)) if int_primitive == Primitive::Float => {
+            register_float_range(
+                types,
+                parent_visitor,
+                type_name,
+                float_range_to_primitive(window, Primitive::Float),
+                window,
+                outer_tag,
+                rule_metadata,
+                cli,
+            )
+        }
+        Some(ControlOperator::RangeFloat(_)) => unreachable!(
+            "a float window over an integer-literal head is a mixed-kind range, refused in try_float_or_reject"
+        ),
+        _ => {
+            register_fixed_singleton(
+                types,
+                parent_visitor,
+                type_name.clone(),
+                RustType::from(ConceptualRustType::Fixed(literal)),
+                outer_tag,
+                Some(&rule_metadata),
+                generic_params.as_deref(),
+                cli,
+                false,
+            );
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn parse_type(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
@@ -4982,81 +5070,16 @@ fn parse_type(
         }
         // Note: bool constants are handled via Type2::Typename
         Type2::IntValue { .. } | Type2::UintValue { .. } | Type2::FloatValue { .. } => {
-            // The literal a bare rule body denotes, and the primitive an integer window between
-            // two such literals collapses onto (`foo = 0..255`, `foo = -10..-3`).
-            let (literal, int_primitive) = match &type1.type2 {
-                Type2::IntValue { value, .. } => (FixedValue::Nint(*value as i128), Primitive::I64),
-                Type2::UintValue { value, .. } => (FixedValue::Uint(*value as u64), Primitive::U64),
-                Type2::FloatValue { value, .. } => (FixedValue::Float(*value), Primitive::Float),
-                _ => unreachable!("guarded by the enclosing arm"),
-            };
-            let control = type1.operator.as_ref().map(|op| {
-                parse_control_operator(
-                    types,
-                    parent_visitor,
-                    &type1.type2,
-                    op,
-                    Some(type_name),
-                    cli,
-                )
-            });
-            // We end up here with ranges like foo = 0..5 which is why we're not just reporting a fixed value
-            match control {
-                // A float head only ever gets the inert integer placeholder a refusal leaves
-                // (`try_float_or_reject` builds every float window), so the alias is never emitted.
-                Some(ControlOperator::Range(min_max)) if int_primitive == Primitive::Float => {
-                    let base_type = range_to_primitive(min_max.0, min_max.1, Primitive::Float);
-                    types.register_type_alias(
-                        type_name.clone(),
-                        AliasInfo::new_from_metadata(base_type.tag_if(outer_tag), rule_metadata),
-                    );
-                }
-                // A literal-headed top-level range rule must WRAP when a residual bound (or
-                // @newtype) survives the primitive collapse, or when it carries a tag, so its
-                // standalone to/from_cbor_bytes enforces the window / writes the tag: the same
-                // registration as the `Type2::Typename` range arm.
-                Some(ControlOperator::Range(min_max)) => register_ranged_type(
-                    types,
-                    parent_visitor,
-                    type_name,
-                    range_to_primitive(min_max.0, min_max.1, int_primitive),
-                    min_max,
-                    outer_tag,
-                    rule_metadata,
-                    cli,
-                ),
-                // Top-level literal float range (`foo = 0.5..10.5`, `#6.5(0.5..10.5)`): WRAP into a
-                // bounds-enforcing float newtype so its standalone to/from_cbor_bytes enforces the
-                // window (and writes the tag).
-                Some(ControlOperator::RangeFloat(window)) if int_primitive == Primitive::Float => {
-                    register_float_range(
-                        types,
-                        parent_visitor,
-                        type_name,
-                        float_range_to_primitive(window, Primitive::Float),
-                        window,
-                        outer_tag,
-                        rule_metadata,
-                        cli,
-                    )
-                }
-                Some(ControlOperator::RangeFloat(_)) => unreachable!(
-                    "a float window over an integer-literal head is a mixed-kind range, refused in try_float_or_reject"
-                ),
-                _ => {
-                    register_fixed_singleton(
-                        types,
-                        parent_visitor,
-                        type_name.clone(),
-                        RustType::from(ConceptualRustType::Fixed(literal)),
-                        outer_tag,
-                        Some(&rule_metadata),
-                        generic_params.as_deref(),
-                        cli,
-                        false,
-                    );
-                }
-            }
+            lower_numeric_literal_rule(
+                types,
+                parent_visitor,
+                type_name,
+                type1,
+                outer_tag,
+                generic_params,
+                rule_metadata,
+                cli,
+            );
         }
         Type2::TextValue { value, .. } => {
             // A text literal takes no operator; `parse_control_operator` records the refusal (a

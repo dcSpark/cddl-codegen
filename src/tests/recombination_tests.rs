@@ -1409,6 +1409,11 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 // The original index expression and bounds-panic behavior remain unchanged.
 // Actual production-frame attribution and projected cardinality require main qualification.
 // No active panic key, array entry or allowance is added or widened.
+// Parser literal-rule invariant guards now belong to parsing::lower_numeric_literal_rule.
+// The enclosing numeric arm still guards the literal match, and try_float_or_reject
+// still refuses mixed-kind ranges before registration. Both unreachable! payloads
+// remain exact. The active panic and Layer2 ledgers gain no entry or allowance.
+// Source ownership is recorded here; untriggered guards are not empirical frame proof.
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired when the two anonymous-composite families and the group-choice-arm inline group
     // became graceful rejections) Three classes lived here, and they split by the composite's
