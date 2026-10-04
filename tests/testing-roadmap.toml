@@ -1396,7 +1396,7 @@ title = "Member-position `@duplicates` extension."
 kind = "work"
 body_md = '''     - *Member-position `@duplicates` extension.* The inline opt-out is hoist-to-named-rule (no new
        DSL surface); a member-position `; @duplicates` directive on an inline set was DEFERRED until
-       a real spec demands it. It looks one-line (the member-position rejection seam in `parsing.rs`
+       a real spec demands it. It looks one-line (the member-position rejection seam in `src/parsing/directives.rs::reject_member_scoped_directives`
        is ready) but carries hidden machinery: a per-site policy on a named-rule or generic-instance
        reference forks one shared type into two, so it must be restricted to inline shapes, and even
        there the shape-deduped synthesized names would need the policy folded into type identity

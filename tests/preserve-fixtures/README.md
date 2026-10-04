@@ -3,7 +3,7 @@
 File-fixture cases for `comment_preserve::preserve`, driven by
 `src/tests/preserve_fixture_tests.rs`. Each directory holds `old.rs` + `new.rs` and exactly one
 expectation: `expected.rs` (exact merge output, blessed with `BLESS_PRESERVE_FIXTURES=1`) or
-`error.txt` (a substring the hard `PreserveError` message must contain). Intent lives here rather
+`error.txt` (a substring the hard `PreserveError`, rendered with `render("old.rs")`, must contain). Intent lives here rather
 than inside `old.rs` because any comment added to `old.rs` would itself be a merge input. See the
 harness module docs for the byte-for-byte assertion and the three cross-cutting properties
 (idempotent fixed point, never-silent, `changed==false ⇒ output==new`).
@@ -181,3 +181,9 @@ version-bump/re-ownership tripwires, not a claim that every trailing position fo
 - `replace_nested_blocks_errors` — a `replace-start` nested inside another replace block's user section.
 - `replace_straddles_item_boundary_errors` — a recorded original spanning more than one top-level item.
 - `trailing_unknown_cddl_tag_errors` — a trailing `// cddl-codegen:<unknown-tag>` comment; the entry unfold moves it own-line, so the reserved namespace catches it as a hard error rather than the softer "move it to its own line" trailing-comment trap (never-silent applied uniformly to the folded position).
+
+## Preservation phase ordering and remapping
+
+- `replace_phase_empty_then_unlexable_original` pins lexing all recorded originals before semantic validation: a later lexical error takes priority over an earlier empty needle.
+- `replace_phase_empty_then_unbalanced_original` pins source-order semantic validation once all needles lex: the first empty needle takes priority over a later delimiter error, including its disk line.
+- `replace_phase_multi_expand_contract_sentinel_insert_eof` combines expansion and contraction across two replacements with a carried sentinel, an inserted block, a keep run, and EOF anchors; the exact merge and rustfmt fixed points preserve every owned payload.

@@ -61,7 +61,7 @@ fn unit_survives(unit: &str, output: &str) -> bool {
 /// rustfmt their fixed-point formatting remains own-line, so they are version-bump/re-ownership
 /// tripwires rather than claims that every tail currently folds.
 ///
-/// Error cases are exempt by construction: the 20 `error.txt` cases' `old.rs` are user-malformed
+/// Error cases are exempt by construction: the `error.txt` cases' `old.rs` are user-malformed
 /// inputs the tool never wrote, and a `PreserveError` propagates out of `export()` before the write
 /// loop, so no on-disk file ever has that provenance. The fold-induced hard-error class — a
 /// rustfmt fold that makes the next `preserve` reject its own output — is caught by the

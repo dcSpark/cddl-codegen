@@ -1038,7 +1038,7 @@ they never churn when the generator changes. Each `tests/preserve-fixtures/<case
 - `old.rs` — the prior on-disk file (user comments / tagged blocks / carried sentinel blocks);
 - `new.rs` — the freshly generated pristine content;
 - exactly one expectation: `expected.rs` (byte-exact merge output) or `error.txt` (a substring
-  the hard `PreserveError` must contain — used for malformed-tag cases, authored by hand).
+  the hard `PreserveError`, rendered with `render("old.rs")`, must contain — used for malformed-tag cases and error-priority checks, authored by hand).
 
 One test (`preserve_fixture_tests::preserve_fixtures`) globs the directory. Byte-exact matching
 is deliberate — a misplacement that keeps a substring cannot pass — and on top of the blessed
@@ -4567,7 +4567,7 @@ projection already restricts redundant shapes (`chain`, `cborwrap2`, `extern`, `
 > Sibling system: `src/tests/identifier_hazard_tests.rs` is the same catalog+gate shape on a
 > **NAME-shaped** axis a construct enumeration can never catch — collisions between a user-chosen CDDL
 > *name* and the Rust the generator *emits* (the axis IS the name). It sweeps a static hazard table
-> (`RUST_KEYWORDS` reused from `parsing.rs`, the single-letter names `r`/`w`, and prelude/std type names like `Option`/`Vec`/`Int`) plus the cddl-codegen runtime type names (`rust_reserved::RUNTIME_TYPES`) and by-name imports (`rust_reserved::IMPORTED_TYPES`), both appended by `swept_hazards()` without entering the fuzzer's `hazards()`, rejected at the rule/group positions and drift-guarded by `runtime_types_match_static_sources` and `imported_types_cover_generated_named_imports`.
+> (`RUST_KEYWORDS` reused from `rust_reserved.rs`, the single-letter names `r`/`w`, and prelude/std type names like `Option`/`Vec`/`Int`) plus the cddl-codegen runtime type names (`rust_reserved::RUNTIME_TYPES`) and by-name imports (`rust_reserved::IMPORTED_TYPES`), both appended by `swept_hazards()` without entering the fuzzer's `hazards()`, rejected at the rule/group positions and drift-guarded by `runtime_types_match_static_sources` and `imported_types_cover_generated_named_imports`.
 > The hazard sweep covers rule name in BOTH emitted type shapes (record struct and type-choice enum, since the historical generic collision was shape-dependent and a struct-only sweep would launder enum-shaped `w` as clean), bareword map key, bareword array key, plain group name, and `@name` directive value — six name positions.
 > It is a Rust module rather than a `project_robustness.ts`
 > projection **on purpose**: the hazard × position table has no matrix verdict upstream to drift from,

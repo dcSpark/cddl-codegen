@@ -5970,7 +5970,7 @@ fn acceptance_config_text() -> String {
 /// What that leaves for a reader is the reverse direction: a flag written here that the config never
 /// derives also fails, so this list cannot drift ahead of the config either.
 ///
-/// The derivations it spells, for orientation (all read off `src/config/derive.rs`, not off the docs):
+/// The derivations it spells, for orientation (read off `src/config/derive.rs` and `src/config/mod.rs`, not off the docs):
 /// `apply_graph_edges` forward (`--extern-import`, `--extern-wasm-crate`, `--extern-wrapper-index`,
 /// `--workspace-dep`) and reverse (`--wrapper-requests`, `--key-requests`); `apply_runtime`
 /// (`--common-import-override` on every crate, `--export-static-crate` on the derived carrier);
