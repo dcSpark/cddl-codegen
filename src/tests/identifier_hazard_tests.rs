@@ -357,7 +357,7 @@ fn generate(spec: &str, tag: &str) -> Result<std::collections::BTreeMap<String, 
 }
 
 /// Concatenate every generated file's source for `spec` (or panic with the generation error) — a
-/// coarse string surface for the fast-tier collision-proofing assertions below.
+/// coarse string surface for the local-tier collision-proofing assertions below.
 fn generated_source(spec: &str, tag: &str) -> String {
     generate(spec, tag)
         .unwrap_or_else(|e| panic!("generation failed for {tag}: {e}"))
@@ -366,7 +366,7 @@ fn generated_source(spec: &str, tag: &str) -> String {
         .join("\n")
 }
 
-/// FAST-TIER guard: the emitted `serialize`/`deserialize` fns carry NO reader/writer type
+/// LOCAL-TIER guard: the emitted `serialize`/`deserialize` fns carry NO reader/writer type
 /// parameters (cbor_event 3.x's `Serializer`/`Deserializer` are concrete), so a rule camel-casing
 /// to `R`/`W` defines an ordinary type with nothing to shadow. Pin the absence — a reintroduced fn
 /// generic would silently resurrect the whole shape-dependent collision class this sweep launched

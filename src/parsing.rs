@@ -7005,7 +7005,7 @@ fn exact_homogeneous_array_length_rejection(length: i128) -> String {
 ///
 /// The ONE owner of this spelling so every call site — anonymous use
 /// (`generic_instance_or_new_type`) and named binding (`foo = bar<text>`) — derives the SAME
-/// instantiation identity, which the Phase 2.3 set-nominal dedup keys on.
+/// instantiation identity used by set-nominal deduplication.
 pub(crate) fn generic_instance_canonical_cddl_ident(
     cddl_ident: &CDDLIdent,
     generic_args: &[RustType],
@@ -7350,7 +7350,7 @@ fn rust_type_from_type2(
                 }
             };
             // Build the plain tagged inline occurrence — NO registry default is applied here. An inline
-            // `#6.258([* a])` nominalizes into a shape-derived `Set<Elem>` wrapper (Phase 2.4), but that
+            // `#6.258([* a])` nominalizes into a shape-derived `Set<Elem>` wrapper, but that
             // minting happens at the ONE post-collapse seam (`IntermediateTypes::nominalize_inline_sets`,
             // run in `finalize` over the construction PRODUCTS), never inside this arm: the arm is also
             // traversed for the DISCARDED transient arms of a named two-arm rule's collapse recognition,
@@ -9960,7 +9960,7 @@ fn parse_group_choice(
             if let Some(Err(length)) = array_type.exact_homogeneous_array_len() {
                 types.record_rejection(exact_homogeneous_array_length_rejection(length));
             }
-            // Covers non-generic set rules (Phase 2.2) and generic single-arm set DEFS (Phase 2.3):
+            // Covers non-generic set rules and generic single-arm set definitions:
             // a generic def stores the wrapper (param element) as a `GenericDef`, and each
             // instantiation mints one nominal per `<def>_<args>` in `GenericInstance::resolve`.
             let is_set_nominal =
@@ -9994,7 +9994,7 @@ fn parse_group_choice(
                 );
                 if is_set_nominal {
                     // A single-arm mandatory-tag 258 SET rule (`#6.258([* a])`) NOMINALIZES into a
-                    // `Wrapper` struct owning its `{tag, len, elem}` encodings (Phase 2.2), exactly
+                    // `Wrapper` struct owning its `{tag, len, elem}` encodings, exactly
                     // like the two-arm idiom but with a MANDATORY tag (grammar decides the record:
                     // `Option<Sz>`, NOT the two-arm `TagPresenceEncoding`). The registry
                     // set-semantics default (reject) rides `single_arm_array_effective_metadata`
