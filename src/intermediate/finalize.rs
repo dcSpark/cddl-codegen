@@ -2223,8 +2223,8 @@ impl<'a> IntermediateTypes<'a> {
                     };
                     if present {
                         custom_codec_rejections.insert(format!(
-                            "{directive} on `{ident}`: {shape} is a tagged wrapper, while this \
-                             delivery supports and audits a complete pair only on the implicit \
+                            "{directive} on `{ident}`: {shape} is a tagged wrapper, while complete custom codec \
+                             pairs are supported only on the implicit \
                              homogeneous-table map owner. Its custom-codec contract (tag framing, \
                              encoding preservation, and cross-face behavior) is not defined here. \
                              Declare `{ident}` \

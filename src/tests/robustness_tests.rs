@@ -17512,11 +17512,11 @@ fn custom_codec_pair_with_newtype_rejects_gracefully() {
         let err = expect_graceful_rejection(tag, spec, &[]);
         assert!(
             err.contains(
-                "@custom_serialize together with `@newtype` on `Nt`: this delivery supports and \
-                 audits a complete pair only on the implicit homogeneous-table map owner; it does not \
+                "@custom_serialize together with `@newtype` on `Nt`: complete custom codec pairs are \
+                 supported only on the implicit homogeneous-table map owner; it does not \
                  define the custom-codec contract for an explicit wrapper"
             ),
-            "[{tag}] the @newtype rejection must state the table-only audited wrapper scope, got:\n{err}"
+            "[{tag}] the @newtype rejection must state the table-only supported wrapper scope, got:\n{err}"
         );
         assert!(
             err.contains(

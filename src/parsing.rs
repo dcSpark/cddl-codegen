@@ -4189,8 +4189,8 @@ fn reject_single_type_custom_codec(
         // Explicit wrappers have undefined tag, range, set, encoding and cross-face codec contracts.
         if rule_metadata.newtype.is_some() {
             types.record_rejection(format!(
-                "{directive} together with `@newtype` on `{type_name}`: this delivery supports and \
-                 audits a complete pair only on the implicit homogeneous-table map owner; it does not \
+                "{directive} together with `@newtype` on `{type_name}`: complete custom codec pairs are \
+                 supported only on the implicit homogeneous-table map owner; it does not \
                  define the custom-codec contract for an explicit wrapper (including its tag, range, \
                  set, preserve-encoding, or cross-face behavior). Drop `@newtype` and use the plain \
                  alias spelling (`<rule> = \
