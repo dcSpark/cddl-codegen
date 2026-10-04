@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.1">
 <title data-rh="true">Output format | cddl-codegen</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://dcspark.github.io/cddl-codegen/output_format"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Output format | cddl-codegen"><meta data-rh="true" name="description" content="- Inside of the output directly the tool always produces a rust/ directory (including Cargo.toml, etc)."><meta data-rh="true" property="og:description" content="- Inside of the output directly the tool always produces a rust/ directory (including Cargo.toml, etc)."><link data-rh="true" rel="icon" href="/cddl-codegen/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://dcspark.github.io/cddl-codegen/output_format"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/output_format" hreflang="en"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/output_format" hreflang="x-default"><link rel="stylesheet" href="/cddl-codegen/assets/css/styles.472964ba.css">
-<script src="/cddl-codegen/assets/js/runtime~main.f77b99d5.js" defer="defer"></script>
+<script src="/cddl-codegen/assets/js/runtime~main.87ed239d.js" defer="defer"></script>
 <script src="/cddl-codegen/assets/js/main.dc07992d.js" defer="defer"></script>
 </head>
 <body>
@@ -25,14 +25,16 @@ see <a class="" href="/cddl-codegen/component_differences">Component (WIT) diffe
 <li class="">The <code>wasm/</code> directory is full of wasm_bindgen-annotated wrappers (under <code>wasm/src/generated/</code>) for the corresponding rust-use-only structs in <code>rust/</code> and can be compiled for WASM builds by running <code>wasm-pack build</code> on it. The <code>--target=nodejs</code> output runs unchanged under both Node and <a href="https://bun.sh" target="_blank" rel="noopener noreferrer" class="">Bun</a>. Every wasm crate also carries a <code>wasm/src/generated/collections.rs</code> index: one <code>pub use crate::…::&lt;Wrapper&gt;;</code> re-export per collection wrapper class the crate defines (the <code>FooList</code> / <code>MapKToV</code> and <code>NonEmpty…</code> wrappers minted from <code>[* T]</code> / <code>{* K =&gt; V}</code> shapes), sorted, with no glob. Because it is compiled as part of the crate, a line naming a removed wrapper fails the crate&#x27;s own build, so the index can never silently drift from the classes it inventories.</li>
 </ul>
 <p><strong>Toolchain floor.</strong> Generated crates depend on <code>cbor_event</code> 3.3, whose manifest declares <code>rust-version = &quot;1.96.1&quot;</code> — building a generated crate needs at least that toolchain.</p>
-<p><strong>Unused imports are pruned.</strong> A usage-derived post-pass reads the rendered source and drops imports a generated file&#x27;s module family references nowhere, so a module carries no unused-import warning for something a sibling module uses. It removes four things. <strong>(1) Concrete-type names</strong> — the collection helpers (<code>BTreeMap</code>, <code>OrderedHashMap</code>, <code>NonEmptyVec</code>, <code>BoundedVec</code>, <code>NonEmptyMap</code>, <code>BoundedMap</code>, <code>OrderedSet</code>, <code>NonEmptyOrderedSet</code>, <code>BoundedOrderedSet</code>, <code>PairMap</code>, <code>NonEmptyPairMap</code>, <code>BoundedPairMap</code>) and, under <code>--preserve-encodings</code>, the encoding enums (<code>LenEncoding</code>, <code>StringEncoding</code>, <code>TagPresenceEncoding</code>); the wasm prelude names (<code>JsError</code>, <code>JsValue</code>, and the <code>wasm_bindgen</code> attribute macro, kept only where a <code>#[wasm_bindgen]</code> attribute appears); the <code>--wasm-*-macro</code> leaf names (kept only where the macro is actually invoked); and cross-scope generator-minted type idents an over-approximating reference walk imports. (The ordered-set twins and bounded compound twin ride the spec-global <code>@duplicates reject</code> gate — see <a href="#reject-duplicates-containers-uniqueness-twins" class="">Reject-duplicates containers</a> — so a scope with a reject-set rule pushes them into <em>every</em> scope&#x27;s <code>mod.rs</code>, and this pass keeps the scopes that never name them warning-free.) <strong>(2) <code>use super::*;</code></strong> — dropped from a file whose body names nothing bound in its parent module (kept where an encoding struct is keyed by a parent-scope generated type, e.g. <code>BTreeMap&lt;Ikey, StringEncoding&gt;</code>, since it reaches <code>Ikey</code> through the glob). <strong>(3) <code>use &lt;common&gt;::error::*;</code></strong> — dropped from a <code>mod.rs</code> whose family names no error export (kept where a bounds-carrying wrapper&#x27;s <code>TryFrom</code> names <code>DeserializeError</code>). <strong>(4) <code>use super::cbor_encodings::*;</code></strong> — dropped from a <code>serialization.rs</code> family that names no definition from its generated sibling <code>cbor_encodings.rs</code> (for example, a serialize-only record that reaches its sidecar only through <code>self.encodings</code>).</p>
-<p>The consuming set of a file is not &quot;every descendant&quot; but the descendants an unbroken chain of <code>use super::*;</code> edges links back to it — a private import in a scope&#x27;s <code>mod.rs</code> is nameable by that scope&#x27;s <code>serialization.rs</code>/<code>cbor_encodings.rs</code> (which glob <code>super</code>), but NOT by a <em>different</em> scope&#x27;s files, whose own <code>mod.rs</code> does not re-glob upward. A super-reachable descendant keeps a parent&#x27;s copy alive only when it would genuinely resolve the name through the parent: one that carries its own direct import of the same name, that IS the file of the module the parent imports it from (the <code>serialization.rs</code> static prelude that defines <code>LenEncoding</code>), or that globs that same module (<code>use &lt;dep&gt;::serialization::*;</code> under <code>--common-import-override</code>) resolves the name locally and does not. A reference counts only where it could actually resolve through the namespace: an identifier appearing solely as a <code>::</code>-qualified path tail (<code>cml_chain::assets::Coin</code> mentioning <code>assets</code> and <code>Coin</code>) resolves through its preceding path segment, so it keeps neither a named import nor a glob alive — which is why a file built entirely from fully-qualified paths (e.g. the <code>--wrapper-requests</code> <code>requested_collections.rs</code>) sheds its <code>use super::*;</code>. Only private <code>use</code> items are candidates (<code>pub use</code> re-exports are API surface and never touched). Trait imports (e.g. <code>cbor_event::se::Serialize</code>, exercised via a method call whose name never mentions <code>Serialize</code>) cannot be proven unused by name and are left as-is, so a scope that imports but never calls one still carries that single warning. The pass runs again after the edit-preservation overlay applies your <code>cddl-codegen:</code> blocks, so what justifies each import is the <em>final</em> shipped content, not the pristine pre-edit content — a replace block that removes an import&#x27;s last user removes the import too (see <a class="" href="/cddl-codegen/preserving_edits">Preserving edits</a>).</p>
-<p><strong>Re-export-only files carry no import walls at all.</strong> A generated file whose entire body is extern re-export glue — every top-level item a <code>use</code>, with only <code>crate::</code>-anchored <code>pub use</code> re-exports (the <code>mod.rs</code> an extern-only CDDL scope produces) — has <em>all</em> of its private <code>use</code> items dropped, not just the concrete-type names and prunable globs above. Such a file&#x27;s shape proves nothing can consume a private import (no local code, and no descendant module whose <code>use super::*;</code> could re-export one), so the wider rule is sound even for the trait imports the name-based prune must otherwise keep. The result is a re-export-only <code>mod.rs</code> reduced to its header comment and its <code>pub use crate::…;</code> lines, with zero <code>unused_import</code> warnings.</p>
-<p><strong>Unused-variable warnings are held to the same standard.</strong> An emitted binding whose body never reads it is spelled to say so — an unread loop index binds <code>_i</code> (e.g. a <a class="" href="/cddl-codegen/comment_dsl#duplicates"><code>@duplicates preserve</code></a> pair-map whose entries carry no per-entry encoding state to index), a constant-count match arm binds <code>_</code> — so a generated crate contributes no <code>unused_variables</code> noise to a consumer&#x27;s build. Both classes (unused imports beyond the documented trait residue above, and unused variables) are enforced by warning scans over every generated crate the tool&#x27;s own test corpus compiles.</p>
+<p><strong>Unused generated imports are pruned.</strong> A usage-derived post-pass reads the rendered source and drops imports a generated file&#x27;s module family references nowhere, so a module carries no unused-import warning for something a sibling module uses. It removes four things. <strong>(1) Concrete-type names</strong> — the collection helpers (<code>BTreeMap</code>, <code>OrderedHashMap</code>, <code>NonEmptyVec</code>, <code>BoundedVec</code>, <code>NonEmptyMap</code>, <code>BoundedMap</code>, <code>OrderedSet</code>, <code>NonEmptyOrderedSet</code>, <code>BoundedOrderedSet</code>, <code>PairMap</code>, <code>NonEmptyPairMap</code>, <code>BoundedPairMap</code>) and, under <code>--preserve-encodings</code>, the encoding enums (<code>LenEncoding</code>, <code>StringEncoding</code>, <code>TagPresenceEncoding</code>), plus <code>cbor_event</code>&#x27;s <code>Deserializer</code> (kept wherever a <code>Deserialize</code> impl or the root&#x27;s static prelude names it); the wasm prelude names (<code>JsError</code>, <code>JsValue</code>, and the <code>wasm_bindgen</code> attribute macro, kept only where a <code>#[wasm_bindgen]</code> attribute appears); the <code>--wasm-*-macro</code> leaf names (kept only where the macro is actually invoked); and cross-scope generator-minted type idents an over-approximating reference walk imports. (The ordered-set twins and bounded compound twin ride the spec-global <code>@duplicates reject</code> gate — see <a href="#reject-duplicates-containers-uniqueness-twins" class="">Reject-duplicates containers</a> — so a scope with a reject-set rule pushes them into <em>every</em> scope&#x27;s <code>mod.rs</code>, and this pass keeps the scopes that never name them warning-free.) <strong>(2) <code>use super::*;</code></strong> — dropped from a file whose body names nothing bound in its parent module (kept where an encoding struct is keyed by a parent-scope generated type, e.g. <code>BTreeMap&lt;Ikey, StringEncoding&gt;</code>, since it reaches <code>Ikey</code> through the glob). <strong>(3) <code>use &lt;common&gt;::error::*;</code></strong> — dropped from a <code>mod.rs</code> whose family names no error export (kept where a bounds-carrying wrapper&#x27;s <code>TryFrom</code> names <code>DeserializeError</code>). <strong>(4) <code>use super::cbor_encodings::*;</code></strong> — dropped from a <code>serialization.rs</code> family that names no definition from its generated sibling <code>cbor_encodings.rs</code> (for example, a serialize-only record that reaches its sidecar only through <code>self.encodings</code>).</p>
+<p>The consuming set of a file is not &quot;every descendant&quot; but the descendants an unbroken chain of <code>use super::*;</code> edges links back to it — a private import in a scope&#x27;s <code>mod.rs</code> is nameable by that scope&#x27;s <code>serialization.rs</code>/<code>cbor_encodings.rs</code> (which glob <code>super</code>), but NOT by a <em>different</em> scope&#x27;s files, whose own <code>mod.rs</code> does not re-glob upward. A super-reachable descendant keeps a parent&#x27;s copy alive only when it would genuinely resolve the name through the parent: one that carries its own direct import of the same name, that IS the file of the module the parent imports it from (the <code>serialization.rs</code> static prelude that defines <code>LenEncoding</code>), or that globs that same module (<code>use &lt;dep&gt;::serialization::*;</code> under <code>--common-import-override</code>) resolves the name locally and does not. A reference counts only where it could actually resolve through the namespace: an identifier appearing solely as a <code>::</code>-qualified path tail (<code>cml_chain::assets::Coin</code> mentioning <code>assets</code> and <code>Coin</code>) resolves through its preceding path segment, so it keeps neither a named import nor a glob alive — which is why a file built entirely from fully-qualified paths (e.g. the <code>--wrapper-requests</code> <code>requested_collections.rs</code>) sheds its <code>use super::*;</code>. Only private <code>use</code> items are candidates (<code>pub use</code> re-exports are API surface and never touched). Trait imports cannot be proven unused by name (a method call never mentions the trait), so the one the serialization files need — <code>cbor_event::se::Serialize</code>, for <code>.serialize(…)</code> calls — is emitted by name as <code>#[allow(unused_imports)] use cbor_event::se::Serialize;</code>. The named import takes precedence over a <code>Serialize</code> trait brought in by the runtime serialization glob, while the allow attribute keeps a file with no such call warning-free. The runtime <code>serialization</code> glob that non-root scopes (and a <code>--common-import-override</code> root) import is trait-bearing in the same way, so it is emitted as <code>#[allow(unused_imports)] use &lt;common&gt;::serialization::*;</code>. The pass runs again after the edit-preservation overlay applies your <code>cddl-codegen:</code> blocks, so what justifies each import is the <em>final</em> shipped content, not the pristine pre-edit content — a replace block that removes an import&#x27;s last user removes the import too (see <a class="" href="/cddl-codegen/preserving_edits">Preserving edits</a>).</p>
+<p>Imports containing comments or overlapping user insert/replace blocks are retained intact, including in re-export-only files, because rebuilding or deleting them would discard preserved material.
+The alloc import pass removes only exact, un-attributed file-top owned lines without comments and outside user blocks; it preserves matching text inside literals and nested modules.</p>
+<p><strong>Re-export-only files carry no generated import walls at all.</strong> A generated file whose entire body is extern re-export glue — every top-level item a <code>use</code>, with only <code>crate::</code>-anchored <code>pub use</code> re-exports (the <code>mod.rs</code> an extern-only CDDL scope produces) — has all of its unprotected private <code>use</code> items dropped, not just the concrete-type names and prunable globs above. Such a file&#x27;s shape proves nothing can consume a private import (no local code, and no descendant module whose <code>use super::*;</code> could re-export one), so the wider rule is sound even for the trait imports the name-based prune must otherwise keep. Pristine output is a re-export-only <code>mod.rs</code> reduced to its header comment and its <code>pub use crate::…;</code> lines, with zero <code>unused_import</code> warnings.</p>
+<p><strong>Unused-variable warnings are held to the same standard.</strong> An emitted binding whose body never reads it is spelled to say so — an unread loop index binds <code>_i</code> (e.g. a <a class="" href="/cddl-codegen/comment_dsl#duplicates"><code>@duplicates preserve</code></a> pair-map whose entries carry no per-entry encoding state to index), a constant-count match arm binds <code>_</code> — so a generated crate contributes no <code>unused_variables</code> noise to a consumer&#x27;s build. Both classes (unused imports and unused variables) are enforced by warning scans over every generated crate the tool&#x27;s own test corpus compiles.</p>
 <p><strong><code>from_cbor_bytes</code> rejects trailing bytes.</strong> The generated/<code>static</code> <code>Deserialize::from_cbor_bytes</code> (and the wasm <code>from_cbor_bytes</code>) decode one complete value and then require the cursor to have consumed the <strong>entire</strong> input; leftover bytes after a complete value return an error (<code>cbor_event::Error::TrailingData</code>) rather than being silently ignored, so a truncated/corrupt or accidentally-concatenated buffer is caught. A <strong><code>bytes .cbor T</code></strong> payload is held to the same rule, and raises the same error: <code>.cbor</code> says the byte string <em>is</em> <code>T</code>&#x27;s encoding, so bytes left over inside it after a complete <code>T</code> are rejected rather than accepted-and-dropped — which under <code>--preserve-encodings</code> would also mean an accepted value re-encoding to different bytes. (Backwards-compatibility note: generators before 2026-08 enforced exhaustion only at the top level, so an embedded <code>.cbor</code> payload with trailing bytes was accepted and the leftovers silently dropped; crates re-generated since then reject such inputs. Anything written by the generated serializers — or by any encoder that writes a complete <code>T</code> encoding as the byte string — is unaffected; only inputs that were already silently losing bytes change verdict.)</p>
 <p><strong>Not every type gets its own (de)serialization in <code>serialization.rs</code>.</strong> Some constructs carry their CBOR framing at the point of <em>use</em> rather than as a standalone impl on the type:</p>
 <ul>
-<li class=""><strong>Type aliases</strong> — homogeneous arrays (<code>-&gt; Vec</code>), tables (<code>-&gt; BTreeMap</code>), and plain aliases (<code>foo = bar</code>) are (de)serialized through the aliased type. (Top-level single-type <em>tag</em> rules like <code>tagged = #6.42(text)</code> are NOT aliases — they auto-wrap into a tag-writing/tag-checking newtype; see <code>current_capacities</code>.)</li>
+<li class=""><strong>Type aliases</strong> — homogeneous arrays (<code>-&gt; Vec</code>), tables (<code>-&gt; BTreeMap</code>), and plain aliases (<code>foo = bar</code>) are (de)serialized through the aliased type. A transparent alias inherits a complete standalone <code>to_cbor_bytes</code> / <code>from_cbor_bytes</code> pair only when its target already provides both; it has no generator-owned standalone codec promise. In particular, a loose primitive array (<code>nums = [* uint]</code>, <code>pub type Nums = Vec&lt;u64&gt;</code>) currently inherits <code>Vec</code>&#x27;s decode door but not a matching <code>to_cbor_bytes</code>: <code>cbor_event</code> implements <code>Deserialize</code> for <code>Vec&lt;T&gt;</code>, not <code>Serialize</code>. This partial fact is not a complete standalone codec promise. Member-position support is independent: a record field can inline the structural collection codec even when the alias target cannot decode by itself. Use <code>@newtype</code> when a named collection needs nominal ownership of its complete standalone codec. (Top-level single-type <em>tag</em> rules like <code>tagged = #6.42(text)</code> are NOT aliases — they auto-wrap into a tag-writing/tag-checking newtype; see <code>current_capacities</code>.)</li>
 <li class=""><strong>C-style enums</strong> — multi-value all-fixed choices (<code>foo = 0 / 1 / 2</code>) are encoded <em>inline wherever they are used</em>, not via an <code>impl</code> on the enum. The exception is a mandatory tag directly on the choice rule under <code>--preserve-encodings</code>: that rule uses the data-carrying union shape below so the enum can retain the tag head&#x27;s width. A <strong>one-value named rule</strong> (<code>answer = 42</code> or <code>magic = h&#x27;CAFE&#x27;</code>, including a tagged or <code>bytes .cbor</code> spelling) is different: it is a nominal singleton TypeChoice with direct codecs, precisely so its standalone API has the declared wire shape.</li>
 </ul>
 <p>So the tag / fixed-value encoding for these is emitted at each use site. A multi-value C-style enum root <strong>referenced by nothing else</strong> has no standalone (de)serialization, and can only be (de)serialized as part of a containing type; named singletons are the deliberate exception above.</p>
@@ -110,8 +112,15 @@ iff the bool is <code>true</code>; the array length / map entry count includes t
 <li class=""><strong>Deserialize</strong> peeks the next item&#x27;s CBOR type; on a match it verifies the constant exactly as a
 mandatory member does (a wrong value is a <code>FixedValueMismatch</code>) and records <code>true</code>, otherwise
 leaves the field <code>false</code>.</li>
-<li class=""><strong>wasm</strong> exposes the bit as a getter <code>v() -&gt; bool</code> and setter <code>set_v(present: bool)</code> on the
-wrapper.</li>
+<li class=""><strong>wasm</strong> exposes the bit as a getter <code>v() -&gt; bool</code> and setter <code>set_v(present: bool)</code> on an
+ordinary record wrapper. In a group-choice enum arm, <code>new_&lt;arm&gt;(…, present)</code> carries the bit; a
+sole materialized value keeps the legacy <code>as_&lt;arm&gt;() -&gt; Option&lt;bool&gt;</code> door, while an arm with
+multiple values exposes each as <code>as_&lt;arm&gt;_&lt;field&gt;()</code>. Its optional-fixed door returns
+<code>Option&lt;bool&gt;</code> (<code>Some(false)</code> absent, <code>Some(true)</code> present, <code>None</code> for another arm). The component
+face offers the same materialized constructor values as WIT parameters: a sole value keeps
+<code>as-&lt;arm&gt;() -&gt; option&lt;bool&gt;</code>, while multiple values use field-qualified
+<code>as-&lt;arm&gt;-&lt;field&gt;() -&gt; option&lt;T&gt;</code> reads. The component spelling is independently chosen to avoid
+a new named WIT record/type and collision surface while retaining each source-field identity.</li>
 <li class=""><strong>JSON</strong> (serde / schemars) treats it as a plain <code>bool</code> — <code>&quot;v&quot;: false</code> when absent.</li>
 </ul>
 <p><code>bool</code> is used rather than <code>Option&lt;()&gt;</code> precisely because it crosses the wasm and serde/schemars
@@ -323,6 +332,21 @@ behaves; string/uint-keyed <code>any</code> ranges (<code>{ * uint =&gt; any }</
 permissive &quot;any JSON value&quot; schema (json2ts → TS <code>unknown</code>, a <code>{* K =&gt; any}</code> member →
 <code>{ [k: string]: unknown }</code>), while a bare <code>AnyCbor</code> keeps the tagged <code>oneOf</code> schema over the kind
 objects above.</p>
+<h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="checked-scalar-json-schema">Checked scalar JSON Schema<a href="#checked-scalar-json-schema" class="hash-link" aria-label="Direct link to Checked scalar JSON Schema" title="Direct link to Checked scalar JSON Schema" translate="no">​</a></h3>
+<p>For a named checked scalar (a named integer, float, text, or bytes rule carrying a constraint), the
+generated <code>JsonSchema</code> advertises the same JSON carrier door that generated <code>Deserialize</code> checks.
+Integer exclusive endpoints are normalized to their inclusive integer neighbour, ordinary windows
+use <code>minimum</code>/<code>maximum</code>, an exact value uses <code>const</code>, and <code>int .ne N</code> uses <code>not: { &quot;const&quot;: N }</code>.
+The JSON carrier of <code>nint</code> is its stored unsigned magnitude <code>-value - 1</code>, so its advertised bounds
+are in that coordinate rather than signed CDDL-value space. Float windows retain their endpoint
+kind: inclusive sides use <code>minimum</code>/<code>maximum</code>, and exclusive sides use the numeric JSON Schema
+2020-12 <code>exclusiveMinimum</code>/<code>exclusiveMaximum</code> keywords.</p>
+<p>Bytes serialize as canonical hex text, so byte-size bounds are projected to twice as many string
+characters (an exact byte size is therefore an exact hex length). Text is different: the generated
+Rust checks UTF-8 <strong>bytes</strong>, while JSON Schema <code>minLength</code>/<code>maxLength</code> count Unicode scalar values.
+Its schema is consequently conservative and sound rather than exact: it never rejects a string the
+deserializer accepts, but may accept a short ASCII string that the byte-counting deserializer then
+rejects.</p>
 <p>The wasm wrapper for <code>any</code> is documented under <a class="" href="/cddl-codegen/wasm_differences#the-any-type-anycbor">wasm differences</a>.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="hex-text-the-canonical-grammar">Hex text: the canonical grammar<a href="#hex-text-the-canonical-grammar" class="hash-link" aria-label="Direct link to Hex text: the canonical grammar" title="Direct link to Hex text: the canonical grammar" translate="no">​</a></h2>
 <p>Three consumer-facing surfaces render bytes as hex text, and all three accept exactly the grammar
@@ -633,41 +657,53 @@ it does for any other generated type.</p>
 the duplicate-member detection, the rebinding carve-out, the three-attempt read failure) and
 <code>tests/open-table-e2e</code> (the CBOR face).</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="open-arrays-rest-tails">Open arrays (rest tails)<a href="#open-arrays-rest-tails" class="hash-link" aria-label="Direct link to Open arrays (rest tails)" title="Direct link to Open arrays (rest tails)" translate="no">​</a></h2>
-<p>A CDDL array that mixes <strong>fixed members with one occurrence-bearing element</strong> — a final tail such as
-<code>[uint, tstr, * uint]</code>, or a safe leading/middle segment such as <code>[* bytes, tstr]</code> or
-<code>[uint, * bytes, tstr]</code> — is an <em>open array</em>: fixed members deserialize positionally as declared and
-the repeated elements are captured in a generated <code>rest</code> field. This is the array analog of the
+<p>A CDDL array that mixes fixed members with <strong>one or more occurrence-bearing segments</strong> is an <em>open
+array</em>. A segment may be a final tail (<code>[uint, tstr, * uint]</code>), a safe single middle segment
+(<code>[uint, * bytes, tstr]</code>), or one of several uniquely named flat segments:</p>
+<div class="language-cddl codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-cddl codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">parts = [</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  * uint ; @name numbers</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  , * tstr ; @name labels</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">]</span><br></div></code></pre></div></div>
+<p>Fixed members and captured segments serialize and deserialize at their authored positions. This is the array analog of the
 <a href="#open-struct-maps-rest-rows" class="">open struct-map</a> rest row — structurally simpler because arrays are
-positional: there are no keys, duplicate policy, key dispatch, or ordering machinery. The occurrence
-may be final, or it may be the sole leading/middle segment only when its <strong>immediate fixed suffix</strong> is
-mandatory and expands to exactly one CBOR item. A variable-cardinality middle window also requires
-either the absence of a field-local custom codec, an effective wire head on both boundary items, and
-no CBOR major type in common with the repeated element; or untagged generator-owned finite fixed-value
-domains on both sides with no CDDL value in common. A generator-proven head qualifies; a transparent
-custom-codec alias may instead declare the head with
-<a class="" href="/cddl-codegen/comment_dsl#declaring-the-wires-major-type-custom_wire_major"><code>@custom_wire_major</code></a>.
-An exact window (<code>N*N</code>, except <code>1*1</code> which is an ordinary field)
-instead stops after <code>N</code> items: <code>[uint, 2*2 uint, uint]</code> is therefore supported even though the segment
-and suffix share a major or use custom-/extern-owned heads. Count delimits that <strong>suffix</strong> only: an
-optional prefix still needs generator-proven, distinct heads on both sides of its peek boundary. A
-custom-codec or opaque-extern optional/repeated member at that boundary is serialize-only unless a
-mandatory outer tag or <code>.cbor</code> frame proves the distinct outer head. Bare <code>*</code> / <code>0*</code> is loose; <code>+</code> / <code>1*</code> is the
-compatibility min-one form; every other window (<code>2*3</code>, <code>*3</code>, <code>2*</code>, <code>*0</code>, <code>0*0</code>, …) is bounded.</p>
+positional: there are no keys, duplicate policy, key dispatch, or ordering machinery.</p>
+<p>An exact window (<code>N*N</code>, except ordinary <code>1*1</code>) stops after <code>N</code> items, so it owns its boundary even
+beside the same major or a custom-/extern-owned head. A variable window stops at the owner-array end
+or uses a <strong>possible-next proof</strong>: walk later authored positions, ignore maximum-zero segments, union
+the effective CBOR majors of every zero-minimum segment that may be absent and every optional
+single-item fixed field, and stop after the first positive-minimum segment or mandatory fixed field
+that expands to one CBOR item. An optional field keeps the walk going because its absence exposes
+the later member; its head must be generator-owned. Each possible-next member must either have
+effective CBOR majors disjoint from the current segment or, for every shared major, have a
+generator-owned untagged finite fixed-value domain disjoint from the repeated element&#x27;s complete
+CDDL value domain. Thus <code>[* uint, * tstr, * bytes]</code> is safe, <code>[* uint, + tstr, * uint]</code> is safe
+because the text segment is mandatory, and <code>[* uint, * tstr, * uint]</code> rejects because an empty text
+segment exposes the later uint run. A generator-proven head qualifies; a transparent custom-codec
+alias may instead declare it with
+<a class="" href="/cddl-codegen/comment_dsl#declaring-the-wires-major-type-custom_wire_major"><code>@custom_wire_major</code></a>, while mandatory
+tag or <code>.cbor</code> framing proves its own outer head. A finite-domain boundary retries only the repeated
+element decoder and restores the real cursor on failure, so any number of uniquely named segments
+keep their ordinary source-ordered carriers and later readers run normally. It does not parse a
+suffix speculatively or retain hidden residue. Bare <code>*</code> / <code>0*</code> is loose; <code>+</code> / <code>1*</code> is min-one; every
+other non-exact window (<code>2*3</code>, <code>*3</code>, <code>2*</code>, …) is bounded.</p>
+<p>Optional-prefix lookahead is separate from occurrence-boundary proof. An optional prefix still needs
+generator-proven, distinct heads on both sides of its reachable-next peek; a custom codec or opaque
+extern there is serialize-only unless mandatory outer framing proves the distinction.</p>
+<p>The same generator-owned rule applies after a variable segment: <code>[* uint, ? tstr, #6.10(uint)]</code>
+is accepted because the segment stops before the optional head and the optional&#x27;s absence exposes a
+disjoint tag. An optional primitive <code>uint</code>, an absent optional exposing a later primitive <code>uint</code>, a multi-item splice,
+or a custom-/extern-owned optional head remains refused. <code>@custom_wire_major</code> does not authorize
+this optional lookahead.</p>
 <p>The restriction is RFC 8610&#x27;s greedy, non-backtracking matching rule, not an implementation
-convenience. A decoder for <code>[uint, * uint, uint]</code> cannot know whether a uint is the repeated value
-or the suffix; accepting it would let a constructed value serialize to bytes that do not deserialize
-back to that value. A normal variable safe-middle loop greedily consumes only the repeated element&#x27;s
-majors and stops at the major-disjoint suffix; a fixed-domain loop instead tries the repeated decoder
-once and rewinds only when it fails, which is safe because the statically enumerated domains are
-disjoint. An exact loop consumes its declared count and then reads that same suffix. None speculates
-by parsing the suffix to choose between successful interpretations. General same-major/value-
-discriminator designs, multiple occurrences, inline-group occurrences,
-group-choice-arm occurrences, a segment inside a plain group&#x27;s body, a fixed-value element type like
-<code>* 5</code>, and a <strong>plain-group element type</strong> remain graceful rejections naming a supported remedy. A
-declared custom head still has to be disjoint from the other effective boundary set; custom-, tagged-,
-float-, primitive-, and extern-owned same-major value discrimination is not inferred. The declaration is not consumed by a final tail, an exact
-count-delimited window, optional-prefix lookahead, or a mandatory generated outer frame that already
-supplies the head. The
+convenience. A decoder cannot guess between a repeated value and a possible-next value with the same
+head, and no generated loop speculatively parses later members to choose between two successful
+interpretations. General same-major/value-discriminator or residue designs, shared finite domains,
+unproven custom/extern possible-next heads, and non-finite or unproven primitive/range, float, tag,
+custom-codec, opaque-extern, or multi-item boundaries remain graceful rejections naming a remedy.
+Inline-group occurrences mixed with other members or carrying several group choices, group-choice-arm
+occurrences, a segment inside a plain group&#x27;s body, a fixed-value element like <code>* 5</code>, and a
+<strong>plain-group element type</strong> outside a sole named homogeneous-array rule remain graceful rejections
+naming a remedy. A declared custom head must be disjoint from the whole possible-next union;
+same-major discrimination is not inferred from custom, tagged, float, primitive, or extern semantics.
+The declaration is not consumed by a final tail, an exact count-delimited window, optional-field
+lookahead, or mandatory generated outer framing that already supplies the head. The
 plain-group element type (<code>kv = (a: uint, b: uint)</code>, <code>t = [ c: uint, * kv ]</code>) refuses because an
 occurrence segment collects one value per repeated array element and a plain group is not one — it has
 no type of its own, splicing its members flat instead — and the guard reads the <em>resolved</em> element
@@ -675,59 +711,56 @@ type, so the bare and alias (<code>* kv_alias</code>) spellings refuse alike. A 
 <code>* #6.10(kv)</code> reaches the separate plain-group tag-payload refusal; frame first, then tag (<code>* #6.10(w)</code>
 where <code>w = [kv]</code>). The remedy the message names is the group&#x27;s array framing: <code>w = [kv]</code>, then
 <code>t = [ c: uint, * w ]</code>. A single <strong>mandatory</strong> splice (<code>t = [ c: uint, kv ]</code>) stays supported, but
-the sole-element homogeneous array (<code>[* kv]</code>) also refuses: repeating a group concatenates its members,
-whereas a homogeneous collection element is one item. Use <code>w = [kv]</code>, then <code>[* w]</code>; the full
+the same repeated-group spelling in an open-array rest-tail or mixed placement refuses: repeating a group concatenates its members,
+whereas an ordinary homogeneous collection element is one item. A complete named rule whose sole
+array entry is the repeated group is the deliberate exception: <code>items = [* kv]</code> (or <code>items = [* (a: uint, b: uint)]</code>) has a
+generated wrapper that owns the flat codec and counts group values, not flattened members. The full
 splice-position matrix is <a class="" href="/cddl-codegen/current_capacities#plain-group-placement">Plain group placement</a>.</p>
-<p><strong>The <code>rest</code> field.</strong> A loose <code>*</code> / <code>0*</code> segment is <code>pub Vec&lt;T&gt;</code>, excluded from <code>new()</code> and defaulting
-empty. A <code>+</code> / <code>1*</code> segment is <code>pub NonEmptyVec&lt;T&gt;</code>: <code>new()</code> takes its first repeated element,
-preserving that public ABI. An ordinary or duplicate-preserving exact <code>N*N</code> segment is <code>pub [T; N]</code>
-(including <code>*0</code>); <code>new()</code> accepts that already-valid carrier. Other variable windows are
-<code>pub BoundedVec&lt;T, MIN, MAX&gt;</code>. Decode stages one loose <code>Vec&lt;T&gt;</code> and exact windows make one
-<code>TryFrom&lt;Vec&lt;T&gt;&gt; for [T; N]</code> handover, mapping a short/long wire value to <code>RangeCheck</code>; variable
-windows retain the <code>BoundedVec</code> door. Exact <code>@duplicates reject</code> segments remain
-<code>BoundedOrderedSet&lt;T, N, N&gt;</code>. A middle segment stops
-greedily at its maximum: a further repeated-major item remains for the mandatory suffix to read and
-is rejected there, while a below-minimum middle segment still rejects through the carrier&#x27;s
-<code>RangeCheck</code>. An exact middle segment takes exactly its declared count before the suffix. A definite
-short owner can reserve its mandatory suffix arity and reach the checked-carrier door; an indefinite
-same-major short owner may consume its intended suffix as a repeated value and then reject at the
-suffix read. Every short form rejects without seeking, rewinding, or promising one error class, and a
-trailing extra remains for the owner length check rather than being absorbed by the segment.</p>
+<p><strong>Segment fields and constructors.</strong> A loose <code>*</code> / <code>0*</code> segment is <code>pub Vec&lt;T&gt;</code>, a <code>+</code> / <code>1*</code>
+segment is <code>pub NonEmptyVec&lt;T&gt;</code>, an ordinary or duplicate-preserving exact <code>N*N</code> segment is
+<code>pub [T; N]</code> (including zero), and other variable windows are
+<code>pub BoundedVec&lt;T, MIN, MAX&gt;</code>. Exact <code>@duplicates reject</code> segments remain
+<code>BoundedOrderedSet&lt;T, N, N&gt;</code>. The historic one-segment API is unchanged: loose defaults empty and is
+absent from <code>new()</code>, min-one takes its first element, and other restricted windows take their complete
+checked carrier. A record with several segments has a distinct constructor contract: every segment
+has a unique explicit <code>@name</code>, and <code>new()</code> takes every complete carrier in authored source order —
+including loose and min-one carriers — so there is no hidden residue split. The constructor checks
+each carrier&#x27;s element value windows as well as its cardinality.</p>
+<p>Decode stages each segment in a loose <code>Vec&lt;T&gt;</code> at its source position, then enters the matching
+<code>NonEmptyVec</code>, <code>[T; N]</code>, or <code>BoundedVec</code> checked door. An exact middle consumes its count. A variable
+middle consumes only its own proven majors, up to its maximum, and stops before a possible-next head;
+below-minimum and above-maximum wires reject through the carrier or following member. Short and extra
+forms reject without suffix speculation or promising one error class.</p>
 <p>An optional fixed member is read by peeking at its reachable following member or occurrence segment.
 That dispatch is emitted only when both wire heads are generator-proven and CBOR-major-disjoint; a
 custom codec or opaque extern on either side is serialize-only unless mandatory outer tag/<code>.cbor</code>
-framing supplies the proof. <code>@custom_wire_major</code> does not broaden this optional-prefix rule. A final
+framing supplies the proof. <code>@custom_wire_major</code> does not broaden this optional-field rule. A final
 optional with no following item remains owner-length-delimited.</p>
-<p><strong>Serialize / round-trip.</strong> The array header counts the declared members <strong>plus</strong> every repeated
-element (<code>N + rest.len()</code>). A final tail serializes after the fixed members; a safe middle segment
-serializes immediately before its mandatory suffix. The captured elements themselves serialize in
-<code>Vec</code> order. Typing is enforced: <code>[uint, * bytes, tstr]</code> errors on a non-bytes element in the
-repeated segment (full looseness is spelled <code>* any</code>, which captures nested-container elements too).</p>
-<p><strong>Preserve / canonical.</strong> Under <code>--preserve-encodings</code> each captured element re-serializes byte-exact
-via a <strong>positional per-element encoding sidecar</strong> (<code>{field}_elem_encodings: Vec&lt;..&gt;</code> in the owner&#x27;s
-encoding struct — self-healing on user mutation: a length mismatch degrades to default encodings, it
-never panics); an <code>any</code> element is self-carried and contributes no sidecar. The segment&#x27;s local wire
-order = <code>Vec</code> order = re-emit order by construction, so there is <strong>no</strong> interleave record or
-comparator. Under <code>--canonical-form</code> each element re-serializes recursively-canonically <strong>in position
-order</strong> (no sort — the segment is positional, not keyed).</p>
-<p><strong>JSON (<code>--json-serde-derives</code>).</strong> The captured segment renders as an <strong>ordinary field</strong> — a JSON
-array under the field&#x27;s name (<code>&quot;rest&quot;: [ … ]</code>), <strong>not</strong> flattened. Array positions are already erased
-in JSON and serde <code>flatten</code> has no array analog, so nesting under the field name is the honest
-symmetric rendering. Only the loose segment <em>writes</em> by <strong>skipping the field when empty</strong> and <em>reads</em>
-by <strong>defaulting it to empty when absent</strong> — so an empty loose segment ≡ closed-struct JSON. Restricted
-segments are required: <code>+</code> / <code>1*</code> publishes <code>minItems: 1</code>; bounded segments publish their applicable
-<code>minItems</code> and <code>maxItems</code>, including zero; all enter their same checked door on JSON read. An
+<p><strong>Serialize / round-trip.</strong> The array header counts the fixed members plus every captured segment
+length. Every segment serializes at its authored position, and its elements serialize in carrier
+order. Typing and value bounds are enforced independently per segment; full looseness remains
+spelled <code>* any</code>.</p>
+<p><strong>Preserve / canonical.</strong> Under <code>--preserve-encodings</code> each captured segment owns its own positional
+per-element encoding sidecar (<code>{field}_elem_encodings: Vec&lt;..&gt;</code> in the owner&#x27;s encoding struct —
+self-healing on user mutation: a length mismatch degrades to default encodings, never a panic); an
+<code>any</code> element is self-carried. Each sidecar stays at its segment&#x27;s authored boundary. Under
+<code>--canonical-form</code> every segment canonicalizes recursively in position order, with no sort or
+cross-segment interleave record.</p>
+<p><strong>JSON (<code>--json-serde-derives</code>).</strong> Every captured segment renders as a separate ordinary JSON array
+under its field name, never flattened or merged. Each loose segment skips when empty and defaults
+empty when absent. Restricted segments are required: <code>+</code> / <code>1*</code> publishes <code>minItems: 1</code>; bounded
+segments publish their applicable <code>minItems</code> and <code>maxItems</code>, including zero; all enter their same
+checked door on JSON read. An
 <code>any</code>-element segment renders <strong>natural-fallible</strong> (the same
 <a href="#natural-rendering-rfc-8949-61-injective-subset-strict-fail-elsewhere" class="">injective-subset rules</a> as any
 <code>[* any]</code>: a non-injective node like a byte string makes <code>to_json</code> error rather than silently
 substitute). The JSON Schema is the ordinary array shape with the carrier&#x27;s bounds.</p>
-<p><strong>wasm.</strong> The rest field is exposed as a <strong>read-only getter named after the field</strong> (<code>rest()</code> by
-default) returning the minted list wrapper. The loose form has no constructor argument; the min-one
-form retains its first-element constructor; each bounded form takes its matching checked bounded list
-wrapper. WIT despecializes that wrapper to <code>list&lt;T&gt;</code> and component glue fallsibly converts it back to
-its established list wrapper before native construction; component WIT remains <code>list&lt;T&gt;</code> and its
-guest glue restores <code>[T; N]</code> fallibly. The public native carrier does not depend on whether the
-segment is final or safe-middle; see <a class="" href="/cddl-codegen/wasm_differences#open-struct-map-rest-rows">wasm differences</a>.</p>
+<p><strong>wasm / component.</strong> Every segment is exposed through a read-only getter named after its field. A
+single segment retains the historic loose/default, min-one-first-element, and restricted-wrapper
+constructor ABI. For several segments, wasm <code>new()</code> takes the matching complete list wrapper for
+every segment and reorders its native call into authored source order. WIT exposes one <code>list&lt;T&gt;</code> per
+segment in authored order; guest glue fallibly restores every <code>NonEmptyVec</code>, <code>BoundedVec</code>, or static
+array before native construction. See <a class="" href="/cddl-codegen/wasm_differences#open-struct-map-rest-rows">wasm differences</a>.</p>
 <h3 class="anchor anchorTargetStickyNavbar_Vzrq" id="the-ignore-tolerate-and-drop-flavor-1">The <code>@ignore</code> (tolerate-and-drop) flavor<a href="#the-ignore-tolerate-and-drop-flavor-1" class="hash-link" aria-label="Direct link to the-ignore-tolerate-and-drop-flavor-1" title="Direct link to the-ignore-tolerate-and-drop-flavor-1" translate="no">​</a></h3>
 <p>Marking the occurrence entry <a class="" href="/cddl-codegen/comment_dsl#ignore"><code>@ignore</code></a> switches from capture to
 <em>tolerate-and-drop</em>: the repeated elements are still typed-deserialized (so the stream advances past
@@ -775,14 +808,18 @@ in place.</li>
 an empty CBOR array/map is rejected during decode with the <em>same</em> <code>0 not at least 1</code> error the API
 raises, so the constraint holds identically at both doors.</li>
 </ul>
+<p>Under <code>--json-schema-export</code>, the direct carrier schemas publish that same cardinality invariant:
+<code>NonEmptyVec&lt;T&gt;</code> has <code>minItems: 1</code>, and <code>NonEmptyMap&lt;K, V&gt;</code> has <code>minProperties: 1</code>. Those are JSON
+Schema constraints on the JSON array/object carriers, alongside (not instead of) the checked Rust
+construction and deserialize doors.</p>
 <p><code>BoundedVec</code> has the same loose-to-tight <code>TryFrom&lt;Vec&lt;T&gt;&gt;</code> and widening <code>From</code>/<code>into_inner</code> contract.
 It exposes slices and mutable elements but never <code>&amp;mut Vec</code>; <code>push</code>, <code>extend</code>, <code>pop</code>, <code>remove</code>, and
 <code>truncate</code> return the existing <code>RangeCheck</code> before crossing either bound. JSON is an ordinary array
 and schemars publishes <code>minItems</code>/<code>maxItems</code>. The wasm class is named <code>&lt;Elem&gt;ListMinN</code>,
 <code>&lt;Elem&gt;ListMaxN</code>, or <code>&lt;Elem&gt;ListMinNMaxN</code> (a named CDDL rule wins); its <code>try_from</code>/<code>add</code> doors are
 fallible for the same reason, and only a zero-minimum class exposes an infallible empty <code>new()</code> seed.
-Positive-minimum instantiations have no <code>new</code> method at all. Tables remain outside this representation and retain their documented
-occurrence limits. Unique-key tables now have the matching <code>BoundedMap&lt;K, V, MIN, MAX&gt;</code> carrier:
+Positive-minimum instantiations have no <code>new</code> method at all.
+Unique-key tables have the matching <code>BoundedMap&lt;K, V, MIN, MAX&gt;</code> carrier:
 <code>{ k =&gt; v }</code> is <code>BoundedMap&lt;K, V, 1, 1&gt;</code>, <code>{ ? k =&gt; v }</code> is <code>BoundedMap&lt;K, V, 0, 1&gt;</code>, and other
 finite/lower-bounded windows retain their inclusive endpoints (<code>*</code> stays loose and <code>+</code> stays
 <code>NonEmptyMap</code>). Its <code>TryFrom&lt;BTreeMap&lt;_, _&gt;&gt;</code>/<code>TryFrom&lt;Vec&lt;(K, V)&gt;&gt;</code> door, checked <code>insert</code>/<code>extend</code>/
@@ -810,15 +847,17 @@ has a loose vector, convert it once at the assembly boundary:
 component <code>list&lt;T&gt;</code> remain list-shaped and make the equivalent checked handover themselves. JSON
 does so recursively for every ordinary, <code>@duplicates preserve</code>, or <code>@duplicates reject</code> loose,
 nonempty, bounded, nullable, and exact collection tree that contains a wide exact array or an exact natural-<code>any</code> position,
-including aliases/newtypes, ordinary optional fields, type-choice payloads, and captured open-array
-segments. Each node remains a JSON list;
+including map/table values, positional pair-map keys and values, aliases/newtypes, ordinary optional
+fields, type-choice payloads, captured open-array segments, and open-map/table dynamic values.
+Sequence nodes remain JSON lists; unique maps remain JSON objects and duplicate-preserving maps
+remain arrays of pairs.
 exact layers retain <code>minItems = maxItems</code>, restricted sequence layers re-enter their existing
 <code>NonEmptyVec</code>, <code>BoundedVec</code>, <code>NonEmptyOrderedSet</code>, or <code>BoundedOrderedSet</code> <code>TryFrom&lt;Vec&lt;_&gt;&gt;</code> door,
 and duplicate-reject schemas additionally publish <code>uniqueItems: true</code>.
-The established typed direct <code>Vec&lt;[T; N]&gt;</code> case remains compatible. Open-array segments retain their
+The established typed direct <code>Vec&lt;[T; N]&gt;</code> case remains compatible. A wide non-string-compatible
+exact-array object-map key remains a pre-codegen refusal. Open-array segments retain their
 named field shape; loose segments keep <code>skip_serializing_if = &quot;Vec::is_empty&quot;</code> plus <code>default</code>, while
-restricted segments are required. Map/table entries, open-struct map rest rows, and dynamic map rows
-still reject under either JSON flag. Optional+nullable three-state fields compose their outer presence
+restricted segments are required. Optional+nullable three-state fields compose their outer presence
 option with the recursive descriptor for the inner nullable member, including short natural-<code>any</code>
 exact arrays. This is separate from <code>bytes .size N</code>, whose <code>[u8; N]</code> storage retains a
 loose <code>Vec&lt;u8&gt;</code> constructor for compatibility.</p>
@@ -842,6 +881,10 @@ but no normalizing <code>insert</code>/<code>Extend</code>/<code>FromIterator</c
 them in a nominal struct that owns its encodings rather than aliasing to them transparently — see
 <a href="#nominal-tag-258-set-types" class="">Nominal tag-258 set types</a> above. The twin conversion contract below
 describes the inner collection either way.</p>
+<p>Under <code>--json-schema-export</code>, their direct carrier schemas make the same JSON-array distinction:
+<code>OrderedSet&lt;T&gt;</code> publishes <code>uniqueItems: true</code>; <code>NonEmptyOrderedSet&lt;T&gt;</code> publishes both
+<code>uniqueItems: true</code> and <code>minItems: 1</code>. This aligns the schema with the duplicate and non-empty
+checks the JSON deserializer performs through the corresponding <code>TryFrom&lt;Vec&lt;T&gt;&gt;</code> door.</p>
 <p>The default is <code>preserve</code> — today&#x27;s occurrence-selected <code>Vec</code> / <code>NonEmptyVec</code> /
 <code>BoundedVec&lt;T, MIN, MAX&gt;</code>, which accept and re-emit duplicates byte-exactly for multi-era readers;
 writing <code>@duplicates preserve</code> explicitly is an accepted, self-documenting no-op. Both twins are
@@ -966,9 +1009,9 @@ preserved input encodings.</p>
 <p><strong>JSON</strong> (<code>--json-serde-derives</code> / <code>--json-schema-export</code>): a preserve table serializes as an <strong>array
 of <code>[key, value]</code> pairs</strong>, not a JSON object — a JSON object cannot carry duplicate keys any more than
 a <code>BTreeMap</code> can, so the array-of-pairs shape is the faithful one. The generated <code>schemars</code> schema is
-therefore an <strong>array</strong> schema, not an object/<code>additionalProperties</code> one. Bounded pair maps add
-<code>minItems</code>/<code>maxItems</code> to that pair sequence, and the <code>{+}</code> flavor&#x27;s door refuses an empty <code>[]</code> on the
-JSON path with the same min-1 error as the wire path.</p>
+therefore an <strong>array</strong> schema, not an object/<code>additionalProperties</code> one. <code>NonEmptyPairMap</code> publishes
+<code>minItems: 1</code>; bounded pair maps publish <code>minItems</code>/<code>maxItems</code> for their authored window. The <code>{+}</code>
+flavor&#x27;s JSON deserializer likewise refuses an empty <code>[]</code> through the same min-1 door as the wire path.</p>
 <p>The wasm boundary mirrors the set twins&#x27; two-wrapper pattern, except the loose <code>PairMap</code>&#x27;s <code>insert</code>
 <strong>appends</strong> (returning <code>Option</code>) rather than rejecting. The synthesized wasm class name carries the
 container flavor — <code>PairMap&lt;K&gt;To&lt;V&gt;</code>, <code>NonEmptyPairMap&lt;K&gt;To&lt;V&gt;</code>, and bounded
@@ -1147,7 +1190,8 @@ module error), and any inline type copies collide with the regenerated ones.</p>
 earlier ones as extern deps — a collection wrapper over another crate&#x27;s types
 (<code>[* foo]</code> → <code>FooList</code>, <code>[2*5 foo]</code> → <code>FooListMin2Max5</code>, <code>{* k =&gt; v}</code> → <code>MapKToV</code>, and their restricted variants) must live in
 <strong>exactly one</strong> crate. Two crates that each mint the same <code>#[wasm_bindgen] FooList</code> export one JS
-class name twice and fail to link a single wasm cdylib (<code>duplicate symbol: __wbg_foolist_free</code>). The
+class name twice and cannot produce one public WASM binding surface: older versions reject
+link symbols, while current wasm-bindgen rejects duplicate exported class names. The
 <code>--workspace-dep</code> (consumer side) and <code>--wrapper-requests</code> (dependency side) flags place every
 all-one-dep wrapper in the <strong>owning dependency</strong>, so every consumer imports one shared definition. Two
 generated files carry this, both under the <strong>wasm</strong> crate&#x27;s tool-owned <code>src/generated/**</code> (clobbered
@@ -1182,6 +1226,12 @@ too: rows read <code>(&quot;cml_dep&quot;, &quot;FooOrderedSet&quot;, &quot;[* f
 rule-line hint the not-in-index warning prints moves it into comment position, where it <em>is</em> CDDL.
 Without the marker the dependency would rebuild a loose list or a keyed table under a name that
 promises uniqueness or duplicate-preservation, which is the one skew this column exists to prevent.</p>
+<p><strong>Explicit full-<code>u64</code> windows retain their bounded carrier in request shapes.</strong>
+For minimum zero or one with maximum <code>18446744073709551615</code>, the sidecar retains that numeric maximum: <code>[*18446744073709551615 foo]</code> or <code>[1*18446744073709551615 foo]</code>, and the corresponding map forms.
+These reconstruct the bounded list, ordered-set, keyed-map or pair-map class and its checked conversion door; collapsing them to <code>*</code> or <code>+</code> would select a different native carrier and structural name.
+Duplicate-policy markers remain part of flavored shapes.
+A higher minimum already selects a bounded carrier with an absent maximum, so its existing <code>2*</code> spelling stays unchanged.
+Request diagnostics describe only validated authored leaf names, preserving aliases and repeated leaves; policy-marker words are syntax rather than additional element types.</p>
 <p><strong>A borrowed reject set also obliges the key-derive channel.</strong> Its hosted class wraps
 <code>OrderedSet&lt;Elem&gt;</code>, whose uniqueness scan needs <code>Elem: Ord</code> — a derive that lives in the
 dependency&#x27;s crate. The consumer records that demand in <code>borrowed_key_types.rs</code> (below), so a
@@ -1305,6 +1355,8 @@ does not need this crate&#x27;s one.</li>
 </ul>
 <p>Each file begins with a strict versioned <strong>seam header</strong> on its first line:</p>
 <div class="language-cddl codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-cddl codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">; _CDDL_CODEGEN_EXTERN_INTERFACE_ v1</span><br></div></code></pre></div></div>
+<p>The exporter uses <code>v2</code> for every file when its finalized IR uses <code>any</code>; otherwise it uses <code>v1</code>.
+The consumer accepts both versions.</p>
 <p>The header is per-file (not a manifest) so a physically-copied single file still carries its seam. A
 consumer feeding a file through <code>--extern-import</code> <strong>strictly parses</strong> it against this header: a
 missing/unknown header, or any <code>@</code>-annotation outside the recognized comment-DSL set, is a hard error
@@ -1400,7 +1452,7 @@ it uses are equally valid in a <code>std</code> crate.</p>
 <p>A <code>no_std</code> consumer takes the crate with <code>default-features = false</code>; a <code>std</code> consumer changes
 nothing and notices nothing. Three pieces make that work:</p>
 <ul>
-<li class=""><strong>Emitted code is <code>core</code>/<code>alloc</code>-pathed unconditionally</strong>, and each generated module file carries
+<li class=""><strong>Emitted code is <code>core</code>/<code>alloc</code>-pathed unconditionally</strong>, and each generated module file that needs an alloc binding carries
 its own <code>extern crate alloc;</code>. Per-file rather than crate-root, because the crate root is
 <a href="#generated-crate-roots-thin-root-seed-once" class="">seeded once and then yours</a> — the tool cannot deliver
 a new line there to a crate it has already generated, and <code>use alloc::…</code> does not resolve without
@@ -1517,7 +1569,8 @@ extern-interface export is: the seeded crate root tells every consumer to run it
 there.</li>
 <li class=""><strong>A no-std <em>target</em> is required, not just the feature.</strong> Host targets always link <code>std</code>, so a host
 <code>cargo check</code> cannot prove anything here; <code>thumbv7m-none-eabi</code> is a bare-metal target with no <code>std</code>
-at all. Install it once with <code>rustup target add thumbv7m-none-eabi</code>.</li>
+at all. On a rustup-managed toolchain install it with <code>rustup target add thumbv7m-none-eabi</code>; with
+another compiler (for example Nix), provision that target through the compiler&#x27;s package/environment.</li>
 <li class=""><strong>Deliberately standalone</strong>, via an empty <code>[workspace]</code> table in its manifest. That keeps it out of
 a surrounding cargo workspace, which matters for correctness and not just tidiness: cargo unifies
 features across a whole dependency graph, so one other workspace member turning <code>std</code> back on for a
@@ -1712,11 +1765,15 @@ merged field forces a table). This means, e.g., <code>wasm-bindgen = { version =
 Two things about how a merged entry <em>reads</em>. Its inline table is re-spaced to the canonical
 <code>{ a = 1, b = 2 }</code> form — merging moves fields around, and the spacing a field carried in its old
 position is wrong in its new one — except in an entry whose braces hold a comment or a line break,
-which is left exactly as you wrote it. And a dependency the tool <strong>adds</strong> to a <code>[dependencies]</code>
-table that already existed gets a <code># cddl-codegen</code> marker on its line: it can only be appended at
+which is left exactly as you wrote it. And a dependency the tool <strong>adds</strong> to a dependency table
+that already existed gets a <code># cddl-codegen</code> marker on its line: it can only be appended at
 the end of the table, which is wherever your last section comment happens to reach, so it says
-whose it is rather than reading as if that comment scoped it. A manifest the tool writes from
-scratch is wholly tool-owned and gets no markers, and an entry you wrote yourself is merged into
+whose it is rather than reading as if that comment scoped it. The exact
+<code>--emit-tests</code> + <code>--json-serde-derives</code> + <code>--json-schema-export</code> triple also owns
+<code>[dev-dependencies].jsonschema</code>; it follows the same field-level merge, ownership-marker, and
+conditional-removal contract, but never forwards <code>jsonschema/std</code> through the library&#x27;s
+<code>features.std</code>. A manifest the tool writes from scratch is wholly tool-owned and gets no markers,
+and an entry you wrote yourself is merged into
 and gets none either.
 One exception to field preservation: a tool spec may assert the dep&#x27;s <em>source axis</em> outright, and
 then source-axis keys the spec does not itself re-specify are <strong>dropped</strong> from your entry rather
@@ -1870,6 +1927,6 @@ failure behaviour.</p>
 <p>The two always-emitted sibling directories are not pictured above and do <strong>not</strong> move with the
 crates: <code>extern-interface/</code> and <a href="#the-no-std-check-shim-crate" class=""><code>no-std-check/</code></a> stay at the output
 root in every layout. The shim absorbs the nesting in its path dependency instead, which reaches
-<code>rust/rust</code> here rather than <code>rust</code>.</p></div></article><nav class="docusaurus-mt-lg pagination-nav" aria-label="Docs pages"><a class="pagination-nav__link pagination-nav__link--prev" href="/cddl-codegen/config_file"><div class="pagination-nav__sublabel">Previous</div><div class="pagination-nav__label">Config file</div></a><a class="pagination-nav__link pagination-nav__link--next" href="/cddl-codegen/preserving_edits"><div class="pagination-nav__sublabel">Next</div><div class="pagination-nav__label">Preserving edits to generated code</div></a></nav></div></div><div class="col col--3"><div class="tableOfContents_bqdL thin-scrollbar theme-doc-toc-desktop"><ul class="table-of-contents table-of-contents__left-border"><li><a href="#type-spelling-at-member-positions" class="table-of-contents__link toc-highlight">Type spelling at member positions</a></li><li><a href="#wasm-feature-gate-for-c-style-enums" class="table-of-contents__link toc-highlight">Wasm feature gate for c-style enums</a></li><li><a href="#optional-fixed-value-members" class="table-of-contents__link toc-highlight">Optional fixed-value members</a></li><li><a href="#optional-members-whose-type-is-nullable" class="table-of-contents__link toc-highlight">Optional members whose type is nullable</a></li><li><a href="#nominal-tag-258-set-types" class="table-of-contents__link toc-highlight">Nominal tag-258 set types</a></li><li><a href="#the-any-type-anycbor-runtime-value" class="table-of-contents__link toc-highlight">The <code>any</code> type (<code>AnyCbor</code> runtime value)</a><ul><li><a href="#constructors-and-accessors" class="table-of-contents__link toc-highlight">Constructors and accessors</a></li><li><a href="#rfc-8610-expected-conversion-tags-over-any" class="table-of-contents__link toc-highlight">RFC 8610 expected-conversion tags over <code>any</code></a></li><li><a href="#json-representation---json-serde-derives----json-schema-export" class="table-of-contents__link toc-highlight">JSON representation (<code>--json-serde-derives</code> / <code>--json-schema-export</code>)</a></li></ul></li><li><a href="#hex-text-the-canonical-grammar" class="table-of-contents__link toc-highlight">Hex text: the canonical grammar</a></li><li><a href="#open-struct-maps-rest-rows" class="table-of-contents__link toc-highlight">Open struct-maps (rest rows)</a><ul><li><a href="#typed-key-domains-in-json" class="table-of-contents__link toc-highlight">Typed key domains in JSON</a></li><li><a href="#the-ignore-tolerate-and-drop-flavor" class="table-of-contents__link toc-highlight">The <code>@ignore</code> (tolerate-and-drop) flavor</a></li></ul></li><li><a href="#open-tables-a-typed-row-plus-a-catch-all" class="table-of-contents__link toc-highlight">Open tables (a typed row plus a catch-all)</a><ul><li><a href="#the-two-regions-share-one-order-vector" class="table-of-contents__link toc-highlight">The two regions share one order vector</a></li><li><a href="#the-nonempty-twin" class="table-of-contents__link toc-highlight">The NonEmpty twin</a></li><li><a href="#bounded-rows" class="table-of-contents__link toc-highlight">Bounded rows</a></li><li><a href="#two-regions-two-key-images" class="table-of-contents__link toc-highlight">Two regions, two key images</a></li><li><a href="#reading-is-typed-first" class="table-of-contents__link toc-highlight">Reading is typed-first</a></li><li><a href="#the-t-contract-inherited--and-where-it-bends" class="table-of-contents__link toc-highlight">The T-contract, inherited — and where it bends</a></li><li><a href="#schema" class="table-of-contents__link toc-highlight">Schema</a></li></ul></li><li><a href="#open-arrays-rest-tails" class="table-of-contents__link toc-highlight">Open arrays (rest tails)</a><ul><li><a href="#the-ignore-tolerate-and-drop-flavor-1" class="table-of-contents__link toc-highlight">The <code>@ignore</code> (tolerate-and-drop) flavor</a></li></ul></li><li><a href="#non-empty-containers" class="table-of-contents__link toc-highlight">Non-empty containers</a></li><li><a href="#reject-duplicates-containers-uniqueness-twins" class="table-of-contents__link toc-highlight">Reject-duplicates containers (uniqueness twins)</a></li><li><a href="#preserve-duplicates-tables-pair-map-twins" class="table-of-contents__link toc-highlight">Preserve-duplicates tables (pair-map twins)</a></li><li><a href="#generated-crate-roots-thin-root-seed-once" class="table-of-contents__link toc-highlight">Generated crate roots (thin root, seed-once)</a><ul><li><a href="#per-scope-hand-modules-the-facade-pattern" class="table-of-contents__link toc-highlight">Per-scope hand modules: the facade pattern</a></li><li><a href="#generated-wrapper-field-visibility" class="table-of-contents__link toc-highlight">Generated wrapper field visibility</a></li><li><a href="#migrating-from-pre-split-layouts" class="table-of-contents__link toc-highlight">Migrating from pre-split layouts</a></li></ul></li><li><a href="#workspace-mode-borrowed-and-requested-collection-wrappers" class="table-of-contents__link toc-highlight">Workspace mode: borrowed and requested collection wrappers</a><ul><li><a href="#borrowed_collectionsrs--the-consumers-sidecar" class="table-of-contents__link toc-highlight"><code>borrowed_collections.rs</code> — the consumer&#39;s sidecar</a></li><li><a href="#borrowed_key_typesrs--the-consumers-map-key-derive-sidecar" class="table-of-contents__link toc-highlight"><code>borrowed_key_types.rs</code> — the consumer&#39;s map-key-derive sidecar</a></li><li><a href="#requested_collectionsrs--the-dependencys-hosted-wrappers" class="table-of-contents__link toc-highlight"><code>requested_collections.rs</code> — the dependency&#39;s hosted wrappers</a></li><li><a href="#the-regeneration-contract" class="table-of-contents__link toc-highlight">The regeneration contract</a></li></ul></li><li><a href="#extern-interface-export" class="table-of-contents__link toc-highlight">Extern-interface export</a><ul><li><a href="#rustsrcgeneratedextern_interface_checkrs" class="table-of-contents__link toc-highlight"><code>rust/src/generated/extern_interface_check.rs</code></a></li></ul></li><li><a href="#the-std-feature-building-without-std" class="table-of-contents__link toc-highlight">The <code>std</code> feature (building without <code>std</code>)</a></li><li><a href="#the-no-std-check-shim-crate" class="table-of-contents__link toc-highlight">The <code>no-std-check</code> shim crate</a></li><li><a href="#upgrading-a-crate-generated-before-the-no_std-output" class="table-of-contents__link toc-highlight">Upgrading a crate generated before the <code>no_std</code> output</a></li><li><a href="#generated-cargotoml-merge-not-clobber" class="table-of-contents__link toc-highlight">Generated <code>Cargo.toml</code> (merge, not clobber)</a></li></ul></div></div></div></div></main></div></div></div><footer class="theme-layout-footer footer footer--dark"><div class="container container-fluid"><div class="footer__bottom text--center"><div class="footer__copyright">Copyright © 2026 dcSpark. Built with Docusaurus.</div></div></div></footer></div>
+<code>rust/rust</code> here rather than <code>rust</code>.</p></div></article><nav class="docusaurus-mt-lg pagination-nav" aria-label="Docs pages"><a class="pagination-nav__link pagination-nav__link--prev" href="/cddl-codegen/config_file"><div class="pagination-nav__sublabel">Previous</div><div class="pagination-nav__label">Config file</div></a><a class="pagination-nav__link pagination-nav__link--next" href="/cddl-codegen/preserving_edits"><div class="pagination-nav__sublabel">Next</div><div class="pagination-nav__label">Preserving edits to generated code</div></a></nav></div></div><div class="col col--3"><div class="tableOfContents_bqdL thin-scrollbar theme-doc-toc-desktop"><ul class="table-of-contents table-of-contents__left-border"><li><a href="#type-spelling-at-member-positions" class="table-of-contents__link toc-highlight">Type spelling at member positions</a></li><li><a href="#wasm-feature-gate-for-c-style-enums" class="table-of-contents__link toc-highlight">Wasm feature gate for c-style enums</a></li><li><a href="#optional-fixed-value-members" class="table-of-contents__link toc-highlight">Optional fixed-value members</a></li><li><a href="#optional-members-whose-type-is-nullable" class="table-of-contents__link toc-highlight">Optional members whose type is nullable</a></li><li><a href="#nominal-tag-258-set-types" class="table-of-contents__link toc-highlight">Nominal tag-258 set types</a></li><li><a href="#the-any-type-anycbor-runtime-value" class="table-of-contents__link toc-highlight">The <code>any</code> type (<code>AnyCbor</code> runtime value)</a><ul><li><a href="#constructors-and-accessors" class="table-of-contents__link toc-highlight">Constructors and accessors</a></li><li><a href="#rfc-8610-expected-conversion-tags-over-any" class="table-of-contents__link toc-highlight">RFC 8610 expected-conversion tags over <code>any</code></a></li><li><a href="#json-representation---json-serde-derives----json-schema-export" class="table-of-contents__link toc-highlight">JSON representation (<code>--json-serde-derives</code> / <code>--json-schema-export</code>)</a></li><li><a href="#checked-scalar-json-schema" class="table-of-contents__link toc-highlight">Checked scalar JSON Schema</a></li></ul></li><li><a href="#hex-text-the-canonical-grammar" class="table-of-contents__link toc-highlight">Hex text: the canonical grammar</a></li><li><a href="#open-struct-maps-rest-rows" class="table-of-contents__link toc-highlight">Open struct-maps (rest rows)</a><ul><li><a href="#typed-key-domains-in-json" class="table-of-contents__link toc-highlight">Typed key domains in JSON</a></li><li><a href="#the-ignore-tolerate-and-drop-flavor" class="table-of-contents__link toc-highlight">The <code>@ignore</code> (tolerate-and-drop) flavor</a></li></ul></li><li><a href="#open-tables-a-typed-row-plus-a-catch-all" class="table-of-contents__link toc-highlight">Open tables (a typed row plus a catch-all)</a><ul><li><a href="#the-two-regions-share-one-order-vector" class="table-of-contents__link toc-highlight">The two regions share one order vector</a></li><li><a href="#the-nonempty-twin" class="table-of-contents__link toc-highlight">The NonEmpty twin</a></li><li><a href="#bounded-rows" class="table-of-contents__link toc-highlight">Bounded rows</a></li><li><a href="#two-regions-two-key-images" class="table-of-contents__link toc-highlight">Two regions, two key images</a></li><li><a href="#reading-is-typed-first" class="table-of-contents__link toc-highlight">Reading is typed-first</a></li><li><a href="#the-t-contract-inherited--and-where-it-bends" class="table-of-contents__link toc-highlight">The T-contract, inherited — and where it bends</a></li><li><a href="#schema" class="table-of-contents__link toc-highlight">Schema</a></li></ul></li><li><a href="#open-arrays-rest-tails" class="table-of-contents__link toc-highlight">Open arrays (rest tails)</a><ul><li><a href="#the-ignore-tolerate-and-drop-flavor-1" class="table-of-contents__link toc-highlight">The <code>@ignore</code> (tolerate-and-drop) flavor</a></li></ul></li><li><a href="#non-empty-containers" class="table-of-contents__link toc-highlight">Non-empty containers</a></li><li><a href="#reject-duplicates-containers-uniqueness-twins" class="table-of-contents__link toc-highlight">Reject-duplicates containers (uniqueness twins)</a></li><li><a href="#preserve-duplicates-tables-pair-map-twins" class="table-of-contents__link toc-highlight">Preserve-duplicates tables (pair-map twins)</a></li><li><a href="#generated-crate-roots-thin-root-seed-once" class="table-of-contents__link toc-highlight">Generated crate roots (thin root, seed-once)</a><ul><li><a href="#per-scope-hand-modules-the-facade-pattern" class="table-of-contents__link toc-highlight">Per-scope hand modules: the facade pattern</a></li><li><a href="#generated-wrapper-field-visibility" class="table-of-contents__link toc-highlight">Generated wrapper field visibility</a></li><li><a href="#migrating-from-pre-split-layouts" class="table-of-contents__link toc-highlight">Migrating from pre-split layouts</a></li></ul></li><li><a href="#workspace-mode-borrowed-and-requested-collection-wrappers" class="table-of-contents__link toc-highlight">Workspace mode: borrowed and requested collection wrappers</a><ul><li><a href="#borrowed_collectionsrs--the-consumers-sidecar" class="table-of-contents__link toc-highlight"><code>borrowed_collections.rs</code> — the consumer&#39;s sidecar</a></li><li><a href="#borrowed_key_typesrs--the-consumers-map-key-derive-sidecar" class="table-of-contents__link toc-highlight"><code>borrowed_key_types.rs</code> — the consumer&#39;s map-key-derive sidecar</a></li><li><a href="#requested_collectionsrs--the-dependencys-hosted-wrappers" class="table-of-contents__link toc-highlight"><code>requested_collections.rs</code> — the dependency&#39;s hosted wrappers</a></li><li><a href="#the-regeneration-contract" class="table-of-contents__link toc-highlight">The regeneration contract</a></li></ul></li><li><a href="#extern-interface-export" class="table-of-contents__link toc-highlight">Extern-interface export</a><ul><li><a href="#rustsrcgeneratedextern_interface_checkrs" class="table-of-contents__link toc-highlight"><code>rust/src/generated/extern_interface_check.rs</code></a></li></ul></li><li><a href="#the-std-feature-building-without-std" class="table-of-contents__link toc-highlight">The <code>std</code> feature (building without <code>std</code>)</a></li><li><a href="#the-no-std-check-shim-crate" class="table-of-contents__link toc-highlight">The <code>no-std-check</code> shim crate</a></li><li><a href="#upgrading-a-crate-generated-before-the-no_std-output" class="table-of-contents__link toc-highlight">Upgrading a crate generated before the <code>no_std</code> output</a></li><li><a href="#generated-cargotoml-merge-not-clobber" class="table-of-contents__link toc-highlight">Generated <code>Cargo.toml</code> (merge, not clobber)</a></li></ul></div></div></div></div></main></div></div></div><footer class="theme-layout-footer footer footer--dark"><div class="container container-fluid"><div class="footer__bottom text--center"><div class="footer__copyright">Copyright © 2026 dcSpark. Built with Docusaurus.</div></div></div></footer></div>
 </body>
 </html>

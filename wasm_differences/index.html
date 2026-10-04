@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="generator" content="Docusaurus v3.10.1">
 <title data-rh="true">Wasm Differences | cddl-codegen</title><meta data-rh="true" name="viewport" content="width=device-width,initial-scale=1"><meta data-rh="true" name="twitter:card" content="summary_large_image"><meta data-rh="true" property="og:url" content="https://dcspark.github.io/cddl-codegen/wasm_differences"><meta data-rh="true" property="og:locale" content="en"><meta data-rh="true" name="docusaurus_locale" content="en"><meta data-rh="true" name="docsearch:language" content="en"><meta data-rh="true" name="docusaurus_version" content="current"><meta data-rh="true" name="docusaurus_tag" content="docs-default-current"><meta data-rh="true" name="docsearch:version" content="current"><meta data-rh="true" name="docsearch:docusaurus_tag" content="docs-default-current"><meta data-rh="true" property="og:title" content="Wasm Differences | cddl-codegen"><meta data-rh="true" name="description" content="In the wasm crate we can&#x27;t always go one to one with the rust crate. Here are some differences/extra types in the WASM create. AsRef From and Into are implemented to go between the rust and wasm crate types to help."><meta data-rh="true" property="og:description" content="In the wasm crate we can&#x27;t always go one to one with the rust crate. Here are some differences/extra types in the WASM create. AsRef From and Into are implemented to go between the rust and wasm crate types to help."><link data-rh="true" rel="icon" href="/cddl-codegen/img/favicon.svg"><link data-rh="true" rel="canonical" href="https://dcspark.github.io/cddl-codegen/wasm_differences"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/wasm_differences" hreflang="en"><link data-rh="true" rel="alternate" href="https://dcspark.github.io/cddl-codegen/wasm_differences" hreflang="x-default"><link rel="stylesheet" href="/cddl-codegen/assets/css/styles.472964ba.css">
-<script src="/cddl-codegen/assets/js/runtime~main.f77b99d5.js" defer="defer"></script>
+<script src="/cddl-codegen/assets/js/runtime~main.87ed239d.js" defer="defer"></script>
 <script src="/cddl-codegen/assets/js/main.dc07992d.js" defer="defer"></script>
 </head>
 <body>
@@ -253,6 +253,19 @@ table&#x27;s <code>insert</code>. <code>get</code> returns the FIRST entry for t
 <code>{+}</code> NonEmptyPairMap wrapper both cross the boundary.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="enums">Enums<a href="#enums" class="hash-link" aria-label="Direct link to Enums" title="Direct link to Enums" translate="no">​</a></h2>
 <p>Both type/group choices generate rust-style enums. On the wasm side we can&#x27;t do that so we directly wrap the rust type, and then provide a <code>FooKind</code> c-style enum for each rust enum <code>Foo</code> just for checking which variant it is.</p>
+<p>Each arm has a <code>new_&lt;variant&gt;(…)</code> constructor. Its historic read door is
+<code>as_&lt;variant&gt;()</code>: for an inlined arm with one ordinary value it returns that value as an
+<code>Option</code>, with <code>None</code> on another arm. An inlined arm that materializes <strong>more than one value</strong> also
+gets one stable, field-qualified door per value: <code>as_&lt;variant&gt;_&lt;field&gt;() -&gt; Option&lt;T&gt;</code>. For example,
+<code>t = [ ? a: 0, x: tstr, ? b: 1 // y: bytes ]</code> exposes
+<code>new_t0(a, x, b)</code>, the compatibility <code>as_t0() -&gt; Option&lt;String&gt;</code> (the ordinary <code>x</code> payload), and
+<code>as_t0_a() -&gt; Option&lt;bool&gt;</code>, <code>as_t0_x() -&gt; Option&lt;String&gt;</code>, and
+<code>as_t0_b() -&gt; Option&lt;bool&gt;</code>. The optional-fixed <code>bool</code> reports CBOR presence — <code>Some(false)</code> means
+that arm is selected but the fixed item was absent, <code>Some(true)</code> means present, and <code>None</code> means a
+different arm. A sole optional-fixed value uses the legacy <code>as_&lt;variant&gt;() -&gt; Option&lt;bool&gt;</code> door.</p>
+<p>These are value doors only. Under <code>--preserve-encodings</code>, the rust enum may also carry encoding
+sidecars such as <code>len_encoding</code>; they are byte-fidelity metadata defaulted inside the constructor and
+never become constructor parameters or wasm getters.</p>
 <h2 class="anchor anchorTargetStickyNavbar_Vzrq" id="tag-and-newtype-wrappers">Tag and <code>@newtype</code> wrappers<a href="#tag-and-newtype-wrappers" class="hash-link" aria-label="Direct link to tag-and-newtype-wrappers" title="Direct link to tag-and-newtype-wrappers" translate="no">​</a></h2>
 <p>A CBOR tag over a non-struct type (<code>t = #6.10(uint)</code>) and a <code>; @newtype</code> rule both generate a wrapper
 struct. Both the rust and wasm bindings expose a full boundary surface: <code>new(inner)</code> to construct the
@@ -328,20 +341,25 @@ new name family: the getter returns the same structural class named after <code>
 (<code>MapMdToText</code>, or <code>PairMapMdToText</code> under <code>@duplicates preserve</code>), and that wrapper&#x27;s <code>keys()</code> returns
 what a <em>table</em> on the same key type returns — a bare <code>Vec</code> when <code>K</code> is wasm-native, the minted
 <code>&lt;K&gt;List</code> class (<code>MdList</code>, <code>BytesList</code>) otherwise.</p>
-<p>An <a class="" href="/cddl-codegen/output_format#open-arrays-rest-tails">open array</a> (<code>[uint, tstr, * t]</code>,
-<code>[uint, tstr, + t]</code>, or a safe middle form <code>[uint, * bytes, tstr]</code>) captures its repeated elements
-into a <code>rest</code> field the same way. On the wasm boundary that field is a <strong>read-only getter named
-after the field</strong> (<code>rest()</code> by default) returning the minted <strong>list</strong> wrapper for the segment&#x27;s
-element type (<code>AnyList</code> for an <code>* any</code> segment, <code>BytesList</code> for <code>* bytes</code>, or a bare <code>Vec</code> for a
-wasm-native element) — the same list-wrapper surface as any homogeneous array. A loose <code>*</code> segment
-has no constructor argument and defaults empty. A non-empty <code>+</code> / <code>1*</code> segment instead adds a
-first-element constructor argument and returns the corresponding restricted non-empty list wrapper
-(<code>NonEmptyBytesList</code>, for example), so the wasm API cannot create an empty segment. A bounded
-segment uses its matching checked list wrapper. The carrier/getter surface is the same for final
-tails, variable major-disjoint middle placement (whether its effective heads are generator-proven or
-declared by a transparent custom alias), finite disjoint fixed-domain same-major middle placement,
-and exact count-delimited middle placement; neither
-flavor has a setter.</p>
+<p>An <a class="" href="/cddl-codegen/output_format#open-arrays-rest-tails">open array</a> may capture one segment (<code>[uint, tstr, * t]</code>,
+<code>[uint, * bytes, tstr]</code>) or several uniquely named segments, including a possible-next chain whose
+same-major boundaries have disjoint generator-owned finite fixed-value domains:</p>
+<div class="language-cddl codeBlockContainer_Ckt0 theme-code-block" style="--prism-color:#393A34;--prism-background-color:#f6f8fa"><div class="codeBlockContent_QJqH"><pre tabindex="0" class="prism-code language-cddl codeBlock_bY9V thin-scrollbar" style="color:#393A34;background-color:#f6f8fa"><code class="codeBlockLines_e6Vv"><div class="token-line" style="color:#393A34"><span class="token plain">parts = [</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  * uint ; @name numbers</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">  , + tstr ; @name labels</span><br></div><div class="token-line" style="color:#393A34"><span class="token plain">]</span><br></div></code></pre></div></div>
+<p>Every segment has a <strong>read-only getter named after its field</strong> returning the minted list wrapper for its element and occurrence carrier
+(<code>AnyList</code>, <code>BytesList</code>, <code>NonEmptyBytesList</code>, a bounded wrapper, or a bare <code>Vec</code> for a wasm-native
+list). No segment has a setter.</p>
+<p>The one-segment constructor ABI is unchanged: loose defaults empty and contributes no argument,
+min-one contributes its first element, and bounded/exact forms take their checked wrapper. A
+multi-segment constructor instead takes the complete matching wrapper for <strong>every</strong> segment,
+including loose and min-one segments. Its public argument layout keeps the established fixed-fields-
+then-wrappers order, while the generated call reorders those values into the native constructor&#x27;s
+authored CDDL order. Restricted wrappers have already checked cardinality; the native constructor
+also checks element value windows before accepting the record. Final, exact count-owned, and
+possible-next-delimited placements use the same getter and wrapper types.</p>
+<p>A possible-next-delimited segment followed by an optional fixed field remains two independent wasm
+surfaces: the captured segment getter and the optional getter/setter; their values are never merged
+by the wire-boundary proof. Finite same-major discrimination changes only the native decoder&#x27;s retry
+and cursor restore, never the wasm carrier or wrapper surface.</p>
 <p>An <a class="" href="/cddl-codegen/comment_dsl#ignore"><code>@ignore</code></a> rest row <strong>or occurrence segment</strong> stores nothing, so its wasm class has
 <strong>no <code>rest()</code> getter</strong> — it is a plain closed struct&#x27;s wasm surface. The read-tolerance (unknown
 entries / final or safe-middle elements decode and are dropped) comes for free through the rust
