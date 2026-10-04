@@ -6106,7 +6106,7 @@
       "id": "ext.extern",
       "production": "sentinel",
       "profile": "CDDL_CODEGEN",
-      "rfc": "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_EXTERN_TYPE_; src/parsing.rs EXTERN_MARKER",
+      "rfc": "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_EXTERN_TYPE_; src/parsing/mod.rs EXTERN_MARKER",
       "title": "_CDDL_CODEGEN_EXTERN_TYPE_ — compose in a hand-written type"
     },
     {
@@ -6116,7 +6116,7 @@
       "id": "ext.raw_bytes",
       "production": "sentinel",
       "profile": "CDDL_CODEGEN",
-      "rfc": "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_RAW_BYTES_TYPE_; src/parsing.rs RAW_BYTES_MARKER",
+      "rfc": "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_RAW_BYTES_TYPE_; src/parsing/mod.rs RAW_BYTES_MARKER",
       "title": "_CDDL_CODEGEN_RAW_BYTES_TYPE_ — bytes with hand-written constraints"
     },
     {
@@ -6126,7 +6126,7 @@
       "id": "ext.extern.generic",
       "production": "sentinel",
       "profile": "CDDL_CODEGEN",
-      "rfc": "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_EXTERN_TYPE_; src/parsing.rs EXTERN_MARKER",
+      "rfc": "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_EXTERN_TYPE_; src/parsing/mod.rs EXTERN_MARKER",
       "title": "_CDDL_CODEGEN_EXTERN_TYPE_ generic base with NO instances — re-export only"
     },
     {
@@ -6136,7 +6136,7 @@
       "id": "ext.extern.generic_instance",
       "production": "sentinel",
       "profile": "CDDL_CODEGEN",
-      "rfc": "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_EXTERN_TYPE_; src/parsing.rs EXTERN_MARKER",
+      "rfc": "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_EXTERN_TYPE_; src/parsing/mod.rs EXTERN_MARKER",
       "title": "_CDDL_CODEGEN_EXTERN_TYPE_ generic base WITH an instance — per-instance alias"
     },
     {
@@ -6146,7 +6146,7 @@
       "id": "ext.raw_bytes.generic",
       "production": "sentinel",
       "profile": "CDDL_CODEGEN",
-      "rfc": "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_RAW_BYTES_TYPE_; src/parsing.rs RAW_BYTES_MARKER",
+      "rfc": "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_RAW_BYTES_TYPE_; src/parsing/mod.rs RAW_BYTES_MARKER",
       "title": "_CDDL_CODEGEN_RAW_BYTES_TYPE_ generic base — refused at parse time"
     },
     {

@@ -1417,6 +1417,10 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 // The single-choice tag first().unwrap() guard now belongs to parsing::lower_tagged_rule.
 // The unchanged len()==1 arm guards the same selection. No active panic key or
 // allowance is added; source custody does not claim this guard was triggered.
+// Root parser guards are defined in src/parsing/mod.rs. The root-file relocation
+// preserves payloads and function symbols, while changing the normalized file coordinate.
+// Active panic/Layer2 entries and allowances remain unchanged; main full qualifies
+// exercised paths, without claiming reachability for every invariant guard.
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired when the two anonymous-composite families and the group-choice-arm inline group
     // became graceful rejections) Three classes lived here, and they split by the composite's

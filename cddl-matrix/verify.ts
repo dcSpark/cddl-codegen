@@ -1509,8 +1509,10 @@ const controlop_prod_names = new Set<string>([
 ]);
 // CDDL_CODEGEN (vendor) profile: features resolve to the in-repo DSL source, not the ABNF/prelude/registry.
 const CDDL_CODEGEN_PSEUDO = new Set(["comment_dsl", "sentinel"]);
-const dslSource = readFileSync(`${CODEGEN_DIR}/src/comment_ast.rs`, "utf8") + "\n" +
-  readFileSync(`${CODEGEN_DIR}/src/parsing.rs`, "utf8");
+const dslDefiningSources = ["src/comment_ast.rs", "src/parsing/mod.rs"] as const;
+const dslSource = dslDefiningSources
+  .map(path => readFileSync(`${CODEGEN_DIR}/${path}`, "utf8"))
+  .join("\n");
 // Structured extraction of the vendor surface (shared by the backward lint below and the forward lint):
 // matching the directives! rows/MARKER constructs rather than substring-searching the whole source means a
 // directive that survives only in a comment or unrelated string no longer passes the backward lint.
@@ -1528,10 +1530,10 @@ const dslFlavors = new Set([
   ...[...dslSource.matchAll(/"([a-z]+)"\s*=>\s*demand\.\w+\s*=\s*true/g)].map(m => m[1]),
   ...[...dslSource.matchAll(/"([a-z]+)"\s*=>\s*DuplicatesPolicy::/g)].map(m => m[1]),
 ]);
-// Floor assertion: if a refactor of comment_ast.rs/parsing.rs changes the extractable shape, both lints
+// Floor assertion: if a refactor of comment_ast.rs/parsing/mod.rs changes the extractable shape, both lints
 // built on these sets would go vacuous (forward) or flag everything (backward) — fail loud instead.
 if (dslDirectives.length === 0 || dslMarkers.length === 0) {
-  console.error(`HARNESS FAILURE: vendor-source extraction went vacuous (directives=${dslDirectives.length}, markers=${dslMarkers.length}); comment_ast.rs/parsing.rs no longer match the extraction patterns.`);
+  console.error(`HARNESS FAILURE: vendor-source extraction went vacuous (directives=${dslDirectives.length}, markers=${dslMarkers.length}); comment_ast.rs/parsing/mod.rs no longer match the extraction patterns.`);
   process.exit(2);
 }
 const dslTokens = new Set([...dslDirectives, ...dslMarkers]);
@@ -1563,7 +1565,7 @@ for (const f of features) {
 }
 
 // FORWARD lint (CDDL_CODEGEN): every USER-FACING @directive (`comment_ast.rs` `directives!` row) and *_MARKER
-// (parsing.rs) must be modelled by a feature — completeness in the vendor source's direction (mirrors the
+// (parsing/mod.rs) must be modelled by a feature — completeness in the vendor source's direction (mirrors the
 // prelude lint). "User-facing" = documented in comment_dsl.mdx: that gate excludes INTERNAL markers
 // cddl-codegen injects itself (e.g. _CDDL_CODEGEN_SCOPE_MARKER_, used for module scoping, never written by
 // a user and absent from the docs), while still catching a new documented extension the matrix forgot.

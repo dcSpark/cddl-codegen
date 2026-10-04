@@ -115,7 +115,7 @@ const SEAMS: &[Seam] = &[
     },
     Seam {
         id: "ident_to_primitive",
-        mechanism: "parsing::ident_to_primitive (src/parsing.rs)",
+        mechanism: "parsing::ident_to_primitive (src/parsing/mod.rs)",
         callers: &[
             "parsing::try_float_or_reject — the float-window pre-pass of `parse_control_operator`",
             "parsing::parse_type — the rule-position `ControlOperator::Range` arm",
@@ -126,7 +126,7 @@ const SEAMS: &[Seam] = &[
     },
     Seam {
         id: "field_name",
-        mechanism: "parsing::type_to_field_name / group_entry_to_field_name (src/parsing.rs)",
+        mechanism: "parsing::type_to_field_name / group_entry_to_field_name (src/parsing/mod.rs)",
         callers: &[
             "parsing::group_entry_to_field_name — the `None` branch for an entry with no explicit \
              key, which derives the field name from the entry's TYPE name",

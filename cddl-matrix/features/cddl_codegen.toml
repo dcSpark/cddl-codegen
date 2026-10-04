@@ -7,7 +7,7 @@
 # PINNED SOURCE (the backward-lint condition — every feature must resolve to a real source, like prelude
 # features resolve to cddl.prelude): the `alt` token is the literal directive/marker, and verify.ts
 # asserts it appears in the in-repo source — `src/comment_ast.rs` (the `directives!` rows) for the
-# `comment_dsl` directives, `src/parsing.rs` (the *_MARKER consts) for the `sentinel` typenames. Same-repo
+# `comment_dsl` directives, `src/parsing/mod.rs` (the *_MARKER consts) for the `sentinel` typenames. Same-repo
 # means the source is "pinned" for free and structurally can't drift from the implementation. verify.ts
 # also runs the FORWARD lint: every directive/marker in those files must have a feature here.
 #
@@ -273,12 +273,12 @@ example = '''
 tm = _CDDL_CODEGEN_EXTERN_TYPE_ ; @extern_companions dep_wasm=TmList
 holder = [items: [* tm]]'''
 
-# ---- sentinel typenames (magic identifiers, not comments) — src/parsing.rs *_MARKER ----
+# ---- sentinel typenames (magic identifiers, not comments) — src/parsing/mod.rs *_MARKER ----
 [[feature]]
 id = "ext.extern"
 production = "sentinel"
 alt = "_CDDL_CODEGEN_EXTERN_TYPE_"
-rfc = "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_EXTERN_TYPE_; src/parsing.rs EXTERN_MARKER"
+rfc = "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_EXTERN_TYPE_; src/parsing/mod.rs EXTERN_MARKER"
 profile = "CDDL_CODEGEN"
 title = "_CDDL_CODEGEN_EXTERN_TYPE_ — compose in a hand-written type"
 desc = "Treats the rule as an externally-defined type implementing Serialize/Deserialize; no code is generated for it. (ruby/rust reject the undefined typename — expected for a vendor extension.)"
@@ -290,7 +290,7 @@ bar = [x: uint, y: foo]'''
 id = "ext.raw_bytes"
 production = "sentinel"
 alt = "_CDDL_CODEGEN_RAW_BYTES_TYPE_"
-rfc = "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_RAW_BYTES_TYPE_; src/parsing.rs RAW_BYTES_MARKER"
+rfc = "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_RAW_BYTES_TYPE_; src/parsing/mod.rs RAW_BYTES_MARKER"
 profile = "CDDL_CODEGEN"
 title = "_CDDL_CODEGEN_RAW_BYTES_TYPE_ — bytes with hand-written constraints"
 desc = "Encodes as bytes but defers to an external type implementing the RawBytesEncoding trait. (ruby/rust reject the undefined typename — expected.)"
@@ -310,7 +310,7 @@ bar = [rb]'''
 id = "ext.extern.generic"
 production = "sentinel"
 alt = "_CDDL_CODEGEN_EXTERN_TYPE_"
-rfc = "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_EXTERN_TYPE_; src/parsing.rs EXTERN_MARKER"
+rfc = "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_EXTERN_TYPE_; src/parsing/mod.rs EXTERN_MARKER"
 profile = "CDDL_CODEGEN"
 title = "_CDDL_CODEGEN_EXTERN_TYPE_ generic base with NO instances — re-export only"
 desc = "A generic extern base the spec never instantiates. Nothing is emitted for it beyond the re-export glue naming the bare base (`pub use crate::<Base>;`) in both faces: it names no concrete type, so the extern-interface self-check and the json-gen schema registrar must both SKIP it — a row spelling a bare `<Base>` would be E0107 against the parameterized type the marker declares."
@@ -322,7 +322,7 @@ plain = [x: uint]'''
 id = "ext.extern.generic_instance"
 production = "sentinel"
 alt = "_CDDL_CODEGEN_EXTERN_TYPE_"
-rfc = "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_EXTERN_TYPE_; src/parsing.rs EXTERN_MARKER"
+rfc = "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_EXTERN_TYPE_; src/parsing/mod.rs EXTERN_MARKER"
 profile = "CDDL_CODEGEN"
 title = "_CDDL_CODEGEN_EXTERN_TYPE_ generic base WITH an instance — per-instance alias"
 desc = "A generic extern base the spec binds (`ext_gen<uint>`). The rust crate aliases the instance itself (`pub type ExtGenU64 = ExtGen<u64>;`) and re-exports only the BASE, so one hand-written generic definition serves every instance; the wasm crate, which has no generics, instead requires a user-provided concrete `ExtGenU64` wrapper and re-exports THAT name."
@@ -334,7 +334,7 @@ holder = [y: ext_gen<uint>]'''
 id = "ext.raw_bytes.generic"
 production = "sentinel"
 alt = "_CDDL_CODEGEN_RAW_BYTES_TYPE_"
-rfc = "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_RAW_BYTES_TYPE_; src/parsing.rs RAW_BYTES_MARKER"
+rfc = "cddl-codegen sentinel; docs/docs/comment_dsl.mdx §_CDDL_CODEGEN_RAW_BYTES_TYPE_; src/parsing/mod.rs RAW_BYTES_MARKER"
 profile = "CDDL_CODEGEN"
 title = "_CDDL_CODEGEN_RAW_BYTES_TYPE_ generic base — refused at parse time"
 desc = "The raw-bytes marker's answer to the same generic-base axis the two extern rows above enumerate, and the opposite one: an extern base may legitimately be parameterized (it is an arbitrary hand-written type), but a raw-bytes type IS its own bytes and carries no element type for a parameter to name, so a generic base is refused by name at parse time rather than generating self-check and schema rows spelling a bare base that cannot compile against the parameterized type the marker declares. The remedy the message names is to declare it non-generic. Refused with and without instances, under --wasm=true and --wasm=false alike."
