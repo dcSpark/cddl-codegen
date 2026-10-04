@@ -1,0 +1,1 @@
+old.rs:6: The `// cddl-codegen:replaces` section records no generated code (it lexes to zero tokens); record the exact code being replaced under `replaces`.

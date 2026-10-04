@@ -1295,6 +1295,9 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 /// message breaks the contiguity, and a different function yields a different `<symbol>`). The
 /// remaining collapse boundary is per-(message, file, function): two bare sites in the SAME
 /// function share one key; distinct record helper/coordinator functions retain separate keys.
+// Preservation user-delimiter invariant expect now belongs to
+// comment_preserve.rs::validate_needles; its exact payload and lex-all-before-validation
+// order remain unchanged. No known-panic allowance is added.
 // Registry invariant guards live in `src/generation/wasm_wrapper_registry.rs`:
 // `record_dependency_class`/`record_dependency_alias` debug assertions and
 // `raw_collection_dependency_provider_scope` bounded-array/map expects retain their exact payloads.

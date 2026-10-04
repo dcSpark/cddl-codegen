@@ -816,6 +816,15 @@ struct Unplaceable {
 }
 
 impl Unplaceable {
+    fn unclassified(original: String, hint: Option<&str>) -> Self {
+        Self {
+            headline: UNCLASSIFIED_HEADLINE.to_owned(),
+            reason: unclassified_reason(hint),
+            original,
+            noun: "comment",
+        }
+    }
+
     /// An owned payload (insert/replace/`keep` block, or a trailing comment) that could not be placed.
     fn not_preserved(reason: String, original: String, noun: &'static str) -> Self {
         Self {
@@ -878,6 +887,22 @@ fn line_indent(src: &str, pos: usize) -> &str {
 /// ordered so ties at one offset keep their push order.
 struct Insertion {
     offset: usize,
+    order: usize,
+    text: String,
+}
+
+/// Composition tie domains at one byte offset; end and text never order operations.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum OpGroup {
+    Top,
+    PlacedInsertion,
+    Replace,
+}
+
+struct Op {
+    start: usize,
+    end: usize,
+    group: OpGroup,
     order: usize,
     text: String,
 }
@@ -1551,29 +1576,13 @@ pub fn preserve(old: &str, new: &str) -> Result<Preserved, PreserveError> {
     })
 }
 
-/// The merge proper, operating on already-unfolded `old`. See [`preserve`].
-fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
-    let old_lex = lex(old)?;
-    let new_lex = lex(new)?;
-
-    // 1. Recognize prior-run fail-loudly blocks (carried forward verbatim) and user insert blocks
-    //    (namespace-reserved), then build the virtual pristine old stream. Both remove code tokens
-    //    that were not the generator's output — a sentinel `compile_error!` block, and an insert
-    //    block's interior user code — so the identity tier can still fire and anchors stay sound.
-    let sentinel = recognize_sentinels(&old_lex);
-    let block_scan = scan_blocks(&old_lex, &sentinel.sentinel_comment)?;
-    let sentinel_comment = &sentinel.sentinel_comment;
-    let carried_blocks = &sentinel.carried_blocks;
-    let mut removed_code: BTreeSet<usize> = sentinel.removed_code.clone();
-    removed_code.extend(block_scan.removed_code.iter().copied());
-
-    // Lex each replace block's recorded original into its NEEDLE tokens (owned via the block's
-    // `needle_text`, which outlives this borrow). Validate here (all hard errors, pre-splice): the
-    // recorded original must lex, be non-empty (a section that lexes to zero code tokens — e.g. all
-    // `// //` lines — records nothing to place against), be never-negative (never close a delimiter it
-    // does not open), and change delimiter depth by the SAME net amount as the user section. Equal net
-    // delta means every token downstream of the splice keeps its exact delimiter depth, so top-level
-    // item splitting survives even a wrong needle (absolute balance was sufficient but not necessary).
+/// Lex every original before performing any block-ordered semantic validation.
+/// The caller keeps the BlockScan needle strings alive outside the returned borrows.
+fn validate_needles<'a>(
+    old: &str,
+    old_lex: &Lexed<'_>,
+    block_scan: &'a BlockScan,
+) -> Result<Vec<Lexed<'a>>, PreserveError> {
     let needle_lexed: Vec<Lexed> = block_scan
         .replace_blocks
         .iter()
@@ -1616,13 +1625,21 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
         }
     }
 
-    // Build the virtual pristine old stream + a general anchor remap: for an original anchor `a`,
-    // `remap[a]` is its index into the virtual stream. A sentinel `compile_error!` block and an
-    // insert-block interior contribute nothing (removed); a replace block's user-code span is
-    // SUBSTITUTED by the recorded original's needle (so the identity tier still fires when generator
-    // output is unchanged, and the needle regains both-sides uniqueness). Substitution makes the
-    // remap EXPAND/CONTRACT, not just contract — it need only be correct at non-interior positions,
-    // since a block's interior comments are consumed and no anchor points inside a substituted span.
+    Ok(needle_lexed)
+}
+
+/// Tokens borrow the caller's old source and outer BlockScan needle owners.
+struct VirtualOld<'a> {
+    code: Vec<CodeTok<'a>>,
+    remap: Vec<usize>,
+}
+
+fn build_virtual_old<'a>(
+    old_lex: &Lexed<'a>,
+    block_scan: &BlockScan,
+    needle_lexed: &[Lexed<'a>],
+    removed_code: &BTreeSet<usize>,
+) -> VirtualOld<'a> {
     let replace_at: BTreeMap<usize, usize> = block_scan
         .replace_blocks
         .iter()
@@ -1655,115 +1672,95 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
     }
     remap[old_lex.code.len()] = old_code.len();
 
-    // The generator's own comments (the CODEGEN_HEADER banner, static-prelude comments, `.doc()`
-    // renderings, …) appear identically in `new` at the same anchor, so they self-cancel: exclude
-    // any old comment `new` already carries at that anchor. The same set drives the insertion-point
-    // dedup below (a generator comment whose anchor merely SHIFTED re-anchors to exactly where `new`
-    // already carries it — inserting there would duplicate it).
-    let new_comment_keys: BTreeSet<(usize, &str)> = new_lex
-        .comments
-        .iter()
-        .filter(|c| c.own_line)
-        .map(|c| (c.anchor, c.text))
-        .collect();
-    // Text-presence dedup: every own-line comment text `new` carries anywhere (module docs,
-    // "Outside a user block…").
-    let new_own_line_texts: BTreeSet<&str> = new_lex
-        .comments
-        .iter()
-        .filter(|c| c.own_line)
-        .map(|c| c.text)
-        .collect();
-    // Trailing comments whose text `new` also carries cancel silently: defense-in-depth for the
-    // generator's no-trailing-comment invariant (module docs, "Trailing comments").
-    let new_trailing_texts: BTreeSet<&str> = new_lex
-        .comments
-        .iter()
-        .filter(|c| !c.own_line)
-        .map(|c| c.text)
-        .collect();
-    // Anchors where `new` carries a doc comment: those positions are tool-owned (docs flow from the
-    // CDDL/`@doc` DSL), so an old doc block re-anchoring there is stale tool output, not user text.
-    let new_doc_anchors: BTreeSet<usize> = new_lex
-        .comments
-        .iter()
-        .filter(|c| c.own_line && is_doc_comment(c.text))
-        .map(|c| c.anchor)
-        .collect();
-    // Anchor -> the own-line comment texts `new` carries there. Feeds the unclassified message's
-    // HINT only ("this run emits a comment at the same position"); see `unclassified_reason`.
-    // Texts `old` ALSO carries verbatim at the same anchor are filtered out: they matched exactly,
-    // so they are not candidates for "the reworded twin" — a set difference over already-matched
-    // pairs, not an ownership inference. Without it, every hint at a file's top anchor would recite
-    // the header banner and the whole unchanged remainder of a paragraph.
-    let old_comment_keys: BTreeSet<(usize, &str)> = old_lex
-        .comments
-        .iter()
-        .filter(|c| c.own_line)
-        .map(|c| (remap[c.anchor], c.text))
-        .collect();
-    let mut new_comment_at: BTreeMap<usize, Vec<&str>> = BTreeMap::new();
-    for c in new_lex.comments.iter().filter(|c| c.own_line) {
-        if old_comment_keys.contains(&(c.anchor, c.text)) {
-            continue;
-        }
-        new_comment_at.entry(c.anchor).or_default().push(c.text);
+    VirtualOld {
+        code: old_code,
+        remap,
     }
+}
 
-    // Split old comments into: trailing (fail loudly unless generator-owned) and own-line comments
-    // that are neither consumed by a block nor carried by `new` at the same anchor. The latter are
-    // UNCLASSIFIED, not "user comments": outside a `cddl-codegen:` block every comment in a
-    // generated file is tool-owned, and a user comment declares itself with a `keep` marker (which
-    // routes through `Placeable::Block`, not here). So nothing in this vector is ever inserted.
-    let mut trailing: Vec<&str> = Vec::new();
-    let mut unclassified: Vec<Comment> = Vec::new();
-    for (ci, cm) in old_lex.comments.iter().enumerate() {
-        if sentinel_comment.contains(&ci) || block_scan.consumed.contains(&ci) {
-            continue;
-        }
-        if !cm.own_line {
-            if !new_trailing_texts.contains(cm.text) {
-                trailing.push(cm.text);
+/// Fresh comments and unmatched message hints; this index does not infer ownership.
+struct NewCommentIndex<'a> {
+    new_comment_keys: BTreeSet<(usize, &'a str)>,
+    new_own_line_texts: BTreeSet<&'a str>,
+    new_trailing_texts: BTreeSet<&'a str>,
+    new_doc_anchors: BTreeSet<usize>,
+    new_comment_at: BTreeMap<usize, Vec<&'a str>>,
+}
+
+impl<'a> NewCommentIndex<'a> {
+    fn new(new_lex: &Lexed<'a>, old_lex: &Lexed<'_>, remap: &[usize]) -> Self {
+        let new_comment_keys: BTreeSet<(usize, &str)> = new_lex
+            .comments
+            .iter()
+            .filter(|c| c.own_line)
+            .map(|c| (c.anchor, c.text))
+            .collect();
+        // Text-presence dedup: every own-line comment text `new` carries anywhere (module docs,
+        // "Outside a user block…").
+        let new_own_line_texts: BTreeSet<&str> = new_lex
+            .comments
+            .iter()
+            .filter(|c| c.own_line)
+            .map(|c| c.text)
+            .collect();
+        // Trailing comments whose text `new` also carries cancel silently: defense-in-depth for the
+        // generator's no-trailing-comment invariant (module docs, "Trailing comments").
+        let new_trailing_texts: BTreeSet<&str> = new_lex
+            .comments
+            .iter()
+            .filter(|c| !c.own_line)
+            .map(|c| c.text)
+            .collect();
+        // Anchors where `new` carries a doc comment: those positions are tool-owned (docs flow from the
+        // CDDL/`@doc` DSL), so an old doc block re-anchoring there is stale tool output, not user text.
+        let new_doc_anchors: BTreeSet<usize> = new_lex
+            .comments
+            .iter()
+            .filter(|c| c.own_line && is_doc_comment(c.text))
+            .map(|c| c.anchor)
+            .collect();
+        // Anchor -> the own-line comment texts `new` carries there. Feeds the unclassified message's
+        // HINT only ("this run emits a comment at the same position"); see `unclassified_reason`.
+        // Texts `old` ALSO carries verbatim at the same anchor are filtered out: they matched exactly,
+        // so they are not candidates for "the reworded twin" — a set difference over already-matched
+        // pairs, not an ownership inference. Without it, every hint at a file's top anchor would recite
+        // the header banner and the whole unchanged remainder of a paragraph.
+        let old_comment_keys: BTreeSet<(usize, &str)> = old_lex
+            .comments
+            .iter()
+            .filter(|c| c.own_line)
+            .map(|c| (remap[c.anchor], c.text))
+            .collect();
+        let mut new_comment_at: BTreeMap<usize, Vec<&str>> = BTreeMap::new();
+        for c in new_lex.comments.iter().filter(|c| c.own_line) {
+            if old_comment_keys.contains(&(c.anchor, c.text)) {
+                continue;
             }
-            continue;
+            new_comment_at.entry(c.anchor).or_default().push(c.text);
         }
-        let anchor = remap[cm.anchor];
-        if new_comment_keys.contains(&(anchor, cm.text)) {
-            continue; // generator comment — already present in new at the same position
+
+        Self {
+            new_comment_keys,
+            new_own_line_texts,
+            new_trailing_texts,
+            new_doc_anchors,
+            new_comment_at,
         }
-        unclassified.push(Comment { anchor, ..*cm });
     }
+}
 
-    // 2. Place each user comment. Insertions target byte offsets in `new`; unplaceable comments and
-    //    the verbatim carried blocks become fail-loudly blocks at the top (after the header).
-    let mut insertions: Vec<Insertion> = Vec::new();
-    let mut unplaceable: Vec<Unplaceable> = Vec::new();
-    let mut order = 0usize;
-
-    let identity = code_eq(&old_code, &new_lex.code);
-    // Comment placement short-circuits on identity, but replace placement always needs the item
-    // partition (it matches the enclosing item and locates the needle within it), so build items
-    // whenever there is a replace block even under identity.
-    let need_items = !identity || !block_scan.replace_blocks.is_empty();
-    let old_items = if need_items {
-        split_items(&old_code)
-    } else {
-        Vec::new()
-    };
-    let new_items = if need_items {
-        split_items(&new_lex.code)
-    } else {
-        Vec::new()
-    };
-    let index = ItemIndex::new(&old_code, &new_lex.code, &old_items, &new_items);
-
-    // A replace block's needle must fall within a single top-level item of the virtual stream — a
-    // recorded original that straddles a top-level item boundary can't be placed by the item matcher
-    // and means malformed authoring: a hard error (checked here, after reconstruction, per the plan).
+/// Validate every reconstructed replacement boundary before attempting any placement.
+fn validate_replace_items(
+    old: &str,
+    index: &ItemIndex<'_>,
+    block_scan: &BlockScan,
+    remap: &[usize],
+    needle_lexed: &[Lexed<'_>],
+) -> Result<(), PreserveError> {
     for (bi, rb) in block_scan.replace_blocks.iter().enumerate() {
         let vstart = remap[rb.user_code_start];
         let vlen = needle_lexed[bi].code.len();
-        let containing = index.containing_old(vstart).map(|oi| &old_items[oi]);
+        let containing = index.containing_old(vstart).map(|oi| &index.old_items[oi]);
         match containing {
             Some(it) if vstart + vlen <= it.end => {}
             _ => {
@@ -1777,37 +1774,32 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
         }
     }
 
-    // Comments and insert blocks are placed by the same tiers; interleave them in source order so
-    // ties at one target offset keep their original top-to-bottom order (e.g. an insert block
-    // immediately above a comment).
-    enum Placeable<'a> {
-        Comment(&'a Comment<'a>),
-        Block(usize),
-    }
-    let mut placeables: Vec<(usize, Placeable)> = Vec::new();
-    for cm in &unclassified {
-        placeables.push((cm.start, Placeable::Comment(cm)));
-    }
-    for (bi, b) in block_scan.blocks.iter().enumerate() {
-        placeables.push((b.byte_start, Placeable::Block(bi)));
-    }
-    placeables.sort_by_key(|(s, _)| *s);
+    Ok(())
+}
 
-    // Anchor a code index into `new` through the tiers (identity → per-item → unique-statement).
-    let place = |a: usize| -> Result<Option<usize>, String> {
-        if a >= old_code.len() {
-            Ok(None) // dangling anchor at end of file
-        } else if identity {
-            Ok(Some(a)) // identity tier: same index in new
-        } else {
-            index.place_comment(a)
-        }
-    };
+struct Splice {
+    start: usize,
+    end: usize,
+    text: String,
+}
 
-    // 2a. Place each replace block: match the enclosing item into `new`, locate the needle uniquely
-    //     on BOTH sides, and splice the verbatim block over the matched byte range. A failure (drift,
-    //     ambiguity, vanished/reshaped item) traps the whole block in a fail-loudly `compile_error!`.
-    let mut splices: Vec<(usize, usize, String)> = Vec::new(); // (delete_start, delete_end, text)
+struct ReplacePlacement {
+    splices: Vec<Splice>,
+    unplaceable: Vec<Unplaceable>,
+}
+
+/// Only successfully located replacements contribute deleted ranges for later conflicts.
+fn place_replacements(
+    old: &str,
+    new: &str,
+    new_lex: &Lexed<'_>,
+    index: &ItemIndex<'_>,
+    block_scan: &BlockScan,
+    remap: &[usize],
+    needle_lexed: &[Lexed<'_>],
+) -> ReplacePlacement {
+    let mut splices: Vec<Splice> = Vec::new();
+    let mut unplaceable: Vec<Unplaceable> = Vec::new();
     for (bi, rb) in block_scan.replace_blocks.iter().enumerate() {
         let needle = &needle_lexed[bi].code;
         let vstart = remap[rb.user_code_start];
@@ -1838,7 +1830,11 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
                     text.push('\n');
                     text.push_str(indent);
                 }
-                splices.push((delete_start, last.end, text));
+                splices.push(Splice {
+                    start: delete_start,
+                    end: last.end,
+                    text,
+                });
             }
             Err(reason) => unplaceable.push(Unplaceable::not_preserved(
                 reason,
@@ -1847,13 +1843,185 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
             )),
         }
     }
+
+    ReplacePlacement {
+        splices,
+        unplaceable,
+    }
+}
+
+/// Compose after the caller's pristine fast return; no prior-output access occurs here.
+fn compose_overlay(
+    new: &str,
+    new_lex: &Lexed<'_>,
+    carried_blocks: &[String],
+    unplaceable: &[Unplaceable],
+    insertions: Vec<Insertion>,
+    splices: Vec<Splice>,
+) -> Result<Preserved, PreserveError> {
+    // Fail-loudly blocks go after the header and every leading inner attribute (a `compile_error!`
+    // item before `#![…]` makes the attribute illegal), the placement contract
+    // `alloc_import_inject::insertion_line` documents. Carried blocks (verbatim, for byte-stable
+    // carry-forward) precede freshly-minted ones.
+    let top_offset = {
+        let mut idx = 0;
+        while let Some(j) = inner_attr_end(&new_lex.code, idx) {
+            idx = j;
+        }
+        new_lex
+            .code
+            .get(idx)
+            .map(|t| line_start(new, t.start))
+            .unwrap_or(new.len())
+    };
+    // The merge engine is now a set of non-overlapping delete+insert ops on `new` (an insertion is a
+    // zero-width delete). Each op names its byte range, group, order, and text: bytes `[start, end)` are
+    // removed and `text` inserted at `start`. Group orders ties at one offset: top-of-file blocks (0)
+    // before placed insertions (1) before replace splices (2), so an insert block/comment anchored at
+    // a splice's start byte lands ABOVE the spliced code.
+    let mut top_order = 0usize;
+    let mut all: Vec<Op> = Vec::new();
+    for block in carried_blocks {
+        all.push(Op {
+            start: top_offset,
+            end: top_offset,
+            group: OpGroup::Top,
+            order: top_order,
+            text: format!("{block}\n"),
+        });
+        top_order += 1;
+    }
+    for u in unplaceable {
+        all.push(Op {
+            start: top_offset,
+            end: top_offset,
+            group: OpGroup::Top,
+            order: top_order,
+            text: format!(
+                "{}\n",
+                sentinel_block(&u.headline, &u.reason, &u.original, u.noun)
+            ),
+        });
+        top_order += 1;
+    }
+    for ins in insertions {
+        all.push(Op {
+            start: ins.offset,
+            end: ins.offset,
+            group: OpGroup::PlacedInsertion,
+            order: ins.order,
+            text: ins.text,
+        });
+    }
+    for (i, Splice { start, end, text }) in splices.into_iter().enumerate() {
+        all.push(Op {
+            start,
+            end,
+            group: OpGroup::Replace,
+            order: i,
+            text,
+        });
+    }
+    // Sort by start offset, then group, then push order.
+    all.sort_by(|x, y| {
+        x.start
+            .cmp(&y.start)
+            .then(x.group.cmp(&y.group))
+            .then(x.order.cmp(&y.order))
+    });
+
+    let mut content = String::with_capacity(new.len() + 64);
+    let mut prev = 0;
+    for Op {
+        start, end, text, ..
+    } in &all
+    {
+        // Deletes are non-overlapping and no insertion lands strictly inside one (the conflict rule),
+        // so ops advance monotonically. A `start < prev` here means two deletes overlap — defensive,
+        // should be unreachable given both-sides uniqueness + non-straddling — surface it, don't panic.
+        if *start < prev {
+            return err(
+                "internal: overlapping replace splices while composing the preservation overlay",
+            );
+        }
+        content.push_str(&new[prev..*start]);
+        content.push_str(text);
+        prev = *end;
+    }
+    content.push_str(&new[prev..]);
+
+    Ok(Preserved {
+        content,
+        changed: true,
+    })
+}
+
+/// Caller-owned lexical sources and indexes remain outside this placement phase.
+struct PlaceableContext<'a, 's> {
+    old: &'s str,
+    new: &'s str,
+    new_lex: &'a Lexed<'s>,
+    block_scan: &'a BlockScan,
+    remap: &'a [usize],
+    unclassified: &'a [Comment<'s>],
+    trailing: Vec<&'s str>,
+    comments: &'a NewCommentIndex<'s>,
+    splices: &'a [Splice],
+}
+
+struct PlaceablePlacement {
+    insertions: Vec<Insertion>,
+    unplaceable: Vec<Unplaceable>,
+}
+
+/// Replacement failures enter first; source-ordered placeables append next, trailing failures last.
+fn place_comments_and_blocks(
+    context: PlaceableContext<'_, '_>,
+    place: impl Fn(usize) -> Result<Option<usize>, String>,
+    mut unplaceable: Vec<Unplaceable>,
+) -> PlaceablePlacement {
+    let PlaceableContext {
+        old,
+        new,
+        new_lex,
+        block_scan,
+        remap,
+        unclassified,
+        trailing,
+        comments,
+        splices,
+    } = context;
+    let NewCommentIndex {
+        new_comment_keys,
+        new_own_line_texts,
+        new_trailing_texts: _,
+        new_doc_anchors,
+        new_comment_at,
+    } = comments;
+    let mut insertions: Vec<Insertion> = Vec::new();
+    // Comments and insert blocks are placed by the same tiers; interleave them in source order so
+    // ties at one target offset keep their original top-to-bottom order (e.g. an insert block
+    // immediately above a comment).
+    enum Placeable<'a> {
+        Comment(&'a Comment<'a>),
+        Block(usize),
+    }
+    let mut placeables: Vec<(usize, Placeable)> = Vec::new();
+    for cm in unclassified {
+        placeables.push((cm.start, Placeable::Comment(cm)));
+    }
+    for (bi, b) in block_scan.blocks.iter().enumerate() {
+        placeables.push((b.byte_start, Placeable::Block(bi)));
+    }
+    placeables.sort_by_key(|(s, _)| *s);
+
     // Successful splice ranges drive the op-composition conflict rule: an insertion whose target
     // offset falls STRICTLY INSIDE a deleted range (its referent is being replaced) fails loudly.
-    let delete_ranges: Vec<(usize, usize)> = splices.iter().map(|(s, e, _)| (*s, *e)).collect();
+    let delete_ranges: Vec<(usize, usize)> = splices.iter().map(|s| (s.start, s.end)).collect();
     let inside_delete =
         |off: usize| -> bool { delete_ranges.iter().any(|&(s, e)| s < off && off < e) };
 
-    for (_, p) in placeables {
+    for (order, (_, p)) in placeables.into_iter().enumerate() {
         match p {
             Placeable::Comment(cm) => {
                 // An unclassified comment is never inserted, so the tier machinery runs here ONLY to
@@ -1868,29 +2036,24 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
                         // earlier in the file) re-anchors to exactly where `new` already carries the
                         // identical comment — it is this run's own output, so drop it.
                         if new_comment_keys.contains(&(t, cm.text)) {
-                            order += 1;
                             continue;
                         }
                         // Text-presence dedup: `new` carries this exact own-line comment somewhere,
                         // so it is this run's own output even though neither anchor agreed (a
                         // cross-version regen that rewrote the code the comment annotates).
                         if new_own_line_texts.contains(cm.text) {
-                            order += 1;
                             continue;
                         }
                         // Doc ownership: `new` documents this anchor, so an old doc block here is
                         // stale tool output (the user channel for doc text is the CDDL/`@doc` DSL).
                         if is_doc_comment(cm.text) && new_doc_anchors.contains(&t) {
-                            order += 1;
                             continue;
                         }
                         let hint = new_comment_at.get(&t).map(|texts| texts.join(" / "));
-                        unplaceable.push(Unplaceable {
-                            headline: UNCLASSIFIED_HEADLINE.to_owned(),
-                            reason: unclassified_reason(hint.as_deref()),
-                            original: cm.text.to_owned(),
-                            noun: "comment",
-                        });
+                        unplaceable.push(Unplaceable::unclassified(
+                            cm.text.to_owned(),
+                            hint.as_deref(),
+                        ));
                     }
                     // The same text-presence dedup on the unplaceable path: the tiers could not
                     // re-anchor this comment (its annotated statement was itself rewritten), but
@@ -1903,13 +2066,8 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
                     // on a vanished item drops with them). A `keep`-marked doc run is a Block, so it
                     // is unaffected by this drop.
                     Err(_) if is_doc_comment(cm.text) => {}
-                    Err(_) => unplaceable.push(Unplaceable {
-                        headline: UNCLASSIFIED_HEADLINE.to_owned(),
-                        // No resolved target, so no hint: the tiers could not place it at all.
-                        reason: unclassified_reason(None),
-                        original: cm.text.to_owned(),
-                        noun: "comment",
-                    }),
+                    // No resolved target, so no hint: the tiers could not place it at all.
+                    Err(_) => unplaceable.push(Unplaceable::unclassified(cm.text.to_owned(), None)),
                 }
             }
             Placeable::Block(bi) => {
@@ -1934,7 +2092,6 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
                                 old[b.byte_start..b.byte_end].to_owned(),
                                 b.noun,
                             ));
-                            order += 1;
                             continue;
                         }
                         insertions.push(Insertion {
@@ -1954,7 +2111,6 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
                 }
             }
         }
-        order += 1;
     }
     for t in trailing {
         unplaceable.push(Unplaceable::not_preserved(
@@ -1965,6 +2121,156 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
             "comment",
         ));
     }
+
+    PlaceablePlacement {
+        insertions,
+        unplaceable,
+    }
+}
+
+/// The merge proper, operating on already-unfolded `old`. See [`preserve`].
+fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
+    let old_lex = lex(old)?;
+    let new_lex = lex(new)?;
+
+    // 1. Recognize prior-run fail-loudly blocks (carried forward verbatim) and user insert blocks
+    //    (namespace-reserved), then build the virtual pristine old stream. Both remove code tokens
+    //    that were not the generator's output — a sentinel `compile_error!` block, and an insert
+    //    block's interior user code — so the identity tier can still fire and anchors stay sound.
+    let sentinel = recognize_sentinels(&old_lex);
+    let block_scan = scan_blocks(&old_lex, &sentinel.sentinel_comment)?;
+    let sentinel_comment = &sentinel.sentinel_comment;
+    let carried_blocks = &sentinel.carried_blocks;
+    let mut removed_code: BTreeSet<usize> = sentinel.removed_code.clone();
+    removed_code.extend(block_scan.removed_code.iter().copied());
+
+    // Lex each replace block's recorded original into its NEEDLE tokens (owned via the block's
+    // `needle_text`, which outlives this borrow). Validate here (all hard errors, pre-splice): the
+    // recorded original must lex, be non-empty (a section that lexes to zero code tokens — e.g. all
+    // `// //` lines — records nothing to place against), be never-negative (never close a delimiter it
+    // does not open), and change delimiter depth by the SAME net amount as the user section. Equal net
+    // delta means every token downstream of the splice keeps its exact delimiter depth, so top-level
+    // item splitting survives even a wrong needle (absolute balance was sufficient but not necessary).
+    let needle_lexed = validate_needles(old, &old_lex, &block_scan)?;
+
+    // Build the virtual pristine old stream + a general anchor remap: for an original anchor `a`,
+    // `remap[a]` is its index into the virtual stream. A sentinel `compile_error!` block and an
+    // insert-block interior contribute nothing (removed); a replace block's user-code span is
+    // SUBSTITUTED by the recorded original's needle (so the identity tier still fires when generator
+    // output is unchanged, and the needle regains both-sides uniqueness). Substitution makes the
+    // remap EXPAND/CONTRACT, not just contract — it need only be correct at non-interior positions,
+    // since a block's interior comments are consumed and no anchor points inside a substituted span.
+    let VirtualOld {
+        code: old_code,
+        remap,
+    } = build_virtual_old(&old_lex, &block_scan, &needle_lexed, &removed_code);
+
+    // The generator's own comments (the CODEGEN_HEADER banner, static-prelude comments, `.doc()`
+    // renderings, …) appear identically in `new` at the same anchor, so they self-cancel: exclude
+    // any old comment `new` already carries at that anchor. The same set drives the insertion-point
+    // dedup below (a generator comment whose anchor merely SHIFTED re-anchors to exactly where `new`
+    // already carries it — inserting there would duplicate it).
+    let new_comments = NewCommentIndex::new(&new_lex, &old_lex, &remap);
+    let NewCommentIndex {
+        new_comment_keys,
+        new_own_line_texts: _,
+        new_trailing_texts,
+        new_doc_anchors: _,
+        new_comment_at: _,
+    } = &new_comments;
+
+    // Split old comments into: trailing (fail loudly unless generator-owned) and own-line comments
+    // that are neither consumed by a block nor carried by `new` at the same anchor. The latter are
+    // UNCLASSIFIED, not "user comments": outside a `cddl-codegen:` block every comment in a
+    // generated file is tool-owned, and a user comment declares itself with a `keep` marker (which
+    // routes through `Placeable::Block`, not here). So nothing in this vector is ever inserted.
+    let mut trailing: Vec<&str> = Vec::new();
+    let mut unclassified: Vec<Comment> = Vec::new();
+    for (ci, cm) in old_lex.comments.iter().enumerate() {
+        if sentinel_comment.contains(&ci) || block_scan.consumed.contains(&ci) {
+            continue;
+        }
+        if !cm.own_line {
+            if !new_trailing_texts.contains(cm.text) {
+                trailing.push(cm.text);
+            }
+            continue;
+        }
+        let anchor = remap[cm.anchor];
+        if new_comment_keys.contains(&(anchor, cm.text)) {
+            continue; // generator comment — already present in new at the same position
+        }
+        unclassified.push(Comment { anchor, ..*cm });
+    }
+
+    // 2. Place each user comment. Insertions target byte offsets in `new`; unplaceable comments and
+    //    the verbatim carried blocks become fail-loudly blocks at the top (after the header).
+    let identity = code_eq(&old_code, &new_lex.code);
+    // Comment placement short-circuits on identity, but replace placement always needs the item
+    // partition (it matches the enclosing item and locates the needle within it), so build items
+    // whenever there is a replace block even under identity.
+    let need_items = !identity || !block_scan.replace_blocks.is_empty();
+    let old_items = if need_items {
+        split_items(&old_code)
+    } else {
+        Vec::new()
+    };
+    let new_items = if need_items {
+        split_items(&new_lex.code)
+    } else {
+        Vec::new()
+    };
+    let index = ItemIndex::new(&old_code, &new_lex.code, &old_items, &new_items);
+
+    // A replace block's needle must fall within a single top-level item of the virtual stream — a
+    // recorded original that straddles a top-level item boundary can't be placed by the item matcher
+    // and means malformed authoring: a hard error (checked here, after reconstruction, per the plan).
+    validate_replace_items(old, &index, &block_scan, &remap, &needle_lexed)?;
+
+    // Anchor a code index into `new` through the tiers (identity → per-item → unique-statement).
+    let place = |a: usize| -> Result<Option<usize>, String> {
+        if a >= old_code.len() {
+            Ok(None) // dangling anchor at end of file
+        } else if identity {
+            Ok(Some(a)) // identity tier: same index in new
+        } else {
+            index.place_comment(a)
+        }
+    };
+
+    // 2a. Place each replace block: match the enclosing item into `new`, locate the needle uniquely
+    //     on BOTH sides, and splice the verbatim block over the matched byte range. A failure (drift,
+    //     ambiguity, vanished/reshaped item) traps the whole block in a fail-loudly `compile_error!`.
+    let ReplacePlacement {
+        splices,
+        unplaceable,
+    } = place_replacements(
+        old,
+        new,
+        &new_lex,
+        &index,
+        &block_scan,
+        &remap,
+        &needle_lexed,
+    );
+    let PlaceablePlacement {
+        insertions,
+        unplaceable,
+    } = place_comments_and_blocks(
+        PlaceableContext {
+            old,
+            new,
+            new_lex: &new_lex,
+            block_scan: &block_scan,
+            remap: &remap,
+            unclassified: &unclassified,
+            trailing,
+            comments: &new_comments,
+            splices: &splices,
+        },
+        place,
+        unplaceable,
+    );
 
     // Nothing to overlay → the pristine content is byte-identical to today.
     if insertions.is_empty()
@@ -1978,75 +2284,14 @@ fn preserve_inner(old: &str, new: &str) -> Result<Preserved, PreserveError> {
         });
     }
 
-    // Fail-loudly blocks go after the header and every leading inner attribute (a `compile_error!`
-    // item before `#![…]` makes the attribute illegal), the placement contract
-    // `alloc_import_inject::insertion_line` documents. Carried blocks (verbatim, for byte-stable
-    // carry-forward) precede freshly-minted ones.
-    let top_offset = {
-        let mut idx = 0;
-        while let Some(j) = inner_attr_end(&new_lex.code, idx) {
-            idx = j;
-        }
-        new_lex
-            .code
-            .get(idx)
-            .map(|t| line_start(new, t.start))
-            .unwrap_or(new.len())
-    };
-    // The merge engine is now a set of non-overlapping delete+insert ops on `new` (an insertion is a
-    // zero-width delete). Each op is `(start, end, group, order, text)`: bytes `[start, end)` are
-    // removed and `text` inserted at `start`. Group orders ties at one offset: top-of-file blocks (0)
-    // before placed insertions (1) before replace splices (2), so an insert block/comment anchored at
-    // a splice's start byte lands ABOVE the spliced code.
-    let mut top_order = 0usize;
-    let mut all: Vec<(usize, usize, usize, usize, String)> = Vec::new();
-    for block in carried_blocks {
-        all.push((top_offset, top_offset, 0, top_order, format!("{block}\n")));
-        top_order += 1;
-    }
-    for u in &unplaceable {
-        all.push((
-            top_offset,
-            top_offset,
-            0,
-            top_order,
-            format!(
-                "{}\n",
-                sentinel_block(&u.headline, &u.reason, &u.original, u.noun)
-            ),
-        ));
-        top_order += 1;
-    }
-    for ins in insertions {
-        all.push((ins.offset, ins.offset, 1, ins.order, ins.text));
-    }
-    for (i, (delete_start, delete_end, text)) in splices.into_iter().enumerate() {
-        all.push((delete_start, delete_end, 2, i, text));
-    }
-    // Sort by start offset, then group, then push order.
-    all.sort_by(|x, y| x.0.cmp(&y.0).then(x.2.cmp(&y.2)).then(x.3.cmp(&y.3)));
-
-    let mut content = String::with_capacity(new.len() + 64);
-    let mut prev = 0;
-    for (start, end, _, _, text) in &all {
-        // Deletes are non-overlapping and no insertion lands strictly inside one (the conflict rule),
-        // so ops advance monotonically. A `start < prev` here means two deletes overlap — defensive,
-        // should be unreachable given both-sides uniqueness + non-straddling — surface it, don't panic.
-        if *start < prev {
-            return err(
-                "internal: overlapping replace splices while composing the preservation overlay",
-            );
-        }
-        content.push_str(&new[prev..*start]);
-        content.push_str(text);
-        prev = *end;
-    }
-    content.push_str(&new[prev..]);
-
-    Ok(Preserved {
-        content,
-        changed: true,
-    })
+    compose_overlay(
+        new,
+        &new_lex,
+        carried_blocks,
+        &unplaceable,
+        insertions,
+        splices,
+    )
 }
 
 /// The top-level item partitions of the virtual old stream and of `new`, with the (kind, name) +
