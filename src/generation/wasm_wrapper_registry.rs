@@ -252,7 +252,7 @@ impl WasmCollectionWrapperRegistry {
             .into_iter()
             .filter(|ident| {
                 !is_valid_rust_ident(ident.as_ref())
-                    || crate::parsing::RUST_KEYWORDS.contains(&ident.as_ref())
+                    || crate::rust_reserved::RUST_KEYWORDS.contains(&ident.as_ref())
             })
             .map(|ident| {
                 format!(

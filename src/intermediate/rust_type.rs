@@ -6,7 +6,7 @@
 //! Full inversion is a bigger job (the `from_wasm` flag threads through type naming), so these stay
 //! as the boundary's documented leaks rather than being "fixed" here.
 use super::*;
-use crate::{generation::table_type, parsing::RUST_KEYWORDS, utils::is_valid_rust_ident};
+use crate::{generation::table_type, rust_reserved::RUST_KEYWORDS, utils::is_valid_rust_ident};
 use std::num::NonZeroU32;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -3777,7 +3777,7 @@ mod tests {
     use crate::intermediate::{
         AliasIdent, CDDLIdent, GenericParamBinding, IntermediateTypes, RustIdent,
     };
-    use crate::{parsing::RUST_KEYWORDS, utils::is_valid_rust_ident};
+    use crate::{rust_reserved::RUST_KEYWORDS, utils::is_valid_rust_ident};
     use cbor_event::Sz;
 
     #[test]

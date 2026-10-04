@@ -2,6 +2,9 @@
 //! mistaken for an occurrence window. Source declarations remain authoritative even when
 //! the recursion boundary later nominalizes an alias or generic resolution changes its IR.
 
+use super::control::{
+    control_operand_integer, decimal_integer_control_operand_rejection, type2_is_decimal_float,
+};
 use super::*;
 use std::rc::Rc;
 

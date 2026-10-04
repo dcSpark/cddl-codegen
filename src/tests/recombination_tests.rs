@@ -1421,12 +1421,106 @@ fn classify_all(comps: &[Composition], extra_args: &[&str]) -> Vec<Outcome> {
 // preserves payloads and function symbols, while changing the normalized file coordinate.
 // Active panic/Layer2 entries and allowances remain unchanged; main full qualifies
 // exercised paths, without claiming reachability for every invariant guard.
+// Fixed generated-local registry LOCKSTEP ownership now belongs to rust_reserved.rs:
+// RUST_KEYWORDS, GENERATED_LOCAL_RESERVED, ReservedScope (including applies), and
+// test-only GENERATED_LOCAL_PROBED_SAFE retain exact membership/order/cfg/derive/evidence.
+// generated_local_field_rejection retains the exact formatted diagnostic under rust_reserved.
+// The encoding-companion suffix registry and pairwise scanner remain in parsing/mod.rs.
+// No direct panic/expect/unwrap guard moves in this ownership slice; no allowance is added.
+// Normalized production-frame attribution for descendant failures remains main qualification.
+// Parser AST-comment guarded sites now belong to parsing/comments.rs:
+// get_comments_if_group_parent and get_comments_if_type_parent each retain their
+// original cddl_type.parent(parent_visitor).unwrap() site and return order.
+// get_comment_after retains every original parent unwrap at TypeRule, GroupRule,
+// Group, Type1, Unwrap, ChoiceFromGroup and NonMemberKey branches, plus std::ptr::eq.
+// Payloads, borrowed lifetimes and child-dependent return paths remain source-exact.
+// No active allowance is added; actual normalized production-frame qualification is pending.
+// Parser incremental prepass guarded sites now belong to parsing/prepass.rs:
+// defining_statements_by_name retains its by_name.remove(&name).unwrap() in authored order.
+// incremental_type_choice_merge_applies retains the rules[idx] indexing guard.
+// merge_incremental_type_choice_extensions retains both exact unreachable payload sites,
+// indices[0]/indices[1..]/rules[idx]/removed[idx] accesses and keep.next().unwrap().
+// repeated_rule_definition_rejections retains its cddl.rules[idx] statement lookup.
+// No allowance is added; actual normalized production-frame identity remains unqualified.
+// Pinned-parser trailing-directive source-span guards now live in parsing/source_scan.rs.
+// Their source-order find_map walks, bounded buffer.get reads, closing-paren test,
+// span.1 - 1 and byte-slice operations retain exact bodies and diagnostic strings.
+// The closing-paren test precedes subtraction and each original optional range check remains.
+// Source guard custody is not runtime reachability or normalized panic-frame qualification.
+// Actual moved file/module/function frames remain main-owned; observed new failures require
+// regression vectors. No active panic row or allowance is added or widened.
+// The encoding-companion suffix registry and pairwise scanner now live in parsing/records.rs.
+// Fixed-field lowering and record assembly now live in parsing/records.rs.
+// DynamicRows and recognize_dynamic_rows remain parent-owned; the child borrows/moves their
+// private parent fields through descendant visibility without adding public surface.
+// lower_record_field retains skip/key/name/directive/type/occurrence/exact-zero order.
+// parse_record_from_group_choice retains dynamic recognition before field traversal and
+// encoding-companion, wasm-insert, then array-segment collision checks in that order.
+// Existing source-index/name/slice guard behavior and pinned diagnostics remain exact.
+// Actual records child panic file/module/function attribution remains main qualification;
+// any observed new class needs a regression vector. No panic allowance is added or widened.
+// DynamicRows and recognize_dynamic_rows now belong to parsing/dynamic_rows.rs; records
+// uses their pub(super) items/fields via the retained private parent aliases.
+// Dynamic row recognizers, row-kind/shape directives and remedies move together to
+// parsing/dynamic_rows.rs. Original borrowed AST/IR signatures, cfg/derive/attrs,
+// source-order classification, skip indices, candidate/empty/count guards, indexed reads
+// and diagnostic strings stay exact; only DynamicRows/four fields and the sole
+// root-cross recognize_dynamic_rows function gain pub(super) for sibling access.
+// Record/name collision and derived suffix owners remain parsing/records.rs.
+// No panic row or allowance changes; actual normalized frames remain main qualification.
 // Group-choice first-entry selection now belongs to parsing::lower_single_entry_group_choice_arm.
 // Its first().unwrap() remains guarded by the unchanged single-entry caller branch.
 // Temporary record removal and embedding invariants now belong to
 // parsing::lower_record_group_choice_arm: remove_rust_struct(...).unwrap() and unreachable!().
 // Payloads and control flow remain unchanged; no active panic/Layer2 allowance is added.
 // AST custody and complete current IR equivalence do not claim untriggered frame reachability.
+// Rule-type choice and rule-body lowering guards now belong to parsing/types.rs.
+// parse_type_choices retains its existing wildcard unreachable; lower_numeric_literal_rule
+// retains both original unreachable sites and exact pinned diagnostic text.
+// lower_tagged_rule retains t.type_choices.first().unwrap() after the existing length check.
+// All twelve moved function bodies, scoped attributes and AST-borrowing signatures are exact
+// apart from two minimum parent-call visibilities and one local unsupported-body call path.
+// No active panic row/allowance changes. Runtime normalized file/module/function frame,
+// reachability, diagnostic ordering and output equivalence remain main-owned qualification.
+// Member type lowering and cohesive generic/null/type-name/window helpers now live in
+// parsing/types.rs. Their first/index/get/unwrap/unreachable sites, nested scoped-parameter
+// walk, scoped attributes and AST lifetimes are carried whole, without changing guards.
+// Group orchestration remains parent-owned; fixed record assembly/collisions belong to
+// records.rs and dynamic recognition belongs to dynamic_rows.rs. The types child borrows
+// retained parent semantic/group helpers through explicit imports. The root crate-visible
+// generic_instance_canonical_cddl_ident facade retains its exact definition visibility/signature.
+// Source custody is unqualified compiler/IR/diagnostics/output/normalized-frame evidence.
+// No active panic row or allowance is added or widened.
+// Group/type shape and member/group-choice lowering guards now live in parsing/groups.rs.
+// All twenty-seven moved declarations retain original bodies, attrs, borrowing lifetimes,
+// indexing/unwrap/unreachable sites and exact panic/diagnostic strings after minimum visibility.
+// reject_wasm_group_choice_getter_collisions carries its LOCKSTEP getter inventory whole,
+// including field-qualified claims and the fields.len()==1 guard before fields[0].
+// Group/record/dynamic orchestration retains original mutual calls; record-field and dynamic-row
+// implementations stay parent-owned in this slice. No private DynamicRows field is widened.
+// No active panic key/row or allowance is changed. Main must qualify runtime normalized frames.
+// Parser control/numeric guarded sites now belong to parsing/control.rs:
+// try_float_or_reject retains bare unreachable!() for its guarded comparison Ctl match.
+// parse_control_operator retains unreachable!("guarded by the enclosing arm"),
+// pt.type_choices.first().unwrap() after exact len!=1 return, and the exact
+// maximum-bearing size-window unreachable payload and operator Debug operand.
+// Ranges/shifts/casts/arithmetic and operand/order guards remain source-exact.
+// ControlOperator derive/allow and internal HeadNumeric derive/variants move with owners.
+// No allowance is added or widened; normalized production frames remain unqualified.
+// Shared directive settlement/placement ownership now belongs to parsing/directives.rs.
+// group_entry_rule_metadata retains its exact inline-group panic payload and group operands;
+// record/group guards must still precede the invalid inline entry, as before.
+// NonLastArmOwner and RuleBodyShape retain exact derives/variants/branch and directive ordering.
+// All existing LOCKSTEP comments and pinned messages move unchanged; no panic allowance widens.
+// Alias stripping/custom-wire inheritance, rule marks, shared last-field slot and exact-zero
+// refusals preserve complete bodies; normalized direct/descendant frames remain unqualified.
+// Combined groups/directives source ownership: group_entry_rule_metadata,
+// inline_group_occurrence_metadata, reject_inline_group_occurrence_directives,
+// inline_group_occurrence_directive_message and reject_named_plain_group_occurrence_directives
+// now have one defining owner in directives.rs; groups imports the exact same bodies.
+// Remaining group getters/shape/order helpers and their LOCKSTEP custody remain groups.rs.
+// Existing control/types/records/dynamic direct and descendant guard qualification remains
+// main-owned; no executable panic row, allowance or diagnostic payload changes.
 const KNOWN_PANIC_CLASSES: &[(&str, &str)] = &[
     // (retired when the two anonymous-composite families and the group-choice-arm inline group
     // became graceful rejections) Three classes lived here, and they split by the composite's

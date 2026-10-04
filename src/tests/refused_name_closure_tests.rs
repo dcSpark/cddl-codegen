@@ -5,7 +5,7 @@
 //! forced this module: the narrower-float-name refusal shipped at
 //! `IntermediateTypes::new_type`'s unresolved-reserved fallback, and `x = float16 .size 4` still
 //! generated an `f32`-backed codec at exit 0 — because a control operator resolves its head through
-//! `parsing::ident_to_primitive` and never calls `new_type` at all. The per-name position sweeps
+//! `parsing::control::ident_to_primitive` and never calls `new_type` at all. The per-name position sweeps
 //! (`robustness_tests::undefined_prelude_generates_in_every_position` and the refusal siblings) vary
 //! the POSITION but hold the resolution MECHANISM constant, so a second resolution path is invisible
 //! to them by construction. This module is the systematic layer.
@@ -103,34 +103,34 @@ const SEAMS: &[Seam] = &[
         id: "new_type",
         mechanism: "IntermediateTypes::new_type (src/intermediate/mod.rs)",
         callers: &[
-            "parsing::parse_type — the rule-body typename arm (`types.new_type(&cddl_ident, cli).tag_if(outer_tag)`)",
-            "parsing::generic_instance_or_new_type — the shared helper every TYPE position routes \
+            "parsing::types::lower_ordinary_typename_rule — the rule-body typename arm (`types.new_type(&cddl_ident, cli).tag_if(outer_tag)`)",
+            "parsing::types::generic_instance_or_new_type — the shared helper every TYPE position routes \
              through (`rust_type_from_type2`: member, element, map key, map value, type-choice arm, \
              tag payload, `.cbor` target, generic argument), which is `new_type` verbatim when the \
              reference carries no generic args",
-            "parsing::rust_type_from_type2 — the group-entry typename path (`types.new_type(&cddl_ident, cli)`)",
+            "parsing::types::rust_type_from_type2 — the group-entry typename path (`types.new_type(&cddl_ident, cli)`)",
             "parsing — the combined-name mint for a generic INSTANCE (`types.new_type(&CDDLIdent::new(combined_name), cli)`)",
             "IntermediateTypes::new_type itself — the unresolved-reserved fallback's `prelude_<x>` recursion",
         ],
     },
     Seam {
         id: "ident_to_primitive",
-        mechanism: "parsing::ident_to_primitive (src/parsing/mod.rs)",
+        mechanism: "parsing::control::ident_to_primitive (src/parsing/control.rs)",
         callers: &[
-            "parsing::try_float_or_reject — the float-window pre-pass of `parse_control_operator`",
-            "parsing::parse_type — the rule-position `ControlOperator::Range` arm",
-            "parsing::parse_type — the rule-position `ControlOperator::RangeFloat` arm",
-            "parsing::parse_type — the rule-position `ControlOperator::CBOR` arm",
-            "parsing::rust_type_from_type1 — the MEMBER-position range and window arms",
+            "parsing::control::try_float_or_reject — the float-window pre-pass of `parse_control_operator`",
+            "parsing::types::lower_controlled_typename_rule — the rule-position `ControlOperator::Range` arm",
+            "parsing::types::lower_controlled_typename_rule — the rule-position `ControlOperator::RangeFloat` arm",
+            "parsing::types::lower_controlled_typename_rule — the rule-position `ControlOperator::CBOR` arm",
+            "parsing::types::rust_type_from_type1 — the MEMBER-position range and window arms",
         ],
     },
     Seam {
         id: "field_name",
-        mechanism: "parsing::type_to_field_name / group_entry_to_field_name (src/parsing/mod.rs)",
+        mechanism: "parsing::types::type_to_field_name (src/parsing/types.rs) / parsing::groups::group_entry_to_field_name (src/parsing/groups.rs)",
         callers: &[
-            "parsing::group_entry_to_field_name — the `None` branch for an entry with no explicit \
+            "parsing::groups::group_entry_to_field_name — the `None` branch for an entry with no explicit \
              key, which derives the field name from the entry's TYPE name",
-            "parsing::type_to_field_name — its own recursion through a collection's element type",
+            "parsing::types::type_to_field_name — its own recursion through a collection's element type",
         ],
     },
     Seam {

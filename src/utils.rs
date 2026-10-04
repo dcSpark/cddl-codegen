@@ -139,7 +139,7 @@ pub fn convert_to_camel_case(ident: &str) -> String {
 
 /// Whether `name` is LEXICALLY shaped like a Rust identifier. This is the `IDENTIFIER_OR_KEYWORD`
 /// half of the grammar only. Callers that decide whether a MINTED name can be emitted verbatim
-/// subtract `parsing::RUST_KEYWORDS` as well; the final IR emitted-name floor applies that same
+/// subtract `rust_reserved::RUST_KEYWORDS` as well; the final IR emitted-name floor applies that same
 /// keyword subtraction to explicit or injected names.
 ///
 /// Deliberately ASCII-only rather than the full XID grammar Rust accepts: every name-minting path

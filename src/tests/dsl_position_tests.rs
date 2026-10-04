@@ -250,7 +250,7 @@ const GRID: &[Cell] = &[
     },
     // 9b. PLACEMENT CONTROL for the anon-group-member pin (the KNOWN_SILENT_DROP authoring rule):
     //     the same directive + comment placement (after the inline composite) in the CHOICE-MEMBER
-    //     position, where the naming site (`get_comment_after(type2)`, parsing.rs) IS reachable.
+    //     position, where the naming site (`get_comment_after(type2)`, parsing/comments.rs) IS reachable.
     //     This proves the placement parses and the mechanism works, isolating member-position as
     //     the pinned cell's variable — the pin cannot hold vacuously on a placement typo.
     Cell {

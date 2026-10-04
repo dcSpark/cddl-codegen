@@ -3,7 +3,7 @@ use super::*;
 impl<'a> IntermediateTypes<'a> {
     pub(super) fn validate_emitted_name_surface(&self) -> Vec<String> {
         fn spellable(name: &str) -> bool {
-            is_valid_rust_ident(name) && !crate::parsing::RUST_KEYWORDS.contains(&name)
+            is_valid_rust_ident(name) && !crate::rust_reserved::RUST_KEYWORDS.contains(&name)
         }
         fn check_name(messages: &mut BTreeSet<String>, name: &str, family: &str, provenance: &str) {
             if !spellable(name) {

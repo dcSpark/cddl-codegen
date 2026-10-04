@@ -13318,7 +13318,7 @@ fn bareword_keyword_field_name_rejects_gracefully() {
 }
 
 /// A field named by one of the fixed locals the generated serialization bodies bind
-/// (`parsing::GENERATED_LOCAL_RESERVED` — `raw`, `len`, `read`, …) used to generate at exit 0 and
+/// (`rust_reserved::GENERATED_LOCAL_RESERVED` — `raw`, `len`, `read`, …) used to generate at exit 0 and
 /// emit a crate that does not compile: the field's local shadows the emitter's, and the failure
 /// surfaced two build steps from the CDDL line that caused it. It is now a parse-time graceful
 /// rejection naming the rule, the field, the reserved word and the `@name` remedy.

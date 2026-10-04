@@ -33,7 +33,7 @@
 
 use crate::cli::Cli;
 use crate::intermediate::Representation;
-use crate::parsing::{
+use crate::rust_reserved::{
     GENERATED_LOCAL_PROBED_SAFE, GENERATED_LOCAL_RESERVED, RUST_KEYWORDS, ReservedScope,
 };
 // `tool_cmd` insulates a nested *generated-crate* cargo build from the workspace's `-D warnings`
@@ -43,7 +43,7 @@ use crate::tests::integration_tests::{codegen_cmd, tool_cmd};
 use crate::tests::robustness_tests::with_thread_silenced_panics;
 use clap::Parser;
 
-/// Hazards beyond `RUST_KEYWORDS` (reused from `parsing.rs`, never re-typed):
+/// Hazards beyond `RUST_KEYWORDS` (reused from `rust_reserved.rs`, never re-typed):
 /// - `r` / `w` camel-case to `R` / `W` — single-letter type names that collided with the emitted
 ///   reader/writer fn generics before cbor_event 3.x de-generified `Serializer`/`Deserializer`.
 ///   The generics are gone, but the cells stay swept: they cost nothing and would catch any future
@@ -973,8 +973,8 @@ fn emitter_local_scan_finds_the_known_anchors() {
 
 /// LOCKSTEP (local tier and later — this module is NOT `snapshot_tests`, the one module fast runs):
 /// every fixed local the emitters bind into a generated fn body must carry a verdict — either
-/// `parsing::GENERATED_LOCAL_RESERVED` (probed to break ≥1 shape × profile, so a field by that name
-/// is refused at parse time) or `parsing::GENERATED_LOCAL_PROBED_SAFE` (probed to break nothing, so
+/// `rust_reserved::GENERATED_LOCAL_RESERVED` (probed to break ≥1 shape × profile, so a field by that name
+/// is refused at parse time) or `rust_reserved::GENERATED_LOCAL_PROBED_SAFE` (probed to break nothing, so
 /// a field by that name is accepted). A NEW emitter local fails this test until it is swept and
 /// verdicted, instead of being discovered by a consumer whose crate will not build.
 ///

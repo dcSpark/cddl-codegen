@@ -170,7 +170,7 @@ pub struct RuleMetadata {
     /// consumer imports the dependency's real type under this pinned name (`use dep::Pinned as
     /// Derived;`) instead of re-deriving the name from the CDDL ident with its own (possibly newer)
     /// codegen version. This is what kills the cross-version naming-skew class. Rejected on any
-    /// exported rule (see `parsing::handle_rust_name_pin`); a pin that camel-cases to a reserved Rust
+    /// exported rule (see `parsing::directives::handle_rust_name_pin`); a pin that camel-cases to a reserved Rust
     /// type is rejected exactly as a derived name would be.
     pub rust_name: Option<String>,
     /// None = not newtype, Some(None) = getter under the default name `get`,
