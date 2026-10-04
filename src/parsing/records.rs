@@ -273,7 +273,9 @@ fn lower_record_field(
              the type."
         ));
     }
-    // does not exist for fixed values importantly
+    // Lower and materialize the field type before checking its occurrence.
+    // The optional plain-group refusal reads the resolved type through is_basic and resolve_alias_shallow.
+    // Keep this order so alias materialization and type-level rejections precede occurrence rejections.
     let mut field_type = group_entry_to_type(types, parent_visitor, group_entry, cli);
     // A field spelled through an alias (`t = [ c: uint, kv_alias ]`) materializes the plain
     // group exactly like the direct `kv` reference: `is_basic`, which DOES shallow-resolve,

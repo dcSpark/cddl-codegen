@@ -153,7 +153,8 @@ pub(super) fn occurrence_permits_count(entry: &GroupEntry) -> bool {
 /// Splicing DISCARDS the marker, narrowing the group to exactly-once. That is only sound when the
 /// marker already means exactly-once — `None` or `1*1` (any representation) — OR, on the MAP side,
 /// when the lower bound is ≥ 1: under unique map keys `+` / `n*m` collapse to exactly-one, so a
-/// mandatory field is the honored semantics (the f18d764 boundary). Every zero-permitting marker
+/// mandatory field preserves the map-side collapse implemented below.
+/// Every zero-permitting marker
 /// (`*`, `?`, `0*n`) and every array marker admitting 2+ reps (`+`, `2*5`) is kept unflattened so
 /// the caller can reject it instead of silently generating a decoder that rejects valid CBOR.
 ///
@@ -510,10 +511,10 @@ pub(super) fn parse_group_type<'a>(
             // table: { * int => tstr }, etc
             // A literal-key arrow entry (`{ 1 => uint }`, `{ "a" => uint }`) is NOT a table: per RFC
             // 8610 a fixed-value key `k => v` is the same wire entry as the colon spelling `k: v`, so
-            // it is a 1-field struct. Table detection therefore requires a NON-fixed key type; a fixed
-            // key falls through to `parse_record_from_group_choice` (where f49d862's classification
-            // generates uint/text and gracefully rejects nint/float/bool), avoiding a `Fixed`-domain
-            // table that panics in `for_rust_member`.
+            // it is a 1-field struct. Table detection therefore requires a NON-fixed key type.
+            // Fixed keys lower through `parse_record_from_group_choice` and `group_entry_map_key_kind`.
+            // That classification accepts uint/text and gracefully rejects nint/float/bool.
+            // This avoids a `Fixed`-domain table that panics in `for_rust_member`.
             // this assumes that all maps representing tables are homogenous
             // and contain no other fields. I am not sure if this is a guarantee in
             // cbor but I would hope that the cddl specs we are using follow this.

@@ -1095,7 +1095,7 @@ fn handle_rust_name_pin(
 /// trailing anchor of the group rule's own on that line, the merge binds the comment to the
 /// FOLLOWING rule's `comments_before_rule` (or orphans it when the group rule is last). Nothing
 /// reads that position, so a directive written there would be lost on formatting alone — which is
-/// why [`multiline_group_trailing_directive_rejection`] REFUSES the spelling pre-IR, from the source
+/// why [`crate::parsing::source_scan::multiline_group_trailing_directive_rejection`] REFUSES the spelling pre-IR, from the source
 /// buffer, before this fn is ever reached for such a rule. Everything below therefore only ever sees
 /// a spelling the parser does bind (whole group on one line, or closing paren on the last entry's
 /// line). `Rule::Group`'s own `comments_after_rule` is not an escape hatch at this pin: the merge

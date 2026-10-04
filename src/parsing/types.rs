@@ -2067,11 +2067,10 @@ pub(crate) fn generic_instance_canonical_cddl_ident(
 
 /// Resolve a type/group name that may carry generic arguments into a `RustType`.
 ///
-/// With `generic_args == None` this is exactly `types.new_type(&cddl_ident, cli)`, so callers that
-/// previously did that directly stay byte-identical. With generic args present it registers an
-/// anonymous generic instance under the synthesized name `<name>_<arg-variants>` (e.g. a
-/// `pair<uint, tstr>` element becomes the `PairU64Text` instance) and resolves *that* instance — otherwise the
-/// args are silently dropped and the emitted code references the bare, never-emitted generic base.
+/// Without arguments, resolve through `types.new_type(&cddl_ident, cli)`.
+/// With concrete arguments, register and resolve the identity from `generic_instance_canonical_cddl_ident`.
+/// That identity retains occurrence, configuration and codec differences in each argument.
+/// Resolving the bare generic base would discard the arguments and reference a type that is not emitted.
 ///
 /// Shared by every member/element position that can carry a generic instantiation
 /// (`rust_type_from_type2`'s `Type2::Typename` arm and `parse_group_type`'s single-entry
@@ -2323,16 +2322,11 @@ pub(super) fn rust_type_from_type2(
                     return ConceptualRustType::Fixed(FixedValue::Null).into();
                 }
             };
-            // Build the plain tagged inline occurrence — NO registry default is applied here. An inline
-            // `#6.258([* a])` nominalizes into a shape-derived `Set<Elem>` wrapper, but that
-            // minting happens at the ONE post-collapse seam (`IntermediateTypes::nominalize_inline_sets`,
-            // run in `finalize` over the construction PRODUCTS), never inside this arm: the arm is also
-            // traversed for the DISCARDED transient arms of a named two-arm rule's collapse recognition,
-            // and minting here would register spurious nominals from arms that are thrown away. The
-            // finalize seam sees only registered products, so the transient-arm interference class
-            // cannot arise (this is why the old `SUPPRESS_INLINE_TAG_DEFAULT` thread-local is gone). The
-            // seam recognizes an inline occurrence structurally: a `ConceptualRustType::Array` carrying a
-            // mandatory `Tagged(258)` in its `encodings`.
+            // Construct the tagged inline type here without applying a registry default or minting a nominal.
+            // IntermediateTypes::nominalize_inline_sets runs in finalize over registered construction products.
+            // It recognizes ConceptualRustType::Array with mandatory Tagged(258) in its encodings.
+            // Deferring minting keeps transient arms discarded by named two-arm collapse out of the registry.
+            // Named set rules retain their rule-derived nominal identity; inline sets derive identity from their shape.
             let inner = rust_type(types, parent_visitor, t, cli);
             if reject_tagged_plain_group_payload(types, &inner, tag_unwrap) {
                 // An inert, storable placeholder keeps later parsing order-independent. The

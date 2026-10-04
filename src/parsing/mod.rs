@@ -192,9 +192,9 @@ pub fn parse_rule(
                 "{}: Generics not supported on plain groups",
                 rule.name
             );
-            // The group body is registered in api::with_types. This arm applies its rule slot
-            // through RuleBodyShape::PlainGroup, using group_rule_pin_metadata to avoid consuming
-            // the final entry's field directives as rule directives.
+            // Read the plain group's rule metadata from the final entry's shared comment slot.
+            // group_rule_pin_metadata also reads comments_after_group; field directives retain their field meaning.
+            // RuleBodyShape::PlainGroup applies the rule marks and returns before ordinary rule-only checks.
             match &rule.entry {
                 cddl::ast::GroupEntry::InlineGroup {
                     group,
