@@ -4382,6 +4382,64 @@ fn lower_tagged_rule(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn lower_parenthesized_rule(
+    types: &mut IntermediateTypes,
+    parent_visitor: &ParentVisitor,
+    type_name: &RustIdent,
+    type1: &Type1,
+    pt: &Type,
+    outer_tag: Option<usize>,
+    generic_params: Option<Vec<GenericParamBinding>>,
+    rule_metadata: &RuleMetadata,
+    size_override: Option<&Operator>,
+    cli: &Cli,
+) {
+    // Carry only an authored outer SIZE through bare single-choice parentheses.
+    // Other outer controls retain their existing route in this narrow repair.
+    let outer_size = size_override.or_else(|| {
+        type1.operator.as_ref().filter(|op| {
+            matches!(
+                op.operator,
+                RangeCtlOp::CtlOp {
+                    ctrl: token::ControlOperator::SIZE,
+                    ..
+                }
+            )
+        })
+    });
+    match pt.type_choices.as_slice() {
+        [only] => parse_type(
+            types,
+            parent_visitor,
+            type_name,
+            only,
+            outer_tag,
+            generic_params,
+            rule_metadata,
+            outer_size,
+            cli,
+        ),
+        _ if outer_size.is_some() => {
+            // The API SIZE choice pre-scan normally refuses this before lowering.
+            types.record_rejection(format!(
+                "rule `{type_name}`: an outer `.size` requires one parenthesized head — \
+                 write the size separately on each supported choice arm"
+            ));
+        }
+        _ => parse_type_choices(
+            types,
+            parent_visitor,
+            type_name,
+            &pt.type_choices,
+            outer_tag,
+            generic_params,
+            rule_metadata,
+            cli,
+        ),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn parse_type(
     types: &mut IntermediateTypes,
     parent_visitor: &ParentVisitor,
@@ -5161,49 +5219,18 @@ fn parse_type(
             );
         }
         Type2::ParenthesizedType { pt, .. } => {
-            // Carry only an authored outer SIZE through bare single-choice parentheses.
-            // Other outer controls retain their existing route in this narrow repair.
-            let outer_size = size_override.or_else(|| {
-                type1.operator.as_ref().filter(|op| {
-                    matches!(
-                        op.operator,
-                        RangeCtlOp::CtlOp {
-                            ctrl: token::ControlOperator::SIZE,
-                            ..
-                        }
-                    )
-                })
-            });
-            match pt.type_choices.as_slice() {
-                [only] => parse_type(
-                    types,
-                    parent_visitor,
-                    type_name,
-                    only,
-                    outer_tag,
-                    generic_params,
-                    &rule_metadata,
-                    outer_size,
-                    cli,
-                ),
-                _ if outer_size.is_some() => {
-                    // The API SIZE choice pre-scan normally refuses this before lowering.
-                    types.record_rejection(format!(
-                        "rule `{type_name}`: an outer `.size` requires one parenthesized head — \
-                         write the size separately on each supported choice arm"
-                    ));
-                }
-                _ => parse_type_choices(
-                    types,
-                    parent_visitor,
-                    type_name,
-                    &pt.type_choices,
-                    outer_tag,
-                    generic_params,
-                    &rule_metadata,
-                    cli,
-                ),
-            }
+            lower_parenthesized_rule(
+                types,
+                parent_visitor,
+                type_name,
+                type1,
+                pt,
+                outer_tag,
+                generic_params,
+                &rule_metadata,
+                size_override,
+                cli,
+            );
         }
         x => reject_unsupported_rule_body(types, type_name, x),
     }
