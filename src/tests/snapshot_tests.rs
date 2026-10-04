@@ -4242,7 +4242,7 @@ fn no_std_check_emit_lib_name() {
 
 /// `--package-json` nests the cargo crates one level down (`<out>/rust/rust`) while the shim stays at
 /// the output root, so the dep path becomes `../rust/rust`. The shim is the THIRD reader of that
-/// nesting rule (LOCKSTEP with `GenerationScope::export`'s `rust_dir` and `config::crate_relative`),
+/// nesting rule (LOCKSTEP with `GenerationScope::export`'s `rust_dir` and `config::derive::crate_relative`),
 /// and a disagreement there type-checks — this snapshot is what makes it fail instead.
 #[test]
 fn no_std_check_emit_package_json() {

@@ -5829,7 +5829,7 @@ composition — do it deliberately and re-triage.
 
 ## Config-file front end (`src/tests/config_tests.rs`)
 
-`--config <file.toml>` (`src/config.rs`) is a pure expansion layer: it turns one TOML document into
+`--config <file.toml>` (`src/config/mod.rs`) is a pure expansion layer: it turns one TOML document into
 `Vec<(crate name, Cli)>` and hands each `Cli` to the same `api::generate_to_disk` a command line
 would have reached. Its whole claim is "a config key IS its flag", so the suite is organised around
 the three ways that claim breaks, and deliberately re-tests nothing about what a flag MEANS (that is

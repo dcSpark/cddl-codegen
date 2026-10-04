@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "cddl-codegen config",
-  "description": "Schema for a cddl-codegen `--config` TOML file. Generated from `struct Settings`, `struct CrateEntry` and `struct Runtime` in src/config.rs by the `editor_schema_matches_the_config_surface` test — edit those and re-bless rather than editing this file.",
+  "description": "Schema for a cddl-codegen `--config` TOML file. Generated from `struct Settings`, `struct CrateEntry` in src/config/schema.rs and `struct Runtime` in src/config/mod.rs by the `editor_schema_matches_the_config_surface` test — edit those and re-bless rather than editing this file.",
   "type": "object",
   "additionalProperties": false,
   "properties": {

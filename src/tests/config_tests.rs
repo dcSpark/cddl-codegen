@@ -1,4 +1,4 @@
-//! Tests for the `--config <file.toml>` front end (`src/config.rs`).
+//! Tests for the `--config <file.toml>` front end (`src/config/mod.rs`).
 //!
 //! The feature's whole claim is "a config key IS its flag", so the suite is organised around the
 //! three ways that claim can break: a key that does not reach the flag (the merge and the
@@ -1996,14 +1996,20 @@ fn config_keys_match_cli_fields() {
     fn struct_field_keys(path: &str, struct_name: &str) -> BTreeSet<String> {
         let source = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {path}: {e}"));
         let file = syn::parse_file(&source).unwrap_or_else(|e| panic!("parse {path}: {e}"));
-        let item = file
+        let declarations: Vec<_> = file
             .items
             .iter()
-            .find_map(|item| match item {
+            .filter_map(|item| match item {
                 syn::Item::Struct(s) if s.ident == struct_name => Some(s),
                 _ => None,
             })
-            .unwrap_or_else(|| panic!("{path} declares no `struct {struct_name}`"));
+            .collect();
+        assert_eq!(
+            declarations.len(),
+            1,
+            "{path} must declare exactly one `struct {struct_name}`"
+        );
+        let item = declarations[0];
         let keys: BTreeSet<String> = item
             .fields
             .iter()
@@ -2030,7 +2036,7 @@ fn config_keys_match_cli_fields() {
         );
     }
     let settings_keys = struct_field_keys(
-        concat!(env!("CARGO_MANIFEST_DIR"), "/src/config.rs"),
+        concat!(env!("CARGO_MANIFEST_DIR"), "/src/config/schema.rs"),
         "Settings",
     );
     let per_crate: BTreeSet<String> = ["input", "output", "lib-name"]
@@ -2147,14 +2153,20 @@ fn struct_field_types(path: &str, struct_name: &str) -> Vec<(String, String)> {
 
     let source = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {path}: {e}"));
     let file = syn::parse_file(&source).unwrap_or_else(|e| panic!("parse {path}: {e}"));
-    let item = file
+    let declarations: Vec<_> = file
         .items
         .iter()
-        .find_map(|item| match item {
+        .filter_map(|item| match item {
             syn::Item::Struct(s) if s.ident == struct_name => Some(s),
             _ => None,
         })
-        .unwrap_or_else(|| panic!("{path} declares no `struct {struct_name}`"));
+        .collect();
+    assert_eq!(
+        declarations.len(),
+        1,
+        "{path} must declare exactly one `struct {struct_name}`"
+    );
+    let item = declarations[0];
     let fields: Vec<(String, String)> = item
         .fields
         .iter()
@@ -2187,14 +2199,25 @@ fn cli_flag_spellings(path: &str) -> std::collections::BTreeMap<String, (String,
 
     let source = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {path}: {e}"));
     let file = syn::parse_file(&source).unwrap_or_else(|e| panic!("parse {path}: {e}"));
-    let item = file
+    let declarations: Vec<_> = file
         .items
         .iter()
-        .find_map(|item| match item {
+        .filter_map(|item| match item {
             syn::Item::Struct(s) if s.ident == "Cli" => Some(s),
             _ => None,
         })
-        .unwrap_or_else(|| panic!("{path} declares no `struct Cli`"));
+        .collect();
+    assert_eq!(
+        declarations.len(),
+        1,
+        "{path} must declare exactly one `struct Cli`"
+    );
+    let item = declarations[0];
+
+    assert!(
+        !item.fields.is_empty(),
+        "parsed zero fields from `Cli` in {path} — the flag-spelling gate went vacuous"
+    );
 
     let mut longs = std::collections::BTreeMap::new();
     let mut any_renamed = false;
@@ -2303,7 +2326,8 @@ fn key_description(
 fn build_editor_schema() -> String {
     use std::collections::BTreeSet;
 
-    let config_rs = concat!(env!("CARGO_MANIFEST_DIR"), "/src/config.rs");
+    let schema_rs = concat!(env!("CARGO_MANIFEST_DIR"), "/src/config/schema.rs");
+    let runtime_rs = concat!(env!("CARGO_MANIFEST_DIR"), "/src/config/mod.rs");
     let cli_rs = concat!(env!("CARGO_MANIFEST_DIR"), "/src/cli.rs");
     let longs = cli_flag_spellings(cli_rs);
 
@@ -2323,7 +2347,7 @@ fn build_editor_schema() -> String {
         |key: &str, rust_type: &str| described(key, rust_type, key_description(key, &longs));
 
     // `[defaults]`, every `[profiles.<name>]`, and the settings half of every `[crates.<name>]`.
-    let settings_fields = struct_field_types(config_rs, "Settings");
+    let settings_fields = struct_field_types(schema_rs, "Settings");
     assert_eq!(
         settings_fields
             .iter()
@@ -2341,7 +2365,7 @@ fn build_editor_schema() -> String {
         .collect();
 
     // The `[crates.<name>]`-only keys, which the shared tables must NOT accept.
-    let per_crate_fields: Vec<(String, String)> = struct_field_types(config_rs, "CrateEntry")
+    let per_crate_fields: Vec<(String, String)> = struct_field_types(schema_rs, "CrateEntry")
         .into_iter()
         // The nested settings layer, not a key of its own.
         .filter(|(key, _)| key != "settings")
@@ -2379,7 +2403,7 @@ fn build_editor_schema() -> String {
     // package name of the co-owned runtime crate — the same spelling for a different thing, and no
     // flag of its own. So a runtime key is described as a flag key only while it is NOT also a
     // per-crate key; a future collision gets the same treatment without being noticed by hand.
-    let runtime_props: Vec<(String, Json)> = struct_field_types(config_rs, "Runtime")
+    let runtime_props: Vec<(String, Json)> = struct_field_types(runtime_rs, "Runtime")
         .iter()
         .map(|(key, ty)| {
             if per_crate_fields.iter().any(|(k, _)| k == key) {
@@ -2483,7 +2507,7 @@ fn build_editor_schema() -> String {
             "description".to_owned(),
             Json::Str(
                 "Schema for a cddl-codegen `--config` TOML file. Generated from `struct Settings`, \
-                 `struct CrateEntry` and `struct Runtime` in src/config.rs by the \
+                 `struct CrateEntry` in src/config/schema.rs and `struct Runtime` in src/config/mod.rs by the \
                  `editor_schema_matches_the_config_surface` test — edit those and re-bless rather \
                  than editing this file."
                     .to_owned(),
@@ -5946,7 +5970,7 @@ fn acceptance_config_text() -> String {
 /// What that leaves for a reader is the reverse direction: a flag written here that the config never
 /// derives also fails, so this list cannot drift ahead of the config either.
 ///
-/// The derivations it spells, for orientation (all read off `src/config.rs`, not off the docs):
+/// The derivations it spells, for orientation (all read off `src/config/derive.rs`, not off the docs):
 /// `apply_graph_edges` forward (`--extern-import`, `--extern-wasm-crate`, `--extern-wrapper-index`,
 /// `--workspace-dep`) and reverse (`--wrapper-requests`, `--key-requests`); `apply_runtime`
 /// (`--common-import-override` on every crate, `--export-static-crate` on the derived carrier);

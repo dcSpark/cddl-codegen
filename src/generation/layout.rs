@@ -4,7 +4,7 @@
 //! # Why these live here rather than at either site
 //!
 //! Each fact below is written by this crate's emitter and READ BACK, by path, by something outside
-//! it: `config.rs` derives `--extern-import`, `--extern-wrapper-index`, `--wrapper-requests`,
+//! it: `config/derive.rs` derives `--extern-import`, `--extern-wrapper-index`, `--wrapper-requests`,
 //! `--key-requests` and the cargo path dependencies from exactly these spellings, and the
 //! committed-state verdict opens two of the files by name. Spelled independently at both ends, a
 //! renamed sidecar produces no compile error and no failing unit — it produces a config whose derived
@@ -19,7 +19,7 @@
 //! json-gen crate's `main.rs`) stay at their emission site.
 //!
 //! The `--package-json` NESTING RULE is deliberately absent, because it is code and not a string:
-//! see the LOCKSTEP pair on `config::crate_relative` and `GenerationScope::export`'s `rust_dir`.
+//! see the LOCKSTEP pair on `config::derive::crate_relative` and `GenerationScope::export`'s `rust_dir`.
 //!
 //! # The component face's five
 //!

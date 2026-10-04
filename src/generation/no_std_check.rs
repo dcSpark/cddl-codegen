@@ -61,7 +61,7 @@ pub(crate) fn no_std_check_files(cli: &Cli) -> BTreeMap<String, String> {
 ///
 /// LOCKSTEP: this is the third reader of the `--package-json` nesting rule, whose other two are
 /// `GenerationScope::export`'s `rust_dir` (where the one-level-down decision is actually made) and
-/// `config::crate_relative` (which restates it for a crate reading ANOTHER crate's output). The shim
+/// `config::derive::crate_relative` (which restates it for a crate reading ANOTHER crate's output). The shim
 /// does NOT move with the crates — it stays at the output root — so it absorbs the nesting into its
 /// dep path instead. Change all three together.
 fn dep_path(cli: &Cli) -> &'static str {

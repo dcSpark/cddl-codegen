@@ -1047,7 +1047,7 @@ impl GenerationScope {
             )?;
         }
         // LOCKSTEP: `--package-json` nests the cargo crates one level down, under `<output>/rust/`;
-        // without it they sit directly under `<output>`. `config::crate_relative` duplicates THIS
+        // without it they sit directly under `<output>`. `config::derive::crate_relative` duplicates THIS
         // rule on purpose — a config derives cross-crate flag values naming ANOTHER crate's
         // generated files, so it has to know where that crate's emitter put them, and the rule is
         // code rather than a string so no constant can carry it for both. Change all THREE together

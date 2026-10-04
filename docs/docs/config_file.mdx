@@ -131,8 +131,8 @@ shows each key's type and the flag it stands for, and marks a misspelled or misp
 typed it rather than at the next run — the same refusals [this file
 lists](#what-the-config-refuses), only earlier.
 
-The schema is generated from `struct Settings`, `struct CrateEntry` and `struct Runtime` in
-`src/config.rs`, and the `editor_schema_matches_the_config_surface` test fails if the committed copy
+The schema is generated from `struct Settings` and `struct CrateEntry` in
+`src/config/schema.rs` and `struct Runtime` in `src/config/mod.rs`, and the `editor_schema_matches_the_config_surface` test fails if the committed copy
 stops matching them. So it describes the version of the tool it was checked out with, not a
 hand-maintained approximation of some version.
 

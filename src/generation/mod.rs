@@ -57,7 +57,7 @@ pub(crate) mod export;
 mod sidecars;
 use export::declare_modules;
 
-// The generated workspace's shared layout facts (the paths and package-name suffixes `config.rs`
+// The generated workspace's shared layout facts (the paths and package-name suffixes `config/derive.rs`
 // derives cross-crate flag values from). `pub(crate)` because the whole point is that the reader
 // outside `generation/` uses the same constants the emitter does.
 pub(crate) mod layout;
